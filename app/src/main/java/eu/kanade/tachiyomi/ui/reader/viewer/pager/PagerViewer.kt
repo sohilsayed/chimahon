@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.graphics.PointF
+import android.webkit.WebView
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -19,6 +20,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import chimahon.DictionaryRepository
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import tachiyomi.core.common.util.system.logcat
@@ -34,6 +36,8 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
     val downloadManager: DownloadManager by injectLazy()
 
     private val scope = MainScope()
+
+    var onShowOcrPopup: ((lookupString: String, webView: WebView, repository: DictionaryRepository, anchorX: Float, anchorY: Float) -> Unit)? = null
 
     /**
      * View pager used by this viewer. It's abstract to implement L2R, R2L and vertical pagers on
@@ -377,6 +381,14 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         adapter.refresh()
         pager.adapter = adapter
         pager.setCurrentItem(currentItem, false)
+    }
+
+    fun setOcrEnabled(enabled: Boolean) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrEnabled(enabled)
+            }
     }
 
     /**

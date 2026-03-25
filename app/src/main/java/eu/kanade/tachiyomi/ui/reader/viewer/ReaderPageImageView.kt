@@ -1,16 +1,21 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.annotation.AttrRes
 import androidx.annotation.CallSuper
@@ -18,6 +23,8 @@ import androidx.annotation.StyleRes
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.os.postDelayed
 import androidx.core.view.isVisible
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import coil3.BitmapImage
 import coil3.asDrawable
 import coil3.dispose
@@ -36,13 +43,18 @@ import com.github.chrisbanes.photoview.PhotoView
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
+import logcat.LogPriority
 import okio.BufferedSource
 import tachiyomi.core.common.util.system.ImageUtil
+import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import chimahon.DictionaryRepository
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 
 /**
  * A wrapper view for showing page image.
@@ -64,9 +76,48 @@ open class ReaderPageImageView @JvmOverloads constructor(
         Injekt.get<BasePreferences>().alwaysDecodeLongStripWithSSIV().get()
     }
 
-    private var pageView: View? = null
+    internal var pageView: View? = null
 
     private var config: Config? = null
+
+    // ==================== OCR State ====================
+    var ocrEnabled: Boolean = false
+        set(value) {
+            field = value
+            logcat { "OCR toggle: enabled=$value blocks=${ocrBlocks.size}" }
+            if (!value) {
+                activeOcrBlock = null
+                ocrLayoutCache = null
+                ocrPopupLookupString = null
+            }
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    var ocrOutlineVisible: Boolean = false
+        set(value) {
+            field = value
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    var ocrBoxScale: Float = 1.0f
+        set(value) {
+            field = value
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    internal var ocrBlocks: List<OcrTextBlock> = emptyList()
+    internal var activeOcrBlock: OcrTextBlock? = null
+    internal var ocrLayoutCache: Pair<OcrTextBlock, StaticLayout>? = null
+
+    var onOcrLookup: ((String) -> Unit)? = null
+
+    // ==================== Dictionary Popup State ====================
+    private var ocrWebView: WebView? = null
+    private var dictionaryRepository: DictionaryRepository? = null
+    var ocrPopupLookupString: String? = null
+        private set
+
+    var onShowOcrPopup: ((lookupString: String, webView: WebView, repository: DictionaryRepository, screenX: Float, screenY: Float) -> Unit)? = null
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -92,6 +143,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     @CallSuper
     open fun onScaleChanged(newScale: Float) {
         onScaleChanged?.invoke(newScale)
+        dismissActiveOcrBlock()
     }
 
     @CallSuper
@@ -238,7 +290,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         pageView = if (isWebtoon) {
             WebtoonSubsamplingImageView(context)
         } else {
-            SubsamplingScaleImageView(context)
+            OcrSubsamplingImageView(context).also { it.ocrHost = this@ReaderPageImageView }
         }.apply {
             setMaxTileSize(ImageUtil.hardwareBitmapThreshold)
             setDoubleTapZoomStyle(SubsamplingScaleImageView.ZOOM_FOCUS_CENTER)
@@ -251,13 +303,38 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     }
 
                     override fun onCenterChanged(newCenter: PointF?, origin: Int) {
-                        // Not used
+                        dismissActiveOcrBlock()
                     }
                 },
             )
             setOnClickListener { this@ReaderPageImageView.onViewClicked() }
         }
         addView(pageView, MATCH_PARENT, MATCH_PARENT)
+
+        // Pre-warm WebView for OCR dictionary lookup (non-webtoon only)
+        if (!isWebtoon && ocrWebView == null) {
+            ocrWebView = createOcrWebView(context)
+            dictionaryRepository = DictionaryRepository(context.getExternalFilesDir(null))
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createOcrWebView(ctx: Context): WebView {
+        return WebView(ctx).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.blockNetworkLoads = true
+            settings.loadsImagesAutomatically = true
+            setBackgroundColor(0x00000000)
+            // Pre-load bootstrap HTML to avoid startup delay on first lookup
+            loadDataWithBaseURL(
+                "https://dictionary.local/",
+                getDictionaryBootstrapHtml(ctx),
+                "text/html",
+                "utf-8",
+                null,
+            )
+        }
     }
 
     private fun SubsamplingScaleImageView.setupZoom(config: Config?) {
@@ -412,6 +489,184 @@ open class ReaderPageImageView @JvmOverloads constructor(
         return (this * context.animatorDurationScale).toInt().coerceAtLeast(1)
     }
 
+    // ==================== OCR Methods ====================
+
+    /**
+     * Set OCR blocks for this page. Called by [PagerPageHolder] after image loads.
+     */
+    fun setOcrBlocks(blocks: List<OcrTextBlock>) {
+        ocrBlocks = blocks
+        activeOcrBlock = null
+        ocrLayoutCache = null
+        logcat { "OCR blocks attached: count=${blocks.size}" }
+        (pageView as? SubsamplingScaleImageView)?.invalidate()
+    }
+
+    /**
+     * Clear all OCR state. Called by [PagerPageHolder] when page is detached.
+     */
+    fun clearOcr() {
+        if (ocrBlocks.isNotEmpty() || activeOcrBlock != null) {
+            logcat { "OCR clear: blocks=${ocrBlocks.size} active=${activeOcrBlock != null}" }
+        }
+        ocrBlocks = emptyList()
+        activeOcrBlock = null
+        ocrLayoutCache = null
+        ocrPopupLookupString = null
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // Destroy pre-warmed WebView when view is permanently removed (user exits reader)
+        ocrWebView?.destroy()
+        ocrWebView = null
+        dictionaryRepository?.close()
+        dictionaryRepository = null
+    }
+
+    /**
+     * Dismiss active OCR block on pan or zoom. Called from onCenterChanged and onScaleChanged listeners.
+     */
+    internal fun dismissActiveOcrBlock() {
+        if (activeOcrBlock != null) {
+            logcat { "OCR dismiss active block on pan/zoom" }
+            activeOcrBlock = null
+            ocrLayoutCache = null
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+    }
+
+    /**
+     * Handle tap on OCR block: first tap activates, second tap triggers lookup.
+     *
+     * Called by [OcrSubsamplingImageView.OcrGestureListener.onSingleTapConfirmed].
+     */
+    internal fun handleOcrTap(block: OcrTextBlock, viewX: Float, viewY: Float, screenX: Float, screenY: Float): Boolean {
+        val currentActive = activeOcrBlock
+        return if (currentActive == null) {
+            // First tap on this block -> activate and show text
+            logcat {
+                "OCR first tap: activate block vertical=${block.vertical} chars=${block.fullText.length} x=$viewX y=$viewY"
+            }
+            activeOcrBlock = block
+            ocrLayoutCache = null
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+            true
+        } else if (currentActive != block) {
+            // Do not switch directly to a different block while one is active.
+            // This avoids accidental jumps when OCR boxes overlap or split badly.
+            logcat { "OCR tap on different block while active; dismissing active block" }
+            dismissActiveOcrBlock()
+            true
+        } else {
+            // Second tap on active block -> show dictionary popup
+            val ssiv = pageView as? SubsamplingScaleImageView ?: return true
+            val charOffset = getCharOffset(block, viewX, viewY, ssiv) ?: 0
+            val lookupString = block.fullText.substring(charOffset)
+            logcat {
+                "OCR second tap: lookup offset=$charOffset remainingChars=${lookupString.length} x=$viewX y=$viewY"
+            }
+            if (lookupString.isBlank()) {
+                logcat(LogPriority.WARN) { "OCR lookup string is blank after second tap" }
+                return true
+            }
+
+            val webView = ocrWebView
+            val repository = dictionaryRepository
+            if (webView != null && repository != null) {
+                ocrPopupLookupString = lookupString
+                onShowOcrPopup?.invoke(lookupString, webView, repository, screenX, screenY)
+            } else {
+                logcat(LogPriority.WARN) { "OCR popup: webView or repository is null" }
+            }
+            true
+        }
+    }
+
+    /**
+     * Get character offset at tap position using StaticLayout or fallback uniform grid.
+     *
+     * Returns the byte offset in [block.fullText] for the character at the tap point.
+     * Used to determine what text to pass to hoshidicts for lookup.
+     */
+    private fun getCharOffset(
+        block: OcrTextBlock,
+        viewX: Float,
+        viewY: Float,
+        ssiv: SubsamplingScaleImageView,
+    ): Int? {
+        val tl = ssiv.sourceToViewCoord(block.xmin * ssiv.sWidth, block.ymin * ssiv.sHeight)
+            ?: return null
+        val br = ssiv.sourceToViewCoord(block.xmax * ssiv.sWidth, block.ymax * ssiv.sHeight)
+            ?: return null
+
+        val screenW = br.x - tl.x
+        val screenH = br.y - tl.y
+
+        val localX = viewX - tl.x
+        val localY = viewY - tl.y
+
+        val layout = ocrLayoutCache?.takeIf { it.first == block }?.second
+            ?: return uniformCharOffset(block, localX, localY, screenW, screenH)
+
+        val (lx, ly) = if (block.vertical) {
+            // Undo 90° rotation: screen X maps to layout Y, screen Y maps to layout X
+            Pair(localY, screenW - localX)
+        } else {
+            Pair(localX, localY)
+        }
+
+        val line = layout.getLineForVertical(ly.toInt())
+        return layout.getOffsetForHorizontal(line, lx)
+    }
+
+    /**
+     * Fallback caret detection: approximate character position using uniform grid.
+     *
+     * Used when layout is not yet built (first tap before onDraw renders text).
+     * Divides box into uniform character grid based on line count and line lengths.
+     */
+    private fun uniformCharOffset(
+        block: OcrTextBlock,
+        localX: Float,
+        localY: Float,
+        screenW: Float,
+        screenH: Float,
+    ): Int {
+        if (block.vertical) {
+            val columns = block.lines.ifEmpty { listOf(block.fullText) }
+            if (columns.isEmpty()) return 0
+
+            val columnWidth = (screenW / columns.size.coerceAtLeast(1)).coerceAtLeast(1f)
+            val maxChars = columns.maxOfOrNull { it.length }?.coerceAtLeast(1) ?: 1
+            val rowHeight = (screenH / maxChars).coerceAtLeast(1f)
+            val contentTop = (screenH - rowHeight * maxChars) / 2f
+
+            val fromRight = (screenW - localX).coerceIn(0f, screenW)
+            val columnIndex = (fromRight / columnWidth)
+                .toInt()
+                .coerceIn(0, columns.lastIndex)
+
+            val columnText = columns[columnIndex]
+            val charsInColumn = columnText.length.coerceAtLeast(1)
+            val yInColumn = (localY - contentTop)
+                .coerceIn(0f, (rowHeight * charsInColumn - 0.001f).coerceAtLeast(0f))
+            val charIndex = (yInColumn / rowHeight)
+                .toInt()
+                .coerceIn(0, charsInColumn - 1)
+
+            return columns.take(columnIndex).sumOf { it.length } + charIndex
+        }
+
+        val lineCount = block.lines.size.coerceAtLeast(1)
+        val lineIndex = (localY / (screenH / lineCount))
+            .toInt().coerceIn(0, lineCount - 1)
+        val line = block.lines[lineIndex]
+        val charIndex = (localX / (screenW / line.length.coerceAtLeast(1)))
+            .toInt().coerceIn(0, line.length - 1)
+        return block.lines.take(lineIndex).sumOf { it.length } + charIndex
+    }
+
     /**
      * All of the config except [zoomDuration] will only be used for non-animated image.
      */
@@ -431,3 +686,4 @@ open class ReaderPageImageView @JvmOverloads constructor(
 }
 
 private const val MAX_ZOOM_SCALE = 5F
+

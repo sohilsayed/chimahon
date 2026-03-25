@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -44,6 +45,8 @@ enum class ChapterDownloadAction {
     START_NOW,
     CANCEL,
     DELETE,
+    OCR,
+    DELETE_OCR,
 }
 
 @Composable
@@ -53,6 +56,8 @@ fun ChapterDownloadIndicator(
     downloadProgressProvider: () -> Int,
     onClick: (ChapterDownloadAction) -> Unit,
     modifier: Modifier = Modifier,
+    isOcrReady: Boolean = false,
+    isOcrRunning: Boolean = false,
 ) {
     when (val downloadState = downloadStateProvider()) {
         Download.State.NOT_DOWNLOADED -> NotDownloadedIndicator(
@@ -71,6 +76,8 @@ fun ChapterDownloadIndicator(
             enabled = enabled,
             modifier = modifier,
             onClick = onClick,
+            isOcrReady = isOcrReady,
+            isOcrRunning = isOcrRunning,
         )
         Download.State.ERROR -> ErrorIndicator(
             enabled = enabled,
@@ -86,13 +93,14 @@ private fun NotDownloadedIndicator(
     modifier: Modifier = Modifier,
     onClick: (ChapterDownloadAction) -> Unit,
 ) {
+    var isMenuExpanded by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
             .size(IconButtonTokens.StateLayerSize)
             .commonClickable(
                 enabled = enabled,
                 hapticFeedback = LocalHapticFeedback.current,
-                onLongClick = { onClick(ChapterDownloadAction.START_NOW) },
+                onLongClick = { isMenuExpanded = true },
                 onClick = { onClick(ChapterDownloadAction.START) },
             )
             .secondaryItemAlpha(),
@@ -104,6 +112,28 @@ private fun NotDownloadedIndicator(
             modifier = Modifier.size(IndicatorSize),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        DropdownMenu(expanded = isMenuExpanded, onDismissRequest = { isMenuExpanded = false }) {
+            DropdownMenuItem(
+                text = { Text(text = stringResource(MR.strings.action_start_downloading_now)) },
+                onClick = {
+                    onClick(ChapterDownloadAction.START_NOW)
+                    isMenuExpanded = false
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(text = stringResource(MR.strings.action_download_and_ocr)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    onClick(ChapterDownloadAction.OCR)
+                    isMenuExpanded = false
+                },
+            )
+        }
     }
 }
 
@@ -192,6 +222,8 @@ private fun DownloadedIndicator(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: (ChapterDownloadAction) -> Unit,
+    isOcrReady: Boolean = false,
+    isOcrRunning: Boolean = false,
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
     Box(
@@ -212,6 +244,50 @@ private fun DownloadedIndicator(
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         DropdownMenu(expanded = isMenuExpanded, onDismissRequest = { isMenuExpanded = false }) {
+            // OCR action
+            if (isOcrRunning) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(MR.strings.ocr_running)) },
+                    enabled = false,
+                    leadingIcon = {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    },
+                    onClick = { },
+                )
+            } else if (isOcrReady) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(MR.strings.action_delete_ocr)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = {
+                        onClick(ChapterDownloadAction.DELETE_OCR)
+                        isMenuExpanded = false
+                    },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(MR.strings.action_run_ocr)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = {
+                        onClick(ChapterDownloadAction.OCR)
+                        isMenuExpanded = false
+                    },
+                )
+            }
+
+            // Delete download
             DropdownMenuItem(
                 text = { Text(text = stringResource(MR.strings.action_delete)) },
                 onClick = {
@@ -271,8 +347,6 @@ private fun Modifier.commonClickable(
 
 private val IndicatorSize = 26.dp
 private val IndicatorPadding = 2.dp
-
-// To match composable parameter name when used later
 private val IndicatorStrokeWidth = IndicatorPadding
 
 private val IndicatorModifier = Modifier

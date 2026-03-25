@@ -32,7 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -76,6 +78,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -136,6 +140,16 @@ class ReaderActivity : BaseActivity() {
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 
     private var loadingIndicator: ReaderProgressIndicator? = null
+
+    private var ocrPopupState by mutableStateOf<OcrPopupState?>(null)
+
+    data class OcrPopupState(
+        val lookupString: String,
+        val webView: android.webkit.WebView,
+        val repository: chimahon.DictionaryRepository,
+        val anchorX: Float,
+        val anchorY: Float,
+    )
 
     var isScrollingThroughPages = false
         private set
@@ -330,6 +344,32 @@ class ReaderActivity : BaseActivity() {
             }
             null -> {}
         }
+
+        // OCR Dictionary Popup
+        ocrPopupState?.let { popupState ->
+            val dismissPopup = {
+                ocrPopupState = null
+            }
+            OcrLookupPopup(
+                lookupString = popupState.lookupString,
+                onDismiss = dismissPopup,
+                webView = popupState.webView,
+                repository = popupState.repository,
+                anchorX = popupState.anchorX,
+                anchorY = popupState.anchorY,
+            )
+        }
+
+        // Set up OCR popup callback on the pager viewer
+        (state.viewer as? PagerViewer)?.let { pager ->
+            if (pager.onShowOcrPopup == null) {
+                pager.onShowOcrPopup = { lookupString, webView, repository, anchorX, anchorY ->
+                    runOnUiThread {
+                        ocrPopupState = OcrPopupState(lookupString, webView, repository, anchorX, anchorY)
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -455,6 +495,7 @@ class ReaderActivity : BaseActivity() {
 
         val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
         val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
+        val ocrEnabled by readerPreferences.ocrOverlayEnabled().collectAsState()
         val isPagerType = ReadingMode.isPagerType(viewModel.getMangaReadingMode())
         val cropEnabled = if (isPagerType) cropBorderPaged else cropBorderWebtoon
 
@@ -496,6 +537,15 @@ class ReaderActivity : BaseActivity() {
                 val enabled = viewModel.toggleCropBorders()
                 menuToggleToast?.cancel()
                 menuToggleToast = toast(if (enabled) MR.strings.on else MR.strings.off)
+            },
+            ocrEnabled = ocrEnabled,
+            onToggleOcr = {
+                val enabled = viewModel.toggleOcrEnabled()
+                (state.viewer as? PagerViewer)?.setOcrEnabled(enabled)
+                menuToggleToast?.cancel()
+                menuToggleToast = toast(
+                    if (enabled) MR.strings.action_enable_ocr else MR.strings.action_disable_ocr,
+                )
             },
             onClickSettings = viewModel::openSettingsDialog,
         )

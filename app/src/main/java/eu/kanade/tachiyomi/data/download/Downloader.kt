@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.data.ocr.OcrManager
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -53,6 +54,7 @@ import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
@@ -77,7 +79,10 @@ class Downloader(
     private val xml: XML = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
+    private val readerPreferences: ReaderPreferences = Injekt.get(),
 ) {
+
+    private val ocrManager: OcrManager by lazy { Injekt.get() }
 
     /**
      * Store for persisting downloads across restarts.
@@ -239,6 +244,10 @@ class Downloader(
     private fun CoroutineScope.launchDownloadJob(download: Download) = launchIO {
         try {
             downloadChapter(download)
+
+            if (download.status == Download.State.ERROR) {
+                ocrManager.markChapterDownloadFailed(download.chapter.id)
+            }
 
             // Remove successful download from queue
             if (download.status == Download.State.DOWNLOADED) {
@@ -414,6 +423,16 @@ class Downloader(
             cache.addChapter(chapterDirname, mangaDir, download.manga)
 
             DiskUtil.createNoMediaFile(tmpDir, context)
+
+            val promotedQueuedOcr = ocrManager.markChapterReadyForOcr(download.manga, download.chapter)
+            if (promotedQueuedOcr) {
+                logcat { "Downloader: promoted queued OCR after download for chapter=${download.chapter.id}" }
+            } else if (readerPreferences.ocrAutoOnDownload().get()) {
+                logcat { "Downloader: queued OCR after download for chapter=${download.chapter.id}" }
+                ocrManager.queueChapters(download.manga, listOf(download.chapter), waitForDownload = false)
+            } else {
+                logcat { "Downloader: OCR not requested for chapter=${download.chapter.id}" }
+            }
 
             download.status = Download.State.DOWNLOADED
         } catch (error: Throwable) {

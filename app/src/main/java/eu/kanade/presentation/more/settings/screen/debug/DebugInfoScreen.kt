@@ -49,6 +49,10 @@ class DebugInfoScreen : Screen() {
                         onClick = { navigator.push(WorkerInfoScreen()) },
                     ),
                     Preference.PreferenceItem.TextPreference(
+                        title = OcrSmokeTestScreen.TITLE,
+                        onClick = { navigator.push(OcrSmokeTestScreen()) },
+                    ),
+                    Preference.PreferenceItem.TextPreference(
                         title = BackupSchemaScreen.TITLE,
                         onClick = { navigator.push(BackupSchemaScreen()) },
                     ),

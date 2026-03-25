@@ -67,6 +67,7 @@ class ChapterRepositoryImpl(
                     chapterId = chapterUpdate.id,
                     version = chapterUpdate.version,
                     isSyncing = 0,
+                    ocrReady = chapterUpdate.isOcrReady,
                 )
             }
         }
@@ -144,6 +145,7 @@ class ChapterRepositoryImpl(
         version: Long,
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
+        ocrReady: Boolean,
     ): Chapter = Chapter(
         id = id,
         mangaId = mangaId,
@@ -159,5 +161,6 @@ class ChapterRepositoryImpl(
         scanlator = scanlator,
         lastModifiedAt = lastModifiedAt,
         version = version,
+        isOcrReady = ocrReady,
     )
 }

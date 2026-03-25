@@ -14,6 +14,19 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Rework internals for better performance ([@Lolle2000la](https://github.com/Lolle2000la)) ([#2955](https://github.com/mihonapp/mihon/pull/2955))
 
+## [v0.1.0] - 2026-03-24
+### Added
+- First release of Chimahon - Mihon fork with built-in Japanese dictionary support
+- Dictionary import feature for Yomitan-style dictionaries
+- OCR text lookup in the reader
+- Built-in Japanese dictionary lookup with deconjugation support
+
+### Changed
+- Forked from Mihon v0.19.4
+- Updated application ID to app.chimahon
+- Removed all telemetry and analytics
+- Removed Firebase/Crashlytics dependencies
+
 ## [v0.19.4] - 2026-02-25
 ### Added
 - Automatically remove downloads on Suwayomi after reading, configurable via extension settings ([@cpiber](https://github.com/cpiber)) ([#2673](https://github.com/mihonapp/mihon/pull/2673))

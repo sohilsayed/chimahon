@@ -57,6 +57,8 @@ fun MangaChapterListItem(
     downloadIndicatorEnabled: Boolean,
     downloadStateProvider: () -> Download.State,
     downloadProgressProvider: () -> Int,
+    isOcrReady: Boolean = false,
+    isOcrRunning: Boolean = false,
     chapterSwipeStartAction: LibraryPreferences.ChapterSwipeAction,
     chapterSwipeEndAction: LibraryPreferences.ChapterSwipeAction,
     onLongClick: () -> Unit,
@@ -177,6 +179,14 @@ fun MangaChapterListItem(
                 downloadStateProvider = downloadStateProvider,
                 downloadProgressProvider = downloadProgressProvider,
                 onClick = { onDownloadClick?.invoke(it) },
+                isOcrReady = isOcrReady,
+                isOcrRunning = isOcrRunning,
+            )
+
+            ChapterOcrIndicator(
+                isOcrReady = isOcrReady,
+                isOcrRunning = isOcrRunning,
+                modifier = Modifier.padding(start = 4.dp),
             )
         }
     }

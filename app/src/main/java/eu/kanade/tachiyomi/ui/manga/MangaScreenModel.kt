@@ -34,6 +34,9 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.ocr.OcrManager
+import eu.kanade.tachiyomi.data.ocr.OcrQueueItem
+import eu.kanade.tachiyomi.data.ocr.isActionable
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.HttpException
@@ -120,6 +123,7 @@ class MangaScreenModel(
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
+    private val ocrManager: OcrManager = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<MangaScreenModel.State>(State.Loading) {
 
@@ -206,6 +210,25 @@ class MangaScreenModel(
         }
 
         observeDownloads()
+
+        screenModelScope.launchIO {
+            ocrManager.queueState
+                .flowWithLifecycle(lifecycle)
+                .collectLatest { ocrQueue ->
+                    updateSuccessState { state ->
+                        val ocrRunningIds = ocrQueue
+                            .filter { it.manga.id == mangaId && it.status.isActionable() }
+                            .map { it.chapter.id }
+                            .toSet()
+
+                        state.copy(
+                            chapters = state.chapters.map { item ->
+                                item.copy(isOcrRunning = item.chapter.id in ocrRunningIds)
+                            }
+                        )
+                    }
+                }
+        }
 
         screenModelScope.launchIO {
             val manga = getMangaAndChapters.awaitManga(mangaId)
@@ -546,6 +569,8 @@ class MangaScreenModel(
                 downloadState = downloadState,
                 downloadProgress = activeDownload?.progress ?: 0,
                 selected = chapter.id in selectedChapterIds,
+                isOcrReady = chapter.isOcrReady,
+                isOcrRunning = false,
             )
         }
     }
@@ -708,6 +733,30 @@ class MangaScreenModel(
             }
             ChapterDownloadAction.DELETE -> {
                 deleteChapters(items.map { it.chapter })
+            }
+            ChapterDownloadAction.OCR -> {
+                runOcrAction(items)
+            }
+            ChapterDownloadAction.DELETE_OCR -> {
+                deleteOcrForChapters(items)
+            }
+        }
+    }
+
+    private fun runOcrAction(items: List<ChapterList.Item>) {
+        val state = successState ?: return
+        val chaptersToProcess = items.map { it.chapter }
+        logcat {
+            "MangaScreenModel: OCR requested chapters=${chaptersToProcess.joinToString { it.id.toString() }}"
+        }
+        downloadManager.downloadChaptersWithOcr(state.manga, chaptersToProcess)
+    }
+
+    private fun deleteOcrForChapters(items: List<ChapterList.Item>) {
+        val state = successState ?: return
+        screenModelScope.launchIO {
+            items.forEach { item ->
+                ocrManager.deleteOcrForChapter(state.manga, item.chapter)
             }
         }
     }
@@ -1220,6 +1269,8 @@ sealed class ChapterList {
         val downloadState: Download.State,
         val downloadProgress: Int,
         val selected: Boolean = false,
+        val isOcrReady: Boolean = false,
+        val isOcrRunning: Boolean = false,
     ) : ChapterList() {
         val id = chapter.id
         val isDownloaded = downloadState == Download.State.DOWNLOADED

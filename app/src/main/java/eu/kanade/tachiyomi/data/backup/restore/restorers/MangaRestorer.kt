@@ -227,6 +227,7 @@ class MangaRestorer(
                     chapterId = chapter.id,
                     version = chapter.version,
                     isSyncing = 0,
+                    ocrReady = null,
                 )
             }
         }

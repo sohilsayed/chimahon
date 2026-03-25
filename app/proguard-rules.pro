@@ -1,8 +1,35 @@
 -dontobfuscate
 
+# Keep generic signatures for reflection/serialization (required for Injekt, Kotlinx Serialization)
+-keepattributes Signature
+-keepattributes *Annotation*
+
+# Keep @JavascriptInterface methods for WebView bridge
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
 -keep,allowoptimization class eu.kanade.**
 -keep,allowoptimization class tachiyomi.**
 -keep,allowoptimization class mihon.**
+-keep class chimahon.** { *; }
+-keepclassmembers class chimahon.** { *; }
+
+# Injekt type resolution - FullTypeReference needs generic type info
+-keep class * extends uy.kohesive.injekt.api.TypeReference { *; }
+-keep class * extends uy.kohesive.injekt.api.FullTypeReference { *; }
+-keep class uy.kohesive.injekt.api.FullTypeReference { *; }
+-keep class uy.kohesive.injekt.api.TypeReference { *; }
+-keep class uy.kohesive.injekt.InjektKt { *; }
+-keep class uy.kohesive.injekt.api.InjektScope { *; }
+-keep class uy.kohesive.injekt.api.InjektFactory { *; }
+-keep class uy.kohesive.injekt.api.InjektRegistrar { *; }
+-keep class uy.kohesive.injekt.api.InjektModule { *; }
+
+# Keep all constructors and methods that Injekt uses
+-keepclassmembers class * {
+    @uy.kohesive.injekt.api.* <methods>;
+}
 
 # Keep common dependencies used in extensions
 -keep,allowoptimization class androidx.preference.** { public protected *; }

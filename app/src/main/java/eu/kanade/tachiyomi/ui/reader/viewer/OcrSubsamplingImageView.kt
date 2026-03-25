@@ -1,0 +1,376 @@
+package eu.kanade.tachiyomi.ui.reader.viewer
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PointF
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.view.GestureDetector
+import android.view.MotionEvent
+import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.Pager
+
+/**
+ * OCR-aware subclass of [SubsamplingScaleImageView].
+ *
+ * Extends SSIV to render OCR text boxes and handle OCR-specific touch interactions.
+ * All OCR state is read from [ocrHost] — this view is a thin shell with zero state of its own.
+ *
+ * ## Architecture
+ * - onDraw: renders OCR boxes and text (reads state from ocrHost)
+ * - onTouchEvent: dispatches to GestureDetector for single tap detection on blocks
+ * - gestureDetector: uses safe methods (onDown, onSingleTapConfirmed) per SSIV wiki §9
+ * - All hit testing done in source pixel space (via viewToSourceCoord)
+ *
+ * ## Coordinate Spaces
+ * - Normalized (0.0–1.0): OcrTextBlock storage format
+ * - Source pixels (sWidth × sHeight): SSIV's image pixel space
+ * - View/Screen pixels: current screen position after zoom/pan transformation
+ */
+class OcrSubsamplingImageView(
+    context: Context,
+) : SubsamplingScaleImageView(context) {
+
+    // Reference to parent ReaderPageImageView for state access
+    var ocrHost: ReaderPageImageView? = null
+
+    // Gesture detector for tap handling
+    private val gestureDetector = GestureDetector(context, OcrGestureListener())
+    private var pagerGestureSuppressed = false
+
+    // Text paint for rendering OCR text
+    private val textPaint = TextPaint().apply {
+        isAntiAlias = true
+        textSize = 14f * context.resources.displayMetrics.density
+        color = Color.BLACK
+    }
+
+    private val borderPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = 2f * context.resources.displayMetrics.density
+        color = Color.argb(180, 0, 170, 255)
+    }
+
+    private val backgroundPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.argb(180, 255, 255, 200)
+    }
+
+    // ==================== Rendering ====================
+
+    override fun onDraw(canvas: Canvas) {
+        // Always call super first — required by SSIV wiki
+        super.onDraw(canvas)
+
+        // Guard 1: SSIV must be ready before using sWidth/sHeight
+        if (!isReady) return
+
+        // Guard 2: no host or OCR disabled
+        val host = ocrHost ?: return
+        if (!host.ocrEnabled) return
+
+        // Guard 3: no blocks to draw
+        if (host.ocrBlocks.isEmpty()) return
+
+        // Draw all blocks: borders always visible, text only if active
+        for (block in host.ocrBlocks) {
+            drawOcrBlock(canvas, block, host)
+        }
+    }
+
+    /**
+     * Draw a single OCR block: border always, text if active.
+     */
+    private fun drawOcrBlock(canvas: Canvas, block: OcrTextBlock, host: ReaderPageImageView) {
+        // Calculate center and size, then apply scale around center
+        val centerX = (block.xmin + block.xmax) / 2f
+        val centerY = (block.ymin + block.ymax) / 2f
+        val width = block.xmax - block.xmin
+        val height = block.ymax - block.ymin
+        val scale = host.ocrBoxScale
+
+        // Convert normalized coords to source pixel coords with scale applied around center
+        val srcXMin = (centerX - (width * scale) / 2f) * sWidth
+        val srcYMin = (centerY - (height * scale) / 2f) * sHeight
+        val srcXMax = (centerX + (width * scale) / 2f) * sWidth
+        val srcYMax = (centerY + (height * scale) / 2f) * sHeight
+
+        // Convert source coords to screen coords
+        val tlScreen = sourceToViewCoord(srcXMin, srcYMin) ?: return
+        val brScreen = sourceToViewCoord(srcXMax, srcYMax) ?: return
+
+        val screenW = brScreen.x - tlScreen.x
+        val screenH = brScreen.y - tlScreen.y
+
+        if (host.ocrOutlineVisible) {
+            canvas.drawRect(
+                tlScreen.x,
+                tlScreen.y,
+                brScreen.x,
+                brScreen.y,
+                borderPaint,
+            )
+        }
+
+        // Draw text if this block is active
+        if (block == host.activeOcrBlock) {
+            drawActiveOcrText(canvas, block, host, tlScreen, brScreen, screenW, screenH)
+        }
+    }
+
+    /**
+     * Draw text inside active OCR block with background.
+     */
+    private fun drawActiveOcrText(
+        canvas: Canvas,
+        block: OcrTextBlock,
+        host: ReaderPageImageView,
+        tlScreen: PointF,
+        brScreen: PointF,
+        screenW: Float,
+        screenH: Float,
+    ) {
+        canvas.save()
+
+        // Hard clamp to box bounds — prevent text bleed
+        canvas.clipRect(tlScreen.x, tlScreen.y, brScreen.x, brScreen.y)
+
+        // Draw semi-transparent background
+        canvas.drawRect(
+            tlScreen.x,
+            tlScreen.y,
+            brScreen.x,
+            brScreen.y,
+            backgroundPaint,
+        )
+
+        if (block.vertical) {
+            // Render upright vertical text (tategaki-like columns), not rotated horizontal text.
+            host.ocrLayoutCache = null
+            drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH)
+        } else {
+            val layout = buildLayoutForHorizontal(block, screenW, screenH, host)
+            host.ocrLayoutCache = Pair(block, layout)
+
+            // Horizontal text — translate only
+            canvas.translate(tlScreen.x, tlScreen.y)
+            layout.draw(canvas)
+        }
+
+        canvas.restore()
+    }
+
+    private fun drawVerticalOcrText(
+        canvas: Canvas,
+        block: OcrTextBlock,
+        tlScreen: PointF,
+        screenW: Float,
+        screenH: Float,
+    ) {
+        val columns = block.lines.filter { it.isNotEmpty() }.ifEmpty { listOf(block.fullText) }
+        if (columns.isEmpty()) return
+
+        val columnCount = columns.size.coerceAtLeast(1)
+        val maxCharsPerColumn = columns.maxOfOrNull { it.length }?.coerceAtLeast(1) ?: 1
+
+        val density = context.resources.displayMetrics.density
+        val columnWidth = (screenW / columnCount).coerceAtLeast(1f)
+        val rowStep = (screenH / maxCharsPerColumn).coerceAtLeast(1f)
+
+        // Fixed uniform grid: all columns use the same vertical step for each character.
+        val targetSize = minOf(columnWidth, rowStep) * 0.8f
+        textPaint.textSize = targetSize.coerceAtLeast(8f * density)
+        textPaint.textAlign = Paint.Align.CENTER
+
+        val fm = textPaint.fontMetrics
+        val baselineShift = -(fm.ascent + fm.descent) / 2f
+        val contentTop = tlScreen.y + (screenH - rowStep * maxCharsPerColumn) / 2f
+
+        columns.forEachIndexed { columnIndex, text ->
+            // Japanese vertical text convention: first column starts at right edge.
+            val x = tlScreen.x + screenW - columnWidth * (columnIndex + 0.5f)
+
+            text.forEachIndexed { charIndex, ch ->
+                val yCenter = contentTop + rowStep * (charIndex + 0.5f)
+                canvas.drawText(ch.toString(), x, yCenter + baselineShift, textPaint)
+            }
+        }
+    }
+
+    /**
+     * Build StaticLayout for horizontal text, with shrink-to-fit.
+     */
+    private fun buildLayoutForHorizontal(
+        block: OcrTextBlock,
+        screenW: Float,
+        screenH: Float,
+        host: ReaderPageImageView,
+    ): StaticLayout {
+        // Check cache first
+        host.ocrLayoutCache?.takeIf { it.first == block }?.second?.let { return it }
+
+        val lineCount = block.lines.size.coerceAtLeast(1)
+        var textSize = screenH / lineCount / 1.2f // slight padding
+
+        // Build layout with shrink-to-fit loop
+        var layout: StaticLayout
+        do {
+            textPaint.textSize = textSize.coerceAtLeast(8f * context.resources.displayMetrics.density)
+            layout = StaticLayout.Builder.obtain(
+                block.fullText,
+                0,
+                block.fullText.length,
+                textPaint,
+                screenW.toInt().coerceAtLeast(1),
+            )
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .build()
+
+            if (layout.height > screenH && textSize > 8f * context.resources.displayMetrics.density) {
+                textSize *= 0.85f
+            } else {
+                break
+            }
+        } while (true)
+
+        return layout
+    }
+
+    // ==================== Touch Handling ====================
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && ocrHost?.ocrEnabled == true) {
+            if (hitTestSource(event.x, event.y) != null) {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                findParentPager()?.setGestureDetectorEnabled(false)
+                pagerGestureSuppressed = true
+            }
+        }
+
+        // Let gesture detector process the event first (for safe single tap methods)
+        val gestureResult = if (ocrHost?.ocrEnabled == true) {
+            gestureDetector.onTouchEvent(event)
+        } else {
+            false
+        }
+
+        // Always pass to SSIV to maintain zoom/pan state
+        val superResult = super.onTouchEvent(event)
+
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            if (pagerGestureSuppressed) {
+                findParentPager()?.setGestureDetectorEnabled(true)
+                pagerGestureSuppressed = false
+            }
+        }
+
+        // Keep SSIV gestures (zoom/pan) working while still consuming OCR taps.
+        return gestureResult || superResult
+    }
+
+    /**
+     * Hit test in source pixel space (view coordinate → source coordinate → normalized coordinate).
+     *
+     * Returns the first block that contains the point, or null if no block is hit.
+     */
+    private fun hitTestSource(viewX: Float, viewY: Float): OcrTextBlock? {
+        val host = ocrHost?.takeIf { it.ocrEnabled } ?: return null
+        if (!isReady) return null
+
+        // Convert view coordinates to source coordinates
+        val sourcePoint = viewToSourceCoord(viewX, viewY) ?: return null
+
+        // Convert source coordinates to normalized coordinates
+        val nx = sourcePoint.x / sWidth
+        val ny = sourcePoint.y / sHeight
+
+        // Expand hit area to make edge text easier to tap.
+        val edgePaddingViewPx = 24f * context.resources.displayMetrics.density
+        val sourcePaddingPx = edgePaddingViewPx / scale.coerceAtLeast(1f)
+        val nxPadding = sourcePaddingPx / sWidth
+        val nyPadding = sourcePaddingPx / sHeight
+
+        // Apply the same scale to hit area as used in drawing
+        val boxScale = host.ocrBoxScale
+
+        // Prioritize currently active block so overlapping OCR boxes don't steal taps.
+        host.activeOcrBlock?.let { active ->
+            if (blockContainsPoint(active, nx, ny, nxPadding, nyPadding, boxScale)) {
+                return active
+            }
+        }
+
+        // Otherwise resolve first matching block.
+        return host.ocrBlocks.firstOrNull { block ->
+            blockContainsPoint(block, nx, ny, nxPadding, nyPadding, boxScale)
+        }
+    }
+
+    private fun blockContainsPoint(
+        block: OcrTextBlock,
+        nx: Float,
+        ny: Float,
+        nxPadding: Float,
+        nyPadding: Float,
+        boxScale: Float,
+    ): Boolean {
+        val centerX = (block.xmin + block.xmax) / 2f
+        val centerY = (block.ymin + block.ymax) / 2f
+        val width = block.xmax - block.xmin
+        val height = block.ymax - block.ymin
+
+        val scaledXMin = centerX - (width * boxScale) / 2f
+        val scaledYMin = centerY - (height * boxScale) / 2f
+        val scaledXMax = centerX + (width * boxScale) / 2f
+        val scaledYMax = centerY + (height * boxScale) / 2f
+
+        return nx >= (scaledXMin - nxPadding) && nx <= (scaledXMax + nxPadding) &&
+            ny >= (scaledYMin - nyPadding) && ny <= (scaledYMax + nyPadding)
+    }
+
+    private fun findParentPager(): Pager? {
+        var current = parent
+        while (current != null) {
+            if (current is Pager) return current
+            current = current.parent
+        }
+        return null
+    }
+
+    // ==================== Gesture Listener ====================
+
+    /**
+     * Gesture listener using safe methods only (per SSIV wiki §9).
+     */
+    inner class OcrGestureListener : GestureDetector.SimpleOnGestureListener() {
+
+        override fun onDown(e: MotionEvent): Boolean {
+            val host = ocrHost ?: return false
+            val hitBlock = hitTestSource(e.x, e.y)
+            // Keep tracking while a block is active so an outside tap can dismiss it.
+            return hitBlock != null || host.activeOcrBlock != null
+        }
+
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            val host = ocrHost ?: return false
+            val block = hitTestSource(e.x, e.y)
+            if (block == null) {
+                if (host.activeOcrBlock != null) {
+                    host.dismissActiveOcrBlock()
+                    return true
+                }
+                return false
+            }
+            // Pass both view and screen coordinates
+            return host.handleOcrTap(block, e.x, e.y, e.rawX, e.rawY)
+        }
+
+        // onLongPress intentionally NOT overridden
+        // Long press on block falls through to pager.longTapListener (normal behavior)
+    }
+}

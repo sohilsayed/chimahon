@@ -1,0 +1,2 @@
+-- Add ocr_ready column to chapters table
+ALTER TABLE chapters ADD COLUMN ocr_ready INTEGER NOT NULL DEFAULT 0;

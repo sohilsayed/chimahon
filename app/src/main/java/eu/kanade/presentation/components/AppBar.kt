@@ -20,6 +20,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
@@ -205,15 +206,29 @@ fun AppBarActions(
             state = rememberTooltipState(),
             focusable = false,
         ) {
-            IconButton(
-                onClick = it.onClick,
-                enabled = it.enabled,
-            ) {
-                Icon(
-                    imageVector = it.icon,
-                    tint = it.iconTint ?: LocalContentColor.current,
-                    contentDescription = it.title,
-                )
+            val contentColor = it.iconTint ?: LocalContentColor.current
+            if (it.text != null) {
+                TextButton(
+                    onClick = it.onClick,
+                    enabled = it.enabled,
+                ) {
+                    Text(
+                        text = it.text,
+                        color = contentColor,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = it.onClick,
+                    enabled = it.enabled,
+                ) {
+                    Icon(
+                        imageVector = it.icon,
+                        tint = contentColor,
+                        contentDescription = it.title,
+                    )
+                }
             }
         }
     }
@@ -421,6 +436,7 @@ sealed interface AppBar {
     data class Action(
         val title: String,
         val icon: ImageVector,
+        val text: String? = null,
         val iconTint: Color? = null,
         val onClick: () -> Unit,
         val enabled: Boolean = true,

@@ -38,6 +38,8 @@ dependencyResolutionManagement {
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 rootProject.name = "Mihon"
+include(":chimahon")
+project(":chimahon").projectDir = file("chimahon")
 include(":app")
 include(":core-metadata")
 include(":core:archive")

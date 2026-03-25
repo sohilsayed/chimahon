@@ -64,6 +64,10 @@ fun ReaderAppBars(
     cropEnabled: Boolean,
     onClickCropBorder: () -> Unit,
     onClickSettings: () -> Unit,
+
+    ocrEnabled: Boolean = false,
+    ocrLoading: Boolean = false,
+    onToggleOcr: (() -> Unit)? = null,
 ) {
     val isRtl = viewer is R2LPagerViewer
     val backgroundColor = MaterialTheme.colorScheme
@@ -90,6 +94,9 @@ fun ReaderAppBars(
                 onOpenInWebView = onOpenInWebView,
                 onOpenInBrowser = onOpenInBrowser,
                 onShare = onShare,
+                ocrEnabled = ocrEnabled,
+                ocrLoading = ocrLoading,
+                onToggleOcr = onToggleOcr,
             )
         }
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Mihon</string>
+    <string name="app_name" translatable="false">Chimahon</string>
 
     <!-- Generic strings -->
     <string name="on">On</string>
@@ -31,6 +31,7 @@
     <string name="label_sources">Sources</string>
     <string name="label_backup">Backup and restore</string>
     <string name="label_data_storage">Data and storage</string>
+    <string name="label_dictionary">Dictionary</string>
     <string name="label_stats">Statistics</string>
     <string name="label_migration">Migrate</string>
     <string name="label_extensions">Extensions</string>
@@ -84,6 +85,8 @@
     <string name="action_download">Download</string>
     <string name="action_bookmark">Bookmark chapter</string>
     <string name="action_remove_bookmark">Unbookmark chapter</string>
+    <string name="action_enable_ocr">Enable OCR</string>
+    <string name="action_disable_ocr">Disable OCR</string>
     <string name="action_delete">Delete</string>
     <string name="action_update_library">Update library</string>
     <string name="action_enable_all">Enable all</string>
@@ -223,6 +226,39 @@
     <string name="pref_backup_summary">Manual &amp; automatic backups, storage space</string>
     <string name="pref_security_summary">App lock, secure screen</string>
     <string name="pref_advanced_summary">Dump crash logs, battery optimizations</string>
+    <string name="pref_category_dictionary">Dictionary</string>
+    <string name="pref_dictionary_summary">Import, manage Yomitan dictionaries</string>
+    <string name="pref_dict_imported_list">Imported dictionaries</string>
+    <string name="pref_dict_none_imported">No dictionaries imported yet</string>
+    <string name="pref_dict_appearance">Appearance</string>
+    <string name="pref_dict_popup_width">Popup width</string>
+    <string name="pref_dict_popup_height">Popup height</string>
+    <string name="pref_dict_popup_scale">Popup scale</string>
+    <string name="pref_dict_invalid_width">Enter a number between 200 and 1920</string>
+    <string name="pref_dict_invalid_height">Enter a number between 100 and 1080</string>
+    <string name="pref_dict_invalid_scale">Enter a number between 50 and 200</string>
+    <string name="pref_dict_delete">Delete dictionary</string>
+    <string name="pref_dict_order">Dictionary order</string>
+    <string name="pref_dict_importing">Importing…</string>
+    <string name="pref_category_ocr">OCR</string>
+    <string name="pref_ocr_summary">Auto-OCR, cache management</string>
+    <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>
+    <string name="pref_ocr_auto_on_download_summary">Automatically OCR chapters when downloading</string>
+    <string name="pref_dict_ocr_box_scale">OCR box scale</string>
+    <string name="pref_ocr_cache_size">OCR cache size</string>
+    <string name="pref_ocr_clear_cache">Clear OCR cache</string>
+    <string name="ocr_ready">OCR ready</string>
+    <string name="ocr_not_ready">OCR not ready</string>
+    <string name="ocr_running">OCR running…</string>
+    <string name="action_download_and_ocr">Download &amp; OCR</string>
+    <string name="action_run_ocr">Run OCR</string>
+    <string name="action_delete_ocr">Delete OCR data</string>
+    <string name="action_ocr">OCR</string>
+    <string name="ocr_processing">OCR processing</string>
+    <string name="ocr_waiting_download">Waiting for download…</string>
+    <string name="ocr_status_pending">Pending</string>
+    <string name="ocr_status_processing">Processing</string>
+    <string name="ocr_status_error">Error</string>
 
       <!-- General section -->
     <string name="pref_category_theme">Theme</string>
@@ -422,6 +458,7 @@
     <string name="filter_mode_lighten">Dodge / Lighten</string>
     <string name="filter_mode_darken">Burn / Darken</string>
     <string name="pref_keep_screen_on">Keep screen on</string>
+    <string name="pref_show_ocr_outlines">Show OCR outlines</string>
     <string name="pref_skip_read_chapters">Skip chapters marked read</string>
     <string name="pref_skip_filtered_chapters">Skip filtered chapters</string>
     <string name="pref_skip_dupe_chapters">Skip duplicate chapters</string>
@@ -546,6 +583,10 @@
       <!-- Data and storage section -->
     <string name="pref_storage_location">Storage location</string>
     <string name="pref_storage_location_info">Used for automatic backups, chapter downloads, and local source.</string>
+    <string name="pref_import_dictionary">Import dictionary</string>
+    <string name="pref_import_dictionary_summ">Import a Yomitan dictionary ZIP file</string>
+    <string name="pref_import_dictionary_success">Dictionary imported (%1$d terms, %2$d metadata, %3$d media)</string>
+    <string name="pref_import_dictionary_failed">Dictionary import failed</string>
     <string name="pref_create_backup">Create backup</string>
     <string name="pref_create_backup_summ">Can be used to restore current library</string>
     <string name="pref_restore_backup">Restore backup</string>

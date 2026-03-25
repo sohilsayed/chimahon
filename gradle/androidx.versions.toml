@@ -1,12 +1,11 @@
 [versions]
-agp_version = "8.13.2"
+agp_version = "8.10.0"
 lifecycle_version = "2.10.0"
 paging_version = "3.4.1"
 interpolator_version = "1.0.0"
 
 [libraries]
 gradle = { module = "com.android.tools.build:gradle", version.ref = "agp_version" }
-
 annotation = "androidx.annotation:annotation:1.9.1"
 appcompat = "androidx.appcompat:appcompat:1.7.1"
 biometricktx = "androidx.biometric:biometric-ktx:1.2.0-alpha05"

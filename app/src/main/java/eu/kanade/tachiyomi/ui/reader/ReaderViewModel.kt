@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader
 
 import android.app.Application
 import android.net.Uri
+import android.os.SystemClock
 import androidx.annotation.IntRange
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
@@ -33,6 +34,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.util.chapter.filterDownloaded
 import eu.kanade.tachiyomi.util.chapter.removeDuplicates
@@ -41,7 +43,9 @@ import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,8 +57,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
+import eu.kanade.tachiyomi.data.ocr.retryWithBackoff
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -101,7 +107,19 @@ class ReaderViewModel @JvmOverloads constructor(
     private val setMangaViewerFlags: SetMangaViewerFlags = Injekt.get(),
     private val getIncognitoState: GetIncognitoState = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
+    private val ocrCacheManager: chimahon.ocr.OcrCacheManager = Injekt.get(),
+    private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
 ) : ViewModel() {
+
+    private data class OcrCacheKey(
+        val chapterId: Long,
+        val pageIndex: Int,
+    )
+
+    private val ocrCacheMutex = Mutex()
+    private val ocrCache = LinkedHashMap<OcrCacheKey, List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock>>()
+    private val ocrInFlight = mutableMapOf<OcrCacheKey, Deferred<List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock>>>()
+    private val maxOcrCacheEntries = 120
 
     private val mutableState = MutableStateFlow(State())
     val state = mutableState.asStateFlow()
@@ -774,6 +792,19 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(menuVisible = visible) }
     }
 
+    fun isOcrEnabled(): Boolean = readerPreferences.ocrOverlayEnabled().get()
+
+    fun isOcrOutlineVisible(): Boolean = readerPreferences.ocrOutlineVisible().get()
+
+    fun getOcrBoxScale(): Float = dictionaryPreferences.ocrBoxScale().get()
+
+    fun toggleOcrEnabled(): Boolean {
+        val pref = readerPreferences.ocrOverlayEnabled()
+        val enabled = !pref.get()
+        pref.set(enabled)
+        return enabled
+    }
+
     fun showLoadingDialog() {
         mutableState.update { it.copy(dialog = Dialog.Loading) }
     }
@@ -955,6 +986,149 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    // ==================== OCR Methods ====================
+
+    /**
+     * Get OCR blocks for a given page via Lens OCR API.
+     *
+     * Calls LensClient (already registered in AppModule) to run OCR on the page image,
+     * then converts the result from OcrResult format (normalized 0..1 coords, single text string)
+     * to OcrTextBlock format (normalized coords, lines list, orientation flag).
+     *
+     * Blocks on network I/O — call from background thread or wrap in async.
+     * Errors are logged and handled gracefully (returns empty list).
+     *
+     * @param page The page to get OCR blocks for
+     * @return List of OcrTextBlock with normalized coordinates (0.0–1.0), or empty list on error
+     */
+    suspend fun getOcrBlocks(page: ReaderPage): List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock> {
+        val chapterId = page.chapter.chapter.id ?: return emptyList()
+        val cacheKey = OcrCacheKey(
+            chapterId = chapterId,
+            pageIndex = page.index,
+        )
+
+        ocrCacheMutex.withLock {
+            ocrCache[cacheKey]?.let { cached ->
+                return cached
+            }
+        }
+
+        val deferred = ocrCacheMutex.withLock {
+            ocrInFlight[cacheKey] ?: viewModelScope.async(Dispatchers.IO) {
+                fetchOcrBlocks(page)
+            }.also { created ->
+                ocrInFlight[cacheKey] = created
+            }
+        }
+
+        return try {
+            deferred.await()
+        } finally {
+            ocrCacheMutex.withLock {
+                if (ocrInFlight[cacheKey] === deferred) {
+                    ocrInFlight.remove(cacheKey)
+                }
+            }
+        }
+    }
+
+    private suspend fun fetchOcrBlocks(page: ReaderPage): List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock> {
+        val startMs = SystemClock.elapsedRealtime()
+        val dbChapter = page.chapter.chapter
+        val domainChapter = dbChapter.toDomainChapter() ?: return emptyList()
+        val chapterId = domainChapter.id ?: return emptyList()
+        val cacheKey = OcrCacheKey(chapterId = chapterId, pageIndex = page.index)
+
+        val manga = state.value.manga ?: return emptyList()
+        val source = sourceManager.getOrStub(manga.source)
+
+        val diskBlocks = ocrCacheManager.loadOcrBlocks(manga, domainChapter, source, page.index)
+        if (diskBlocks != null) {
+            ocrCacheMutex.withLock {
+                ocrCache[cacheKey] = diskBlocks.map { it.toViewerBlock() }
+                while (ocrCache.size > maxOcrCacheEntries) {
+                    val firstKey = ocrCache.keys.firstOrNull() ?: break
+                    ocrCache.remove(firstKey)
+                }
+            }
+            logcat { "OCR disk hit: chapter=$chapterId page=${page.index} blocks=${diskBlocks.size}" }
+            return diskBlocks.map { it.toViewerBlock() }
+        }
+
+        return try {
+            val imageBytes = withIOContext {
+                page.stream?.invoke()?.use { it.readBytes() }
+            } ?: run {
+                logcat { "OCR: No stream for page ${page.index}" }
+                return emptyList()
+            }
+
+            val lensClient = Injekt.get<chimahon.ocr.LensClient>()
+            val ocrResult = retryWithBackoff(times = 3) {
+                lensClient.getDebugOcrData(
+                    bytes = imageBytes,
+                    language = chimahon.ocr.OcrLanguage.JAPANESE,
+                )
+            }
+
+            val blocks = ocrResult.mergedResults.mapNotNull { result ->
+                val bbox = result.tightBoundingBox
+                val xmin = bbox.x.toFloat().coerceIn(0f, 1f)
+                val ymin = bbox.y.toFloat().coerceIn(0f, 1f)
+                val xmax = (bbox.x + bbox.width).toFloat().coerceIn(0f, 1f)
+                val ymax = (bbox.y + bbox.height).toFloat().coerceIn(0f, 1f)
+                if (xmax <= xmin || ymax <= ymin) {
+                    null
+                } else {
+                    eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock(
+                        xmin = xmin,
+                        ymin = ymin,
+                        xmax = xmax,
+                        ymax = ymax,
+                        lines = result.text.split("\n").filter { it.isNotBlank() },
+                        vertical = result.forcedOrientation == "vertical",
+                    )
+                }
+            }
+
+            ocrCacheManager.saveOcrBlocks(
+                manga = manga,
+                chapter = domainChapter,
+                source = source,
+                pageIndex = page.index,
+                blocks = blocks.map { chimahon.ocr.OcrTextBlock(it.xmin, it.ymin, it.xmax, it.ymax, it.lines, it.vertical) },
+                language = chimahon.ocr.OcrLanguage.JAPANESE.bcp47,
+            )
+
+            ocrCacheMutex.withLock {
+                ocrCache[cacheKey] = blocks
+                while (ocrCache.size > maxOcrCacheEntries) {
+                    val firstKey = ocrCache.keys.firstOrNull() ?: break
+                    ocrCache.remove(firstKey)
+                }
+            }
+
+            val elapsedMs = SystemClock.elapsedRealtime() - startMs
+            if (elapsedMs >= 1200) {
+                logcat(LogPriority.WARN) {
+                    "OCR slow path: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${blocks.size} time=${elapsedMs}ms"
+                }
+            } else {
+                logcat {
+                    "OCR success: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${blocks.size} time=${elapsedMs}ms"
+                }
+            }
+            blocks
+        } catch (e: Exception) {
+            val elapsedMs = SystemClock.elapsedRealtime() - startMs
+            logcat(LogPriority.WARN, e) {
+                "OCR pipeline failed: chapter=${page.chapter.chapter.id} page=${page.index} after=${elapsedMs}ms"
+            }
+            emptyList()
+        }
+    }
+
     @Immutable
     data class State(
         val manga: Manga? = null,
@@ -996,4 +1170,15 @@ class ReaderViewModel @JvmOverloads constructor(
         data class ShareImage(val uri: Uri, val page: ReaderPage) : Event
         data class CopyImage(val uri: Uri) : Event
     }
+}
+
+private fun chimahon.ocr.OcrTextBlock.toViewerBlock(): eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock {
+    return eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock(
+        xmin = xmin,
+        ymin = ymin,
+        xmax = xmax,
+        ymax = ymax,
+        lines = lines,
+        vertical = vertical,
+    )
 }

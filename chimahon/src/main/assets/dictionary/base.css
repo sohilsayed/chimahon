@@ -1,0 +1,247 @@
+:root {
+  color-scheme: light dark;
+  --bg: transparent;
+  --fg: #222;
+  --border: rgba(128, 128, 128, 0.25);
+  --tag-text: #fff;
+  --tag-default: #8a8a91;
+  --tag-dictionary: #aa66cc;
+  --tag-pos: #565656;
+  --tag-frequency: #5cb85c;
+  --tag-pronunciation: #6640be;
+  --gloss-image-background: #eeeeee;
+}
+
+:root[data-theme="dark"] {
+  --fg: #ddd;
+  --border: rgba(128, 128, 128, 0.4);
+  --tag-default: #69696e;
+  --tag-dictionary: #9057ad;
+  --tag-frequency: #489148;
+  --tag-pos: #888888;
+  --tag-pronunciation: #9b6fd0;
+  --gloss-image-background: #2f2f2f;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.popup-header {
+  padding: 6px 10px;
+  font-size: 0.85em;
+  color: var(--fg);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--border);
+}
+
+.entries {
+  padding: 10px;
+}
+
+.entry {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+  content-visibility: auto;
+}
+
+.entry-body-section {
+  margin-top: 10px;
+}
+
+.headword-term {
+  font-size: 1.8em;
+  font-weight: 700;
+}
+
+.headword-reading {
+  font-size: 1.25rem;
+  margin-left: 0.4rem;
+  opacity: 0.85;
+}
+
+.headword ruby rt, .headword-term ruby rt, .headword-reading ruby rt {
+  font-size: 0.5em;
+  line-height: 1.1;
+  font-family: inherit;
+  letter-spacing: 0.05em;
+}
+
+.inflection-rule-chains {
+  margin: 8px 0;
+  padding-left: 1rem;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.definition-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.definition-item {
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0.5em 0;
+}
+
+.definition-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gloss-content {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.gloss-plain-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tag-label,
+.tag-body {
+  border-radius: 0.25em;
+  color: var(--tag-text);
+  background: var(--tag-default);
+  font-size: 0.75em;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+}
+
+.tag[data-category="dictionary"] .tag-label,
+.tag[data-category="dictionary"] .tag-body { background: var(--tag-dictionary); }
+
+.tag[data-category="partOfSpeech"] .tag-label,
+.tag[data-category="partOfSpeech"] .tag-body { background: var(--tag-pos); }
+
+.tag[data-category="frequency"] .tag-label,
+.tag[data-category="frequency"] .tag-body { background: var(--tag-frequency); }
+
+.tag[data-category="pronunciation-dictionary"] .tag-label,
+.tag[data-category="pronunciation-dictionary"] .tag-body { background: var(--tag-pronunciation); }
+
+.frequency-group-list,
+.pronunciation-group-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.frequency-item + .frequency-item::before {
+  content: " | ";
+  opacity: 0.5;
+  padding: 0 0.2rem;
+}
+
+.structured-content {
+  display: block;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.headword-text-container {
+  ruby-position: over;
+}
+
+.gloss-sc-rp {
+  font-size: 0.9em;
+}
+
+.gloss-sc-ol,
+.gloss-sc-ul,
+.gloss-sc-table {
+  line-height: 1.6;
+}
+
+.gloss-sc-svg,
+svg.gloss-sc-svg,
+.gloss-content svg {
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+  vertical-align: middle;
+}
+
+.gloss-sc-table-container {
+  overflow-x: auto;
+}
+
+.gloss-sc-th,
+.gloss-sc-td,
+th,
+td {
+  border: 1px solid currentColor;
+  padding: 4px 7px;
+}
+
+.gloss-link {
+  color: inherit;
+}
+
+.gloss-image-link {
+  color: inherit;
+  text-decoration: none;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.gloss-image-container {
+  position: relative;
+  display: inline-block;
+  max-width: min(100%, 36em);
+  font-size: 1px;
+  overflow: hidden;
+}
+
+.gloss-image-sizer {
+  display: block;
+  width: 100%;
+}
+
+.gloss-image-background {
+  position: absolute;
+  inset: 0;
+  background-color: var(--gloss-image-background);
+  background-image: var(--image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.gloss-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.gloss-image-link[data-background="false"] .gloss-image-background {
+  display: none;
+}
+
+.hoshi-empty {
+  opacity: 0.7;
+  padding: 10px 4px;
+}

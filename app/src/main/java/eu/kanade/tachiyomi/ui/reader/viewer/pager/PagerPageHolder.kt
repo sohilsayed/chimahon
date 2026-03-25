@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.webkit.WebView
 import android.view.LayoutInflater
 import androidx.core.view.isVisible
 import eu.kanade.presentation.util.formattedMessage
@@ -28,6 +29,7 @@ import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
+import chimahon.DictionaryRepository
 
 /**
  * View of the ViewPager that contains a page of a chapter.
@@ -61,9 +63,13 @@ class PagerPageHolder(
      * Job for loading the page and processing changes to the page's status.
      */
     private var loadJob: Job? = null
+    private var ocrLoadJob: Job? = null
 
     init {
         loadJob = scope.launch { loadPageAndProcessStatus() }
+        onShowOcrPopup = { lookupString, webView, repository, anchorX, anchorY ->
+            viewer.onShowOcrPopup?.invoke(lookupString, webView, repository, anchorX, anchorY)
+        }
     }
 
     /**
@@ -74,6 +80,9 @@ class PagerPageHolder(
         super.onDetachedFromWindow()
         loadJob?.cancel()
         loadJob = null
+        ocrLoadJob?.cancel()
+        ocrLoadJob = null
+        clearOcr()
     }
 
     private fun initProgressIndicator() {
@@ -253,6 +262,42 @@ class PagerPageHolder(
     override fun onImageLoaded() {
         super.onImageLoaded()
         progressIndicator?.hide()
+        ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
+        ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        val ocrEnabled = viewer.activity.viewModel.isOcrEnabled()
+        this.ocrEnabled = ocrEnabled
+        if (!ocrEnabled) {
+            clearOcr()
+            return
+        }
+
+        ocrLoadJob?.cancel()
+        ocrLoadJob = scope.launch {
+            logcat { "OCR request start: chapter=${page.chapter.chapter.id} page=${page.index}" }
+            val blocks = viewer.activity.viewModel.getOcrBlocks(page)
+            setOcrBlocks(blocks)
+        }
+    }
+
+    fun applyOcrEnabled(enabled: Boolean) {
+        ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
+        ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrEnabled = enabled
+        if (!enabled) {
+            ocrLoadJob?.cancel()
+            ocrLoadJob = null
+            clearOcr()
+            return
+        }
+
+        if (ocrBlocks.isEmpty()) {
+            ocrLoadJob?.cancel()
+            ocrLoadJob = scope.launch {
+                logcat { "OCR request start: chapter=${page.chapter.chapter.id} page=${page.index}" }
+                val blocks = viewer.activity.viewModel.getOcrBlocks(page)
+                setOcrBlocks(blocks)
+            }
+        }
     }
 
     /**

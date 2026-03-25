@@ -2,6 +2,7 @@
 .gradle
 .kotlin
 build
+.cxx
 
 # IDE files
 *.iml
@@ -11,6 +12,14 @@ build
 
 # Configuration files
 local.properties
+chimahon-release.jks
 
 # macOS specific files
 .DS_Store
+
+*.md
+/ref
+/external_ocr_refs
+*.md
+AGENTS.md
+/app/src/main/assets/ocr-test
