@@ -1,6 +1,5 @@
 package chimahon.ocr
 
-
 enum class OcrLanguage(
     /** BCP-47 code sent to the Lens API (LocaleContext.language). */
     val bcp47: String,

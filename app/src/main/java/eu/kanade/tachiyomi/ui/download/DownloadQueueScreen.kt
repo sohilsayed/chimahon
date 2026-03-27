@@ -457,7 +457,14 @@ private fun OcrQueueItemRow(
             }
         }
 
-        if (item.status in listOf(OcrQueueStatus.PENDING, OcrQueueStatus.WAITING_DOWNLOAD, OcrQueueStatus.PROCESSING, OcrQueueStatus.ERROR)) {
+        if (item.status in
+            listOf(
+                OcrQueueStatus.PENDING,
+                OcrQueueStatus.WAITING_DOWNLOAD,
+                OcrQueueStatus.PROCESSING,
+                OcrQueueStatus.ERROR,
+            )
+        ) {
             IconButton(onClick = onCancelClick) {
                 Icon(
                     imageVector = Icons.Outlined.Close,

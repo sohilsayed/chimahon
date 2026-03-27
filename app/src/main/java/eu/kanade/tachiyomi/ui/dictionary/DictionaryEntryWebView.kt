@@ -4,8 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
-import android.util.Log
 import android.util.JsonWriter
+import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import chimahon.DictionaryStyle
 import chimahon.LookupResult
+import chimahon.anki.DelegatingWebViewBridge
 import java.io.StringWriter
 import java.nio.charset.StandardCharsets
 
@@ -31,14 +32,16 @@ fun DictionaryEntryWebView(
     placeholder: String,
     headerText: String = "",
     popupScale: Int = 100,
+    showFrequencyHarmonic: Boolean = false,
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
+    ankiBridge: DelegatingWebViewBridge? = null,
 ) {
     val isDark = isSystemInDarkTheme()
 
-    val payload = remember(results, styles, mediaDataUris, placeholder, isDark) {
+    val payload = remember(results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic) {
         val buildStart = SystemClock.elapsedRealtime()
-        val result = buildRenderPayload(results, styles, mediaDataUris, placeholder, isDark)
+        val result = buildRenderPayload(results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic)
         Log.i(
             "DictionaryRender",
             "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size}",
@@ -68,6 +71,9 @@ fun DictionaryEntryWebView(
 
                     // Add bridge from state so flush() can access it
                     addJavascriptInterface(state.bridge, "PayloadBridge")
+
+                    // Add Anki bridge for card creation
+                    ankiBridge?.let { addJavascriptInterface(it, "AnkiBridge") }
 
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
@@ -119,7 +125,6 @@ fun DictionaryEntryWebView(
                     null,
                 )
             }
-
 
             if (state.pageReady) {
                 state.flush(webView)
@@ -183,12 +188,14 @@ private fun buildRenderPayload(
     mediaDataUris: Map<String, String>,
     placeholder: String,
     isDark: Boolean,
+    showFrequencyHarmonic: Boolean,
 ): String {
     val buffer = StringWriter(4096)
     JsonWriter(buffer).use { w ->
         w.beginObject()
         w.name("placeholder").value(placeholder)
         w.name("isDark").value(isDark)
+        w.name("showFrequencyHarmonic").value(showFrequencyHarmonic)
 
         // Styles array
         w.name("styles").beginArray()

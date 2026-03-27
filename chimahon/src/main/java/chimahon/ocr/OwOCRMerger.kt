@@ -1,10 +1,8 @@
 package chimahon.ocr
 
-
 import java.util.ArrayDeque
 import java.util.Collections.emptyList
 import kotlin.math.abs
-
 
 /**
  * Port of owocr's paragraph reconstruction pipeline.
@@ -27,7 +25,13 @@ internal object OwOCRMerger {
         if (lines.isEmpty()) return emptyList()
 
         val paragraphs = createParagraphsFromLines(lines, config)
-        val merged = if (config.mergeCloseParagraphs) mergeCloseParagraphs(paragraphs, config) else paragraphs.map { it.paragraphObj }
+        val merged = if (config.mergeCloseParagraphs) {
+            mergeCloseParagraphs(paragraphs, config)
+        } else {
+            paragraphs.map {
+                it.paragraphObj
+            }
+        }
         val rows = groupParagraphsIntoRows(merged)
         val reordered = reorderParagraphsInRows(rows)
         val flattened = flattenRowsToParagraphs(reordered)
@@ -57,8 +61,8 @@ internal object OwOCRMerger {
             if (config.language == OcrLanguage.CHINESE && !line.hasKanji) return@mapNotNull null
 
             val isVertical = line.writingDirection == WritingDirection.TTB
-            val isRtl = line.writingDirection == WritingDirection.RTL
-                    || ((!isVertical) && config.language.isRtl)
+            val isRtl = line.writingDirection == WritingDirection.RTL ||
+                ((!isVertical) && config.language.isRtl)
 
             LineDict(
                 text = line.text,
@@ -89,21 +93,29 @@ internal object OwOCRMerger {
 
         fun groupLines(isVertical: Boolean, isRtl: Boolean) {
             val indices = lines.indices.filter { i ->
-                lines[i].isVertical == isVertical
-                        && lines[i].isRtl == isRtl
-                        && i !in grouped
+                lines[i].isVertical == isVertical &&
+                    lines[i].isRtl == isRtl &&
+                    i !in grouped
             }
             if (indices.size < 2) return
 
             val components = findConnectedComponents(
                 items = indices.map { lines[it] },
                 shouldConnect = { a, b -> shouldGroupInSameParagraph(a, b, isVertical, config) },
-                getStartCoord = if (isVertical) { it -> it.bbox.top }
-                else if (isRtl) { it -> it.bbox.right }
-                else { it -> it.bbox.left },
-                getEndCoord = if (isVertical) { it -> it.bbox.bottom }
-                else if (isRtl) { it -> it.bbox.left }
-                else { it -> it.bbox.right },
+                getStartCoord = if (isVertical) {
+                    { it -> it.bbox.top }
+                } else if (isRtl) {
+                    { it -> it.bbox.right }
+                } else {
+                    { it -> it.bbox.left }
+                },
+                getEndCoord = if (isVertical) {
+                    { it -> it.bbox.bottom }
+                } else if (isRtl) {
+                    { it -> it.bbox.left }
+                } else {
+                    { it -> it.bbox.right }
+                },
             )
 
             for (component in components) {
@@ -157,7 +169,9 @@ internal object OwOCRMerger {
         val mergedFragments = mergeOverlappingLines(sorted, isVertical)
         val filtered = if (lines.none { it.paragraphId != null } && config.furiganaFilter) {
             furiganaFilter(mergedFragments, isVertical)
-        } else mergedFragments
+        } else {
+            mergedFragments
+        }
 
         if (filtered.isEmpty()) {
             return createParagraphFromLines(sorted.take(1), isVertical, isRtl, config)
@@ -177,7 +191,11 @@ internal object OwOCRMerger {
                     } else {
                         prev.bbox.bottom < line.bbox.top
                     }
-                    if (isNewLine) append('\n') else if (config.addSpaceOnMerge == true) append(' ')
+                    if (isNewLine) {
+                        append('\n')
+                    } else if (config.addSpaceOnMerge == true) {
+                        append(' ')
+                    }
                 }
                 append(line.text)
             }
@@ -330,14 +348,24 @@ internal object OwOCRMerger {
         for (i in lines.indices) {
             if (lines[i].isFurigana) continue
             if (i >= lines.size - 1) {
-                filtered.add(lines[i]); continue
+                filtered.add(lines[i])
+                continue
             }
             val next = lines[i + 1]
 
             // Content check
-            if (!(lines[i].hasJpText && next.hasJpText)) { filtered.add(lines[i]); continue }
-            if (lines[i].hasKanji) { filtered.add(lines[i]); continue }
-            if (!next.hasKanji) { filtered.add(lines[i]); continue }
+            if (!(lines[i].hasJpText && next.hasJpText)) {
+                filtered.add(lines[i])
+                continue
+            }
+            if (lines[i].hasKanji) {
+                filtered.add(lines[i])
+                continue
+            }
+            if (!next.hasKanji) {
+                filtered.add(lines[i])
+                continue
+            }
 
             val curBbox = lines[i].bbox
             val nextBbox = next.bbox
@@ -356,7 +384,10 @@ internal object OwOCRMerger {
                 vDist > minVDist && vDist < maxVDist && hOverlap > 0.4
             }
 
-            if (!passedPosition) { filtered.add(lines[i]); continue }
+            if (!passedPosition) {
+                filtered.add(lines[i])
+                continue
+            }
 
             // Size check (< 85%)
             val passedSize = if (isVertical) {
@@ -365,7 +396,10 @@ internal object OwOCRMerger {
                 curBbox.height < nextBbox.height * 0.85
             }
 
-            if (!passedSize) { filtered.add(lines[i]); continue }
+            if (!passedSize) {
+                filtered.add(lines[i])
+                continue
+            }
             // else: furigana detected, skip
         }
         return filtered
@@ -394,18 +428,37 @@ internal object OwOCRMerger {
                 shouldConnect = { a, b ->
                     val charSize = maxOf(a.characterSize, b.characterSize)
                     if (isVertical) {
-                        verticalDistance(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) <= 2 * charSize
-                                && horizontalOverlap(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) > 0.9
+                        verticalDistance(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) <=
+                            2 * charSize &&
+                            horizontalOverlap(
+                                a.paragraphObj.tightBoundingBox,
+                                b.paragraphObj.tightBoundingBox,
+                            ) >
+                            0.9
                     } else {
-                        a.writingDirection == b.writingDirection
-                                && horizontalDistance(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) <= 3 * charSize
-                                && verticalOverlap(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) > 0.9
+                        a.writingDirection == b.writingDirection &&
+                            horizontalDistance(
+                                a.paragraphObj.tightBoundingBox,
+                                b.paragraphObj.tightBoundingBox,
+                            ) <=
+                            3 * charSize &&
+                            verticalOverlap(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) >
+                            0.9
                     }
                 },
-                getStartCoord = if (isVertical) { it -> it.paragraphObj.tightBoundingBox.x }
-                else { it -> it.paragraphObj.tightBoundingBox.y },
-                getEndCoord = if (isVertical) { it -> it.paragraphObj.tightBoundingBox.x + it.paragraphObj.tightBoundingBox.width }
-                else { it -> it.paragraphObj.tightBoundingBox.y + it.paragraphObj.tightBoundingBox.height },
+                getStartCoord = if (isVertical) {
+                    { it -> it.paragraphObj.tightBoundingBox.x }
+                } else {
+                    { it -> it.paragraphObj.tightBoundingBox.y }
+                },
+                getEndCoord = if (isVertical) {
+                    { it ->
+                        it.paragraphObj.tightBoundingBox.x +
+                            it.paragraphObj.tightBoundingBox.width
+                    }
+                } else {
+                    { it -> it.paragraphObj.tightBoundingBox.y + it.paragraphObj.tightBoundingBox.height }
+                },
             )
 
             for (component in components) {
@@ -416,9 +469,12 @@ internal object OwOCRMerger {
                     val componentParas = origIndices.map { paragraphs[it] }
                     // Use original source lines to preserve their individual bboxes
                     val allLineDicts = componentParas.flatMap { it.sourceLines }
-                    val result = createParagraphFromLines(allLineDicts, isVertical,
+                    val result = createParagraphFromLines(
+                        allLineDicts,
+                        isVertical,
                         componentParas.first().writingDirection == WritingDirection.RTL,
-                        MergeConfig(furiganaFilter = false, language = config.language))
+                        MergeConfig(furiganaFilter = false, language = config.language),
+                    )
                     merged.add(result.paragraphObj)
                 }
             }
@@ -444,9 +500,11 @@ internal object OwOCRMerger {
 
     private fun groupParagraphsIntoRows(paragraphs: List<OcrResult>): List<Row> {
         if (paragraphs.isEmpty()) return emptyList()
-        if (paragraphs.size == 1) return listOf(
-            Row(paragraphs, false, WritingDirection.LTR)
-        )
+        if (paragraphs.size == 1) {
+            return listOf(
+                Row(paragraphs, false, WritingDirection.LTR),
+            )
+        }
 
         // We need writing direction info from the paragraphs.
         // Derive from forcedOrientation since OcrResult doesn't carry WritingDirection directly.
@@ -465,8 +523,9 @@ internal object OwOCRMerger {
                 val bBottom = b.tightBoundingBox.y + b.tightBoundingBox.height
                 val overlapTop = maxOf(a.tightBoundingBox.y, b.tightBoundingBox.y)
                 val overlapBottom = minOf(aBottom, bBottom)
-                if (overlapBottom <= overlapTop) false
-                else {
+                if (overlapBottom <= overlapTop) {
+                    false
+                } else {
                     val overlapHeight = overlapBottom - overlapTop
                     val smallerHeight = minOf(a.tightBoundingBox.height, b.tightBoundingBox.height)
                     (overlapHeight / smallerHeight.coerceAtLeast(0.001)) > 0.2
@@ -512,8 +571,22 @@ internal object OwOCRMerger {
 
                 val p1Center = if (p1.forcedOrientation == "vertical") p1.tightBoundingBox.y else p1.tightBoundingBox.x
                 val p2Center = if (p2.forcedOrientation == "vertical") p2.tightBoundingBox.y else p2.tightBoundingBox.x
-                val p1End = if (p1.forcedOrientation == "vertical") p1.tightBoundingBox.y + p1.tightBoundingBox.height else p1.tightBoundingBox.x + p1.tightBoundingBox.width
-                val p2End = if (p2.forcedOrientation == "vertical") p2.tightBoundingBox.y + p2.tightBoundingBox.height else p2.tightBoundingBox.x + p2.tightBoundingBox.width
+                val p1End = if (p1.forcedOrientation ==
+                    "vertical"
+                ) {
+                    p1.tightBoundingBox.y + p1.tightBoundingBox.height
+                } else {
+                    p1.tightBoundingBox.x +
+                        p1.tightBoundingBox.width
+                }
+                val p2End = if (p2.forcedOrientation ==
+                    "vertical"
+                ) {
+                    p2.tightBoundingBox.y + p2.tightBoundingBox.height
+                } else {
+                    p2.tightBoundingBox.x +
+                        p2.tightBoundingBox.width
+                }
 
                 val p1IsVertical = p1.forcedOrientation == "vertical"
                 val p2IsVertical = p2.forcedOrientation == "vertical"
@@ -582,8 +655,11 @@ internal object OwOCRMerger {
 
             // Prune items that no longer overlap on sweep axis
             activeItems.retainAll { active ->
-                if (isReverseSweep) active.end < currentStart
-                else active.end > currentStart
+                if (isReverseSweep) {
+                    active.end < currentStart
+                } else {
+                    active.end > currentStart
+                }
             }
 
             // Check against all active items

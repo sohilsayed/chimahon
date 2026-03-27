@@ -158,7 +158,9 @@ class OcrSmokeTestScreen : Screen() {
                                     Text("Previous")
                                 }
                                 OutlinedButton(
-                                    onClick = { selectedIndex = (selectedIndex + 1).coerceAtMost(assetNames.lastIndex) },
+                                    onClick = {
+                                        selectedIndex = (selectedIndex + 1).coerceAtMost(assetNames.lastIndex)
+                                    },
                                     enabled = selectedIndex < assetNames.lastIndex,
                                 ) {
                                     Text("Next")
@@ -211,7 +213,10 @@ class OcrSmokeTestScreen : Screen() {
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeCap = StrokeCap.Round)
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeCap = StrokeCap.Round,
+                                    )
                                     Text("Running OCR and merge pipeline...")
                                 }
                             }

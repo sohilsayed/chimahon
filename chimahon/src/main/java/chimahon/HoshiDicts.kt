@@ -34,6 +34,14 @@ data class PitchEntry(
     val pitchPositions: IntArray,
 )
 
+data class Cloze(
+    val sentence: String,
+    val prefix: String,
+    val body: String,
+    val bodyKana: String,
+    val suffix: String,
+)
+
 data class TermResult(
     val expression: String,
     val reading: String,

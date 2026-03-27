@@ -4,10 +4,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.MaterialTheme
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import kotlinx.collections.immutable.persistentListOf
@@ -43,13 +43,13 @@ fun ReaderTopBar(
                         onToggleOcr?.let {
                             add(
                                 AppBar.Action(
-                                title = stringResource(
-                                    if (ocrEnabled) {
-                                        MR.strings.action_disable_ocr
-                                    } else {
-                                        MR.strings.action_enable_ocr
-                                    },
-                                ),
+                                    title = stringResource(
+                                        if (ocrEnabled) {
+                                            MR.strings.action_disable_ocr
+                                        } else {
+                                            MR.strings.action_enable_ocr
+                                        },
+                                    ),
                                     icon = Icons.Outlined.Search,
                                     text = "OCR",
                                     iconTint = if (ocrEnabled) {

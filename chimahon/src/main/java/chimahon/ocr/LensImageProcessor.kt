@@ -1,6 +1,5 @@
 package chimahon.ocr
 
-
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
@@ -112,7 +111,7 @@ internal fun prepareForOcr(data: ByteArray): List<ImageChunk> {
                 globalY = 0,
                 fullWidth = resized.width,
                 fullHeight = resized.height,
-            )
+            ),
         )
     }
 }

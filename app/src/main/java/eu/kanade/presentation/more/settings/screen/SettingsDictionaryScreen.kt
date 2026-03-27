@@ -2,28 +2,46 @@ package eu.kanade.presentation.more.settings.screen
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.ImportExport
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,6 +59,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import chimahon.HoshiDicts
+import chimahon.anki.AnkiCardCreator
+import chimahon.anki.AnkiDroidBridge
+import chimahon.anki.Marker
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.util.system.toast
@@ -57,6 +78,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.util.Collections.emptyList
 
 private const val TAG = "DictionaryImport"
 
@@ -94,6 +116,7 @@ object SettingsDictionaryScreen : SearchableSettings {
             getAppearanceGroup(),
             getImportGroup(),
             getDictionaryListGroup(),
+            getAnkiGroup(),
         )
     }
 
@@ -112,6 +135,9 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
         val ocrBoxScale by ocrBoxScalePref.collectAsState()
+
+        val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
+        val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_dict_appearance),
@@ -151,6 +177,11 @@ object SettingsDictionaryScreen : SearchableSettings {
                     onValueChanged = { newValue ->
                         ocrBoxScalePref.set(newValue / 100f)
                     },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = showFreqHarmonicPref,
+                    title = stringResource(MR.strings.pref_dict_show_frequency_harmonic),
+                    subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
                 ),
             ),
         )
@@ -366,9 +397,9 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                     tint = MaterialTheme.colorScheme.error,
                                                     modifier = Modifier.size(16.dp),
                                                 )
-                                            }
-                                        }
-                                    }
+    }
+    }
+}
                                 }
                             }
                         }
@@ -377,6 +408,483 @@ object SettingsDictionaryScreen : SearchableSettings {
             ),
         )
     }
+
+    @Composable
+    private fun getAnkiGroup(): Preference.PreferenceGroup {
+        val context = LocalContext.current
+        val activity = context as? android.app.Activity
+        val scope = rememberCoroutineScope()
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val bridge = remember { AnkiDroidBridge(context) }
+
+        val enabledPref = remember { dictionaryPreferences.ankiEnabled() }
+        val enabled by enabledPref.collectAsState()
+
+        var pendingPermissionCheck by remember { mutableStateOf(false) }
+
+        // Check permission result when user returns from the system permission dialog
+        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && pendingPermissionCheck) {
+                    pendingPermissionCheck = false
+                    if (bridge.hasPermission()) {
+                        enabledPref.set(true)
+                    } else {
+                        context.toast(MR.strings.pref_anki_permission_denied)
+                    }
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        val deckPref = remember { dictionaryPreferences.ankiDeck() }
+        val selectedDeck by deckPref.collectAsState()
+
+        val modelPref = remember { dictionaryPreferences.ankiModel() }
+        val selectedModel by modelPref.collectAsState()
+
+        val fieldMapPref = remember { dictionaryPreferences.ankiFieldMap() }
+        val fieldMapJson by fieldMapPref.collectAsState()
+
+        val dupCheckPref = remember { dictionaryPreferences.ankiDuplicateCheck() }
+        val dupCheck by dupCheckPref.collectAsState()
+
+        val dupScopePref = remember { dictionaryPreferences.ankiDuplicateScope() }
+        val dupScope by dupScopePref.collectAsState()
+
+        val dupActionPref = remember { dictionaryPreferences.ankiDuplicateAction() }
+        val dupAction by dupActionPref.collectAsState()
+
+        val tagsPref = remember { dictionaryPreferences.ankiDefaultTags() }
+        val tags by tagsPref.collectAsState()
+
+        var decks by remember { mutableStateOf<List<String>>(emptyList()) }
+        var models by remember { mutableStateOf<List<String>>(emptyList()) }
+        var modelFields by remember { mutableStateOf<List<String>>(emptyList()) }
+        var ankiInstalled by remember { mutableStateOf<Boolean?>(null) }
+        var isLoading by remember { mutableStateOf(false) }
+
+        val fieldMap = remember(fieldMapJson) {
+            AnkiCardCreator.parseFieldMap(fieldMapJson)
+        }
+
+        // Check AnkiDroid status whenever screen is visible and enabled
+        LaunchedEffect(enabled, selectedModel) {
+            if (!enabled) {
+                Log.d("AnkiSettings", "Anki disabled, skipping")
+                return@LaunchedEffect
+            }
+
+            // Check installation
+            if (ankiInstalled == null) {
+                ankiInstalled = bridge.isAnkiDroidInstalled()
+                Log.d("AnkiSettings", "AnkiDroid installed: $ankiInstalled")
+            }
+
+            // Check permission
+            val hasPerm = bridge.hasPermission()
+            Log.d("AnkiSettings", "Has permission: $hasPerm")
+
+            // Must have permission to query
+            if (ankiInstalled == true && hasPerm) {
+                if (decks.isEmpty() || models.isEmpty()) {
+                    isLoading = true
+                    decks = bridge.deckNames()
+                    models = bridge.modelNames()
+                    isLoading = false
+                    Log.d("AnkiSettings", "Loaded decks: ${decks.size}, models: ${models.size}")
+                }
+            } else if (ankiInstalled == true && !hasPerm) {
+                Log.w("AnkiSettings", "AnkiDroid installed but no permission!")
+            } else if (ankiInstalled == false) {
+                Log.w("AnkiSettings", "AnkiDroid not installed")
+            }
+        }
+
+        // Reload model fields when model changes or on screen refresh
+        LaunchedEffect(selectedModel, ankiInstalled) {
+            if (selectedModel.isNotBlank() && ankiInstalled == true && bridge.hasPermission()) {
+                modelFields = bridge.modelFieldNames(selectedModel)
+            }
+        }
+
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_anki),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_anki),
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            // Enable toggle
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_anki_enable),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Switch(
+                                    checked = enabled,
+                                    onCheckedChange = { checked ->
+                                        if (!checked) {
+                                            enabledPref.set(false)
+                                            return@Switch
+                                        }
+                                        scope.launch {
+                                            val installed = bridge.isAnkiDroidInstalled()
+                                            if (!installed) {
+                                                context.toast(MR.strings.pref_anki_no_ankidroid)
+                                                return@launch
+                                            }
+                                            if (!bridge.hasPermission()) {
+                                                if (activity != null) {
+                                                    pendingPermissionCheck = true
+                                                    bridge.requestPermission(activity)
+                                                }
+                                                return@launch
+                                            }
+                                            enabledPref.set(true)
+                                        }
+                                    },
+                                )
+                            }
+
+                            if (!enabled) return@CustomPreference
+
+                            if (ankiInstalled == false) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_anki_no_ankidroid),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                return@CustomPreference
+                            }
+
+                            if (isLoading) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_anki_loading),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                return@CustomPreference
+                            }
+
+                            // Deck selector
+                            AnkiDropdownPreference(
+                                label = stringResource(MR.strings.pref_anki_deck),
+                                value = selectedDeck,
+                                options = decks,
+                                onValueChange = { deckPref.set(it) },
+                            )
+
+                            // Model selector
+                            AnkiDropdownPreference(
+                                label = stringResource(MR.strings.pref_anki_model),
+                                value = selectedModel,
+                                options = models,
+                                onValueChange = {
+                                    modelPref.set(it)
+                                    fieldMapPref.set("{}")
+                                },
+                            )
+
+                            // Field mapping
+                            if (modelFields.isNotEmpty()) {
+                                var fieldMappingExpanded by remember { mutableStateOf(true) }
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { fieldMappingExpanded = !fieldMappingExpanded }
+                                        .padding(top = 4.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = stringResource(MR.strings.pref_anki_field_mapping),
+                                            style = MaterialTheme.typography.titleSmall,
+                                        )
+                                        Icon(
+                                            imageVector = if (fieldMappingExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                            contentDescription = if (fieldMappingExpanded) "Collapse" else "Expand",
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+
+                                    if (fieldMappingExpanded) {
+                                        modelFields.forEach { fieldName ->
+                                            val storageValue = fieldMap[fieldName] ?: ""
+                                            val displayValue = storageValue.replace("<br>", "")
+                                            AnkiFieldMappingRow(
+                                                fieldName = fieldName,
+                                                fieldValue = displayValue,
+                                                onValueChange = { newDisplayValue ->
+                                                    val updated = fieldMap.toMutableMap()
+                                                    if (newDisplayValue.isEmpty()) {
+                                                        updated.remove(fieldName)
+                                                    } else {
+                                                        updated[fieldName] = convertToStorageFormat(newDisplayValue)
+                                                    }
+                                                    fieldMapPref.set(org.json.JSONObject(updated).toString())
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Duplicate handling
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_anki_check_duplicates),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Switch(
+                                    checked = dupCheck,
+                                    onCheckedChange = { dupCheckPref.set(it) },
+                                )
+                            }
+
+                            if (dupCheck) {
+                                AnkiDropdownPreference(
+                                    label = stringResource(MR.strings.pref_anki_duplicate_scope),
+                                    value = if (dupScope == "all") "Everywhere" else "Deck only",
+                                    options = listOf("deck", "all"),
+                                    displayOptions = listOf("Deck only", "Everywhere"),
+                                    onValueChange = { dupScopePref.set(it) },
+                                )
+                                AnkiDropdownPreference(
+                                    label = stringResource(MR.strings.pref_anki_duplicate_action),
+                                    value = when (dupAction) {
+                                        "add" -> stringResource(MR.strings.pref_anki_duplicate_add)
+                                        "overwrite" -> stringResource(MR.strings.pref_anki_duplicate_overwrite)
+                                        else -> stringResource(MR.strings.pref_anki_duplicate_prevent)
+                                    },
+                                    options = listOf("prevent", "add", "overwrite"),
+                                    displayOptions = listOf(
+                                        stringResource(MR.strings.pref_anki_duplicate_prevent),
+                                        stringResource(MR.strings.pref_anki_duplicate_add),
+                                        stringResource(MR.strings.pref_anki_duplicate_overwrite),
+                                    ),
+                                    onValueChange = { dupActionPref.set(it) },
+                                )
+                            }
+
+                            // Default tags
+                            OutlinedTextField(
+                                value = tags,
+                                onValueChange = { tagsPref.set(it) },
+                                label = { Text(stringResource(MR.strings.pref_anki_default_tags)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                supportingText = { Text("Comma-separated tags") },
+                            )
+                        }
+                    },
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun AnkiDropdownPreference(
+        label: String,
+        value: String,
+        options: List<String>,
+        displayOptions: List<String> = options,
+        onValueChange: (String) -> Unit,
+    ) {
+        var expanded by remember { mutableStateOf(false) }
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = value.ifBlank { "" },
+                onValueChange = {},
+                label = { Text(label) },
+                readOnly = true,
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true },
+                enabled = false,
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                    disabledBorderColor = MaterialTheme.colorScheme.outline,
+                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            )
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.fillMaxWidth(0.9f),
+            ) {
+                options.zip(displayOptions).forEach { (opt, display) ->
+                    DropdownMenuItem(
+                        text = { Text(display) },
+                        onClick = {
+                            onValueChange(opt)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun AnkiFieldMappingRow(
+        fieldName: String,
+        fieldValue: String,
+        onValueChange: (String) -> Unit,
+    ) {
+        var dropdownExpanded by remember { mutableStateOf(false) }
+        val currentMarkers = remember(fieldValue) { parseMarkersForDisplay(fieldValue) }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        ) {
+            Text(
+                text = fieldName,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            Box {
+                OutlinedTextField(
+                    value = fieldValue,
+                    onValueChange = { newValue ->
+                        onValueChange(convertToStorageFormat(newValue))
+                    },
+                    placeholder = { Text("{expression}", style = MaterialTheme.typography.bodySmall) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    singleLine = true,
+                )
+
+                IconButton(
+                    onClick = { dropdownExpanded = true },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(top = 8.dp)
+                        .size(24.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = "Select markers",
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = dropdownExpanded,
+                onDismissRequest = { dropdownExpanded = false },
+                modifier = Modifier.width(200.dp),
+            ) {
+                Marker.ALL.forEach { marker ->
+                    val isSelected = marker in currentMarkers
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = markerChipLabel(marker),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        },
+                        onClick = {
+                            val normalizedValue = fieldValue.replace("<br>", "")
+                            val newValue = if (isSelected) {
+                                normalizedValue.replace("{$marker}", "")
+                            } else {
+                                normalizedValue + "{$marker}"
+                            }
+                            onValueChange(newValue)
+                            dropdownExpanded = false
+                        },
+                        leadingIcon = {
+                            androidx.compose.material3.Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun parseMarkersForDisplay(fieldValue: String): List<String> {
+        if (fieldValue.isBlank()) return emptyList()
+        val normalized = fieldValue.replace("<br>", "")
+        val markerRegex = Regex("""\{(\w+)\}""")
+        return markerRegex.findAll(normalized).map { it.groupValues[1] }.toList()
+    }
+
+    private fun convertToStorageFormat(displayValue: String): String {
+        if (displayValue.isBlank()) return ""
+        val markers = parseMarkersForDisplay(displayValue)
+        if (markers.isEmpty()) return displayValue
+        return markers.joinToString("<br>") { "{$it}" }
+    }
+
+    private fun markerChipLabel(marker: String): String {
+        val isTodo = marker in Marker.TODO_MARKERS
+        val prefix = if (isTodo) "[TODO] " else ""
+        return when (marker) {
+            Marker.EXPRESSION -> "${prefix}Expression"
+            Marker.READING -> "${prefix}Reading"
+            Marker.FURIGANA -> "${prefix}Furigana"
+            Marker.FURIGANA_PLAIN -> "${prefix}Furigana Plain"
+            Marker.GLOSSARY -> "${prefix}Glossary"
+            Marker.GLOSSARY_BRIEF -> "${prefix}Glossary Brief"
+            Marker.GLOSSARY_PLAIN -> "${prefix}Glossary Plain"
+            Marker.GLOSSARY_NO_DICT -> "${prefix}Glossary No Dict"
+            Marker.GLOSSARY_FIRST -> "${prefix}Glossary First"
+            Marker.GLOSSARY_FIRST_BRIEF -> "${prefix}Glossary First Brief"
+            Marker.SENTENCE -> "${prefix}Sentence"
+            Marker.CLOZE_PREFIX -> "${prefix}Cloze Prefix"
+            Marker.CLOZE_BODY -> "${prefix}Cloze Body"
+            Marker.CLOZE_BODY_KANA -> "${prefix}Cloze Body Kana"
+            Marker.CLOZE_SUFFIX -> "${prefix}Cloze Suffix"
+            Marker.TAGS -> "${prefix}Tags"
+            Marker.PART_OF_SPEECH -> "${prefix}Part of Speech"
+            Marker.CONJUGATION -> "${prefix}Conjugation"
+            Marker.DICTIONARY -> "${prefix}Dictionary"
+            Marker.DICTIONARY_ALIAS -> "${prefix}Dictionary Alias"
+            Marker.FREQUENCIES -> "${prefix}Frequencies"
+            Marker.FREQUENCY_HARMONIC_RANK -> "${prefix}Freq Harmonic"
+            Marker.FREQUENCY_AVERAGE_RANK -> "${prefix}Freq Average"
+            Marker.PITCH_ACCENTS -> "${prefix}Pitch Accents"
+            Marker.PITCH_ACCENT_POSITIONS -> "${prefix}Pitch Positions"
+            Marker.PITCH_ACCENT_CATEGORIES -> "${prefix}Pitch Categories"
+            Marker.AUDIO -> "${prefix}Audio"
+            Marker.SCREENSHOT -> "${prefix}Screenshot"
+            Marker.SEARCH_QUERY -> "${prefix}Search Query"
+            else -> marker
+        }
+    }
+}
 
     private suspend fun importDictionaryFromUri(context: Context, uri: Uri, currentOrder: String): Pair<String, Boolean> {
         return withContext(Dispatchers.IO) {
@@ -452,4 +960,3 @@ object SettingsDictionaryScreen : SearchableSettings {
             }
         }
     }
-}

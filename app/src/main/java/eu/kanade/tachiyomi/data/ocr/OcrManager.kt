@@ -4,14 +4,13 @@ import android.content.Context
 import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
 import chimahon.ocr.OcrLanguage
-import chimahon.ocr.OcrTextBlock as ChimahonOcrTextBlock
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -34,6 +33,7 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import chimahon.ocr.OcrTextBlock as ChimahonOcrTextBlock
 
 class OcrManager(
     private val context: Context,
@@ -236,7 +236,8 @@ class OcrManager(
 
             when (result) {
                 OcrTaskResult.SUCCESS,
-                OcrTaskResult.CANCELLED -> {
+                OcrTaskResult.CANCELLED,
+                -> {
                     ocrStore.remove(task.chapterId)
                 }
                 OcrTaskResult.ERROR -> Unit
@@ -315,7 +316,13 @@ class OcrManager(
                     item.copy(
                         currentPage = updated.currentPage,
                         totalPages = updated.totalPages,
-                        progress = if (updated.totalPages > 0) updated.currentPage.toFloat() / updated.totalPages else 0f,
+                        progress = if (updated.totalPages >
+                            0
+                        ) {
+                            updated.currentPage.toFloat() / updated.totalPages
+                        } else {
+                            0f
+                        },
                         status = updated.status,
                     )
                 }
@@ -416,7 +423,11 @@ class OcrManager(
                         logcat(LogPriority.WARN, e) { "OcrManager: failed to read image for page $pageIndex" }
                         failedPages++
                         updateStoredTask(chapterId) {
-                            it.copy(currentPage = pageIndex + 1, totalPages = pageCount, status = OcrQueueStatus.PROCESSING)
+                            it.copy(
+                                currentPage = pageIndex + 1,
+                                totalPages = pageCount,
+                                status = OcrQueueStatus.PROCESSING,
+                            )
                         }
                         continue
                     }
@@ -425,7 +436,11 @@ class OcrManager(
                         logcat(LogPriority.WARN) { "OcrManager: null bytes for page $pageIndex" }
                         failedPages++
                         updateStoredTask(chapterId) {
-                            it.copy(currentPage = pageIndex + 1, totalPages = pageCount, status = OcrQueueStatus.PROCESSING)
+                            it.copy(
+                                currentPage = pageIndex + 1,
+                                totalPages = pageCount,
+                                status = OcrQueueStatus.PROCESSING,
+                            )
                         }
                         continue
                     }
@@ -462,7 +477,11 @@ class OcrManager(
                         logcat(LogPriority.WARN, e) { "OcrManager: OCR failed for page $pageIndex after retries" }
                         failedPages++
                         updateStoredTask(chapterId) {
-                            it.copy(currentPage = pageIndex + 1, totalPages = pageCount, status = OcrQueueStatus.PROCESSING)
+                            it.copy(
+                                currentPage = pageIndex + 1,
+                                totalPages = pageCount,
+                                status = OcrQueueStatus.PROCESSING,
+                            )
                         }
                         continue
                     }

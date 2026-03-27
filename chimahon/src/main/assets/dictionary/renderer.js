@@ -1061,9 +1061,46 @@
     body.appendChild(defSection);
   }
 
-  function appendFrequenciesSection(body, frequencies) {
+  function appendFrequenciesSection(body, frequencies, showHarmonic) {
     if (frequencies.length === 0) return;
 
+    // If showHarmonic is true, calculate and display harmonic mean instead of full list
+    if (showHarmonic) {
+      const numbers = [];
+      const seen = new Set();
+      for (const group of frequencies) {
+        if (seen.has(group.dictName)) continue;
+        seen.add(group.dictName);
+        const items = Array.isArray(group.frequencies) ? group.frequencies : [];
+        for (const item of items) {
+          if (item && item.value > 0) {
+            numbers.push(item.value);
+            break;
+          }
+        }
+      }
+      
+      if (numbers.length > 0) {
+        const n = numbers.length;
+        let harmonic = 0;
+        for (const num of numbers) {
+          harmonic += 1 / num;
+        }
+        harmonic = Math.floor(n / harmonic);
+        
+        const section = document.createElement('div');
+        section.className = 'entry-body-section';
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.setAttribute('data-category', 'frequency');
+        tag.innerHTML = '<span class="tag-label">freq</span><span class="tag-body">harmonic: ' + harmonic + '</span>';
+        section.appendChild(tag);
+        body.appendChild(section);
+      }
+      return;
+    }
+
+    // Default: show full frequency list
     const section = document.createElement('div');
     section.className = 'entry-body-section';
     const list = document.createElement('ol');
@@ -1120,6 +1157,7 @@
   function renderEntry(result, mediaMap) {
     const article = document.createElement('article');
     article.className = 'entry';
+    article.dataset.index = String(result.index || 0);
     
     // Add data-dictionary attribute for scoped CSS
     const dictName = result.term && result.term.glossaries && result.term.glossaries[0] && result.term.glossaries[0].dictName;
@@ -1135,8 +1173,27 @@
     const reading = result.term && result.term.reading ? result.term.reading : '';
 
     const headSection = document.createElement('div');
-    headSection.className = 'entry-body-section';
+    headSection.className = 'entry-body-section entry-headword-row';
     headSection.appendChild(createHeadwordNode(expression, reading));
+
+    // Anki add button
+    const ankiBtn = document.createElement('button');
+    // Check if expression is already in Anki
+    const isAlreadyAdded = typeof window.__ankiExistingExpressions !== 'undefined' 
+        && window.__ankiExistingExpressions.includes(expression);
+    ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
+    ankiBtn.textContent = '+';
+    ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
+    ankiBtn.setAttribute('data-index', String(result.index || 0));
+    ankiBtn.setAttribute('data-expression', expression);
+    ankiBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof AnkiBridge !== 'undefined') {
+        AnkiBridge.addToAnki(ankiBtn.getAttribute('data-index'));
+      }
+    };
+    headSection.appendChild(ankiBtn);
+
     body.appendChild(headSection);
 
     const rules = result.term && result.term.rules ? result.term.rules : '';
@@ -1147,7 +1204,7 @@
     appendDefinitionsSection(body, glossaries, mediaMap);
 
     const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
-    appendFrequenciesSection(body, frequencies);
+    appendFrequenciesSection(body, frequencies, payload.showFrequencyHarmonic);
 
     const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
     appendPitchesSection(body, pitches);

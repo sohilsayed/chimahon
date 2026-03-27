@@ -1,6 +1,5 @@
 package chimahon.ocr
 
-
 data class BoundingBox(
     val x: Double,
     val y: Double,

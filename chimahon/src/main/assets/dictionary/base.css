@@ -245,3 +245,46 @@ td {
   opacity: 0.7;
   padding: 10px 4px;
 }
+
+.entry-headword-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.anki-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--fg);
+  opacity: 0.4;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1;
+  margin-left: auto;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.anki-add-btn.anki-added {
+  color: #2ecc71;
+  opacity: 1;
+}
+
+.anki-add-btn:hover {
+  opacity: 0.8;
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+}
+
+.anki-add-btn:active {
+  transform: scale(0.9);
+  opacity: 1;
+}

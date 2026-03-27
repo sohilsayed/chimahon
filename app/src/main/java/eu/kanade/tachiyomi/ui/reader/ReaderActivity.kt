@@ -99,11 +99,11 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
-import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
@@ -204,6 +204,8 @@ class ReaderActivity : BaseActivity() {
 
     data class OcrPopupState(
         val lookupString: String,
+        val fullText: String,
+        val charOffset: Int,
         val webView: android.webkit.WebView,
         val repository: chimahon.DictionaryRepository,
         val anchorX: Float,
@@ -535,6 +537,8 @@ class ReaderActivity : BaseActivity() {
             }
             OcrLookupPopup(
                 lookupString = popupState.lookupString,
+                fullText = popupState.fullText,
+                charOffset = popupState.charOffset,
                 onDismiss = dismissPopup,
                 webView = popupState.webView,
                 repository = popupState.repository,
@@ -546,9 +550,10 @@ class ReaderActivity : BaseActivity() {
         // Set up OCR popup callback on the pager viewer
         (state.viewer as? PagerViewer)?.let { pager ->
             if (pager.onShowOcrPopup == null) {
-                pager.onShowOcrPopup = { lookupString, webView, repository, anchorX, anchorY ->
+                pager.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY ->
                     runOnUiThread {
-                        ocrPopupState = OcrPopupState(lookupString, webView, repository, anchorX, anchorY)
+                        ocrPopupState =
+                            OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY)
                     }
                 }
             }

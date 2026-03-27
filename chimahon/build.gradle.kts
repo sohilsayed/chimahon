@@ -24,6 +24,7 @@ android {
 
 dependencies {
     implementation(libs.okhttp.core)
+    implementation(androidx.corektx)
     implementation(platform(kotlinx.coroutines.bom))
     implementation(kotlinx.coroutines.core)
     implementation(kotlinx.serialization.protobuf)

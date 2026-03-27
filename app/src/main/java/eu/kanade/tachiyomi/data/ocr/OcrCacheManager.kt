@@ -1,8 +1,9 @@
 package chimahon.ocr
 
-
 import android.content.Context
 import android.text.format.Formatter
+import chimahon.ocr.OcrBlockData
+import chimahon.ocr.OcrPageData
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -19,14 +20,10 @@ import mihon.core.archive.archiveReader
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
-import chimahon.ocr.OcrBlockData
-import chimahon.ocr.OcrPageData
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-
 private const val CURRENT_VERSION = 1
-
 
 /**
  * Manages OCR cache storage with dual locations:
@@ -103,7 +100,9 @@ class OcrCacheManager(
                     is ChapterLocation.Directory -> loadFromDirectory(chapterLocation.dir, pageIndex)
                     is ChapterLocation.Cbz -> loadFromCbz(chapterLocation.file, pageIndex)
                 }
-            } else null
+            } else {
+                null
+            }
 
             if (downloadBlocks != null) {
                 return@withLock downloadBlocks
@@ -133,7 +132,9 @@ class OcrCacheManager(
                     getSidecarFile(chapterLocation.file)?.exists() == true
                 }
             }
-        } else false
+        } else {
+            false
+        }
 
         val hasInternalCache = getInternalCacheFile(manga, chapter, source).exists()
 

@@ -1,11 +1,9 @@
 package chimahon.ocr
 
-
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-
 
 private val JAPANESE_REGEX = Regex("[\u3040-\u309F\u30A0-\u30FF\u3400-\u9FFF]")
 private val LINE_NOISE_REGEX = Regex("^[|—_ノヘく/\\\\:;]$")
@@ -13,7 +11,6 @@ private val KANJI_REGEX = Regex("[\u4E00-\u9FFF\u3400-\u4DBF]")
 private val KATAKANA_REGEX = Regex("[\u30A0-\u30FF]")
 
 internal object LensMerger {
-
 
     private fun postProcessText(text: String, language: OcrLanguage): String =
         if (language.prefersNoSpace) text.replace(Regex("\\s+"), "") else text
@@ -84,7 +81,6 @@ internal object LensMerger {
         return lines
     }
 
-
     private data class Point(val x: Double, val y: Double)
 
     private fun getBoundingBoxCorners(bbox: BoundingBox): List<Point> {
@@ -110,7 +106,6 @@ internal object LensMerger {
         return doubleArrayOf(minX + w / 2.0, minY + h / 2.0, w, h, 0.0)
     }
 
-
     private fun filterBadBoxes(
         lines: List<OcrResult>,
         pageW: Int,
@@ -131,21 +126,25 @@ internal object LensMerger {
                 val ch = text[0]
                 // is_ascii_punctuation || is_ascii_digit
                 if (ch.code in 33..126 && !ch.isLetter()) {
-                    keep[i] = false; continue
+                    keep[i] = false
+                    continue
                 }
                 if (LINE_NOISE_REGEX.containsMatchIn(text)) {
-                    keep[i] = false; continue
+                    keep[i] = false
+                    continue
                 }
             }
 
             if (boxArea < pageArea * 0.0005 &&
                 (!config.language.prefersVertical || !JAPANESE_REGEX.containsMatchIn(text))
             ) {
-                keep[i] = false; continue
+                keep[i] = false
+                continue
             }
 
             if (boxArea > pageArea * 0.30 && textLen < 6) {
-                keep[i] = false; continue
+                keep[i] = false
+                continue
             }
         }
 
@@ -167,7 +166,9 @@ internal object LensMerger {
                             if (config.language.prefersVertical &&
                                 JAPANESE_REGEX.containsMatchIn(lines[j].text) &&
                                 !lines[i].text.contains(lines[j].text)
-                            ) continue
+                            ) {
+                                continue
+                            }
                             keep[j] = false
                         }
                     }
@@ -191,13 +192,21 @@ internal object LensMerger {
                     val proximityLimit = mainThickness * 0.5
                     // Vertical furigana: sub is to the right of main
                     val xGapV = sub.tightBoundingBox.x - (main.tightBoundingBox.x + main.tightBoundingBox.width)
-                    val yOverlapV = minOf(main.tightBoundingBox.y + main.tightBoundingBox.height, sub.tightBoundingBox.y + sub.tightBoundingBox.height) -
-                        maxOf(main.tightBoundingBox.y, sub.tightBoundingBox.y)
+                    val yOverlapV =
+                        minOf(
+                            main.tightBoundingBox.y + main.tightBoundingBox.height,
+                            sub.tightBoundingBox.y + sub.tightBoundingBox.height,
+                        ) -
+                            maxOf(main.tightBoundingBox.y, sub.tightBoundingBox.y)
                     val isVerticalFurigana = xGapV > -mainThickness * 0.5 && xGapV < proximityLimit && yOverlapV > 0.0
                     // Horizontal furigana: sub is above main
                     val yGapH = main.tightBoundingBox.y - (sub.tightBoundingBox.y + sub.tightBoundingBox.height)
-                    val xOverlapH = minOf(main.tightBoundingBox.x + main.tightBoundingBox.width, sub.tightBoundingBox.x + sub.tightBoundingBox.width) -
-                        maxOf(main.tightBoundingBox.x, sub.tightBoundingBox.x)
+                    val xOverlapH =
+                        minOf(
+                            main.tightBoundingBox.x + main.tightBoundingBox.width,
+                            sub.tightBoundingBox.x + sub.tightBoundingBox.width,
+                        ) -
+                            maxOf(main.tightBoundingBox.x, sub.tightBoundingBox.x)
                     val isHorizontalFurigana = yGapH > -mainThickness * 0.5 && yGapH < proximityLimit && xOverlapH > 0.0
                     if (isVerticalFurigana || isHorizontalFurigana) {
                         keep[j] = false
@@ -208,7 +217,6 @@ internal object LensMerger {
 
         return lines.filterIndexed { i, _ -> keep[i] }
     }
-
 
     private data class ProcessedLine(
         val isVertical: Boolean,
@@ -272,7 +280,6 @@ internal object LensMerger {
         return true
     }
 
-
     private class UnionFind(n: Int) {
         val parent = IntArray(n) { it }
         fun find(i: Int): Int {
@@ -283,7 +290,6 @@ internal object LensMerger {
             parent[find(i)] = find(j)
         }
     }
-
 
     fun autoMerge(lines: List<OcrResult>, w: Int, h: Int, config: MergeConfig): List<OcrResult> {
         if (!config.enabled || lines.isEmpty()) return lines
@@ -311,11 +317,15 @@ internal object LensMerger {
             val minCross: Double
             val maxCross: Double
             if (isV) {
-                minMain = b.y; maxMain = b.y + b.height
-                minCross = b.x; maxCross = b.x + b.width
+                minMain = b.y
+                maxMain = b.y + b.height
+                minCross = b.x
+                maxCross = b.x + b.width
             } else {
-                minMain = b.x; maxMain = b.x + b.width
-                minCross = b.y; maxCross = b.y + b.height
+                minMain = b.x
+                maxMain = b.x + b.width
+                minCross = b.y
+                maxCross = b.y + b.height
             }
 
             ProcessedLine(
@@ -402,7 +412,10 @@ internal object LensMerger {
             // Compute merged AABB from all constituent corners
             val allCorners = groupLines.flatMap { getBoundingBoxCorners(it.tightBoundingBox) }
             val aabb = calculateAabb(allCorners)
-            val cx = aabb[0]; val cy = aabb[1]; val bw = aabb[2]; val bh = aabb[3]
+            val cx = aabb[0]
+            val cy = aabb[1]
+            val bw = aabb[2]
+            val bh = aabb[3]
 
             results.add(
                 OcrResult(

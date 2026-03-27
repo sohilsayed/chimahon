@@ -1,6 +1,5 @@
 package chimahon.ocr
 
-
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 
@@ -32,8 +31,8 @@ internal data class LensOverlayRequestId(
 
 @Serializable
 internal data class LensOverlayClientContext(
-    @ProtoNumber(1) val platform: Int = 0,   // Platform::Web = 3
-    @ProtoNumber(2) val surface: Int = 0,    // Surface::Chromium = 4
+    @ProtoNumber(1) val platform: Int = 0, // Platform::Web = 3
+    @ProtoNumber(2) val surface: Int = 0, // Surface::Chromium = 4
     @ProtoNumber(4) val localeContext: LocaleContext? = null,
 )
 
@@ -91,7 +90,7 @@ internal data class TranslationData(
 
 @Serializable
 internal data class TranslationStatusMsg(
-    @ProtoNumber(1) val code: Int = 0,   // TranslationStatus::Success = 1
+    @ProtoNumber(1) val code: Int = 0, // TranslationStatus::Success = 1
 )
 
 @Serializable

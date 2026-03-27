@@ -448,7 +448,7 @@ class MangaScreenModel(
                         state.copy(
                             chapters = state.chapters.map { item ->
                                 item.copy(isOcrRunning = item.chapter.id in ocrRunningIds)
-                            }
+                            },
                         )
                     }
                 }

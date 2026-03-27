@@ -34,11 +34,17 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import chimahon.DictionaryStyle
 import chimahon.HoshiDicts
 import chimahon.LookupResult
+import chimahon.anki.AnkiCardCreator
+import chimahon.anki.AnkiDroidBridge
+import chimahon.anki.AnkiResult
+import chimahon.anki.DelegatingWebViewBridge
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.main.MainActivity
+import eu.kanade.tachiyomi.util.system.toast
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import tachiyomi.core.common.i18n.stringResource
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +54,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.collectAsState
 import java.io.File
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -117,6 +124,48 @@ data object DictionaryTab : Tab {
         var shouldMountWebView by remember { mutableStateOf(false) }
         var searchJob by remember { mutableStateOf<Job?>(null) }
         var retainedWebView by remember { mutableStateOf<WebView?>(null) }
+
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val ankiEnabled by dictionaryPreferences.ankiEnabled().collectAsState()
+        val ankiDeck by dictionaryPreferences.ankiDeck().collectAsState()
+        val ankiModel by dictionaryPreferences.ankiModel().collectAsState()
+        val ankiFieldMap by dictionaryPreferences.ankiFieldMap().collectAsState()
+        val ankiDupCheck by dictionaryPreferences.ankiDuplicateCheck().collectAsState()
+        val ankiDupScope by dictionaryPreferences.ankiDuplicateScope().collectAsState()
+        val ankiDupAction by dictionaryPreferences.ankiDuplicateAction().collectAsState()
+        val ankiTags by dictionaryPreferences.ankiDefaultTags().collectAsState()
+        val showFrequencyHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
+
+        val delegatingBridge = remember(ankiEnabled) {
+            if (ankiEnabled) DelegatingWebViewBridge { results } else null
+        }
+
+        // Update callback on every recomposition so it captures latest results + prefs
+        if (ankiEnabled && delegatingBridge != null) {
+            delegatingBridge.onAddToAnki = { result ->
+                scope.launch {
+                    val ankiResult = AnkiCardCreator.addToAnki(
+                        context = context,
+                        result = result,
+                        deck = ankiDeck,
+                        model = ankiModel,
+                        fieldMapJson = ankiFieldMap,
+                        tags = ankiTags,
+                        dupCheck = ankiDupCheck,
+                        dupScope = ankiDupScope,
+                        dupAction = ankiDupAction,
+                    )
+                    when (ankiResult) {
+                        is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
+                        is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                        is AnkiResult.Error -> context.toast(
+                            context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                        )
+                        is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                    }
+                }
+            }
+        }
 
         LaunchedEffect(tabNavigator.current) {
             (context as? MainActivity)?.ready = true
@@ -190,6 +239,28 @@ data object DictionaryTab : Tab {
                             errorMessage = lookupResult.error
                             hasSearched = true
 
+                            // Check which expressions are already in Anki
+                            if (ankiEnabled && ankiDupCheck && ankiModel.isNotBlank() && results.isNotEmpty()) {
+                                val bridge = AnkiDroidBridge(context)
+                                val existingExpressions = mutableSetOf<String>()
+                                val uniqueExpressions = results.map { it.term.expression }.distinct()
+                                for (expr in uniqueExpressions) {
+                                    try {
+                                        val notes = bridge.findNotes(expr, ankiModel)
+                                        if (notes.isNotEmpty()) {
+                                            existingExpressions.add(expr)
+                                        }
+                                    } catch (_: Exception) {
+                                        // Ignore errors
+                                    }
+                                }
+                                // Pass to WebView
+                                retainedWebView?.evaluateJavascript(
+                                    "window.__ankiExistingExpressions = ${org.json.JSONArray(existingExpressions.toList())};",
+                                    null,
+                                )
+                            }
+
                             lookupResult.diagnostics?.let { diagnostics ->
                                 Log.i(
                                     "DictionaryPerf",
@@ -229,9 +300,11 @@ data object DictionaryTab : Tab {
                     } else {
                         "Search to view dictionary entries"
                     },
+                    showFrequencyHarmonic = showFrequencyHarmonic,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },
+                    ankiBridge = delegatingBridge,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),

@@ -7,6 +7,7 @@ import android.webkit.WebView
 import android.view.LayoutInflater
 import androidx.annotation.ColorInt
 import androidx.core.view.isVisible
+import chimahon.DictionaryRepository
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
@@ -80,14 +81,13 @@ class PagerPageHolder(
     private var extraLoadJob: Job? = null
 
     init {
+        // KMK: Dual page loading
         loadJob = scope.launch { loadPageAndProcessStatus(1) }
-        // SY -->
         extraLoadJob = scope.launch { loadPageAndProcessStatus(2) }
-        // SY <--
 
-        // Chimahon: OCR popup callback
-        onShowOcrPopup = { lookupString, webView, repository, anchorX, anchorY ->
-            viewer.onShowOcrPopup?.invoke(lookupString, webView, repository, anchorX, anchorY)
+        // Anki/Chimahon: OCR popup callback
+        onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY ->
+            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY)
         }
     }
 

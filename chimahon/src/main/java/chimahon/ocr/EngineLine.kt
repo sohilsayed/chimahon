@@ -1,8 +1,6 @@
 package chimahon.ocr
 
-
 import kotlin.math.abs
-
 
 internal data class NormalizedBBox(
     val left: Double,
@@ -30,7 +28,6 @@ internal data class EngineLine(
     val hasJpText: Boolean,
     val hasKanji: Boolean,
 )
-
 
 private val CJ_REGEX = Regex("[\u3041-\u3096\u30A1-\u30FA\u4E01-\u9FFF]")
 private val KANJI_REGEX_ENGINE = Regex("[\u4E00-\u9FFF]")

@@ -24,21 +24,30 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import chimahon.DictionaryRepository
+import chimahon.LookupResult
+import chimahon.anki.AnkiCardCreator
+import chimahon.anki.AnkiDroidBridge
+import chimahon.anki.AnkiResult
+import chimahon.anki.DelegatingWebViewBridge
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-
 import kotlin.math.roundToInt
 
 @Composable
 fun OcrLookupPopup(
     lookupString: String,
+    fullText: String,
+    charOffset: Int,
     onDismiss: () -> Unit,
     webView: WebView,
     repository: DictionaryRepository,
@@ -46,14 +55,14 @@ fun OcrLookupPopup(
     anchorY: Float,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var results by remember { mutableStateOf<List<chimahon.LookupResult>>(emptyList()) }
+    var results by remember { mutableStateOf<List<LookupResult>>(emptyList()) }
     var styles by remember { mutableStateOf<List<chimahon.DictionaryStyle>>(emptyList()) }
     var mediaDataUris by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
-    val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
 
@@ -61,6 +70,14 @@ fun OcrLookupPopup(
     val popupWidthPref by dictionaryPreferences.popupWidth().collectAsState()
     val popupHeightPref by dictionaryPreferences.popupHeight().collectAsState()
     val popupScalePref by dictionaryPreferences.popupScale().collectAsState()
+    val ankiEnabled by dictionaryPreferences.ankiEnabled().collectAsState()
+    val ankiDeck by dictionaryPreferences.ankiDeck().collectAsState()
+    val ankiModel by dictionaryPreferences.ankiModel().collectAsState()
+    val ankiFieldMap by dictionaryPreferences.ankiFieldMap().collectAsState()
+    val ankiDupCheck by dictionaryPreferences.ankiDuplicateCheck().collectAsState()
+    val ankiDupScope by dictionaryPreferences.ankiDuplicateScope().collectAsState()
+    val ankiDupAction by dictionaryPreferences.ankiDuplicateAction().collectAsState()
+    val ankiTags by dictionaryPreferences.ankiDefaultTags().collectAsState()
 
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
@@ -74,6 +91,38 @@ fun OcrLookupPopup(
     val paddingPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
 
+    val delegatingBridge = remember(ankiEnabled) {
+        if (ankiEnabled) DelegatingWebViewBridge { results } else null
+    }
+
+    if (ankiEnabled && delegatingBridge != null) {
+        delegatingBridge.onAddToAnki = { result ->
+            scope.launch {
+                val ankiResult = AnkiCardCreator.addToAnki(
+                    context = context,
+                    result = result,
+                    deck = ankiDeck,
+                    model = ankiModel,
+                    fieldMapJson = ankiFieldMap,
+                    tags = ankiTags,
+                    dupCheck = ankiDupCheck,
+                    dupScope = ankiDupScope,
+                    dupAction = ankiDupAction,
+                    sentence = fullText,
+                    offset = charOffset,
+                )
+                when (ankiResult) {
+                    is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
+                    is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                    is AnkiResult.Error -> context.toast(
+                        context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                    )
+                    is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                }
+            }
+        }
+    }
+
     // === Positioning Logic: Right → Left → Below → Above ===
     val spaceRight = screenWidthPx - anchorX - gapPx
     val spaceLeft = anchorX - gapPx
@@ -83,28 +132,24 @@ fun OcrLookupPopup(
     data class PopupPosition(val x: Float, val y: Float)
 
     val position: PopupPosition = when {
-        // Try RIGHT first
         spaceRight >= popupWidthPx + paddingPx -> {
             val x = anchorX + gapPx
             val y = (anchorY - popupHeightPx / 2)
                 .coerceIn(paddingPx, screenHeightPx - popupHeightPx - paddingPx)
             PopupPosition(x, y)
         }
-        // Try LEFT
         spaceLeft >= popupWidthPx + paddingPx -> {
             val x = anchorX - popupWidthPx - gapPx
             val y = (anchorY - popupHeightPx / 2)
                 .coerceIn(paddingPx, screenHeightPx - popupHeightPx - paddingPx)
             PopupPosition(x, y)
         }
-        // Try BELOW
         spaceBelow >= popupHeightPx + paddingPx -> {
             val x = (anchorX - popupWidthPx / 2)
                 .coerceIn(paddingPx, screenWidthPx - popupWidthPx - paddingPx)
             val y = anchorY + gapPx
             PopupPosition(x, y)
         }
-        // Fallback ABOVE
         else -> {
             val x = (anchorX - popupWidthPx / 2)
                 .coerceIn(paddingPx, screenWidthPx - popupWidthPx - paddingPx)
@@ -132,6 +177,27 @@ fun OcrLookupPopup(
                 styles = result.styles
                 mediaDataUris = result.mediaDataUris
                 errorMessage = result.error
+
+                // Check which expressions are already in Anki
+                if (ankiEnabled && ankiDupCheck && ankiModel.isNotBlank() && results.isNotEmpty()) {
+                    val bridge = AnkiDroidBridge(context)
+                    val existingExpressions = mutableSetOf<String>()
+                    val uniqueExpressions = results.map { it.term.expression }.distinct()
+                    for (expr in uniqueExpressions) {
+                        try {
+                            val notes = bridge.findNotes(expr, ankiModel)
+                            if (notes.isNotEmpty()) {
+                                existingExpressions.add(expr)
+                            }
+                        } catch (_: Exception) {
+                            // Ignore errors
+                        }
+                    }
+                    webView.evaluateJavascript(
+                        "window.__ankiExistingExpressions = ${org.json.JSONArray(existingExpressions.toList())};",
+                        null,
+                    )
+                }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Lookup failed"
             } finally {
@@ -140,11 +206,10 @@ fun OcrLookupPopup(
         }
     }
 
-    // Full-screen backdrop - tap anywhere outside to dismiss
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
     ) {
         Surface(
             modifier = modifier
@@ -152,7 +217,6 @@ fun OcrLookupPopup(
                 .width(maxWidthDp)
                 .heightIn(max = maxHeightDp)
                 .pointerInput(Unit) {
-                    // Consume taps on popup so they don't dismiss
                     detectTapGestures { }
                 },
             shape = MaterialTheme.shapes.medium,
@@ -160,15 +224,9 @@ fun OcrLookupPopup(
             shadowElevation = 6.dp,
         ) {
             when {
-                isLoading -> {
-                    // Loading state - just show empty surface
-                }
-                errorMessage != null -> {
-                    // Error will show in WebView header
-                }
-                results.isEmpty() -> {
-                    // No results will show in WebView
-                }
+                isLoading -> {}
+                errorMessage != null -> {}
+                results.isEmpty() -> {}
                 else -> {
                     DictionaryEntryWebView(
                         results = results,
@@ -178,6 +236,7 @@ fun OcrLookupPopup(
                         headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
                         popupScale = popupScalePref,
                         webViewProvider = { webView },
+                        ankiBridge = delegatingBridge,
                         modifier = Modifier
                             .width(maxWidthDp)
                             .heightIn(min = 60.dp, max = maxHeightDp),

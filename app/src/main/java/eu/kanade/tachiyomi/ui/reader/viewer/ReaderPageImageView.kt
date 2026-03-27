@@ -25,6 +25,7 @@ import androidx.core.os.postDelayed
 import androidx.core.view.isVisible
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import chimahon.DictionaryRepository
 import coil3.BitmapImage
 import coil3.asDrawable
 import coil3.dispose
@@ -46,6 +47,7 @@ import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.LandscapeZoomScaleType
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
@@ -55,8 +57,6 @@ import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import chimahon.DictionaryRepository
-import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 
 /**
  * A wrapper view for showing page image.
@@ -119,7 +119,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
     var ocrPopupLookupString: String? = null
         private set
 
-    var onShowOcrPopup: ((lookupString: String, webView: WebView, repository: DictionaryRepository, screenX: Float, screenY: Float) -> Unit)? = null
+    var onShowOcrPopup: (
+        (
+            lookupString: String,
+            fullText: String,
+            charOffset: Int,
+            webView: WebView,
+            repository: DictionaryRepository,
+            screenX: Float,
+            screenY: Float,
+        ) -> Unit
+    )? = null
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -588,7 +598,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
      *
      * Called by [OcrSubsamplingImageView.OcrGestureListener.onSingleTapConfirmed].
      */
-    internal fun handleOcrTap(block: OcrTextBlock, viewX: Float, viewY: Float, screenX: Float, screenY: Float): Boolean {
+    internal fun handleOcrTap(
+        block: OcrTextBlock,
+        viewX: Float,
+        viewY: Float,
+        screenX: Float,
+        screenY: Float,
+    ): Boolean {
         val currentActive = activeOcrBlock
         return if (currentActive == null) {
             // First tap on this block -> activate and show text
@@ -622,7 +638,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             val repository = dictionaryRepository
             if (webView != null && repository != null) {
                 ocrPopupLookupString = lookupString
-                onShowOcrPopup?.invoke(lookupString, webView, repository, screenX, screenY)
+                onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, screenX, screenY)
             } else {
                 logcat(LogPriority.WARN) { "OCR popup: webView or repository is null" }
             }
@@ -738,4 +754,3 @@ open class ReaderPageImageView @JvmOverloads constructor(
 }
 
 private const val MAX_ZOOM_SCALE = 5F
-

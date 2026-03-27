@@ -1,17 +1,18 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.graphics.PointF
-import android.webkit.WebView
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams
+import android.webkit.WebView
 import androidx.annotation.ColorInt
 import androidx.core.view.children
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.viewpager.widget.ViewPager
+import chimahon.DictionaryRepository
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
@@ -22,7 +23,6 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
-import chimahon.DictionaryRepository
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import tachiyomi.core.common.util.system.logcat
@@ -44,7 +44,17 @@ abstract class PagerViewer(
 
     val scope = MainScope()
 
-    var onShowOcrPopup: ((lookupString: String, webView: WebView, repository: DictionaryRepository, anchorX: Float, anchorY: Float) -> Unit)? = null
+    var onShowOcrPopup: (
+        (
+            lookupString: String,
+            fullText: String,
+            charOffset: Int,
+            webView: WebView,
+            repository: DictionaryRepository,
+            anchorX: Float,
+            anchorY: Float,
+        ) -> Unit
+    )? = null
 
     /**
      * View pager used by this viewer. It's abstract to implement L2R, R2L and vertical pagers on

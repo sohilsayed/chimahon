@@ -264,7 +264,8 @@ class UpdatesScreenModel(
                     deleteChapters(items)
                 }
                 ChapterDownloadAction.OCR,
-                ChapterDownloadAction.DELETE_OCR -> {
+                ChapterDownloadAction.DELETE_OCR,
+                -> {
                     // OCR actions are not applicable in updates screen yet
                 }
             }

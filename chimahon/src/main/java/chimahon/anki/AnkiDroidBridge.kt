@@ -1,0 +1,464 @@
+package chimahon.anki
+
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.Cursor
+import android.net.Uri
+import android.util.Base64
+import android.util.Log
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+import java.math.BigInteger
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+
+class AnkiDroidBridge(private val context: Context) {
+
+    companion object {
+        private const val TAG = "AnkiDroidBridge"
+        const val PERMISSION = "com.ichi2.anki.permission.READ_WRITE_DATABASE"
+        const val PERMISSION_REQUEST_CODE = 2001
+
+        private const val AUTHORITY = "com.ichi2.anki.flashcards"
+        private val BASE_URI = Uri.parse("content://$AUTHORITY")
+        private val NOTES_URI = Uri.withAppendedPath(BASE_URI, "notes")
+        private val NOTES_V2_URI = Uri.withAppendedPath(BASE_URI, "notes_v2")
+        private val MODELS_URI = Uri.withAppendedPath(BASE_URI, "models")
+        private val DECKS_URI = Uri.withAppendedPath(BASE_URI, "decks")
+        private val MEDIA_URI = Uri.withAppendedPath(BASE_URI, "media")
+
+        private const val NOTE_ID = "_id"
+        private const val NOTE_MID = "mid"
+        private const val NOTE_FLDS = "flds"
+        private const val NOTE_TAGS = "tags"
+        private const val NOTE_CSUM = "csum"
+
+        private const val MODEL_ID = "_id"
+        private const val MODEL_NAME = "name"
+        private const val MODEL_FIELD_NAMES = "field_names"
+
+        private const val DECK_ID = "deck_id"
+        private const val DECK_NAME = "deck_name"
+
+        private const val MEDIA_FILE_URI = "file_uri"
+        private const val MEDIA_PREFERRED_NAME = "preferred_name"
+
+        private const val FIELD_SEPARATOR = "\u001f"
+
+        private val IMG_TAG = Regex("<img src=[\"']?([^\"'>]+)[\"']? ?/?>")
+        private val STYLE_TAG = Regex("(?s)<style.*?>.*?</style>")
+        private val SCRIPT_TAG = Regex("(?s)<script.*?>.*?</script>")
+        private val HTML_TAG = Regex("<.*?>")
+    }
+
+    // ==========================================================================
+    // Public API
+    // ==========================================================================
+
+    suspend fun isAnkiDroidInstalled(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            context.packageManager.getPackageInfo("com.ichi2.anki", 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun hasPermission(): Boolean {
+        return context.checkSelfPermission(PERMISSION) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun requestPermission(activity: android.app.Activity) {
+        activity.requestPermissions(arrayOf(PERMISSION), PERMISSION_REQUEST_CODE)
+    }
+
+    suspend fun deckNames(): List<String> = withContext(Dispatchers.IO) {
+        val names = mutableListOf<String>()
+        try {
+            context.contentResolver.query(
+                DECKS_URI,
+                arrayOf(DECK_NAME),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    c.getString(0)?.let(names::add)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "deckNames", e)
+        }
+        names
+    }
+
+    suspend fun modelNames(): List<String> = withContext(Dispatchers.IO) {
+        val names = mutableListOf<String>()
+        try {
+            context.contentResolver.query(
+                MODELS_URI,
+                arrayOf(MODEL_NAME),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    c.getString(0)?.let(names::add)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "modelNames", e)
+        }
+        names
+    }
+
+    suspend fun modelFieldNames(modelName: String): List<String> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<String>()
+        try {
+            context.contentResolver.query(
+                MODELS_URI,
+                arrayOf(MODEL_NAME, MODEL_FIELD_NAMES),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val dbModelName = c.getString(0) ?: continue
+                    if (dbModelName != modelName) continue
+
+                    val rawData = c.getString(1) ?: continue
+                    val parsed = parseFieldNames(rawData)
+                    if (parsed.size > result.size) {
+                        result.clear()
+                        result.addAll(parsed)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "modelFieldNames", e)
+        }
+        result
+    }
+
+    suspend fun findNotes(expression: String, modelName: String? = null): List<Long> =
+        withContext(Dispatchers.IO) {
+            val ids = mutableListOf<Long>()
+            try {
+                val csum = fieldChecksum(expression)
+                context.contentResolver.query(
+                    NOTES_V2_URI,
+                    arrayOf(NOTE_ID, NOTE_MID),
+                    "$NOTE_CSUM=?",
+                    arrayOf(csum.toString()),
+                    null,
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        val nid = c.getLong(0)
+                        val mid = c.getLong(1)
+
+                        if (modelName != null) {
+                            val actualModel = findModelName(mid)
+                            if (actualModel != modelName) continue
+                        }
+
+                        ids.add(nid)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "findNotes", e)
+            }
+            ids
+        }
+
+    suspend fun addNote(
+        deckName: String,
+        modelName: String,
+        fields: Map<String, String>,
+        tags: List<String>,
+    ): Long = withContext(Dispatchers.IO) {
+        val deckId = findDeckId(deckName)
+        val modelId = findModelId(modelName)
+        val fieldNames = getModelFields(modelId)
+
+        val values = Array(fieldNames.size) { i ->
+            fields[fieldNames[i]] ?: ""
+        }
+
+        val tagSet = tags.toMutableSet()
+
+        val cv = ContentValues().apply {
+            put(NOTE_MID, modelId)
+            put(NOTE_FLDS, values.joinToString(FIELD_SEPARATOR))
+            if (tagSet.isNotEmpty()) put(NOTE_TAGS, tagSet.joinToString(" "))
+        }
+
+        val result = context.contentResolver.insert(NOTES_URI, cv)
+            ?: throw Exception("AnkiDroid insert failed")
+
+        val newNoteId = result.lastPathSegment?.toLongOrNull()
+            ?: throw Exception("Failed to parse note ID from insert result")
+
+        moveCardsToDeck(newNoteId, deckId)
+        newNoteId
+    }
+
+    suspend fun updateNoteFields(noteId: Long, fields: Map<String, String>) =
+        withContext(Dispatchers.IO) {
+            val uri = Uri.withAppendedPath(NOTES_URI, noteId.toString())
+            context.contentResolver.query(
+                uri,
+                arrayOf(NOTE_MID, NOTE_FLDS),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                if (!c.moveToFirst()) return@withContext
+
+                val modelId = c.getLong(0)
+                val oldFields = splitFields(c.getString(1))
+                val fieldNames = getModelFields(modelId)
+                val newFields = Array(fieldNames.size) { i ->
+                    when {
+                        fields.containsKey(fieldNames[i]) -> fields[fieldNames[i]]!!
+                        i < oldFields.size -> oldFields[i]
+                        else -> ""
+                    }
+                }
+
+                val cv = ContentValues().apply {
+                    put(NOTE_FLDS, newFields.joinToString(FIELD_SEPARATOR))
+                }
+                context.contentResolver.update(uri, cv, null, null)
+            }
+        }
+
+    fun guiBrowse(query: String) {
+        try {
+            val uri = Uri.parse("anki://x-callback-url/browser?search=${Uri.encode(query)}")
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.ichi2.anki")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "guiBrowse", e)
+        }
+    }
+
+    suspend fun storeMedia(filename: String, data: ByteArray): String =
+        withContext(Dispatchers.IO) {
+            saveMediaBytes(filename, data)
+        }
+
+    suspend fun storeMediaFromBase64(filename: String, base64: String): String =
+        storeMedia(filename, Base64.decode(base64, Base64.NO_WRAP))
+
+    suspend fun storeMediaFromUrl(filename: String, urlString: String): String =
+        withContext(Dispatchers.IO) {
+            val url = URL(urlString)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 30_000
+                readTimeout = 30_000
+                instanceFollowRedirects = true
+            }
+            try {
+                if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                    throw Exception("HTTP ${conn.responseCode}")
+                }
+                val buffer = ByteArrayOutputStream()
+                conn.inputStream.use { input ->
+                    val buf = ByteArray(8192)
+                    var r: Int
+                    while (input.read(buf).also { r = it } != -1) {
+                        buffer.write(buf, 0, r)
+                    }
+                }
+                saveMediaBytes(filename, buffer.toByteArray())
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+    suspend fun storeMediaFromFile(filename: String, filePath: String): String =
+        withContext(Dispatchers.IO) {
+            val file = File(filePath)
+            if (!file.exists()) throw Exception("File not found: $filePath")
+            saveMediaBytes(filename, file.readBytes())
+        }
+
+    // ==========================================================================
+    // Internal helpers
+    // ==========================================================================
+
+    private fun findDeckId(deckName: String): Long {
+        context.contentResolver.query(
+            DECKS_URI,
+            arrayOf(DECK_ID, DECK_NAME),
+            null,
+            null,
+            null,
+        )?.use { c ->
+            val idIdx = c.getColumnIndex(DECK_ID)
+            val nameIdx = c.getColumnIndex(DECK_NAME)
+            if (idIdx == -1 || nameIdx == -1) throw Exception("Missing deck columns")
+            while (c.moveToNext()) {
+                if (c.getString(nameIdx) == deckName) return c.getLong(idIdx)
+            }
+        }
+        throw Exception("Deck '$deckName' not found")
+    }
+
+    private fun findModelId(modelName: String): Long {
+        context.contentResolver.query(
+            MODELS_URI,
+            arrayOf(MODEL_ID, MODEL_NAME),
+            null,
+            null,
+            null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                if (c.getString(1) == modelName) return c.getLong(0)
+            }
+        }
+        throw Exception("Model '$modelName' not found")
+    }
+
+    private fun findModelName(modelId: Long): String {
+        context.contentResolver.query(
+            MODELS_URI,
+            arrayOf(MODEL_NAME),
+            "$MODEL_ID=?",
+            arrayOf(modelId.toString()),
+            null,
+        )?.use { c ->
+            if (c.moveToFirst()) return c.getString(0)
+        }
+        return "Unknown"
+    }
+
+    private fun getModelFields(modelId: Long): List<String> {
+        context.contentResolver.query(
+            MODELS_URI,
+            arrayOf(MODEL_ID, MODEL_FIELD_NAMES),
+            null,
+            null,
+            null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                if (c.getLong(0) == modelId) {
+                    val rawData = c.getString(1) ?: continue
+                    return parseFieldNames(rawData)
+                }
+            }
+        }
+        throw Exception("Model fields not found for ID: $modelId")
+    }
+
+    private fun parseFieldNames(rawData: String): List<String> {
+        val trimmed = rawData.trim()
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            try {
+                val json = org.json.JSONArray(trimmed)
+                return (0 until json.length()).map { i ->
+                    val item = json.get(i)
+                    if (item is org.json.JSONObject) item.optString("name") else item.toString()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Field parse error", e)
+            }
+        }
+        return splitFields(rawData)
+    }
+
+    private fun moveCardsToDeck(noteId: Long, targetDeckId: Long) {
+        val cardsUri = Uri.withAppendedPath(NOTES_URI, "$noteId/cards")
+        try {
+            context.contentResolver.query(
+                cardsUri,
+                arrayOf("ord", "deck_id"),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val ord = c.getInt(0)
+                    val currentDeckId = c.getLong(1)
+                    if (currentDeckId != targetDeckId) {
+                        val cardUri = Uri.withAppendedPath(cardsUri, ord.toString())
+                        val cv = ContentValues().apply {
+                            put("deck_id", targetDeckId)
+                        }
+                        context.contentResolver.update(cardUri, cv, null, null)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "moveCardsToDeck", e)
+        }
+    }
+
+    private fun saveMediaBytes(name: String, data: ByteArray): String {
+        val mediaDir = File(context.getExternalFilesDir(null), "anki_media")
+        mediaDir.mkdirs()
+
+        val file = File(mediaDir, name)
+        file.writeBytes(data)
+
+        val contentUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file,
+        )
+
+        context.grantUriPermission(
+            "com.ichi2.anki",
+            contentUri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
+
+        val mediaCv = ContentValues().apply {
+            put(MEDIA_FILE_URI, contentUri.toString())
+            put(MEDIA_PREFERRED_NAME, name.replace(Regex("\\.[^.]*$"), ""))
+        }
+
+        val res = context.contentResolver.insert(MEDIA_URI, mediaCv)
+        file.delete()
+
+        if (res != null) {
+            return File(res.path!!).name
+        }
+
+        throw Exception("AnkiDroid failed to copy the media")
+    }
+
+    private fun fieldChecksum(data: String): Long {
+        return try {
+            var cleaned = IMG_TAG.replace(data, " $1 ")
+            cleaned = STYLE_TAG.replace(cleaned, "")
+            cleaned = SCRIPT_TAG.replace(cleaned, "")
+            cleaned = HTML_TAG.replace(cleaned, "")
+            cleaned = cleaned.replace("&nbsp;", " ").trim()
+
+            val md = MessageDigest.getInstance("SHA-1")
+            val hash = md.digest(cleaned.toByteArray(StandardCharsets.UTF_8))
+            val big = BigInteger(1, hash)
+            var hex = big.toString(16)
+            while (hex.length < 40) hex = "0$hex"
+            hex.substring(0, 8).toLong(16)
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    private fun splitFields(str: String): List<String> =
+        str.split(FIELD_SEPARATOR)
+}

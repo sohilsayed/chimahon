@@ -1,6 +1,5 @@
 package chimahon.ocr
 
-
 internal const val LENS_CRUPLOAD_ENDPOINT = "https://lensfrontend-pa.googleapis.com/v1/crupload"
 internal const val DEFAULT_API_KEY = "AIzaSyDr2UxVnv_U85AbhhY8XSHSIavUW0DC-sY"
 internal const val DEFAULT_USER_AGENT =
