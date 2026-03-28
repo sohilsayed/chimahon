@@ -14,7 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.History
@@ -256,7 +256,7 @@ fun Sponsor() {
         horizontalArrangement = Arrangement.Center,
     ) {
         TextButton(
-            onClick = { context.openInBrowser(Constants.SPONSOR) },
+            onClick = { context.openInBrowser(Constants.GITHUB_PROJECT) },
             modifier = Modifier
                 .border(
                     width = 2.dp,
@@ -268,7 +268,7 @@ fun Sponsor() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Favorite,
+                    imageVector = Icons.Filled.Star,
                     contentDescription = stringResource(KMR.strings.sponsor_me),
                     tint = MaterialTheme.colorScheme.primary,
                 )
