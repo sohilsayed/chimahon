@@ -100,10 +100,10 @@ class LensClient(
                     }
                 }
                 MergerType.OWOCR -> rawChunks.flatMap { chunk ->
+                    // OWOCR: toEngineLine already normalizes coords to 0-1, 
+                    // OwOCRMerger.merge outputs normalized results - skip double normalization
                     val engineLines = chunk.lines.map { it.toEngineLine(chunk, language) }
-                    OwOCRMerger.merge(engineLines, config).map { result ->
-                        result.normalizeFromChunk(chunk)
-                    }
+                    OwOCRMerger.merge(engineLines, config)
                 }
             }
 

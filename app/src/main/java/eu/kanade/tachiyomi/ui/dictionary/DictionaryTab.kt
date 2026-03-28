@@ -120,6 +120,7 @@ data object DictionaryTab : Tab {
         var results by remember { mutableStateOf<List<LookupResult>>(emptyList()) }
         var styles by remember { mutableStateOf<List<DictionaryStyle>>(emptyList()) }
         var mediaDataUris by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+        var existingExpressions by remember { mutableStateOf<Set<String>>(emptySet()) }
         var hasSearched by remember { mutableStateOf(false) }
         var shouldMountWebView by remember { mutableStateOf(false) }
         var searchJob by remember { mutableStateOf<Job?>(null) }
@@ -240,25 +241,21 @@ data object DictionaryTab : Tab {
                             hasSearched = true
 
                             // Check which expressions are already in Anki
-                            if (ankiEnabled && ankiDupCheck && ankiModel.isNotBlank() && results.isNotEmpty()) {
+                            if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
                                 val bridge = AnkiDroidBridge(context)
-                                val existingExpressions = mutableSetOf<String>()
+                                val foundExpressions = mutableSetOf<String>()
                                 val uniqueExpressions = results.map { it.term.expression }.distinct()
                                 for (expr in uniqueExpressions) {
                                     try {
                                         val notes = bridge.findNotes(expr, ankiModel)
                                         if (notes.isNotEmpty()) {
-                                            existingExpressions.add(expr)
+                                            foundExpressions.add(expr)
                                         }
                                     } catch (_: Exception) {
                                         // Ignore errors
                                     }
                                 }
-                                // Pass to WebView
-                                retainedWebView?.evaluateJavascript(
-                                    "window.__ankiExistingExpressions = ${org.json.JSONArray(existingExpressions.toList())};",
-                                    null,
-                                )
+                                existingExpressions = foundExpressions
                             }
 
                             lookupResult.diagnostics?.let { diagnostics ->
@@ -301,6 +298,7 @@ data object DictionaryTab : Tab {
                         "Search to view dictionary entries"
                     },
                     showFrequencyHarmonic = showFrequencyHarmonic,
+                    existingExpressions = existingExpressions,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },

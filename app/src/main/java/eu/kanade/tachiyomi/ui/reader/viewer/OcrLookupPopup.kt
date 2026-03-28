@@ -62,6 +62,7 @@ fun OcrLookupPopup(
     var results by remember { mutableStateOf<List<LookupResult>>(emptyList()) }
     var styles by remember { mutableStateOf<List<chimahon.DictionaryStyle>>(emptyList()) }
     var mediaDataUris by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var existingExpressions by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -179,24 +180,21 @@ fun OcrLookupPopup(
                 errorMessage = result.error
 
                 // Check which expressions are already in Anki
-                if (ankiEnabled && ankiDupCheck && ankiModel.isNotBlank() && results.isNotEmpty()) {
+                if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
                     val bridge = AnkiDroidBridge(context)
-                    val existingExpressions = mutableSetOf<String>()
+                    val foundExpressions = mutableSetOf<String>()
                     val uniqueExpressions = results.map { it.term.expression }.distinct()
                     for (expr in uniqueExpressions) {
                         try {
                             val notes = bridge.findNotes(expr, ankiModel)
                             if (notes.isNotEmpty()) {
-                                existingExpressions.add(expr)
+                                foundExpressions.add(expr)
                             }
                         } catch (_: Exception) {
                             // Ignore errors
                         }
                     }
-                    webView.evaluateJavascript(
-                        "window.__ankiExistingExpressions = ${org.json.JSONArray(existingExpressions.toList())};",
-                        null,
-                    )
+                    existingExpressions = foundExpressions
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Lookup failed"
@@ -235,6 +233,7 @@ fun OcrLookupPopup(
                         placeholder = "",
                         headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
                         popupScale = popupScalePref,
+                        existingExpressions = existingExpressions,
                         webViewProvider = { webView },
                         ankiBridge = delegatingBridge,
                         modifier = Modifier

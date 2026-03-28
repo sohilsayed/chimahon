@@ -1154,7 +1154,8 @@
     body.appendChild(section);
   }
 
-  function renderEntry(result, mediaMap) {
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions) {
+    const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
     article.dataset.index = String(result.index || 0);
@@ -1178,9 +1179,8 @@
 
     // Anki add button
     const ankiBtn = document.createElement('button');
-    // Check if expression is already in Anki
-    const isAlreadyAdded = typeof window.__ankiExistingExpressions !== 'undefined' 
-        && window.__ankiExistingExpressions.includes(expression);
+    // Check if expression is already in Anki (from payload)
+    const isAlreadyAdded = existingSet.includes(expression);
     ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
     ankiBtn.textContent = '+';
     ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
@@ -1204,7 +1204,7 @@
     appendDefinitionsSection(body, glossaries, mediaMap);
 
     const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
-    appendFrequenciesSection(body, frequencies, payload.showFrequencyHarmonic);
+    appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
 
     const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
     appendPitchesSection(body, pitches);
@@ -1228,6 +1228,13 @@
   }
 
   function render(payload) {
+    console.log('[DictionaryRenderJS] render called, payload type:', typeof payload, 'keys:', payload ? Object.keys(payload).join(',') : 'null');
+    
+    if (!payload || typeof payload !== 'object') {
+      console.error('[DictionaryRenderJS] render: invalid payload:', payload);
+      return;
+    }
+    
     const started = performance.now();
     const root = document.documentElement;
     root.setAttribute('data-theme', payload.isDark ? 'dark' : 'light');
@@ -1263,6 +1270,7 @@
 
     const mediaMap = payload.mediaDataUris || {};
     const results = Array.isArray(payload.results) ? payload.results : [];
+    const existingExpressions = Array.isArray(payload.existingExpressions) ? payload.existingExpressions : [];
 
     if (results.length === 0) {
       const empty = document.createElement('div');
@@ -1272,7 +1280,7 @@
     } else {
       const fragment = document.createDocumentFragment();
       for (const result of results) {
-        fragment.appendChild(renderEntry(result, mediaMap));
+        fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions));
       }
       container.appendChild(fragment);
     }
@@ -1292,9 +1300,19 @@
   },
   
   renderFromBridge() {
-    const json = PayloadBridge.getJson();
-    const payload = JSON.parse(json);
-    render(payload);
+    try {
+      const json = PayloadBridge.getJson();
+      console.log('[DictionaryRenderJS] renderFromBridge: json length=' + (json ? json.length : 'null/undefined'));
+      if (!json) {
+        console.error('[DictionaryRenderJS] Bridge returned empty or null');
+        return;
+      }
+      const payload = JSON.parse(json);
+      console.log('[DictionaryRenderJS] renderFromBridge: parsed payload, results=' + (payload.results ? payload.results.length : 0));
+      render(payload);
+    } catch (e) {
+      console.error('[DictionaryRenderJS] renderFromBridge error:', e.message);
+    }
   },
   
   clear() {

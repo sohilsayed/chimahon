@@ -33,15 +33,16 @@ fun DictionaryEntryWebView(
     headerText: String = "",
     popupScale: Int = 100,
     showFrequencyHarmonic: Boolean = false,
+    existingExpressions: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
     ankiBridge: DelegatingWebViewBridge? = null,
 ) {
     val isDark = isSystemInDarkTheme()
 
-    val payload = remember(results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic) {
+    val payload = remember(results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, existingExpressions) {
         val buildStart = SystemClock.elapsedRealtime()
-        val result = buildRenderPayload(results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic)
+        val result = buildRenderPayload(results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, existingExpressions)
         Log.i(
             "DictionaryRender",
             "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size}",
@@ -143,9 +144,13 @@ fun DictionaryEntryWebView(
 
 // JavaScript bridge for zero-overhead payload transfer
 private class PayloadBridge {
-    @get:JavascriptInterface
     @Volatile
-    var json: String = ""
+    private var _json: String = ""
+
+    fun setJson(value: String) { _json = value }
+
+    @JavascriptInterface
+    fun getJson(): String = _json
 }
 
 private class DictionaryWebViewState(
@@ -169,7 +174,7 @@ private class DictionaryWebViewState(
         val renderStart = SystemClock.elapsedRealtime()
 
         // Update bridge payload and trigger JS render
-        bridge.json = payload
+        bridge.setJson(payload)
         webView.evaluateJavascript(
             "window.DictionaryRenderer && window.DictionaryRenderer.renderFromBridge();",
             null,
@@ -189,6 +194,7 @@ private fun buildRenderPayload(
     placeholder: String,
     isDark: Boolean,
     showFrequencyHarmonic: Boolean,
+    existingExpressions: Set<String> = emptySet(),
 ): String {
     val buffer = StringWriter(4096)
     JsonWriter(buffer).use { w ->
@@ -196,6 +202,11 @@ private fun buildRenderPayload(
         w.name("placeholder").value(placeholder)
         w.name("isDark").value(isDark)
         w.name("showFrequencyHarmonic").value(showFrequencyHarmonic)
+        w.name("existingExpressions").beginArray()
+        for (expr in existingExpressions) {
+            w.value(expr)
+        }
+        w.endArray()
 
         // Styles array
         w.name("styles").beginArray()

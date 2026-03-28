@@ -89,12 +89,14 @@ object Marker {
         GLOSSARY to listOf("glossary", "definition", "meaning"),
         AUDIO to listOf("audio", "sound", "word-audio", "term-audio"),
         DICTIONARY to listOf("dictionary", "dict"),
-        PITCH_ACCENTS to listOf("pitch-accents", "pitch", "pitch-accent", "pitch-pattern"),
+        PITCH_ACCENTS to listOf("pitch-accents", "pitch-accent", "pitch-pattern"),
         SENTENCE to listOf("sentence", "example-sentence"),
         CLOZE_BODY to listOf("cloze-body", "cloze"),
         CLOZE_PREFIX to listOf("cloze-prefix"),
         CLOZE_SUFFIX to listOf("cloze-suffix"),
-        FREQUENCY_HARMONIC_RANK to listOf("frequency", "freq", "freq-sort"),
+        FREQUENCIES to listOf("frequencies", "freq", "frequency-list"),
+        FREQUENCY_HARMONIC_RANK to listOf("freq-rank", "frequency-rank"),
+        FREQUENCY_AVERAGE_RANK to listOf("freq-avg", "frequency-average"),
         SEARCH_QUERY to listOf("search-query", "query"),
         SCREENSHOT to listOf("screenshot"),
         TAGS to listOf("tags", "tag"),
@@ -108,7 +110,7 @@ object Marker {
         }
         val lower = fieldName.lowercase()
         for ((marker, aliases) in AUTO_DETECT_ALIASES) {
-            if (aliases.any { alias -> lower.contains(alias) }) return marker
+            if (aliases.any { alias -> lower == alias }) return marker
         }
         return null
     }
@@ -131,6 +133,8 @@ sealed class AnkiResult {
 
 object AnkiCardCreator {
 
+    private const val TAG = "AnkiCardCreator"
+
     suspend fun addToAnki(
         context: Context,
         result: LookupResult,
@@ -144,16 +148,23 @@ object AnkiCardCreator {
         sentence: String = "",
         offset: Int = -1,
     ): AnkiResult {
-        if (deck.isBlank() || model.isBlank()) return AnkiResult.NotConfigured
+        android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, fieldMapJson=$fieldMapJson")
+        
+        if (deck.isBlank() || model.isBlank()) {
+            android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
+            return AnkiResult.NotConfigured
+        }
 
         val bridge = AnkiDroidBridge(context)
         val fieldMap = parseFieldMap(fieldMapJson)
+        android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
         val cloze = if (sentence.isNotEmpty() && offset >= 0) {
             buildCloze(sentence, offset, result.term.expression, result.term.reading)
         } else {
             null
         }
         val fields = buildFields(result, fieldMap, cloze)
+        android.util.Log.d(TAG, "addToAnki: built fields=$fields")
         val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
         if (dupCheck) {

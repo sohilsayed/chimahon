@@ -507,6 +507,16 @@ object SettingsDictionaryScreen : SearchableSettings {
         LaunchedEffect(selectedModel, ankiInstalled) {
             if (selectedModel.isNotBlank() && ankiInstalled == true && bridge.hasPermission()) {
                 modelFields = bridge.modelFieldNames(selectedModel)
+
+                // Auto-detect field mappings and save immediately (overwrite)
+                val detectedMap = modelFields.mapIndexedNotNull { index, fieldName ->
+                    val marker = Marker.autoDetect(fieldName, index)
+                    if (marker != null) fieldName to "{$marker}" else null
+                }.toMap()
+
+                if (detectedMap.isNotEmpty()) {
+                    fieldMapPref.set(org.json.JSONObject(detectedMap).toString())
+                }
             }
         }
 
@@ -774,7 +784,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     onValueChange = { newValue ->
                         onValueChange(convertToStorageFormat(newValue))
                     },
-                    placeholder = { Text("{expression}", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("", style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
