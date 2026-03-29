@@ -7,6 +7,7 @@ internal data class NormalizedBBox(
     val top: Double,
     val right: Double,
     val bottom: Double,
+    val rotation: Double = 0.0,
 ) {
     val width: Double get() = right - left
     val height: Double get() = bottom - top
@@ -27,6 +28,7 @@ internal data class EngineLine(
     val characterSize: Double,
     val hasJpText: Boolean,
     val hasKanji: Boolean,
+    val rotation: Double = 0.0,
 )
 
 private val CJ_REGEX = Regex("[\u3041-\u3096\u30A1-\u30FA\u4E01-\u9FFF]")
@@ -38,19 +40,21 @@ internal fun EngineLine(
     writingDirection: WritingDirection?,
     language: OcrLanguage,
 ): EngineLine {
-    val normalizedText = CJ_REGEX.findAll(text).map { it.value }.joinToString("")
+    val cleanedText = OcrPreprocessor.clean(text)
+    val normalizedText = CJ_REGEX.findAll(cleanedText).map { it.value }.joinToString("")
     val hasJpText = normalizedText.isNotEmpty()
     val hasKanji = hasJpText && KANJI_REGEX_ENGINE.containsMatchIn(normalizedText)
-    val charCount = text.length.coerceAtLeast(1)
+    val charCount = cleanedText.length.coerceAtLeast(1)
     val dimension = if (writingDirection == WritingDirection.TTB) bbox.height else bbox.width
     val characterSize = dimension / charCount
 
     return EngineLine(
-        text = text,
+        text = cleanedText,
         bbox = bbox,
         writingDirection = writingDirection,
         characterSize = characterSize,
         hasJpText = hasJpText,
         hasKanji = hasKanji,
+        rotation = bbox.rotation,
     )
 }

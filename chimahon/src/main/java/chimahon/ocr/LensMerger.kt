@@ -25,53 +25,39 @@ internal object LensMerger {
         for (paragraph in lensResult.paragraphs) {
             for (line in paragraph.lines) {
                 val geometry = line.geometry ?: continue
-                val cleanText = postProcessText(line.text, language)
+                val cleanText = OcrPreprocessor.clean(postProcessText(line.text, language))
                 if (cleanText.isBlank()) continue
 
-                // Convert normalized center+rotation → pixel AABB (matches logic.rs exactly)
                 val rotation = geometry.rotationZ.toDouble()
                 val cx = geometry.centerX.toDouble() * imageWidth
                 val cy = geometry.centerY.toDouble() * imageHeight
                 val w = geometry.width.toDouble() * imageWidth
                 val h = geometry.height.toDouble() * imageHeight
-
                 val hw = w / 2.0
                 val hh = h / 2.0
-                val cosA = cos(rotation)
-                val sinA = sin(rotation)
-
-                var minX = Double.POSITIVE_INFINITY
-                var maxX = Double.NEGATIVE_INFINITY
-                var minY = Double.POSITIVE_INFINITY
-                var maxY = Double.NEGATIVE_INFINITY
-
-                for ((lx, ly) in arrayOf(-hw to -hh, hw to -hh, hw to hh, -hw to hh)) {
-                    val rx = lx * cosA - ly * sinA + cx
-                    val ry = lx * sinA + ly * cosA + cy
-                    if (rx < minX) minX = rx
-                    if (rx > maxX) maxX = rx
-                    if (ry < minY) minY = ry
-                    if (ry > maxY) maxY = ry
-                }
-
-                val aabbW = maxX - minX
-                val aabbH = maxY - minY
 
                 // Orientation detection (mirrors logic.rs)
                 val isVertical = if (language.prefersVertical) {
                     if (abs(rotation) > 0.1) {
                         abs(abs(rotation) - PI / 2) < 0.5
                     } else {
-                        aabbW <= aabbH
+                        w <= h
                     }
                 } else {
                     false
                 }
 
+                val rotationDeg = Math.toDegrees(rotation)
                 lines.add(
                     OcrResult(
                         text = cleanText,
-                        tightBoundingBox = BoundingBox(x = minX, y = minY, width = aabbW, height = aabbH),
+                        tightBoundingBox = BoundingBox(
+                            x = cx - hw,
+                            y = cy - hh,
+                            width = w,
+                            height = h,
+                            rotation = rotationDeg,
+                        ),
                         isMerged = false,
                         forcedOrientation = if (isVertical) "vertical" else "horizontal",
                     ),
@@ -302,14 +288,21 @@ internal object LensMerger {
             val lensIsVertical = l.forcedOrientation == "vertical"
             val charCount = l.text.length
 
+            // Use AABB for grouping logic, but keep OBB in OcrResult
+            val aabb = calculateAabb(getBoundingBoxCorners(b))
+            val abx = aabb[0] - aabb[2] / 2.0
+            val aby = aabb[1] - aabb[3] / 2.0
+            val abw = aabb[2]
+            val abh = aabb[3]
+
             val isV = if (config.language.prefersVertical) {
                 if (charCount == 1) {
-                    b.height > b.width * 0.8
+                    abh > abw * 0.8
                 } else {
-                    lensIsVertical || b.height > b.width
+                    lensIsVertical || abh > abw
                 }
             } else {
-                lensIsVertical && b.height > b.width * 1.1
+                lensIsVertical && abh > abw * 1.1
             }
 
             val minMain: Double
@@ -317,21 +310,21 @@ internal object LensMerger {
             val minCross: Double
             val maxCross: Double
             if (isV) {
-                minMain = b.y
-                maxMain = b.y + b.height
-                minCross = b.x
-                maxCross = b.x + b.width
+                minMain = aby
+                maxMain = aby + abh
+                minCross = abx
+                maxCross = abx + abw
             } else {
-                minMain = b.x
-                maxMain = b.x + b.width
-                minCross = b.y
-                maxCross = b.y + b.height
+                minMain = abx
+                maxMain = abx + abw
+                minCross = aby
+                maxCross = aby + abh
             }
 
             ProcessedLine(
                 isVertical = isV,
-                fontSize = if (isV) b.width else b.height,
-                lengthMain = if (isV) b.height else b.width,
+                fontSize = if (isV) abw else abh,
+                lengthMain = if (isV) abh else abw,
                 minMain = minMain,
                 maxMain = maxMain,
                 minCross = minCross,
@@ -363,6 +356,7 @@ internal object LensMerger {
                 results.add(
                     cleanLines[idx].copy(
                         forcedOrientation = if (processed[idx].isVertical) "vertical" else "horizontal",
+                        constituentBoxes = listOf(cleanLines[idx].tightBoundingBox),
                     ),
                 )
                 continue
@@ -387,26 +381,10 @@ internal object LensMerger {
             val useSpaceSeparator = config.addSpaceOnMerge ?: !config.language.prefersNoSpace
             val textContent = StringBuilder()
             for ((idx, line) in groupLines.withIndex()) {
-                if (idx == 0) {
-                    textContent.append(line.text)
-                    continue
+                if (idx > 0) {
+                    textContent.append('\n')
                 }
-                val prev = groupLines[idx - 1]
-                val isNewLine = if (isVertical) {
-                    // Different column = new line
-                    val px2 = prev.tightBoundingBox.x + prev.tightBoundingBox.width
-                    abs(px2 - line.tightBoundingBox.x) > 0.0
-                } else {
-                    // Gap between rows = new line
-                    val py2 = prev.tightBoundingBox.y + prev.tightBoundingBox.height
-                    maxOf(0.0, line.tightBoundingBox.y - py2) > 0.0
-                }
-                if (isNewLine) {
-                    textContent.append('\n').append(line.text)
-                } else {
-                    if (useSpaceSeparator) textContent.append(' ')
-                    textContent.append(line.text)
-                }
+                textContent.append(line.text)
             }
 
             // Compute merged AABB from all constituent corners
@@ -428,6 +406,7 @@ internal object LensMerger {
                     ),
                     isMerged = true,
                     forcedOrientation = if (isVertical) "vertical" else "horizontal",
+                    constituentBoxes = groupLines.map { it.tightBoundingBox },
                 ),
             )
         }

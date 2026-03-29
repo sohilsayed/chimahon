@@ -137,32 +137,158 @@ class OcrSubsamplingImageView(
     ) {
         canvas.save()
 
-        // Hard clamp to box bounds — prevent text bleed
-        canvas.clipRect(tlScreen.x, tlScreen.y, brScreen.x, brScreen.y)
-
-        // Draw semi-transparent background
-        canvas.drawRect(
-            tlScreen.x,
-            tlScreen.y,
-            brScreen.x,
-            brScreen.y,
-            backgroundPaint,
-        )
-
-        if (block.vertical) {
-            // Render upright vertical text (tategaki-like columns), not rotated horizontal text.
-            host.ocrLayoutCache = null
-            drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH)
+        val geometries = block.lineGeometries
+        if (geometries != null && geometries.size == block.lines.size) {
+            // Per-line rendering logic (matches reference userscript)
+            for (i in block.lines.indices) {
+                drawLineOrientedText(canvas, block.lines[i], geometries[i], block.vertical, host)
+            }
         } else {
-            val layout = buildLayoutForHorizontal(block, screenW, screenH, host)
-            host.ocrLayoutCache = Pair(block, layout)
-
-            // Horizontal text — translate only
-            canvas.translate(tlScreen.x, tlScreen.y)
-            layout.draw(canvas)
+            // Fallback: block-level rendering
+            // Draw semi-transparent background for the entire block only if no geometries
+            canvas.drawRect(
+                tlScreen.x,
+                tlScreen.y,
+                brScreen.x,
+                brScreen.y,
+                backgroundPaint,
+            )
+            if (block.vertical) {
+                drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH)
+            } else {
+                val layout = buildLayoutForHorizontal(block, screenW, screenH, host)
+                host.ocrLayoutCache = Pair(block, layout)
+                canvas.translate(tlScreen.x, tlScreen.y)
+                layout.draw(canvas)
+            }
         }
 
         canvas.restore()
+    }
+
+    /**
+     * Draw a single line with its own orientation and scale.
+     */
+    private fun drawLineOrientedText(
+        canvas: Canvas,
+        text: String,
+        geo: OcrLineGeometry,
+        isVertical: Boolean,
+        host: ReaderPageImageView,
+    ) {
+        if (text.isBlank()) return
+
+        // Convert normalized to screen
+        val centerX = (geo.xmin + geo.xmax) / 2f
+        val centerY = (geo.ymin + geo.ymax) / 2f
+        val width = geo.xmax - geo.xmin
+        val height = geo.ymax - geo.ymin
+        val boxScale = host.ocrBoxScale
+
+        val srcXMin = (centerX - (width * boxScale) / 2f) * sWidth
+        val srcYMin = (centerY - (height * boxScale) / 2f) * sHeight
+        val srcXMax = (centerX + (width * boxScale) / 2f) * sWidth
+        val srcYMax = (centerY + (height * boxScale) / 2f) * sHeight
+
+        val tl = sourceToViewCoord(srcXMin, srcYMin) ?: return
+        val br = sourceToViewCoord(srcXMax, srcYMax) ?: return
+        val sW = br.x - tl.x
+        val sH = br.y - tl.y
+
+        canvas.save()
+        
+        // Rotate around center of the line box
+        canvas.rotate(geo.rotation, tl.x + sW / 2f, tl.y + sH / 2f)
+
+        // Draw line-level background (now respects rotation)
+        canvas.drawRect(tl.x, tl.y, br.x, br.y, backgroundPaint)
+
+        // Auto-detect direction if not explicitly vertical at block level.
+        // A box significantly taller than wide is almost certainly vertical Tategumi.
+        val lineIsVertical = isVertical || (height / width > 1.2f)
+
+        if (lineIsVertical) {
+            // For vertical lines, we use per-character column draw
+            drawColumnText(canvas, text, tl, sW, sH)
+        } else {
+            // For horizontal lines, we now use binary search for ideal font size
+            drawHorizontalLineText(canvas, text, tl, sW, sH)
+        }
+
+        canvas.restore()
+    }
+
+    private fun drawHorizontalLineText(canvas: Canvas, text: String, tl: PointF, sW: Float, sH: Float) {
+        val density = context.resources.displayMetrics.density
+        
+        // Binary search for maximizing font size, similar to userscript's findBestFit
+        var low = 8f * density
+        var high = sH * 2.0f // Allow more headroom for short text in wide boxes
+        var bestSize = low
+        
+        // Approx 10 iterations for precision
+        repeat(10) {
+            val mid = (low + high) / 2f
+            textPaint.textSize = mid
+            val width = textPaint.measureText(text)
+            
+            // Matching reference findBestFit: horizontal search is width-based only
+            if (width <= sW * 1.05f) {
+                bestSize = mid
+                low = mid + 0.1f
+            } else {
+                high = mid - 0.1f
+            }
+        }
+        
+        textPaint.textSize = bestSize
+        textPaint.textAlign = Paint.Align.CENTER
+        
+        val fm = textPaint.fontMetrics
+        val baselineShift = -(fm.ascent + fm.descent) / 2f
+        
+        // Centered drawing
+        canvas.drawText(text, tl.x + sW / 2f, tl.y + sH / 2f + baselineShift, textPaint)
+    }
+
+
+    private fun drawColumnText(canvas: Canvas, text: String, tl: PointF, sW: Float, sH: Float) {
+        val density = context.resources.displayMetrics.density
+        val rowStep = sH / text.length.coerceAtLeast(1)
+        
+        // Binary search for maximizing vertical font size
+        var low = 8f * density
+        var high = minOf(sW, rowStep) * 2.0f
+        var bestSize = low
+        
+        repeat(10) {
+            val mid = (low + high) / 2f
+            textPaint.textSize = mid
+            // For vertical CJK, width is roughly equal to textSize
+            // We measure one character to be sure
+            val charWidth = textPaint.measureText(text.take(1))
+            val fm = textPaint.fontMetrics
+            val charHeight = fm.descent - fm.ascent
+            
+            if (charWidth <= sW * 1.05f && charHeight <= rowStep * 1.05f) {
+                bestSize = mid
+                low = mid + 0.1f
+            } else {
+                high = mid - 0.1f
+            }
+        }
+        
+        textPaint.textSize = bestSize
+        textPaint.textAlign = Paint.Align.CENTER
+        
+        val fm = textPaint.fontMetrics
+        val baselineShift = -(fm.ascent + fm.descent) / 2f
+        val x = tl.x + sW / 2f
+        
+        text.forEachIndexed { i, ch ->
+            val yCenter = tl.y + rowStep * (i + 0.5f)
+            canvas.drawText(ch.toString(), x, yCenter + baselineShift, textPaint)
+        }
     }
 
     private fun drawVerticalOcrText(

@@ -50,6 +50,7 @@ internal object OwOCRMerger {
         val characterSize: Double,
         val hasJpText: Boolean,
         val hasKanji: Boolean,
+        val rotation: Double = 0.0,
         var isFurigana: Boolean = false,
         var paragraphId: Int? = null,
     )
@@ -72,6 +73,7 @@ internal object OwOCRMerger {
                 characterSize = line.characterSize,
                 hasJpText = line.hasJpText,
                 hasKanji = line.hasKanji,
+                rotation = line.rotation,
             )
         }
     }
@@ -185,19 +187,9 @@ internal object OwOCRMerger {
         val textContent = buildString {
             for ((idx, line) in filtered.withIndex()) {
                 if (idx > 0) {
-                    val prev = filtered[idx - 1]
-                    val isNewLine = if (isVertical) {
-                        abs(prev.bbox.right - line.bbox.right) > 0.001
-                    } else {
-                        prev.bbox.bottom < line.bbox.top
-                    }
-                    if (isNewLine) {
-                        append('\n')
-                    } else if (config.addSpaceOnMerge == true) {
-                        append(' ')
-                    }
+                    append('\n')
                 }
-                append(line.text)
+                append(OcrPreprocessor.clean(line.text))
             }
         }
 
@@ -213,6 +205,7 @@ internal object OwOCRMerger {
             tightBoundingBox = BoundingBox(x = left, y = top, width = right - left, height = bottom - top),
             isMerged = filtered.size > 1,
             forcedOrientation = forcedOrientation,
+            constituentBoxes = filtered.map { it.bbox.toBoundingBox() },
         )
 
         val largestLineCharSize = if (isVertical) {
@@ -279,7 +272,7 @@ internal object OwOCRMerger {
             lines.sortedBy { it.bbox.centerX }
         }
 
-        val mergedText = sorted.joinToString("") { it.text }
+        val mergedText = OcrPreprocessor.clean(sorted.joinToString("") { it.text })
         val left = sorted.minOf { it.bbox.left }
         val right = sorted.maxOf { it.bbox.right }
         val top = sorted.minOf { it.bbox.top }
@@ -297,6 +290,7 @@ internal object OwOCRMerger {
             characterSize = charSize,
             hasJpText = sorted.any { it.hasJpText },
             hasKanji = sorted.any { it.hasKanji },
+            rotation = sorted[0].rotation, // Take rotation from first line in group
         )
     }
 
@@ -487,6 +481,9 @@ internal object OwOCRMerger {
 
     private fun BoundingBox.toNormalized(): NormalizedBBox =
         NormalizedBBox(x, y, x + width, y + height)
+    
+    private fun NormalizedBBox.toBoundingBox(): BoundingBox =
+        BoundingBox(x = left, y = top, width = width, height = height, rotation = rotation)
 
     // ================================================================
     // STAGE 4: groupParagraphsIntoRows

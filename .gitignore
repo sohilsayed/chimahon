@@ -29,6 +29,7 @@ app/standard/preview/*
 # Chimahon additions
 *.md
 /ref
+/reference/
 /external_ocr_refs
 AGENTS.md
 /app/src/main/assets/ocr-test

@@ -658,6 +658,18 @@ open class ReaderPageImageView @JvmOverloads constructor(
         viewY: Float,
         ssiv: SubsamplingScaleImageView,
     ): Int? {
+        val geometries = block.lineGeometries
+        if (geometries != null && geometries.size == block.lines.size) {
+            // Per-line hit testing
+            for (i in geometries.indices) {
+                val geo = geometries[i]
+                val offset = getCharOffsetInLine(block.lines[i], geo, viewX, viewY, ssiv, block.vertical)
+                if (offset != null) {
+                    return block.lines.take(i).sumOf { it.length } + offset
+                }
+            }
+        }
+
         val tl = ssiv.sourceToViewCoord(block.xmin * ssiv.sWidth, block.ymin * ssiv.sHeight)
             ?: return null
         val br = ssiv.sourceToViewCoord(block.xmax * ssiv.sWidth, block.ymax * ssiv.sHeight)
@@ -681,6 +693,58 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         val line = layout.getLineForVertical(ly.toInt())
         return layout.getOffsetForHorizontal(line, lx)
+    }
+
+    private fun getCharOffsetInLine(
+        text: String,
+        geo: OcrLineGeometry,
+        viewX: Float,
+        viewY: Float,
+        ssiv: SubsamplingScaleImageView,
+        isVertical: Boolean,
+    ): Int? {
+        val centerX = (geo.xmin + geo.xmax) / 2f
+        val centerY = (geo.ymin + geo.ymax) / 2f
+        val width = geo.xmax - geo.xmin
+        val height = geo.ymax - geo.ymin
+        val boxScale = ocrBoxScale
+
+        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+
+        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: return null
+        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: return null
+        val sW = br.x - tl.x
+        val sH = br.y - tl.y
+
+        // Translate and rotate tap point to local space of the line box
+        val cx = tl.x + sW / 2f
+        val cy = tl.y + sH / 2f
+
+        // Inverse rotation: rotate point around center by -rotation
+        val rad = Math.toRadians(-geo.rotation.toDouble())
+        val dx = (viewX - cx).toDouble()
+        val dy = (viewY - cy).toDouble()
+        val rx = (dx * Math.cos(rad) - dy * Math.sin(rad)).toFloat()
+        val ry = (dx * Math.sin(rad) + dy * Math.cos(rad)).toFloat()
+
+        // Local coordinates relative to top-left of the line box (at 0 deg)
+        val lx = rx + sW / 2f
+        val ly = ry + sH / 2f
+
+        // Hit test
+        if (lx < 0 || lx > sW || ly < 0 || ly > sH) return null
+
+        // Calculate index based on orientation
+        return if (isVertical) {
+            (ly / (sH / text.length.coerceAtLeast(1)))
+                .toInt().coerceIn(0, text.length - 1)
+        } else {
+            (lx / (sW / text.length.coerceAtLeast(1)))
+                .toInt().coerceIn(0, text.length - 1)
+        }
     }
 
     /**

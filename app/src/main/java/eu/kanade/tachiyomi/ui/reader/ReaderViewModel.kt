@@ -1613,6 +1613,17 @@ class ReaderViewModel @JvmOverloads constructor(
                 val ymin = bbox.y.toFloat().coerceIn(0f, 1f)
                 val xmax = (bbox.x + bbox.width).toFloat().coerceIn(0f, 1f)
                 val ymax = (bbox.y + bbox.height).toFloat().coerceIn(0f, 1f)
+                
+                val lineGeometries = result.constituentBoxes?.map { lineBox ->
+                    eu.kanade.tachiyomi.ui.reader.viewer.OcrLineGeometry(
+                        xmin = lineBox.x.toFloat().coerceIn(0f, 1f),
+                        ymin = lineBox.y.toFloat().coerceIn(0f, 1f),
+                        xmax = (lineBox.x + lineBox.width).toFloat().coerceIn(0f, 1f),
+                        ymax = (lineBox.y + lineBox.height).toFloat().coerceIn(0f, 1f),
+                        rotation = (lineBox.rotation ?: 0.0).toFloat(),
+                    )
+                }
+
                 if (xmax <= xmin || ymax <= ymin) {
                     null
                 } else {
@@ -1623,6 +1634,7 @@ class ReaderViewModel @JvmOverloads constructor(
                         ymax = ymax,
                         lines = result.text.split("\n").filter { it.isNotBlank() },
                         vertical = result.forcedOrientation == "vertical",
+                        lineGeometries = lineGeometries,
                     )
                 }
             }
@@ -1633,7 +1645,17 @@ class ReaderViewModel @JvmOverloads constructor(
                 source = source,
                 pageIndex = page.index,
                 blocks = blocks.map {
-                    chimahon.ocr.OcrTextBlock(it.xmin, it.ymin, it.xmax, it.ymax, it.lines, it.vertical)
+                    chimahon.ocr.OcrTextBlock(
+                        xmin = it.xmin,
+                        ymin = it.ymin,
+                        xmax = it.xmax,
+                        ymax = it.ymax,
+                        lines = it.lines,
+                        vertical = it.vertical,
+                        lineGeometries = it.lineGeometries?.map { lg ->
+                            chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+                        },
+                    )
                 },
                 language = chimahon.ocr.OcrLanguage.JAPANESE.bcp47,
             )
@@ -1755,5 +1777,8 @@ private fun chimahon.ocr.OcrTextBlock.toViewerBlock(): eu.kanade.tachiyomi.ui.re
         ymax = ymax,
         lines = lines,
         vertical = vertical,
+        lineGeometries = lineGeometries?.map { lg ->
+            eu.kanade.tachiyomi.ui.reader.viewer.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+        },
     )
 }
