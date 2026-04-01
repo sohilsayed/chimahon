@@ -21,6 +21,18 @@ data class OcrTextBlock(
     val ymax: Float,
     val lines: List<String>,
     val vertical: Boolean = false,
+    val lineGeometries: List<OcrLineGeometry>? = null,
+)
+
+/**
+ * Geometry for an individual line within a block.
+ */
+data class OcrLineGeometry(
+    val xmin: Float,
+    val ymin: Float,
+    val xmax: Float,
+    val ymax: Float,
+    val rotation: Float = 0f,
 )
 
 /**

@@ -13,6 +13,7 @@ data class OcrResult(
     val tightBoundingBox: BoundingBox,
     val isMerged: Boolean? = null,
     val forcedOrientation: String? = null,
+    val constituentBoxes: List<BoundingBox>? = null,
 )
 
 data class RawChunk(

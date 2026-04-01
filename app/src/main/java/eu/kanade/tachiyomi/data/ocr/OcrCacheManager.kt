@@ -23,7 +23,7 @@ import tachiyomi.domain.manga.model.Manga
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-private const val CURRENT_VERSION = 1
+private const val CURRENT_VERSION = 2
 
 /**
  * Manages OCR cache storage with dual locations:
@@ -45,7 +45,7 @@ class OcrCacheManager(
     companion object {
         private const val OCR_CACHE_FILE = ".ocr_cache.json"
         private const val OCR_SIDECAR_SUFFIX = ".ocr.json"
-        private const val CURRENT_VERSION = 1
+        private const val CURRENT_VERSION = 2
         private const val INTERNAL_OCR_DIR = "ocr_cache"
     }
 
@@ -476,6 +476,9 @@ class OcrCacheManager(
         ymax = ymax,
         lines = lines,
         vertical = vertical,
+        lineGeometries = lineGeometries?.map { lg ->
+            chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+        },
     )
 
     private fun OcrBlockData.toTextBlock() = OcrTextBlock(
@@ -485,6 +488,9 @@ class OcrCacheManager(
         ymax = ymax,
         lines = lines,
         vertical = vertical,
+        lineGeometries = lineGeometries?.map { lg ->
+            chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+        },
     )
 
     // Legacy methods for backward compatibility during migration
@@ -523,5 +529,5 @@ class OcrCacheManager(
 @Serializable
 data class OcrChapterData(
     val pages: Map<Int, OcrPageData>,
-    val version: Int = 1,
+    val version: Int = 2,
 )

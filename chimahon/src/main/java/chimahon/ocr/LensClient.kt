@@ -265,13 +265,26 @@ class LensClient(
     private fun OcrResult.normalizeFromChunk(chunk: RawChunk): OcrResult {
         val box = tightBoundingBox
         val globalPixelY = box.y + chunk.globalY.toDouble()
+        val normalizedBBox = box.copy(
+            x = box.x / chunk.fullWidth.toDouble(),
+            y = globalPixelY / chunk.fullHeight.toDouble(),
+            width = box.width / chunk.fullWidth.toDouble(),
+            height = box.height / chunk.fullHeight.toDouble(),
+        )
+
+        val normalizedConstituents = constituentBoxes?.map { c ->
+            val cgY = c.y + chunk.globalY.toDouble()
+            c.copy(
+                x = c.x / chunk.fullWidth.toDouble(),
+                y = cgY / chunk.fullHeight.toDouble(),
+                width = c.width / chunk.fullWidth.toDouble(),
+                height = c.height / chunk.fullHeight.toDouble(),
+            )
+        }
+
         return copy(
-            tightBoundingBox = box.copy(
-                x = box.x / chunk.fullWidth.toDouble(),
-                y = globalPixelY / chunk.fullHeight.toDouble(),
-                width = box.width / chunk.fullWidth.toDouble(),
-                height = box.height / chunk.fullHeight.toDouble(),
-            ),
+            tightBoundingBox = normalizedBBox,
+            constituentBoxes = normalizedConstituents,
         )
     }
 
@@ -282,6 +295,7 @@ class LensClient(
             top = (box.y + chunk.globalY.toDouble()) / chunk.fullHeight.toDouble(),
             right = (box.x + box.width) / chunk.fullWidth.toDouble(),
             bottom = (box.y + box.height + chunk.globalY.toDouble()) / chunk.fullHeight.toDouble(),
+            rotation = box.rotation ?: 0.0,
         )
         val direction = when (forcedOrientation) {
             "vertical" -> WritingDirection.TTB
