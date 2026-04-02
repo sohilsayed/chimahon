@@ -14,7 +14,7 @@ plugins {
 }
 
 val includeTelemetry = false
-val enableUpdater = false
+val enableUpdater = Config.enableUpdater
 val releaseVersionName = providers.gradleProperty("releaseVersionName").orNull
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orNull?.toIntOrNull()
 
@@ -40,7 +40,7 @@ android {
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
-        buildConfigField("boolean", "UPDATER_ENABLED", "false")
+        buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -61,7 +61,7 @@ android {
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = true)}\"")
             buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
-            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
 
         val commonMatchingFallbacks = listOf(release.name)
@@ -83,7 +83,7 @@ android {
             matchingFallbacks.addAll(commonMatchingFallbacks)
 
             buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
-            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
         create("preview") {
             initWith(release)
@@ -97,7 +97,7 @@ android {
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
             buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
-            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
         create("benchmark") {
             initWith(release)
@@ -112,7 +112,7 @@ android {
             matchingFallbacks.addAll(commonMatchingFallbacks)
 
             buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
-            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
     }
 

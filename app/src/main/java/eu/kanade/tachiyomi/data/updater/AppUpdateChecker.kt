@@ -95,20 +95,10 @@ class AppUpdateChecker(
 
 val GITHUB_REPO: String by lazy { getGithubRepo() }
 
-fun getGithubRepo(peekIntoPreview: Boolean = false): String =
-    if (isPreviewBuildType || peekIntoPreview) {
-        "chimahon/chimahon-preview"
-    } else {
-        "chimahon/chimahon"
-    }
+fun getGithubRepo(peekIntoPreview: Boolean = false): String = "sohilsayed/chimahon"
 
 val RELEASE_TAG: String by lazy { getReleaseTag() }
 
-fun getReleaseTag(peekIntoPreview: Boolean = false): String =
-    if (isPreviewBuildType || peekIntoPreview) {
-        "r${BuildConfig.COMMIT_COUNT}"
-    } else {
-        "v${BuildConfig.VERSION_NAME}"
-    }
+fun getReleaseTag(peekIntoPreview: Boolean = false): String = "v${BuildConfig.VERSION_NAME}"
 
 val RELEASE_URL = "https://github.com/$GITHUB_REPO/releases/tag/$RELEASE_TAG"
