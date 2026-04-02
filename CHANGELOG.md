@@ -6,6 +6,10 @@ The format follows a Keep a Changelog style and uses Semantic Versioning.
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [v1.2.2]
+
 ### Changed
 - Enable updater and sync support for stable releases.
 - Derive release app version name and version code from git tags in CI.

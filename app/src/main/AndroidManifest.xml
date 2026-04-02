@@ -210,7 +210,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data
-                    android:scheme="eu.kanade.google.oauth" />
+                    android:scheme="app.chimahon.google.oauth" />
             </intent-filter>
         </activity>
 

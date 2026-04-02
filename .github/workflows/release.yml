@@ -114,10 +114,45 @@ jobs:
     needs: [get_tag, build]
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
       - name: Download all artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           merge-multiple: true
+
+      - name: Generate release notes from CHANGELOG
+        run: |
+          set -e
+
+          version_name="${{ needs.get_tag.outputs.version_name }}"
+
+          changelog_section=$(awk -v v="$version_name" '
+            $0 ~ "^## \\\[(v?" v ")\\\]" { found = 1; next }
+            found && $0 ~ "^## \\\[" { exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [[ -z "$changelog_section" ]]; then
+            changelog_section=$(awk '
+              $0 ~ "^## \\\[Unreleased\\\]" { found = 1; next }
+              found && $0 ~ "^## \\\[" { exit }
+              found { print }
+            ' CHANGELOG.md)
+          fi
+
+          if [[ -n "$changelog_section" ]]; then
+            {
+              echo "$changelog_section"
+            } > release_notes.md
+          else
+            {
+              echo "Release ${{ needs.get_tag.outputs.tag }}"
+              echo
+              echo "No matching section found in CHANGELOG.md for version $version_name."
+            } > release_notes.md
+          fi
 
       - name: Delete all artifacts
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
@@ -130,14 +165,7 @@ jobs:
         with:
           tag_name: ${{ needs.get_tag.outputs.tag }}
           name: Chimahon ${{ needs.get_tag.outputs.tag }}
-          body: |
-            Chimahon is a manga reader with built-in Japanese dictionary support.
-
-            No telemetry or analytics - completely free and open source.
-
-            > [!TIP]
-            >
-            > ### If you are unsure which version to download then go with `chimahon-${{ needs.get_tag.outputs.tag }}.apk`
+          body_path: release_notes.md
           files: |
             chimahon-${{ needs.get_tag.outputs.tag }}.apk
             chimahon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
