@@ -15,6 +15,8 @@ plugins {
 
 val includeTelemetry = false
 val enableUpdater = false
+val releaseVersionName = providers.gradleProperty("releaseVersionName").orNull
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orNull?.toIntOrNull()
 
 if (includeTelemetry) {
     pluginManager.apply {
@@ -31,8 +33,8 @@ android {
     defaultConfig {
         applicationId = "app.chimahon"
 
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = releaseVersionCode ?: 3
+        versionName = releaseVersionName ?: "1.1.0"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")

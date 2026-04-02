@@ -18,11 +18,29 @@ jobs:
     runs-on: 'ubuntu-24.04'
     outputs:
       tag: ${{ steps.extract.outputs.tag }}
+      version_name: ${{ steps.extract.outputs.version_name }}
+      version_code: ${{ steps.extract.outputs.version_code }}
 
     steps:
       - name: Get tag name
         id: extract
-        run: echo "tag=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version_name="${tag#v}"
+
+          if [[ ! "$version_name" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Release tag must be semver-like (e.g. v1.2.3 or 1.2.3). Got: $tag"
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version_code=$((major * 10000 + minor * 100 + patch))
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build
@@ -49,7 +67,7 @@ jobs:
         run: rm -rf app/.cxx chimahon/.cxx
 
       - name: Build
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease -PreleaseVersionName=${{ needs.get_tag.outputs.version_name }} -PreleaseVersionCode=${{ needs.get_tag.outputs.version_code }}
 
       - name: Sign APK
         uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
