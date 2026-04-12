@@ -133,7 +133,9 @@ object Marker {
 sealed class AnkiResult {
     data class Success(val noteId: Long) : AnkiResult()
     data class CardExists(val noteId: Long) : AnkiResult()
+    data class OpenCard(val noteId: Long) : AnkiResult()
     data class Error(val message: String) : AnkiResult()
+    data object PermissionDenied : AnkiResult()
     data object NotConfigured : AnkiResult()
 }
 
@@ -168,7 +170,6 @@ object AnkiCardCreator {
             return AnkiResult.NotConfigured
         }
 
-        // glossaryIndex >= 0 means export specific glossary; null or negative means export all
         val filteredResult = if (glossaryIndex != null && glossaryIndex >= 0) {
             filterToSingleGlossary(result, glossaryIndex)
         } else {
@@ -176,7 +177,11 @@ object AnkiCardCreator {
         }
 
         val bridge = AnkiDroidBridge(context)
-        val fieldMap = parseFieldMap(fieldMapJson)
+        if (!bridge.hasPermission()) {
+            return AnkiResult.PermissionDenied
+        }
+        return try {
+            val fieldMap = parseFieldMap(fieldMapJson)
         android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
         val cloze = if (sentence.isNotEmpty() && offset >= 0) {
             buildCloze(sentence, offset, filteredResult.term.expression, filteredResult.term.reading)
@@ -206,6 +211,7 @@ object AnkiCardCreator {
             if (existing.isNotEmpty()) {
                 when (dupAction) {
                     "prevent" -> return AnkiResult.CardExists(existing.first())
+                    "open" -> return AnkiResult.OpenCard(existing.first())
                     "overwrite" -> {
                         bridge.updateNoteFields(existing.first(), fields)
                         return AnkiResult.Success(existing.first())
@@ -215,8 +221,13 @@ object AnkiCardCreator {
         }
 
         val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
-        return AnkiResult.Success(noteId)
+        AnkiResult.Success(noteId)
+    } catch (e: SecurityException) {
+        AnkiResult.PermissionDenied
+    } catch (e: Exception) {
+        AnkiResult.Error(e.message ?: "Unknown error")
     }
+}
 
     private fun filterToSingleGlossary(result: LookupResult, glossaryIndex: Int): LookupResult {
         val glossary = result.term.glossaries.getOrNull(glossaryIndex) ?: return result
@@ -233,6 +244,8 @@ object AnkiCardCreator {
         if (modelName.isBlank()) return existing
 
         val bridge = AnkiDroidBridge(context)
+        if (!bridge.hasPermission()) return existing
+
         for (expr in expressions.distinct()) {
             try {
                 val notes = bridge.findNotes(expr, modelName)

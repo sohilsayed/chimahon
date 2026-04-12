@@ -1,8 +1,10 @@
 :root {
   color-scheme: light dark;
-  --bg: transparent;
-  --fg: #222;
-  --border: rgba(128, 128, 128, 0.25);
+  --bg: var(--bg-dynamic, transparent);
+  --fg: var(--fg-dynamic, #222);
+  --accent: #2ecc71;
+  --on-accent: #ffffff;
+  --border: var(--border-dynamic, rgba(128, 128, 128, 0.25));
   --tag-text: #fff;
   --tag-default: #8a8a91;
   --tag-dictionary: #aa66cc;
@@ -13,8 +15,8 @@
 }
 
 :root[data-theme="dark"] {
-  --fg: #ddd;
-  --border: rgba(128, 128, 128, 0.4);
+  --fg: var(--fg-dynamic, #ddd);
+  --border: var(--border-dynamic, rgba(128, 128, 128, 0.4));
   --tag-default: #69696e;
   --tag-dictionary: #9057ad;
   --tag-frequency: #489148;
@@ -282,34 +284,40 @@ td {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
   background: transparent;
   cursor: pointer;
-  color: var(--fg);
-  opacity: 0.4;
+  color: var(--accent);
+  opacity: 0.65;
   font-size: 18px;
   font-weight: bold;
   line-height: 1;
   margin-left: auto;
   padding: 0;
+  transition: all 0.2s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
 .anki-add-btn.anki-added {
   color: #2ecc71;
+  border-color: #2ecc71;
   opacity: 1;
 }
 
 .anki-add-btn:hover {
-  opacity: 0.8;
-  background: rgba(46, 204, 113, 0.15);
-  color: #2ecc71;
+  opacity: 1;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.anki-add-btn.anki-added:hover {
+  background: #2ecc71;
+  color: #fff;
 }
 
 .anki-add-btn:active {
   transform: scale(0.9);
-  opacity: 1;
 }

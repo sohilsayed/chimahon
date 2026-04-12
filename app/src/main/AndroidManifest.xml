@@ -49,6 +49,10 @@
     <!-- AnkiDroid -->
     <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
 
+    <queries>
+        <package android:name="com.ichi2.anki" />
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="false"

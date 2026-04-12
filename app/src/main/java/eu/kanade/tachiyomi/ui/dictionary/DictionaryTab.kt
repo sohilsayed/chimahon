@@ -163,6 +163,8 @@ data object DictionaryTab : Tab {
                         when (ankiResult) {
                             is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
                             is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                            is AnkiResult.OpenCard -> AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
+                            is AnkiResult.PermissionDenied -> context.toast(MR.strings.pref_anki_permission_denied)
                             is AnkiResult.Error -> context.toast(
                                 context.stringResource(MR.strings.anki_card_error, ankiResult.message),
                             )

@@ -1185,7 +1185,7 @@
     body.appendChild(section);
   }
 
-  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions) {
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
@@ -1208,23 +1208,25 @@
     headSection.className = 'entry-body-section entry-headword-row';
     headSection.appendChild(createHeadwordNode(expression, reading));
 
-    // Anki add button
-    const ankiBtn = document.createElement('button');
-    // Check if expression is already in Anki (from payload)
-    const isAlreadyAdded = existingSet.includes(expression);
-    ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
-    ankiBtn.textContent = '+';
-    ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
-    ankiBtn.setAttribute('data-index', String(result.index || 0));
-    ankiBtn.setAttribute('data-expression', expression);
-    ankiBtn.setAttribute('data-glossary', '-1');
-    ankiBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (typeof AnkiBridge !== 'undefined') {
-        AnkiBridge.addToAnki(ankiBtn.getAttribute('data-index'), '-1');
-      }
-    };
-    headSection.appendChild(ankiBtn);
+    if (ankiEnabled) {
+      // Anki add button
+      const ankiBtn = document.createElement('button');
+      // Check if expression is already in Anki (from payload)
+      const isAlreadyAdded = existingSet.includes(expression);
+      ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
+      ankiBtn.textContent = '+';
+      ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
+      ankiBtn.setAttribute('data-index', String(result.index || 0));
+      ankiBtn.setAttribute('data-expression', expression);
+      ankiBtn.setAttribute('data-glossary', '-1');
+      ankiBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (typeof AnkiBridge !== 'undefined') {
+          AnkiBridge.addToAnki(ankiBtn.getAttribute('data-index'), '-1');
+        }
+      };
+      headSection.appendChild(ankiBtn);
+    }
 
     body.appendChild(headSection);
 
@@ -1244,7 +1246,7 @@
     return article;
   }
 
-  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions) {
+  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
     const expression = (result.term && result.term.expression) || result.matched || '';
@@ -1274,24 +1276,26 @@
       headSection.className = 'entry-body-section entry-headword-row';
       headSection.appendChild(createHeadwordNode(expression, reading));
 
-      const ankiBtn = document.createElement('button');
-      const isAlreadyAdded = existingSet.includes(expression);
-      ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
-      ankiBtn.textContent = '+';
-      ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
-      ankiBtn.setAttribute('data-index', String(result.index || 0));
-      ankiBtn.setAttribute('data-expression', expression);
-      ankiBtn.setAttribute('data-glossary', String(i));
-      ankiBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (typeof AnkiBridge !== 'undefined') {
-          AnkiBridge.addToAnki(
-            ankiBtn.getAttribute('data-index'),
-            ankiBtn.getAttribute('data-glossary')
-          );
-        }
-      };
-      headSection.appendChild(ankiBtn);
+      if (ankiEnabled) {
+        const ankiBtn = document.createElement('button');
+        const isAlreadyAdded = existingSet.includes(expression);
+        ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
+        ankiBtn.textContent = '+';
+        ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
+        ankiBtn.setAttribute('data-index', String(result.index || 0));
+        ankiBtn.setAttribute('data-expression', expression);
+        ankiBtn.setAttribute('data-glossary', String(i));
+        ankiBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (typeof AnkiBridge !== 'undefined') {
+            AnkiBridge.addToAnki(
+              ankiBtn.getAttribute('data-index'),
+              ankiBtn.getAttribute('data-glossary')
+            );
+          }
+        };
+        headSection.appendChild(ankiBtn);
+      }
       body.appendChild(headSection);
 
       appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
@@ -1420,9 +1424,9 @@
       const fragment = document.createDocumentFragment();
       for (const result of results) {
         if (groupTerms) {
-          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions));
+          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled));
         } else {
-          const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions);
+          const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled);
           articles.forEach(a => fragment.appendChild(a));
         }
       }

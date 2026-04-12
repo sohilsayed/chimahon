@@ -839,13 +839,15 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     value = when (dupAction) {
                                         "add" -> stringResource(MR.strings.pref_anki_duplicate_add)
                                         "overwrite" -> stringResource(MR.strings.pref_anki_duplicate_overwrite)
+                                        "open" -> stringResource(MR.strings.pref_anki_duplicate_open)
                                         else -> stringResource(MR.strings.pref_anki_duplicate_prevent)
                                     },
-                                    options = listOf("prevent", "add", "overwrite"),
+                                    options = listOf("prevent", "add", "overwrite", "open"),
                                     displayOptions = listOf(
                                         stringResource(MR.strings.pref_anki_duplicate_prevent),
                                         stringResource(MR.strings.pref_anki_duplicate_add),
                                         stringResource(MR.strings.pref_anki_duplicate_overwrite),
+                                        stringResource(MR.strings.pref_anki_duplicate_open),
                                     ),
                                     onValueChange = { dupActionPref.set(it) },
                                 )

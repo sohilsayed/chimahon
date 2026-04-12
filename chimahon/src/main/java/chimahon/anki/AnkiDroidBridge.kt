@@ -19,6 +19,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.text.Normalizer
 
 class AnkiDroidBridge(private val context: Context) {
 
@@ -52,11 +53,6 @@ class AnkiDroidBridge(private val context: Context) {
         private const val MEDIA_PREFERRED_NAME = "preferred_name"
 
         private const val FIELD_SEPARATOR = "\u001f"
-
-        private val IMG_TAG = Regex("<img src=[\"']?([^\"'>]+)[\"']? ?/?>")
-        private val STYLE_TAG = Regex("(?s)<style.*?>.*?</style>")
-        private val SCRIPT_TAG = Regex("(?s)<script.*?>.*?</script>")
-        private val HTML_TAG = Regex("<.*?>")
     }
 
     // ==========================================================================
@@ -81,6 +77,7 @@ class AnkiDroidBridge(private val context: Context) {
     }
 
     suspend fun deckNames(): List<String> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext emptyList()
         val names = mutableListOf<String>()
         try {
             context.contentResolver.query(
@@ -94,6 +91,8 @@ class AnkiDroidBridge(private val context: Context) {
                     c.getString(0)?.let(names::add)
                 }
             }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Permission lost during deckNames query", e)
         } catch (e: Exception) {
             Log.e(TAG, "deckNames", e)
         }
@@ -101,6 +100,7 @@ class AnkiDroidBridge(private val context: Context) {
     }
 
     suspend fun modelNames(): List<String> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext emptyList()
         val names = mutableListOf<String>()
         try {
             context.contentResolver.query(
@@ -114,6 +114,8 @@ class AnkiDroidBridge(private val context: Context) {
                     c.getString(0)?.let(names::add)
                 }
             }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Permission lost during modelNames query", e)
         } catch (e: Exception) {
             Log.e(TAG, "modelNames", e)
         }
@@ -121,6 +123,7 @@ class AnkiDroidBridge(private val context: Context) {
     }
 
     suspend fun modelFieldNames(modelName: String): List<String> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext emptyList()
         val result = mutableListOf<String>()
         try {
             context.contentResolver.query(
@@ -142,6 +145,8 @@ class AnkiDroidBridge(private val context: Context) {
                     }
                 }
             }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Permission lost during modelFieldNames query", e)
         } catch (e: Exception) {
             Log.e(TAG, "modelFieldNames", e)
         }
@@ -150,6 +155,7 @@ class AnkiDroidBridge(private val context: Context) {
 
     suspend fun findNotes(expression: String, modelName: String? = null): List<Long> =
         withContext(Dispatchers.IO) {
+            if (!hasPermission()) return@withContext emptyList()
             val ids = mutableListOf<Long>()
             try {
                 val csum = fieldChecksum(expression)
@@ -172,6 +178,8 @@ class AnkiDroidBridge(private val context: Context) {
                         ids.add(nid)
                     }
                 }
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Permission lost during findNotes", e)
             } catch (e: Exception) {
                 Log.e(TAG, "findNotes", e)
             }
@@ -184,6 +192,8 @@ class AnkiDroidBridge(private val context: Context) {
         fields: Map<String, String>,
         tags: List<String>,
     ): Long = withContext(Dispatchers.IO) {
+        if (!hasPermission()) throw Exception("AnkiDroid permission not granted")
+
         val deckId = findDeckId(deckName)
         val modelId = findModelId(modelName)
         val fieldNames = getModelFields(modelId)
@@ -200,8 +210,11 @@ class AnkiDroidBridge(private val context: Context) {
             if (tagSet.isNotEmpty()) put(NOTE_TAGS, tagSet.joinToString(" "))
         }
 
-        val result = context.contentResolver.insert(NOTES_URI, cv)
-            ?: throw Exception("AnkiDroid insert failed")
+        val result = try {
+            context.contentResolver.insert(NOTES_URI, cv)
+        } catch (e: Exception) {
+            null
+        } ?: throw Exception("AnkiDroid insert failed")
 
         val newNoteId = result.lastPathSegment?.toLongOrNull()
             ?: throw Exception("Failed to parse note ID from insert result")
@@ -245,12 +258,20 @@ class AnkiDroidBridge(private val context: Context) {
             val uri = Uri.parse("anki://x-callback-url/browser?search=${Uri.encode(query)}")
             val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                 setPackage("com.ichi2.anki")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_TASK_ON_HOME
             }
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.w(TAG, "guiBrowse", e)
         }
+    }
+
+    fun guiEditNote(noteId: Long) {
+        // AnkiDroid's NoteEditor has no public intent filter for external apps.
+        // The only supported external navigation is the Card Browser filtered by note ID.
+        guiBrowse("nid:$noteId")
     }
 
     suspend fun storeMedia(filename: String, data: ByteArray): String =
@@ -300,65 +321,81 @@ class AnkiDroidBridge(private val context: Context) {
     // ==========================================================================
 
     private fun findDeckId(deckName: String): Long {
-        context.contentResolver.query(
-            DECKS_URI,
-            arrayOf(DECK_ID, DECK_NAME),
-            null,
-            null,
-            null,
-        )?.use { c ->
-            val idIdx = c.getColumnIndex(DECK_ID)
-            val nameIdx = c.getColumnIndex(DECK_NAME)
-            if (idIdx == -1 || nameIdx == -1) throw Exception("Missing deck columns")
-            while (c.moveToNext()) {
-                if (c.getString(nameIdx) == deckName) return c.getLong(idIdx)
+        try {
+            context.contentResolver.query(
+                DECKS_URI,
+                arrayOf(DECK_ID, DECK_NAME),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                val idIdx = c.getColumnIndex(DECK_ID)
+                val nameIdx = c.getColumnIndex(DECK_NAME)
+                if (idIdx == -1 || nameIdx == -1) throw Exception("Missing deck columns")
+                while (c.moveToNext()) {
+                    if (c.getString(nameIdx) == deckName) return c.getLong(idIdx)
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "findDeckId failed", e)
         }
         throw Exception("Deck '$deckName' not found")
     }
 
     private fun findModelId(modelName: String): Long {
-        context.contentResolver.query(
-            MODELS_URI,
-            arrayOf(MODEL_ID, MODEL_NAME),
-            null,
-            null,
-            null,
-        )?.use { c ->
-            while (c.moveToNext()) {
-                if (c.getString(1) == modelName) return c.getLong(0)
+        try {
+            context.contentResolver.query(
+                MODELS_URI,
+                arrayOf(MODEL_ID, MODEL_NAME),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    if (c.getString(1) == modelName) return c.getLong(0)
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "findModelId failed", e)
         }
         throw Exception("Model '$modelName' not found")
     }
 
     private fun findModelName(modelId: Long): String {
-        context.contentResolver.query(
-            MODELS_URI,
-            arrayOf(MODEL_NAME),
-            "$MODEL_ID=?",
-            arrayOf(modelId.toString()),
-            null,
-        )?.use { c ->
-            if (c.moveToFirst()) return c.getString(0)
+        try {
+            context.contentResolver.query(
+                MODELS_URI,
+                arrayOf(MODEL_NAME),
+                "$MODEL_ID=?",
+                arrayOf(modelId.toString()),
+                null,
+            )?.use { c ->
+                if (c.moveToFirst()) return c.getString(0)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "findModelName failed", e)
         }
         return "Unknown"
     }
 
     private fun getModelFields(modelId: Long): List<String> {
-        context.contentResolver.query(
-            MODELS_URI,
-            arrayOf(MODEL_ID, MODEL_FIELD_NAMES),
-            null,
-            null,
-            null,
-        )?.use { c ->
-            while (c.moveToNext()) {
-                if (c.getLong(0) == modelId) {
-                    val rawData = c.getString(1) ?: continue
-                    return parseFieldNames(rawData)
+        try {
+            context.contentResolver.query(
+                MODELS_URI,
+                arrayOf(MODEL_ID, MODEL_FIELD_NAMES),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    if (c.getLong(0) == modelId) {
+                        val rawData = c.getString(1) ?: continue
+                        return parseFieldNames(rawData)
+                    }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "getModelFields failed", e)
         }
         throw Exception("Model fields not found for ID: $modelId")
     }
@@ -442,17 +479,24 @@ class AnkiDroidBridge(private val context: Context) {
 
     private fun fieldChecksum(data: String): Long {
         return try {
-            var cleaned = IMG_TAG.replace(data, " $1 ")
-            cleaned = STYLE_TAG.replace(cleaned, "")
-            cleaned = SCRIPT_TAG.replace(cleaned, "")
-            cleaned = HTML_TAG.replace(cleaned, "")
-            cleaned = cleaned.replace("&nbsp;", " ").trim()
+            // Normalize and strip HTML tags/entities
+            var s = data.replace(Regex("(?i)<(br|p|div|li|tr|td|th|h[1-6])[^>]*>"), " ")
+                .replace(Regex("<[^>]+>"), "")
+                .replace("&nbsp;", " ")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+
+            s = Normalizer.normalize(s, Normalizer.Form.NFC)
+            val cleaned = s.replace(Regex("\\s+"), " ").trim()
+            if (cleaned.isEmpty()) return 0L
 
             val md = MessageDigest.getInstance("SHA-1")
             val hash = md.digest(cleaned.toByteArray(StandardCharsets.UTF_8))
-            val big = BigInteger(1, hash)
-            var hex = big.toString(16)
-            while (hex.length < 40) hex = "0$hex"
+
+            val hex = hash.joinToString("") { "%02x".format(it) }
             hex.substring(0, 8).toLong(16)
         } catch (e: Exception) {
             0L

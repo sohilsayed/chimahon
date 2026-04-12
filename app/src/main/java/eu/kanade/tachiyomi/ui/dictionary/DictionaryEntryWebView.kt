@@ -13,6 +13,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -48,6 +50,13 @@ fun DictionaryEntryWebView(
 ) {
     val isDark = isSystemInDarkTheme()
     val context = LocalContext.current
+
+    val colorScheme = MaterialTheme.colorScheme
+    val accentHex = "#%06X".format(0xFFFFFF and colorScheme.primary.toArgb())
+    val onAccentHex = "#%06X".format(0xFFFFFF and colorScheme.onPrimary.toArgb())
+    val fgHex = "#%06X".format(0xFFFFFF and colorScheme.onSurface.toArgb())
+    val bgHex = "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
+    val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outline.toArgb())
 
     val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, existingExpressions) {
         val buildStart = SystemClock.elapsedRealtime()
@@ -140,14 +149,20 @@ fun DictionaryEntryWebView(
         },
         update = { webView: WebView ->
             val state = webView.tag as? DictionaryWebViewState ?: return@AndroidView
-
-            // Update callback to latest (WebViewClient reads from state at runtime)
             state.onAnkiLookup = onAnkiLookup
-
             state.pendingPayload = payload
 
             val theme = if (isDark) "dark" else "light"
-            webView.evaluateJavascript("document.documentElement.dataset.theme = '$theme';", null)
+            webView.evaluateJavascript(
+                "const r = document.documentElement;" +
+                    "r.dataset.theme = '$theme';" +
+                    "r.style.setProperty('--accent', '$accentHex');" +
+                    "r.style.setProperty('--on-accent', '$onAccentHex');" +
+                    "r.style.setProperty('--fg-dynamic', '$fgHex');" +
+                    "r.style.setProperty('--bg-dynamic', '$bgHex');" +
+                    "r.style.setProperty('--border-dynamic', '$borderHex');",
+                null,
+            )
 
             val scale = popupScale / 100f
             webView.evaluateJavascript(
@@ -254,6 +269,8 @@ private fun buildRenderPayload(
             w.value(title)
         }
         w.endArray()
+
+        w.name("ankiEnabled").value(dictionaryPreferences.ankiEnabled().get())
 
         w.name("placeholder").value(placeholder)
         w.name("isDark").value(isDark)
