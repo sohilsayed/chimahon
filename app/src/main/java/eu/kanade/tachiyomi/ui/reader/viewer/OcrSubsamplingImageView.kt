@@ -47,7 +47,6 @@ class OcrSubsamplingImageView(
     private var cachedHitBlock: OcrTextBlock? = null
     private var cachedHitX = Float.NaN
     private var cachedHitY = Float.NaN
-    private var suppressSuperForGesture = false
     private var downOnOcrBox = false
     private var downX = 0f
     private var downY = 0f
@@ -409,7 +408,6 @@ class OcrSubsamplingImageView(
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            suppressSuperForGesture = false
             downOnOcrBox = false
             swipeReleased = false
             dismissHandledInThisGesture = false
@@ -423,18 +421,14 @@ class OcrSubsamplingImageView(
             downX = event.x
             downY = event.y
             downOnOcrBox = cachedHitBlock != null
-            // OCR box taps should never trigger SSIV click/zoom/page flip.
-            suppressSuperForGesture = downOnOcrBox
-
+            
             // Dismiss active block immediately when touching outside it.
-            // This avoids waiting for single-tap confirmation and makes swipe/press feel instant.
             if (cachedHitBlock == null && host?.activeOcrBlock != null) {
                 host.dismissActiveOcrBlock()
                 dismissHandledInThisGesture = true
             }
 
             if (downOnOcrBox) {
-                // Temporarily capture while we decide tap vs swipe.
                 parent?.requestDisallowInterceptTouchEvent(true)
             }
         }
@@ -443,11 +437,7 @@ class OcrSubsamplingImageView(
             val dx = kotlin.math.abs(event.x - downX)
             val dy = kotlin.math.abs(event.y - downY)
             if (dx > touchSlop || dy > touchSlop) {
-                // It's a swipe/drag: release interception so parent/SSIV can handle it.
                 swipeReleased = true
-                downOnOcrBox = false
-                suppressSuperForGesture = false
-                parent?.requestDisallowInterceptTouchEvent(false)
             }
         }
 
@@ -458,11 +448,9 @@ class OcrSubsamplingImageView(
             false
         }
 
-        // Always pass to SSIV to maintain zoom/pan state (in paged mode)
-        val superResult = if (forwardTouchToSuper && !suppressSuperForGesture) {
-            super.onTouchEvent(event)
-        } else {
-            false
+        var superResult = false
+        if (forwardTouchToSuper) {
+            superResult = super.onTouchEvent(event)
         }
 
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -471,7 +459,6 @@ class OcrSubsamplingImageView(
             cachedHitBlock = null
             cachedHitX = Float.NaN
             cachedHitY = Float.NaN
-            suppressSuperForGesture = false
             downOnOcrBox = false
             swipeReleased = false
         }
