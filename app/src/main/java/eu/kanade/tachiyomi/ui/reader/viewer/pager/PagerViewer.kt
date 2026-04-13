@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderItem
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
@@ -54,7 +55,6 @@ abstract class PagerViewer(
             anchorX: Float,
             anchorY: Float,
             mediaInfo: chimahon.MediaInfo?,
-            screenshot: android.graphics.Bitmap?,
         ) -> Unit
     )? = null
 
@@ -215,6 +215,11 @@ abstract class PagerViewer(
      */
     override fun getView(): View {
         return pager
+    }
+
+    fun getCurrentVisibleImageView(): ReaderPageImageView? {
+        val page = (currentPage as? ReaderPage) ?: return null
+        return getPageHolder(page)
     }
 
     /**

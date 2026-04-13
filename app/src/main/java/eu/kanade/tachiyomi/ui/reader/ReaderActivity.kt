@@ -98,6 +98,7 @@ import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import chimahon.util.ImageEncoder
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -251,7 +252,6 @@ class ReaderActivity : BaseActivity() {
         val anchorX: Float,
         val anchorY: Float,
         val mediaInfo: chimahon.MediaInfo? = null,
-        val screenshot: android.graphics.Bitmap? = null,
     )
 
     var isScrollingThroughPages = false
@@ -591,9 +591,8 @@ class ReaderActivity : BaseActivity() {
                 anchorX = popupState.anchorX,
                 anchorY = popupState.anchorY,
                 mediaInfo = popupState.mediaInfo,
-                screenshot = popupState.screenshot,
                 onRequestScreenshot = {
-                    viewModel.getCurrentPageBitmap()
+                    captureCurrentVisibleBitmap()
                 },
                 onCropTriggered = { noteId, glossaryIndex ->
                     pendingNoteId = noteId
@@ -607,7 +606,7 @@ class ReaderActivity : BaseActivity() {
         when (val viewer = viewModel.state.value.viewer) {
             is PagerViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _, screenshot ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _ ->
                         runOnUiThread {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
@@ -619,7 +618,7 @@ class ReaderActivity : BaseActivity() {
                                 null
                             }
                             ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo, screenshot)
+                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
                         }
                     }
                 }
@@ -631,7 +630,7 @@ class ReaderActivity : BaseActivity() {
             }
             is WebtoonViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _, screenshot ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _ ->
                         runOnUiThread {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
@@ -643,7 +642,7 @@ class ReaderActivity : BaseActivity() {
                                 null
                             }
                             ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo, screenshot)
+                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
                         }
                     }
                 }
@@ -1706,8 +1705,18 @@ class ReaderActivity : BaseActivity() {
     }
     // KMK <--
 
+    private fun captureCurrentVisibleBitmap(): Bitmap? {
+        val viewer = viewModel.state.value.viewer ?: return null
+        val imageView = when (viewer) {
+            is PagerViewer -> viewer.getCurrentVisibleImageView()
+            is WebtoonViewer -> viewer.getCurrentVisibleImageView()
+            else -> null
+        }
+        return imageView?.captureVisibleBitmap() ?: viewModel.getCurrentPageBitmap()
+    }
+
     private fun launchImageCropper() {
-        val bitmap = viewModel.getCurrentPageBitmap()
+        val bitmap = captureCurrentVisibleBitmap()
         if (bitmap == null) {
             toast(MR.strings.decode_image_error)
             return

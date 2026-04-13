@@ -438,6 +438,10 @@ class OcrSubsamplingImageView(
             val dy = kotlin.math.abs(event.y - downY)
             if (dx > touchSlop || dy > touchSlop) {
                 swipeReleased = true
+                if (!forwardTouchToSuper) {
+                    // Webtoon mode: Release intercept lock so RecyclerView can handle scrolling
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
             }
         }
 

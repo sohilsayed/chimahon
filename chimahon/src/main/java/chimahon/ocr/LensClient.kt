@@ -102,14 +102,18 @@ class LensClient(
                         result.normalizeFromChunk(chunk)
                     }
                 }
-                MergerType.OWOCR -> rawChunks.flatMap { chunk ->
-                    // OWOCR: toEngineLine already normalizes coords to 0-1,
-                    // OwOCRMerger.merge outputs normalized results - skip double normalization
-                    val engineLines = chunk.lines.map { it.toEngineLine(chunk, language) }
-                    OwOCRMerger.merge(engineLines, config)
+                MergerType.OWOCR -> {
+                    val allEngineLines = rawChunks.flatMap { chunk ->
+                        chunk.lines.map { it.toEngineLine(chunk, language) }
+                    }.distinctBy { it.text + it.bbox.toString() }
+                    OwOCRMerger.merge(allEngineLines, config)
                 }
             }
-            val dedupedResults = dedupeChunkBoundaryResults(mergedResults)
+            val dedupedResults = if (rawChunks.size > 1) {
+                dedupeChunkBoundaryResults(mergedResults)
+            } else {
+                mergedResults
+            }
 
             OcrDebugResult(
                 rawChunks = rawChunks,
@@ -121,19 +125,39 @@ class LensClient(
     private fun dedupeChunkBoundaryResults(results: List<OcrResult>): List<OcrResult> {
         if (results.size < 2) return results
 
+        // Sort by y to enable sliding window comparison
+        val sorted = results.sortedBy { it.tightBoundingBox.y }
         val kept = mutableListOf<OcrResult>()
-        val sorted = results.sortedByDescending { it.tightBoundingBox.width * it.tightBoundingBox.height }
+
         for (candidate in sorted) {
-            val duplicate = kept.any { existing ->
-                sameOrientation(existing, candidate) &&
+            // Only compare with existing items that are close on the Y axis.
+            // Since we sorted by Y, we can search backwards from the end of 'kept'
+            // and stop once we are out of the 5% height window.
+            var isDuplicate = false
+            for (i in kept.size - 1 downTo 0) {
+                val existing = kept[i]
+
+                // If we are more than 0.5% of the total height away vertically,
+                // any subsequent items in the sorted list will also be far away.
+                // Note: since results are globally normalized 0.0-1.0, 0.005 is 0.5% of total height.
+                if (candidate.tightBoundingBox.y - existing.tightBoundingBox.y > 0.005) {
+                    break
+                }
+
+                if (sameOrientation(existing, candidate) &&
                     sameText(existing.text, candidate.text) &&
                     (
                         iou(existing.tightBoundingBox, candidate.tightBoundingBox) >= 0.55 ||
                             closeCenters(existing.tightBoundingBox, candidate.tightBoundingBox)
                         )
+                ) {
+                    isDuplicate = true
+                    break
+                }
             }
-            if (!duplicate) {
-                kept += candidate
+
+            if (!isDuplicate) {
+                kept.add(candidate)
             }
         }
         return kept

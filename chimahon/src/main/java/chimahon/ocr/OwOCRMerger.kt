@@ -230,28 +230,46 @@ internal object OwOCRMerger {
     private fun mergeOverlappingLines(lines: List<LineDict>, isVertical: Boolean): List<LineDict> {
         if (lines.size < 2) return lines
 
+        // Sort by primary axis to enable sliding window
+        val sorted = if (isVertical) {
+            lines.sortedBy { it.bbox.top }
+        } else {
+            lines.sortedBy { it.bbox.left }
+        }
+
         val merged = mutableListOf<LineDict>()
         val usedIndices = mutableSetOf<Int>()
 
-        for (i in lines.indices) {
+        for (i in sorted.indices) {
             if (i in usedIndices) continue
-            val mergeGroup = mutableListOf(lines[i])
+            val mergeGroup = mutableListOf(sorted[i])
             usedIndices.add(i)
-            var lastLine = lines[i]
+            var lastLine = sorted[i]
 
-            for (j in (i + 1) until lines.size) {
+            // Only check lines that could possibly overlap
+            for (j in (i + 1) until sorted.size) {
                 if (j in usedIndices) continue
-                if (shouldMergeLines(lastLine, lines[j], isVertical)) {
-                    mergeGroup.add(lines[j])
+                val nextLine = sorted[j]
+
+                // Optimization: Break early if the next line starts far past where this one ends
+                // Lines that are far apart on the primary axis cannot be fragments of the same line.
+                if (isVertical) {
+                    if (nextLine.bbox.top - lastLine.bbox.bottom > 0.5 * lastLine.characterSize) break
+                } else {
+                    if (nextLine.bbox.left - lastLine.bbox.right > 0.5 * lastLine.characterSize) break
+                }
+
+                if (shouldMergeLines(lastLine, nextLine, isVertical)) {
+                    mergeGroup.add(nextLine)
                     usedIndices.add(j)
-                    lastLine = lines[j]
+                    lastLine = nextLine
                 }
             }
 
             if (mergeGroup.size > 1) {
                 merged.add(mergeMultipleLines(mergeGroup, isVertical))
             } else {
-                merged.add(lines[i])
+                merged.add(sorted[i])
             }
         }
         return merged

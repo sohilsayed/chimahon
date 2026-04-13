@@ -131,7 +131,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
             screenX: Float,
             screenY: Float,
             mediaInfo: chimahon.MediaInfo?,
-            screenshot: android.graphics.Bitmap?,
         ) -> Unit
     )? = null
 
@@ -267,11 +266,28 @@ open class ReaderPageImageView @JvmOverloads constructor(
     fun captureVisibleBitmap(): android.graphics.Bitmap? {
         val view = pageView ?: return null
         return try {
-            val width = view.width
-            val height = view.height
+            val local = android.graphics.Rect()
+            if (!view.getLocalVisibleRect(local)) return null
+
+            val width = local.width()
+            val height = local.height()
             if (width <= 0 || height <= 0) return null
-            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+
+            // Cap the bitmap size to double the screen size just in case,
+            // to avoid OOM even with faulty visible rects.
+            val screenMetrics = context.resources.displayMetrics
+            val maxWidth = screenMetrics.widthPixels * 2
+            val maxHeight = screenMetrics.heightPixels * 2
+            val finalWidth = width.coerceAtMost(maxWidth)
+            val finalHeight = height.coerceAtMost(maxHeight)
+
+            val bitmap = android.graphics.Bitmap.createBitmap(finalWidth, finalHeight, android.graphics.Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bitmap)
+
+            // Translate the canvas so that the top-left of the visible rect
+            // aligns with (0,0) in our new bitmap.
+            canvas.translate(-local.left.toFloat(), -local.top.toFloat())
+
             view.draw(canvas)
             bitmap
         } catch (e: Exception) {
@@ -703,8 +719,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val repository = dictionaryRepository
         if (webView != null && repository != null) {
             ocrPopupLookupString = lookupString
-            val screenshot = captureVisibleBitmap()
-            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, screenX, screenY, null, screenshot)
+            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, screenX, screenY, null)
         } else {
             logcat(LogPriority.WARN) { "OCR popup: webView or repository is null" }
         }
