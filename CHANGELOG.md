@@ -4,6 +4,25 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.3.5]
+
+### Added
+- Recursive dictionary lookups with enhanced search UX
+- Pitch accent support in dictionary popup
+- Anki and dictionary settings profiles
+- Multiple dictionary import support
+- Smart furigana distribution
+
+### Improved
+- OCR lookup and screenshot capture optimizations for Webtoon mode
+- Image exports with WebP compression and resizing
+- Anki dictionary mining UI with card navigation and sorting
+
+### Fixed
+- Paged reader panning while zoomed
+- Popup dictionary order handling
+- Webtoon reader gestures
+
 ## [v1.3.0]
 
 ### Added

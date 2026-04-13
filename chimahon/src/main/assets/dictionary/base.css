@@ -46,6 +46,84 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 
+/* ── Lookup History Tabs ─────────────────────────────────────── */
+.lookup-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;          /* Firefox */
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.lookup-tabs::-webkit-scrollbar {
+  display: none;                  /* WebKit */
+}
+
+.lookup-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.8em;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.65;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.lookup-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  opacity: 1;
+}
+
+.lookup-tab.stack-button {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.lookup-tab:not(.active):not(.stack-button):active {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.lookup-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.7;
+  pointer-events: none;           /* close handled by tab click on × span */
+  font-style: normal;
+}
+
 .entries {
   padding: 10px;
 }
@@ -322,4 +400,119 @@ td {
 
 .anki-add-btn:active {
   transform: scale(0.9);
+}
+
+/* ── Word-tap highlight on glossary text ─────────────────────── */
+.gloss-tap-target {
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: rgba(0,0,0,0.08);
+}
+
+/* Pitch Accent Rendering */
+.pitches-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    margin-top: 0.25em;
+    margin-bottom: 0.75em;
+}
+
+.pitch-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2em;
+}
+
+.pitch-group-tag {
+    font-size: 0.8em;
+    color: var(--fg-dynamic);
+    opacity: 0.7;
+    margin-bottom: 0.1em;
+}
+
+.pitch-number {
+    font-size: 0.9em;
+    font-weight: bold;
+    color: var(--accent);
+    margin-right: 0.5em;
+}
+
+.pronunciation-text {
+    display: inline;
+    font-size: 1.1em;
+}
+
+.pronunciation-mora {
+    display: inline-block;
+    position: relative;
+}
+
+.pronunciation-mora-line {
+    border-color: var(--fg-dynamic);
+}
+
+.pronunciation-mora[data-pitch=high]>.pronunciation-mora-line {
+    display: block;
+    user-select: none;
+    pointer-events: none;
+    position: absolute;
+    top: 0.1em;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top-width: 0.1em;
+    border-top-style: solid;
+}
+
+.pronunciation-mora[data-pitch=high][data-pitch-next=low]>.pronunciation-mora-line {
+    right: -0.1em;
+    height: 0.4em;
+    border-right-width: 0.1em;
+    border-right-style: solid;
+}
+
+.pronunciation-mora[data-pitch=high][data-pitch-next=low] {
+    padding-right: 0.1em;
+    margin-right: 0.1em;
+}
+
+.pronunciation-graph {
+    display: inline-block;
+    vertical-align: middle;
+    height: 1.5em;
+}
+
+.pronunciation-graph-line,
+.pronunciation-graph-line-tail {
+    fill: none;
+    stroke: var(--fg-dynamic);
+    stroke-width: 5;
+}
+
+.pronunciation-graph-line-tail {
+    stroke-dasharray: 5 5;
+}
+
+.pronunciation-graph-dot {
+    fill: var(--fg-dynamic);
+    stroke: var(--fg-dynamic);
+    stroke-width: 5;
+}
+
+.pronunciation-graph-dot-downstep1 {
+    fill: none;
+    stroke: var(--fg-dynamic);
+    stroke-width: 5;
+}
+
+.pronunciation-graph-dot-downstep2 {
+    fill: var(--fg-dynamic);
+}
+
+.pronunciation-graph-triangle {
+    fill: none;
+    stroke: var(--fg-dynamic);
+    stroke-width: 5;
 }

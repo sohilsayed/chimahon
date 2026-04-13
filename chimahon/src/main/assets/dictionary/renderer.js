@@ -6,6 +6,11 @@
   const SCOPED_STYLE_CACHE_LIMIT = 24;
   const scopedStyleCache = new Map();
 
+  // ── Recursive lookup state ────────────────────────────────────────────────
+  const HOSHI_SCHEME = 'hoshi:';
+  const MAX_SCAN_CHARS = 24;   // chars to extract forward from tap point
+
+
   const HAS_NATIVE_SCOPE = (() => {
     try {
       if (!window.CSS || !CSS.supports) return false;
@@ -538,6 +543,186 @@
         parent.appendChild(document.createTextNode(parts[i]));
       }
     }
+  }
+
+  // ── Word extraction ───────────────────────────────────────────────────────
+
+  function isCJK(ch) {
+    const cp = ch.codePointAt(0);
+    // CJK Unified, Katakana, Hiragana, Katakana ext, CJK compat, fullwidth
+    return (cp >= 0x3000 && cp <= 0x9FFF) ||
+           (cp >= 0xF900 && cp <= 0xFAFF) ||
+           (cp >= 0xFF00 && cp <= 0xFFEF);
+  }
+
+  function isWordChar(ch) {
+    return isCJK(ch) || /[\w\u00C0-\u024F\u0600-\u06FF]/.test(ch);
+  }
+
+  /**
+   * Returns up to MAX_SCAN_CHARS of text starting at the tapped position.
+   * For CJK the full forward slice is useful (backend handles deinflection).
+   * For space-separated scripts we expand left+right to word boundaries.
+   */
+  function extractTextAtPoint(x, y) {
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+      }
+    }
+    if (!range) return null;
+
+    const node = range.startContainer;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+
+    const text = node.textContent || '';
+    const offset = Math.min(range.startOffset, text.length);
+    if (offset >= text.length) return null;
+
+    const ch = text[offset];
+    if (!isWordChar(ch)) return null;
+
+    if (isCJK(ch)) {
+      // Return forward slice — backend will find the longest matching term
+      return text.slice(offset, offset + MAX_SCAN_CHARS);
+    }
+
+    // Space-separated: expand to word boundaries
+    let start = offset;
+    let end = offset;
+    while (start > 0 && isWordChar(text[start - 1])) start--;
+    while (end < text.length && isWordChar(text[end])) end++;
+    const word = text.slice(start, end).trim();
+    return word.length > 0 ? word : null;
+  }
+
+  // ── Tab bar ───────────────────────────────────────────────────────────────
+
+  let _tabs = [];          // [{label, active}]
+  let _tabsEl = null;      // the .lookup-tabs DOM node
+
+  function getOrCreateTabsEl() {
+    if (_tabsEl && _tabsEl.parentElement) return _tabsEl;
+    _tabsEl = document.createElement('div');
+    _tabsEl.id = 'lookup-tabs';
+    _tabsEl.className = 'lookup-tabs';
+    return _tabsEl;
+  }
+
+  let _navMode = 'tabs';
+
+  function renderTabBar(tabs, navMode) {
+    if (navMode) _navMode = navMode;
+    _tabs = Array.isArray(tabs) ? tabs : [];
+    const container = document.getElementById('entries');
+    if (!container) return;
+
+    if (_tabs.length <= 1) {
+      // Hide / remove the tab bar when there is only one (or zero) entries
+      if (_tabsEl && _tabsEl.parentElement) _tabsEl.remove();
+      return;
+    }
+
+    const el = getOrCreateTabsEl();
+    el.textContent = '';
+
+    if (_navMode === 'stack') {
+      const btn = document.createElement('button');
+      btn.className = 'lookup-tab stack-button';
+      btn.title = 'Back';
+      
+      const label = document.createElement('span');
+      label.textContent = '← Back';
+      btn.appendChild(label);
+      
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        navigateTo('hoshi://back');
+      };
+      
+      el.appendChild(btn);
+    } else {
+      _tabs.forEach((tab, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'lookup-tab' + (tab.active ? ' active' : '');
+        btn.title = tab.label;
+        btn.setAttribute('data-tab-index', String(i));
+
+        const label = document.createElement('span');
+        label.textContent = tab.label.length > 12 ? tab.label.slice(0, 12) + '…' : tab.label;
+        btn.appendChild(label);
+
+        if (!tab.active) {
+          // Show a small × to indicate the tab is closeable / navigatable
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            navigateTo('hoshi://tab?index=' + i);
+          };
+        }
+
+        el.appendChild(btn);
+      });
+    }
+
+    // Prepend tab bar before first non-tab child
+    if (!el.parentElement) {
+      container.insertBefore(el, container.firstChild);
+    }
+
+    // Auto-scroll the active tab into view
+    requestAnimationFrame(() => {
+      const activeBtn = el.querySelector('.lookup-tab.active');
+      if (activeBtn) activeBtn.scrollIntoView({block: 'nearest', inline: 'center', behavior: 'smooth'});
+    });
+  }
+
+  // ── Navigation helper ─────────────────────────────────────────────────────
+
+  function navigateTo(url) {
+    // Using location.href is the most reliable way to fire shouldOverrideUrlLoading
+    window.location.href = url;
+  }
+
+  // ── Touch / tap listener (delegated on document) ──────────────────────────
+
+  let _lookupEnabled = false;
+  let _touchStartX = 0;
+  let _touchStartY = 0;
+  const TAP_MOVE_THRESHOLD = 10;  // px — ignore if finger moved too far (scroll)
+
+  function installTapListener() {
+    if (_lookupEnabled) return;
+    _lookupEnabled = true;
+
+    document.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      if (t) { _touchStartX = t.clientX; _touchStartY = t.clientY; }
+    }, {passive: true});
+
+    document.addEventListener('touchend', (e) => {
+      // Ignore multi-touch
+      if (e.changedTouches.length !== 1) return;
+      const t = e.changedTouches[0];
+      const dx = Math.abs(t.clientX - _touchStartX);
+      const dy = Math.abs(t.clientY - _touchStartY);
+      if (dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD) return;
+
+      // Only trigger inside the entries area, not on interactive controls
+      const target = e.target;
+      if (!target) return;
+      if (target.closest('button, a, .anki-add-btn, .lookup-tab, .inflection-toggle')) return;
+
+      const word = extractTextAtPoint(t.clientX, t.clientY);
+      if (!word) return;
+
+      e.preventDefault();
+      navigateTo('hoshi://lookup?q=' + encodeURIComponent(word));
+    }, {passive: false});
   }
 
   function mediaCandidates(path) {
@@ -1194,30 +1379,188 @@
     }
   }
 
-  function appendPitchesSection(body, pitches) {
-    if (pitches.length === 0) return;
 
-    const section = document.createElement('div');
-    section.className = 'entry-body-section';
-    const list = document.createElement('ol');
-    list.className = 'pronunciation-group-list';
 
-    for (const group of pitches) {
-      const li = document.createElement('li');
-      li.className = 'pronunciation-group';
-      li.appendChild(createTag(String(group.dictName || ''), 'pronunciation-dictionary'));
-      const note = document.createElement('span');
-      const positions = Array.isArray(group.pitchPositions) ? group.pitchPositions.join(', ') : '-';
-      note.textContent = ` [${positions || '-'}]`;
-      li.appendChild(note);
-      list.appendChild(li);
+  function getMorae(text) {
+    const morae = [];
+    const smallKana = /[\u3041\u3043\u3045\u3047\u3049\u3063\u3081\u3083\u3085\u3087\u308e\u30a1\u30a3\u30a5\u30a7\u30a9\u30c3\u30e1\u30e3\u30e5\u30e7\u30ee\u30f5\u30f6]/;
+    for (const char of text) {
+      if (morae.length > 0 && smallKana.test(char)) {
+        morae[morae.length - 1] += char;
+      } else {
+        morae.push(char);
+      }
     }
-
-    section.appendChild(list);
-    body.appendChild(section);
+    return morae;
   }
 
-  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled) {
+  function createPitchDiagram(morae, pitchPos) {
+    const p = pitchPos;
+    const n = morae.length;
+    const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
+    svg.classList.add('pronunciation-graph');
+    
+    // Each mora is ~25 units wide in our SVG coordinate system
+    const moraWidth = 30;
+    const height = 50;
+    const padding = 10;
+    const totalWidth = n * moraWidth + padding * 2;
+    
+    svg.setAttribute('viewBox', `0 0 ${totalWidth} ${height}`);
+    svg.setAttribute('preserveAspectRatio', 'xMinYMid meet');
+    svg.style.width = `${totalWidth / 10}em`;
+
+    const points = [];
+    for (let i = 0; i < n; i++) {
+        let isHigh = false;
+        if (p === 0) { // Heiban
+            isHigh = (i > 0);
+        } else if (p === 1) { // Atamadaka
+            isHigh = (i === 0);
+        } else { // Nakadaka / Odaka
+            isHigh = (i > 0 && i < p);
+        }
+        points.push({
+            x: padding + i * moraWidth + moraWidth / 2,
+            y: isHigh ? 15 : 35
+        });
+    }
+
+    // Draw lines
+    if (points.length > 1) {
+        const path = document.createElementNS(SVG_NAMESPACE, 'path');
+        path.classList.add('pronunciation-graph-line');
+        let d = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 1; i < n; i++) {
+            // Step connector
+            if (points[i].y !== points[i-1].y) {
+                 d += ` L ${points[i].x - moraWidth/2} ${points[i-1].y} L ${points[i].x - moraWidth/2} ${points[i].y}`;
+            }
+            d += ` L ${points[i].x} ${points[i].y}`;
+        }
+        
+        // Add tail for Odaka (p === n) or Heiban (p === 0)
+        if (p === 0 || p === n) {
+             const tailX = points[n-1].x + moraWidth / 2;
+             const tailY = (p === 0) ? points[n-1].y : 35;
+             d += ` L ${tailX} ${points[n-1].y}`;
+             if (points[n-1].y !== tailY) {
+                 d += ` L ${tailX} ${tailY}`;
+             }
+             d += ` L ${tailX + 10} ${tailY}`;
+        }
+
+        path.setAttribute('d', d);
+        svg.appendChild(path);
+    }
+
+    // Draw dots
+    points.forEach((pt, i) => {
+        const circle = document.createElementNS(SVG_NAMESPACE, 'circle');
+        circle.classList.add('pronunciation-graph-dot');
+        circle.setAttribute('cx', pt.x);
+        circle.setAttribute('cy', pt.y);
+        circle.setAttribute('r', 4);
+        svg.appendChild(circle);
+    });
+
+    return svg;
+  }
+
+  function createPitchTextLine(morae, pitchPos) {
+    const container = document.createElement('span');
+    container.className = 'pronunciation-text';
+    const p = pitchPos;
+    
+    morae.forEach((mora, i) => {
+        const span = document.createElement('span');
+        span.className = 'pronunciation-mora';
+        span.textContent = mora;
+        
+        let isHigh = false;
+        let nextIsLow = false;
+
+        if (p === 0) { // Heiban (0)
+            isHigh = (i > 0);
+        } else if (p === 1) { // Atamadaka (1)
+            isHigh = (i === 0);
+            if (i === 0) nextIsLow = true;
+        } else { // Nakadaka / Odaka
+            isHigh = (i > 0 && i < p);
+            if (i === p - 1) nextIsLow = true;
+        }
+
+        if (isHigh) {
+            span.dataset.pitch = 'high';
+            const line = document.createElement('span');
+            line.className = 'pronunciation-mora-line';
+            span.appendChild(line);
+        }
+        if (nextIsLow) {
+            span.dataset.pitchNext = 'low';
+        }
+        
+        container.appendChild(span);
+    });
+    
+    return container;
+  }
+
+  function appendPitchesSection(body, pitches, reading, showDiagram, showNumber, showText) {
+    if (pitches.length === 0 || (!showDiagram && !showNumber && !showText)) return;
+
+    const section = document.createElement('div');
+    section.className = 'entry-body-section pitches-section';
+
+    for (const group of pitches) {
+      const dictName = String(group.dictName || '');
+      const positions = Array.isArray(group.pitchPositions) ? group.pitchPositions : [];
+      if (positions.length === 0) continue;
+
+      const groupContainer = document.createElement('div');
+      groupContainer.className = 'pitch-entry';
+      
+      const tag = document.createElement('div');
+      tag.className = 'pitch-group-tag';
+      tag.textContent = dictName;
+      groupContainer.appendChild(tag);
+      
+      const morae = getMorae(reading || '');
+
+      positions.forEach(pos => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '0.5em';
+        row.style.flexWrap = 'wrap';
+
+        if (showNumber) {
+          const num = document.createElement('span');
+          num.className = 'pitch-number';
+          num.textContent = `[${pos}]`;
+          row.appendChild(num);
+        }
+
+        if (showDiagram && morae.length > 0) {
+          row.appendChild(createPitchDiagram(morae, pos));
+        }
+
+        if (showText && morae.length > 0) {
+          row.appendChild(createPitchTextLine(morae, pos));
+        }
+
+        groupContainer.appendChild(row);
+      });
+
+      section.appendChild(groupContainer);
+    }
+
+    if (section.childElementCount > 0) {
+      body.appendChild(section);
+    }
+  }
+
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
@@ -1269,16 +1612,16 @@
     const process = Array.isArray(result.process) ? result.process.join(' -> ') : '';
     appendInflectionSection(body, rules, process);
 
+    const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
+    appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
+
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
     appendDefinitionsSection(body, glossaries, mediaMap);
-
-    const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
-    appendPitchesSection(body, pitches);
 
     return article;
   }
 
-  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled) {
+  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
     const expression = (result.term && result.term.expression) || result.matched || '';
@@ -1289,7 +1632,7 @@
     const process = Array.isArray(result.process) ? result.process.join(' -> ') : '';
 
     if (glossaries.length === 0) {
-      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions)];
+      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText)];
     }
 
     const articles = [];
@@ -1331,10 +1674,10 @@
       body.appendChild(headSection);
 
       appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
-
       if (i === 0) {
         appendInflectionSection(body, rules, process);
       }
+      appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
 
       const defSection = document.createElement('div');
       defSection.className = 'entry-body-section';
@@ -1344,7 +1687,7 @@
       defSection.appendChild(definitionList);
       body.appendChild(defSection);
 
-      appendPitchesSection(body, pitches);
+
 
       articles.push(article);
     }
@@ -1408,6 +1751,13 @@
     if (!container) return;
     container.textContent = '';
 
+    // Re-attach tab bar (it was cleared)
+    const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+    if (tabs.length > 1) {
+      renderTabBar(tabs, payload.recursiveNavMode);
+      // insertBefore because textContent='' removed it
+      if (_tabsEl) container.insertBefore(_tabsEl, container.firstChild);
+    }
     const mediaMap = payload.mediaDataUris || {};
     const results = Array.isArray(payload.results) ? payload.results : [];
     const dictionaryOrder = Array.isArray(payload.dictionaryOrder) ? payload.dictionaryOrder : [];
@@ -1455,10 +1805,13 @@
     } else {
       const fragment = document.createDocumentFragment();
       for (const result of results) {
+        const diagram = payload.showPitchDiagram !== false;
+        const number = payload.showPitchNumber !== false;
+        const text = payload.showPitchText !== false;
         if (groupTerms) {
-          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled));
+          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text));
         } else {
-          const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled);
+          const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text);
           articles.forEach(a => fragment.appendChild(a));
         }
       }
@@ -1494,10 +1847,29 @@
       console.error('[DictionaryRenderJS] renderFromBridge error:', e.message);
     }
   },
+
+  /** Called by Kotlin to update the tab bar in-place (without full re-render). */
+  updateTabs(tabsJson) {
+    try {
+      const tabs = JSON.parse(tabsJson);
+      renderTabBar(tabs);
+    } catch (e) {
+      console.error('[DictionaryRenderJS] updateTabs error:', e.message);
+    }
+  },
+
+  /** Enable or disable the word-tap-to-lookup gesture. */
+  setRecursiveLookupEnabled(enabled) {
+    if (enabled) {
+      installTapListener();
+    }
+  },
   
   clear() {
     const container = document.getElementById('entries');
     if (container) container.textContent = '';
+    _tabsEl = null;
+    _tabs = [];
     const styleNode = document.getElementById('dictionary-styles');
     if (styleNode) {
       styleNode.textContent = '';

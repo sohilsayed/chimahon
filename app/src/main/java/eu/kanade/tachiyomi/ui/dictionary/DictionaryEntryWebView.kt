@@ -32,6 +32,14 @@ import java.nio.charset.StandardCharsets
 private const val ANKI_SCHEME = "anki"
 private const val ANKI_PATH_ADD = "add"
 
+private const val HOSHI_SCHEME = "hoshi"
+private const val HOSHI_HOST_LOOKUP = "lookup"
+private const val HOSHI_HOST_TAB = "tab"
+private const val HOSHI_HOST_BACK = "back"
+
+/** Represents one entry in the scrollable lookup-history tab bar shown inside the WebView. */
+data class TabInfo(val label: String, val active: Boolean)
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun DictionaryEntryWebView(
@@ -45,9 +53,17 @@ fun DictionaryEntryWebView(
     groupTerms: Boolean = true,
     activeProfile: chimahon.anki.AnkiProfile,
     existingExpressions: Set<String> = emptySet(),
+    tabs: List<TabInfo> = emptyList(),
+    showPitchDiagram: Boolean = true,
+    showPitchNumber: Boolean = true,
+    showPitchText: Boolean = true,
+    recursiveNavMode: String = "tabs",
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
     onAnkiLookup: ((Int, Int?) -> Unit)? = null,
+    onRecursiveLookup: ((String) -> Unit)? = null,
+    onTabSelect: ((Int) -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     val isDark = isSystemInDarkTheme()
     val context = LocalContext.current
@@ -59,12 +75,12 @@ fun DictionaryEntryWebView(
     val bgHex = "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
     val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outline.toArgb())
 
-    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, activeProfile, existingExpressions) {
+    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode) {
         val buildStart = SystemClock.elapsedRealtime()
-        val result = buildRenderPayload(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, activeProfile, existingExpressions)
+        val result = buildRenderPayload(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode)
         Log.i(
             "DictionaryRender",
-            "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size}",
+            "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size} tabs=${tabs.size}",
         )
         result
     }
@@ -98,11 +114,33 @@ fun DictionaryEntryWebView(
                             request: WebResourceRequest?,
                         ): Boolean {
                             val url = request?.url ?: return false
-                            // Intercept anki://add?index=0&glossary=0 URLs
+                            val s = view?.tag as? DictionaryWebViewState
+
+                            // ── hoshi:// — recursive lookup, tab navigation, back ──
+                            if (url.scheme == HOSHI_SCHEME) {
+                                when (url.host) {
+                                    HOSHI_HOST_LOOKUP -> {
+                                        val q = url.getQueryParameter("q") ?: return true
+                                        if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q)
+                                        return true
+                                    }
+                                    HOSHI_HOST_TAB -> {
+                                        val idx = url.getQueryParameter("index")?.toIntOrNull()
+                                        if (idx != null) s?.onTabSelect?.invoke(idx)
+                                        return true
+                                    }
+                                    HOSHI_HOST_BACK -> {
+                                        s?.onBack?.invoke()
+                                        return true
+                                    }
+                                }
+                                return true // consume any unknown hoshi:// URLs
+                            }
+
+                            // ── anki://add — Anki card creation ──
                             if (url.scheme == ANKI_SCHEME && url.host == ANKI_PATH_ADD) {
                                 val index = url.getQueryParameter("index")?.toIntOrNull()
                                 val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
-                                val s = view?.tag as? DictionaryWebViewState
                                 if (index != null && index >= 0) {
                                     s?.onAnkiLookup?.invoke(index, glossary)
                                 }
@@ -127,6 +165,7 @@ fun DictionaryEntryWebView(
                                         window.location.href = url;
                                     }
                                 };
+                                window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled(true);
                                 """.trimIndent(),
                                 null,
                             )
@@ -151,17 +190,21 @@ fun DictionaryEntryWebView(
         update = { webView: WebView ->
             val state = webView.tag as? DictionaryWebViewState ?: return@AndroidView
             state.onAnkiLookup = onAnkiLookup
+            state.onRecursiveLookup = onRecursiveLookup
+            state.onTabSelect = onTabSelect
+            state.onBack = onBack
             state.pendingPayload = payload
 
             val theme = if (isDark) "dark" else "light"
             webView.evaluateJavascript(
-                "const r = document.documentElement;" +
+                "(function(r) {" +
                     "r.dataset.theme = '$theme';" +
                     "r.style.setProperty('--accent', '$accentHex');" +
                     "r.style.setProperty('--on-accent', '$onAccentHex');" +
                     "r.style.setProperty('--fg-dynamic', '$fgHex');" +
                     "r.style.setProperty('--bg-dynamic', '$bgHex');" +
-                    "r.style.setProperty('--border-dynamic', '$borderHex');",
+                    "r.style.setProperty('--border-dynamic', '$borderHex');" +
+                    "})(document.documentElement);",
                 null,
             )
 
@@ -213,6 +256,9 @@ private class DictionaryWebViewState(
 ) {
     var pageReady: Boolean = false
     var onAnkiLookup: ((Int, Int?) -> Unit)? = null
+    var onRecursiveLookup: ((String) -> Unit)? = null
+    var onTabSelect: ((Int) -> Unit)? = null
+    var onBack: (() -> Unit)? = null
     var lastPayload: String? = null
     var pendingPayload: String? = null
 
@@ -252,8 +298,13 @@ private fun buildRenderPayload(
     isDark: Boolean,
     showFrequencyHarmonic: Boolean,
     groupTerms: Boolean,
+    showPitchDiagram: Boolean,
+    showPitchNumber: Boolean,
+    showPitchText: Boolean,
     activeProfile: chimahon.anki.AnkiProfile,
     existingExpressions: Set<String> = emptySet(),
+    tabs: List<TabInfo> = emptyList(),
+    recursiveNavMode: String = "tabs",
 ): String {
     val buffer = StringWriter(4096)
     JsonWriter(buffer).use { w ->
@@ -275,6 +326,21 @@ private fun buildRenderPayload(
         w.name("isDark").value(isDark)
         w.name("showFrequencyHarmonic").value(showFrequencyHarmonic)
         w.name("groupTerms").value(groupTerms)
+        w.name("showPitchDiagram").value(showPitchDiagram)
+        w.name("showPitchNumber").value(showPitchNumber)
+        w.name("showPitchText").value(showPitchText)
+        w.name("recursiveNavMode").value(recursiveNavMode)
+
+        // Tabs for recursive lookup navigation
+        w.name("tabs").beginArray()
+        for (tab in tabs) {
+            w.beginObject()
+            w.name("label").value(tab.label)
+            w.name("active").value(tab.active)
+            w.endObject()
+        }
+        w.endArray()
+
         w.name("existingExpressions").beginArray()
         for (expr in existingExpressions) {
             w.value(expr)

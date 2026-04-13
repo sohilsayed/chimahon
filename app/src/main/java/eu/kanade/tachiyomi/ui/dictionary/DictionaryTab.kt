@@ -11,23 +11,35 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
@@ -45,13 +57,16 @@ import chimahon.dictionary.arabic.ArabicLookupMapper
 import chimahon.dictionary.arabic.ArabicTextPreprocessors
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.TabInfo
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import org.apache.http.client.methods.RequestBuilder.put
 import org.json.JSONArray
 import org.json.JSONObject
 import tachiyomi.core.common.i18n.stringResource
@@ -70,6 +85,16 @@ import java.util.Collections.emptySet
 import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
+
+/** One entry in the recursive-lookup history stack (shared by tab and popup). */
+private data class TabLookupFrame(
+    val query: String,
+    val results: List<LookupResult>,
+    val styles: List<DictionaryStyle>,
+    val mediaDataUris: Map<String, String>,
+    val existingExpressions: Set<String>,
+)
+
 
 fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.anki.AnkiProfile? = null): List<String> {
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
@@ -142,14 +167,12 @@ data object DictionaryTab : Tab {
         var query by remember { mutableStateOf("") }
         var isLoading by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
-        var results by remember { mutableStateOf<List<LookupResult>>(emptyList()) }
-        var styles by remember { mutableStateOf<List<DictionaryStyle>>(emptyList()) }
-        var mediaDataUris by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-        var existingExpressions by remember { mutableStateOf<Set<String>>(emptySet()) }
         var hasSearched by remember { mutableStateOf(false) }
         var shouldMountWebView by remember { mutableStateOf(false) }
         var searchJob by remember { mutableStateOf<Job?>(null) }
         var retainedWebView by remember { mutableStateOf<WebView?>(null) }
+        val focusManager = LocalFocusManager.current
+        val focusRequester = remember { FocusRequester() }
 
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
@@ -167,6 +190,93 @@ data object DictionaryTab : Tab {
         val ankiTags = activeProfile.ankiTags
 
         val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
+        val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
+        val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
+        val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
+        val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
+        val recursiveNavMode by dictionaryPreferences.recursiveLookupMode().collectAsState()
+
+        // ── Lookup history stack ──────────────────────────────────────────────
+        val lookupStack = remember { mutableStateListOf<TabLookupFrame>() }
+        var activeTabIndex by remember { mutableIntStateOf(0) }
+
+        val currentFrame: TabLookupFrame? = lookupStack.getOrNull(activeTabIndex)
+        val results: List<LookupResult> = currentFrame?.results ?: emptyList()
+        val styles: List<DictionaryStyle> = currentFrame?.styles ?: emptyList()
+        val mediaDataUris: Map<String, String> = currentFrame?.mediaDataUris ?: emptyMap()
+        val existingExpressions: Set<String> = currentFrame?.existingExpressions ?: emptySet()
+
+        fun buildTabs(): List<TabInfo> = lookupStack.mapIndexed { i, frame ->
+            TabInfo(label = frame.query.take(16), active = i == activeTabIndex)
+        }
+
+        /** Push a lookup onto the stack; cancels any in-flight search first. */
+        fun stackLookup(rawQuery: String) {
+            searchJob?.cancel()
+            searchJob = scope.launch {
+                isLoading = true
+                errorMessage = null
+
+                val lookupResult = performLookup(
+                    query = rawQuery,
+                    context = context,
+                    activeProfile = activeProfile,
+                    sessionManager = sessionManager,
+                )
+
+                var existing: Set<String> = emptySet()
+                if (ankiEnabled && ankiModel.isNotBlank() && lookupResult.results.isNotEmpty()) {
+                    val unique = lookupResult.results.map { it.term.expression }.distinct()
+                    existing = AnkiCardCreator.checkExistingCards(context, unique, ankiModel)
+                }
+
+                val frame = TabLookupFrame(
+                    query = rawQuery,
+                    results = lookupResult.results,
+                    styles = lookupResult.styles,
+                    mediaDataUris = lookupResult.mediaDataUris,
+                    existingExpressions = existing,
+                )
+                // Truncate forward history, then push
+                while (lookupStack.size > activeTabIndex + 1) lookupStack.removeAt(lookupStack.size - 1)
+                lookupStack.add(frame)
+                activeTabIndex = lookupStack.size - 1
+
+                errorMessage = lookupResult.error
+                hasSearched = true
+                isLoading = false
+            }
+        }
+
+        // ── Auto-search effect ────────────────────────────────────────────────
+        LaunchedEffect(query) {
+            val trimmed = query.trim()
+            if (trimmed.isEmpty()) {
+                if (hasSearched) {
+                    lookupStack.clear()
+                    activeTabIndex = 0
+                    hasSearched = false
+                }
+                return@LaunchedEffect
+            }
+            // Debounce for 300ms
+            delay(300)
+
+            // If we are at the root or typing in the main box, reset history to start a new search
+            // (Unless it was already the same query in the current frame)
+            if (currentFrame?.query != trimmed) {
+                lookupStack.clear()
+                activeTabIndex = 0
+                stackLookup(trimmed)
+            }
+        }
+
+        // ── Auto-focus effect ──────────────────────────────────────────────────
+        LaunchedEffect(Unit) {
+            // Wait for tab animation/composition to settle
+            delay(300)
+            focusRequester.requestFocus()
+        }
 
         // Simple callback for Anki lookup - index maps to results array, glossaryIndex is optional
         val onAnkiLookup: ((Int, Int?) -> Unit)? = if (ankiEnabled) {
@@ -242,63 +352,63 @@ data object DictionaryTab : Tab {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
                     label = { Text(stringResource(MR.strings.action_search)) },
                     placeholder = { Text(stringResource(MR.strings.action_search_hint)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Clear,
+                                    contentDescription = stringResource(MR.strings.action_reset),
+                                )
+                            }
+                        }
+                    },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            val trimmed = query.trim()
+                            if (trimmed.isNotEmpty()) {
+                                lookupStack.clear()
+                                activeTabIndex = 0
+                                stackLookup(trimmed)
+                                focusManager.clearFocus()
+                            }
+                        },
+                    ),
                 )
 
-                Button(
+                IconButton(
                     onClick = {
                         val trimmedQuery = query.trim()
                         if (trimmedQuery.isEmpty()) {
-                            results = emptyList()
-                            mediaDataUris = emptyMap()
+                            lookupStack.clear()
+                            activeTabIndex = 0
                             errorMessage = null
                             hasSearched = true
-                            return@Button
+                        } else {
+                            lookupStack.clear()
+                            activeTabIndex = 0
+                            stackLookup(trimmedQuery)
                         }
-
-                        searchJob?.cancel()
-                        searchJob = scope.launch {
-                            isLoading = true
-                            errorMessage = null
-
-                            val lookupResult = performLookup(
-                                query = trimmedQuery,
-                                context = context,
-                                activeProfile = activeProfile,
-                                sessionManager = sessionManager,
-                            )
-                            results = lookupResult.results
-                            styles = lookupResult.styles
-                            mediaDataUris = lookupResult.mediaDataUris
-                            errorMessage = lookupResult.error
-                            hasSearched = true
-
-                            // Check which expressions are already in Anki
-                            if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
-                                val uniqueExpressions = results.map { it.term.expression }.distinct()
-                                existingExpressions = AnkiCardCreator.checkExistingCards(context, uniqueExpressions, ankiModel)
-                            }
-
-                            lookupResult.diagnostics?.let { diagnostics ->
-                                Log.i(
-                                    "DictionaryPerf",
-                                    "query='$trimmedQuery' total_ms=${diagnostics.totalMs} " +
-                                        "create_session_ms=${diagnostics.sessionCreateMs} rebuild_ms=${diagnostics.rebuildMs} " +
-                                        "lookup_ms=${diagnostics.lookupMs} media_ms=${diagnostics.mediaMs} " +
-                                        "ram_mb_before=${diagnostics.ramBeforeMb} ram_mb_after=${diagnostics.ramAfterMb} " +
-                                        "results=${diagnostics.resultCount} json_glossaries=${diagnostics.jsonGlossaryCount} " +
-                                        "css_bytes=${diagnostics.cssBytes} dump_dir=${lookupResult.debugDumpDir.orEmpty()}",
-                                )
-                            }
-
-                            isLoading = false
-                        }
+                        focusManager.clearFocus()
                     },
                 ) {
-                    Text(stringResource(MR.strings.action_search))
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = stringResource(MR.strings.action_search),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
 
@@ -322,12 +432,25 @@ data object DictionaryTab : Tab {
                         "Search to view dictionary entries"
                     },
                     showFrequencyHarmonic = showFreqHarmonic,
+                    groupTerms = groupTerms,
+                    showPitchDiagram = showPitchDiagram,
+                    showPitchNumber = showPitchNumber,
+                    showPitchText = showPitchText,
                     activeProfile = activeProfile,
                     existingExpressions = existingExpressions,
+                    tabs = buildTabs(),
+                    recursiveNavMode = recursiveNavMode,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },
                     onAnkiLookup = onAnkiLookup,
+                    onRecursiveLookup = { word -> stackLookup(word) },
+                    onTabSelect = { idx ->
+                        if (idx in lookupStack.indices) activeTabIndex = idx
+                    },
+                    onBack = {
+                        if (activeTabIndex > 0) activeTabIndex--
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),

@@ -77,6 +77,7 @@ import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -126,6 +127,8 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.PITCH_ACCENTS -> "${prefix}Pitch Accents"
         Marker.PITCH_ACCENT_POSITIONS -> "${prefix}Pitch Positions"
         Marker.PITCH_ACCENT_CATEGORIES -> "${prefix}Pitch Categories"
+        Marker.PITCH_ACCENT_GRAPHS -> "${prefix}Pitch Graphs"
+        Marker.MORAE -> "${prefix}Morae"
         Marker.AUDIO -> "${prefix}Audio"
         Marker.SCREENSHOT -> "${prefix}Screenshot"
         Marker.SEARCH_QUERY -> "${prefix}Search Query"
@@ -249,6 +252,60 @@ object SettingsDictionaryScreen : SearchableSettings {
                     preference = groupTermsPref,
                     title = stringResource(MR.strings.pref_dict_group_terms),
                     subtitle = stringResource(MR.strings.pref_dict_group_terms_summary),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.recursiveLookupMode(),
+                    entries = persistentListOf(
+                        "tabs" to stringResource(MR.strings.pref_dict_recursive_mode_tabs),
+                        "stack" to stringResource(MR.strings.pref_dict_recursive_mode_back),
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = stringResource(MR.strings.pref_dict_recursive_mode),
+                ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_dict_pitch_accent_display),
+                    content = {
+                        val showPitchDiagramPref = dictionaryPreferences.showPitchDiagram()
+                        val showPitchDiagram by showPitchDiagramPref.collectAsState()
+
+                        val showPitchNumberPref = dictionaryPreferences.showPitchNumber()
+                        val showPitchNumber by showPitchNumberPref.collectAsState()
+
+                        val showPitchTextPref = dictionaryPreferences.showPitchText()
+                        val showPitchText by showPitchTextPref.collectAsState()
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(MR.strings.pref_dict_pitch_accent_display),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = showPitchDiagram,
+                                    onClick = { showPitchDiagramPref.set(!showPitchDiagram) },
+                                    label = { Text(stringResource(MR.strings.pref_dict_pitch_diagram)) },
+                                )
+                                FilterChip(
+                                    selected = showPitchNumber,
+                                    onClick = { showPitchNumberPref.set(!showPitchNumber) },
+                                    label = { Text(stringResource(MR.strings.pref_dict_pitch_number)) },
+                                )
+                                FilterChip(
+                                    selected = showPitchText,
+                                    onClick = { showPitchTextPref.set(!showPitchText) },
+                                    label = { Text(stringResource(MR.strings.pref_dict_pitch_text)) },
+                                )
+                            }
+                        }
+                    },
                 ),
             ),
         )

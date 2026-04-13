@@ -242,6 +242,9 @@
     <string name="pref_dict_delete">Delete dictionary</string>
     <string name="pref_dict_order">Dictionary order</string>
     <string name="pref_dict_importing">Importing…</string>
+    <string name="pref_dict_recursive_mode">Recursive lookup navigation style</string>
+    <string name="pref_dict_recursive_mode_tabs">Tabs</string>
+    <string name="pref_dict_recursive_mode_back">Stacked</string>
     <string name="pref_category_ocr">OCR</string>
     <string name="pref_ocr_summary">Auto-OCR, cache management</string>
     <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>
@@ -632,6 +635,10 @@
     <string name="anki_field_sentence">Sentence</string>
     <string name="anki_field_frequency">Frequency</string>
     <string name="anki_field_pitch_accent">Pitch Accent</string>
+    <string name="anki_field_morae">Morae</string>
+    <string name="anki_field_pitch_accent_graphs">Pitch Graphs</string>
+    <string name="anki_field_screenshot">Screenshot</string>
+    <string name="anki_field_search_query">Search Query</string>
     <string name="anki_field_none">None (skip)</string>
     <string name="anki_not_configured">Anki deck and note type not configured</string>
     <string name="pref_create_backup">Create backup</string>
@@ -1135,4 +1142,8 @@
     <string name="migrationListScreen.migrateDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.progressDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.matchWithoutChapterToast">No chapters found, this entry cannot be used for migration</string>
+    <string name="pref_dict_pitch_accent_display">Pitch Accent Display</string>
+    <string name="pref_dict_pitch_diagram">Graph</string>
+    <string name="pref_dict_pitch_number">012</string>
+    <string name="pref_dict_pitch_text">Text</string>
 </resources>

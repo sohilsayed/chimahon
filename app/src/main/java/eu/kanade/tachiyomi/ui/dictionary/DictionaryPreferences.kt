@@ -19,6 +19,11 @@ class DictionaryPreferences(
     fun showFrequencyHarmonic() = preferenceStore.getBoolean("pref_dict_show_frequency_harmonic", false)
 
     fun groupTerms() = preferenceStore.getBoolean("pref_dict_group_terms", true)
+    fun showPitchDiagram() = preferenceStore.getBoolean("pref_dict_show_pitch_diagram", true)
+    fun showPitchNumber() = preferenceStore.getBoolean("pref_dict_show_pitch_number", true)
+    fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
+
+    fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
 
     // -------------------------------------------------------------------------
     // Profile storage (raw pref keys — consumed by AnkiProfileStore and settings UI)

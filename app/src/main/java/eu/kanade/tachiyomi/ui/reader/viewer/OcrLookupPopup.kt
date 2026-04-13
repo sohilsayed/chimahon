@@ -15,6 +15,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +39,7 @@ import chimahon.anki.AnkiResult
 import chimahon.util.ImageEncoder
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.TabInfo
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
@@ -49,6 +52,16 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.math.roundToInt
+
+/** One entry in the recursive-lookup history stack. */
+private data class LookupFrame(
+    val query: String,
+    val results: List<LookupResult>,
+    val styles: List<chimahon.DictionaryStyle>,
+    val mediaDataUris: Map<String, String>,
+    val existingExpressions: Set<String>,
+)
+
 
 @Composable
 fun OcrLookupPopup(
@@ -70,10 +83,25 @@ fun OcrLookupPopup(
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var results by remember { mutableStateOf<List<LookupResult>>(emptyList()) }
-    var styles by remember { mutableStateOf<List<chimahon.DictionaryStyle>>(emptyList()) }
-    var mediaDataUris by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var existingExpressions by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // ── Lookup history stack ──────────────────────────────────────────────
+    val lookupStack = remember { mutableStateListOf<LookupFrame>() }
+    var activeTabIndex by remember { mutableIntStateOf(0) }
+
+    val currentFrame: LookupFrame? = lookupStack.getOrNull(activeTabIndex)
+    val results = currentFrame?.results ?: emptyList()
+    val styles = currentFrame?.styles ?: emptyList()
+    val mediaDataUris = currentFrame?.mediaDataUris ?: emptyMap()
+    val existingExpressions = currentFrame?.existingExpressions ?: emptySet()
+
+    /** Build the [TabInfo] list that is passed to the JS tab bar. */
+    fun buildTabs(): List<TabInfo> = lookupStack.mapIndexed { i, frame ->
+        TabInfo(
+            label = frame.query.take(16),
+            active = i == activeTabIndex,
+        )
+    }
+
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -99,6 +127,51 @@ fun OcrLookupPopup(
 
     val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
     val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
+    val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
+    val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
+    val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
+
+    /** Perform a dictionary lookup and push a new frame onto the stack. */
+    fun pushLookup(query: String) {
+        scope.launch {
+            isLoading = true
+            errorMessage = null
+            try {
+                val termPaths = withContext(Dispatchers.IO) {
+                    getDictionaryPaths(context, activeProfile)
+                }
+                val result = withContext(Dispatchers.IO) {
+                    repository.lookup(query, termPaths)
+                }
+                var existing: Set<String> = emptySet()
+                if (ankiEnabled && ankiModel.isNotBlank() && result.results.isNotEmpty()) {
+                    val unique = result.results.map { it.term.expression }.distinct()
+                    existing = withContext(Dispatchers.IO) {
+                        AnkiCardCreator.checkExistingCards(context, unique, ankiModel)
+                    }
+                }
+                val frame = LookupFrame(
+                    query = query,
+                    results = result.results,
+                    styles = result.styles,
+                    mediaDataUris = result.mediaDataUris,
+                    existingExpressions = existing,
+                )
+                // Truncate any forward history past the current index, then push
+                while (lookupStack.size > activeTabIndex + 1) lookupStack.removeAt(lookupStack.size - 1)
+                lookupStack.add(frame)
+                activeTabIndex = lookupStack.size - 1
+                errorMessage = result.error
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Lookup failed"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    val recursiveNavMode by dictionaryPreferences.recursiveLookupMode().collectAsState()
 
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
@@ -244,49 +317,24 @@ fun OcrLookupPopup(
 
     LaunchedEffect(lookupString, ankiEnabled, ankiModel) {
         if (lookupString.isBlank()) {
-            results = emptyList()
-            styles = emptyList()
-            mediaDataUris = emptyMap()
-            existingExpressions = emptySet()
+            lookupStack.clear()
+            activeTabIndex = 0
             isLoading = false
             return@LaunchedEffect
         }
+        // Reset the stack and load the initial term
+        lookupStack.clear()
+        activeTabIndex = 0
+        pushLookup(lookupString)
+    }
 
-        isLoading = true
-        errorMessage = null
-        results = emptyList()
-        styles = emptyList()
-        mediaDataUris = emptyMap()
-        existingExpressions = emptySet()
-
-        try {
-            val termPaths = withContext(Dispatchers.IO) {
-                getDictionaryPaths(context, activeProfile)
-            }
-
-            val result = withContext(Dispatchers.IO) {
-                repository.lookup(lookupString, termPaths)
-            }
-
-            results = result.results
-            styles = result.styles
-            mediaDataUris = result.mediaDataUris
-            errorMessage = result.error
-
-            // Run duplicate check off-main so popup open/render stays responsive.
-            if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
-                val uniqueExpressions = results.map { it.term.expression }.distinct()
-                existingExpressions = withContext(Dispatchers.IO) {
-                    AnkiCardCreator.checkExistingCards(context, uniqueExpressions, ankiModel)
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            errorMessage = e.message ?: "Lookup failed"
-        } finally {
-            isLoading = false
-        }
+    // Callbacks forwarded from the WebView bridge
+    val onRecursiveLookup: (String) -> Unit = { word -> pushLookup(word) }
+    val onTabSelect: (Int) -> Unit = { idx ->
+        if (idx in lookupStack.indices) activeTabIndex = idx
+    }
+    val onBack: () -> Unit = {
+        if (activeTabIndex > 0) activeTabIndex--
     }
 
     val outsideTapInteraction = remember { MutableInteractionSource() }
@@ -331,10 +379,18 @@ fun OcrLookupPopup(
                         popupScale = popupScalePref,
                         showFrequencyHarmonic = showFreqHarmonic,
                         groupTerms = groupTerms,
+                        showPitchDiagram = showPitchDiagram,
+                        showPitchNumber = showPitchNumber,
+                        showPitchText = showPitchText,
                         activeProfile = activeProfile,
                         existingExpressions = existingExpressions,
+                        tabs = buildTabs(),
+                        recursiveNavMode = recursiveNavMode,
                         webViewProvider = { webView },
                         onAnkiLookup = onAnkiLookup,
+                        onRecursiveLookup = onRecursiveLookup,
+                        onTabSelect = onTabSelect,
+                        onBack = onBack,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
