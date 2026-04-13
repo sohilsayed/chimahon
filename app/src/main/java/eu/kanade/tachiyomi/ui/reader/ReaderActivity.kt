@@ -1706,13 +1706,7 @@ class ReaderActivity : BaseActivity() {
     // KMK <--
 
     private fun captureCurrentVisibleBitmap(): Bitmap? {
-        val viewer = viewModel.state.value.viewer ?: return null
-        val imageView = when (viewer) {
-            is PagerViewer -> viewer.getCurrentVisibleImageView()
-            is WebtoonViewer -> viewer.getCurrentVisibleImageView()
-            else -> null
-        }
-        return imageView?.captureVisibleBitmap() ?: viewModel.getCurrentPageBitmap()
+        return viewModel.getCurrentPageBitmap()
     }
 
     private fun launchImageCropper() {

@@ -22,7 +22,6 @@ import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
-import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonPageHolder
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
@@ -278,14 +277,6 @@ class WebtoonViewer(
             nextChapter -> true
             else -> false
         }
-    }
-
-    fun getCurrentVisibleImageView(): ReaderPageImageView? {
-        val child = recycler.findChildViewUnder(recycler.width / 2f, recycler.height / 2f)
-            ?: recycler.getChildAt(0)
-            ?: return null
-        val holder = recycler.getChildViewHolder(child) as? WebtoonPageHolder
-        return holder?.itemView as? ReaderPageImageView
     }
 
     /**
