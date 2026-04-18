@@ -57,7 +57,8 @@ data class ReaderSettings(
     val avoidPageBreak: Boolean = true,
     val hideFurigana: Boolean = false,
     val layoutAdvanced: Boolean = false,
-    val tapZonePercent: Int = 20
+    val tapZonePercent: Int = 20,
+    val continuousMode: Boolean = false
 )
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
@@ -296,7 +297,8 @@ class ReaderViewModel(
             avoidPageBreak = avoidPageBreak,
             hideFurigana = hideFurigana,
             layoutAdvanced = layoutAdvanced,
-            tapZonePercent = tapZonePercent
+            tapZonePercent = tapZonePercent,
+            continuousMode = continuousMode
         )
     }
 

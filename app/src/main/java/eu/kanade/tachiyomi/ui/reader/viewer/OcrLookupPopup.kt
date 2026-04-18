@@ -344,7 +344,7 @@ fun OcrLookupPopup(
         onDismissRequest = { onDismiss() },
         properties = PopupProperties(
             focusable = false,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false, // Handled by scrim in ChimaReaderActivity
         ),
     ) {
         Surface(

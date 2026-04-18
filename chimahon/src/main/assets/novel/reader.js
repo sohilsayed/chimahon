@@ -1,4 +1,5 @@
 window.hoshiReader = {
+    isRtl: false,
     paginate: function(direction) {
         var el = document.scrollingElement || document.documentElement;
         var ph = window.innerHeight;
@@ -29,8 +30,7 @@ window.hoshiReader = {
         if (hOver) {
             var x = window.scrollX;
             var maxX = el.scrollWidth - pw;
-            // vertical-rl in Chromium: scrollX may be 0 at start, negative going left
-            if (x <= 0) {
+            if (this.isRtl) {
                 var absX = Math.abs(x);
                 if (direction === 'forward' && absX + pw <= maxX + 1) {
                     window.scrollTo(x - pw, 0);
@@ -67,7 +67,8 @@ window.hoshiReader = {
         return 0;
     },
 
-    restoreProgress: function(progress) {
+    restoreProgress: function(progress, isRtl) {
+        this.isRtl = !!isRtl;
         var el = document.scrollingElement || document.documentElement;
         var ph = window.innerHeight;
         var pw = window.innerWidth;
@@ -85,7 +86,11 @@ window.hoshiReader = {
         } else if (hMax > 1) {
             var target = Math.round(hMax * p);
             target = Math.round(target / pw) * pw;
-            window.scrollTo(-Math.min(target, hMax), 0);
+            if (this.isRtl) {
+                window.scrollTo(-Math.min(target, hMax), 0);
+            } else {
+                window.scrollTo(Math.min(target, hMax), 0);
+            }
         }
 
         this.notifyRestoreComplete();

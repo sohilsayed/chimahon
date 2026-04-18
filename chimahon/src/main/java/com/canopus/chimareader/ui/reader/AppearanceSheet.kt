@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.canopus.chimareader.data.FontManager
 import com.canopus.chimareader.data.Theme
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -53,18 +54,34 @@ fun AppearanceSheet(
         }
     }
 
+    val readerSettings = viewModel.getReaderSettings(context)
+    val bgColor = Color(readerSettings.backgroundColor)
+    val textColor = Color(readerSettings.textColor)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState
+        sheetState = sheetState,
+        containerColor = bgColor,
+        contentColor = textColor,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
+        val themedColorScheme = MaterialTheme.colorScheme.copy(
+            surface = bgColor,
+            onSurface = textColor,
+            surfaceVariant = bgColor.copy(alpha = 0.8f),
+            onSurfaceVariant = textColor.copy(alpha = 0.8f),
+            primary = textColor, // Use text color as primary for buttons in the sheet
+            outline = textColor.copy(alpha = 0.5f)
+        )
+
+        MaterialTheme(colorScheme = themedColorScheme) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
             Text(
                 "Appearance",
                 style = MaterialTheme.typography.headlineSmall,
@@ -400,4 +417,5 @@ fun AppearanceSheet(
             }
         }
     }
+}
 }

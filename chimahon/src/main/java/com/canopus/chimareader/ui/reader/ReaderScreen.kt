@@ -35,6 +35,7 @@ fun ReaderScreen(
     book: BookMetadata,
     onBack: () -> Unit,
     onLookupRequested: ((word: String, sentence: String, x: Float, y: Float) -> Unit)? = null,
+    isPopupActive: Boolean = false,
 ) {
     val context = LocalContext.current
 
@@ -75,10 +76,16 @@ fun ReaderScreen(
         }
     }
 
+    val bgColor = if (loadState is ReaderLoadState.Ready) {
+        Color((loadState as ReaderLoadState.Ready).viewModel.getReaderSettings(context).backgroundColor)
+    } else {
+        MaterialTheme.colorScheme.background
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(bgColor)
             .systemBarsPadding()
     ) {
         Log.d("ReaderScreen", "BoxWithConstraints: maxHeight=$maxHeight, maxWidth=$maxWidth")
@@ -148,6 +155,7 @@ fun ReaderScreen(
                     onTapBottom = { showHud = !showHud },
                     swipeThreshold = chapterSwipeDistance,
                     tapZonePx = tapZonePx,
+                    isPopupActive = isPopupActive,
                     onTextSelected = { word, sentence, x, y -> onLookupRequested?.invoke(word, sentence, x, y) },
                 )
 

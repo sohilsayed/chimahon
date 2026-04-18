@@ -41,6 +41,7 @@ fun ReaderWebView(
     onTapBottom: () -> Unit = {},
     swipeThreshold: Int = 96,
     tapZonePx: Int = 100,
+    isPopupActive: Boolean = false,
     onTextSelected: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
@@ -52,9 +53,11 @@ fun ReaderWebView(
         }
     }
 
-    // Handle continuous mode changes
+    // Handle continuous mode changes - Reload the chapter to ensure layout engine resets
     LaunchedEffect(continuousMode) {
-        bridge.send(WebViewCommand.ChangeMode(continuousMode))
+        bridge.chapterUrl?.let { url ->
+            bridge.send(WebViewCommand.LoadChapter(url, bridge.progress))
+        }
     }
 
     // Handle focus mode changes
@@ -64,6 +67,7 @@ fun ReaderWebView(
 
     // Handle settings changes
     LaunchedEffect(readerSettings) {
+        kotlinx.coroutines.delay(300)
         bridge.send(WebViewCommand.ApplySettings(readerSettings))
     }
 
@@ -82,8 +86,9 @@ fun ReaderWebView(
                 onProgressChanged = onProgressChanged,
                 onLoadFailed = onLoadFailed,
                 onTap = onTap,
-                onTapTop = onTapTop,
-                onTapBottom = onTapBottom,
+                onTapTop = { if (!isPopupActive) onTapTop() },
+                onTapBottom = { if (!isPopupActive) onTapBottom() },
+                isPopupActive = isPopupActive,
                 swipeThreshold = swipeThreshold,
                 tapZonePx = tapZonePx,
                 onTextSelectedCallback = onTextSelected,
@@ -207,6 +212,7 @@ private class ReaderAndroidWebView(
     private val onTapBottom: () -> Unit = {},
     private val swipeThreshold: Int = 96,
     private val tapZonePx: Int = 100,
+    var isPopupActive: Boolean = false,
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
 ) : WebView(context) {
     private var touchStartY = 0f
@@ -276,28 +282,32 @@ private class ReaderAndroidWebView(
             }
         },
         onTextSelectedCallback = { word, sentence, x, y ->
-            post {
-                val density = context.resources.displayMetrics.density
-                onTextSelectedCallback(word, sentence, x * density, y * density)
+            if (!isPopupActive) {
+                post {
+                    val density = context.resources.displayMetrics.density
+                    onTextSelectedCallback(word, sentence, x * density, y * density)
+                }
             }
         },
         onBackgroundTap = { x, y ->
-            post {
-                val density = context.resources.displayMetrics.density
-                val eventX = x * density
-                val eventY = y * density
-                
-                // 1. HUD Toggle on top/bottom tapZonePx (e.g. 64dp)
-                if (eventY < tapZonePx || eventY > height - tapZonePx) {
-                    onTapTop()
-                } 
-                // 2. Navigation on side tap zones
-                else if (eventX < width * (readerSettings.tapZonePercent / 100f)) {
-                    // Left Tap: RTL Forward, LTR Backward
-                    handleSwipe(forward = readerSettings.verticalWriting)
-                } else if (eventX > width * (1f - readerSettings.tapZonePercent / 100f)) {
-                    // Right Tap: RTL Backward, LTR Forward
-                    handleSwipe(forward = !readerSettings.verticalWriting)
+            if (!isPopupActive) {
+                post {
+                    val density = context.resources.displayMetrics.density
+                    val eventX = x * density
+                    val eventY = y * density
+                    
+                    // 1. HUD Toggle on top/bottom tapZonePx (e.g. 64dp)
+                    if (eventY < tapZonePx || eventY > height - tapZonePx) {
+                        onTapTop()
+                    } 
+                    // 2. Navigation on side tap zones
+                    else if (eventX < width * (readerSettings.tapZonePercent / 100f)) {
+                        // Left Tap: RTL Forward, LTR Backward
+                        handleSwipe(forward = readerSettings.verticalWriting)
+                    } else if (eventX > width * (1f - readerSettings.tapZonePercent / 100f)) {
+                        // Right Tap: RTL Backward, LTR Forward
+                        handleSwipe(forward = !readerSettings.verticalWriting)
+                    }
                 }
             }
         }
@@ -311,6 +321,7 @@ private class ReaderAndroidWebView(
 
     fun loadChapter(url: String) {
         Log.d("ReaderWebView", "loadChapter called: url=$url, width=$width, height=$height")
+        currentUrl = url
         
         if (width <= 0 || height <= 0) {
             postDelayed(Runnable { loadChapter(url) }, 100L)
@@ -344,8 +355,25 @@ private class ReaderAndroidWebView(
     fun applySettings(settings: ReaderSettings) {
         Log.d("ReaderWebView", "applySettings: fontSize=${settings.fontSize}, theme=${settings.theme}, padding=${settings.horizontalPadding}x${settings.verticalPadding}")
         
+        // Trigger full reload on mode switch to prevent layout artifacts
+        if (settings.continuousMode != continuousMode) {
+            continuousMode = settings.continuousMode
+            val url = currentUrl
+            if (url != null) {
+                // Save current progress before reload
+                evaluateJavascript("window.hoshiReader.calculateProgress()") { p ->
+                    pendingProgress = p?.toDoubleOrNull() ?: 0.0
+                    loadChapter(url)
+                }
+                return
+            }
+        }
+        
+        readerSettings = settings
         val bgColor = String.format("#%06X", 0xFFFFFF and settings.backgroundColor)
         val textColor = String.format("#%06X", 0xFFFFFF and settings.textColor)
+        
+        setBackgroundColor(settings.backgroundColor)
         
         val script = """
             (function() {
@@ -837,7 +865,7 @@ private class ReaderAndroidWebView(
                 document.documentElement.style.setProperty('overflow', 'hidden', 'important');
 
                 window.hoshiReader.registerCopyText();
-                window.hoshiReader.restoreProgress($pendingProgress);
+                window.hoshiReader.restoreProgress($pendingProgress, vw);
             })();
         """.trimIndent()
     }

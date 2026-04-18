@@ -8,6 +8,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import chimahon.DictionaryRepository
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
@@ -41,6 +45,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) {
         lookupState = LookupState(word, sentence, x, y)
+        isPopupActive = true
     }
 
     /**
@@ -60,14 +65,32 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
         BackHandler {
             lookupState = null
+            isPopupActive = false
         }
+
+        // Background scrim to capture and consume clicks outside the popup.
+        // This prevents the click from reaching the WebView and triggering navigation.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    lookupState = null
+                    isPopupActive = false
+                }
+        )
 
         eu.kanade.presentation.theme.TachiyomiTheme {
             OcrLookupPopup(
                 lookupString = state.word,
                 fullText = state.sentence,
                 charOffset = state.sentence.indexOf(state.word).coerceAtLeast(0),
-                onDismiss = { lookupState = null },
+                onDismiss = { 
+                    lookupState = null
+                    isPopupActive = false
+                },
                 webView = webView,
                 repository = repo,
                 anchorX = state.anchorX,

@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import com.canopus.chimareader.data.BookMetadata
@@ -33,6 +35,9 @@ open class NovelReaderActivity : ComponentActivity() {
             context.startActivity(intent)
         }
     }
+
+    /** Controls whether the reader interactions (taps, selection) are enabled. */
+    protected var isPopupActive by androidx.compose.runtime.mutableStateOf(false)
 
     /** Override in subclass to receive text selection events from the reader. */
     protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) = Unit
@@ -69,6 +74,7 @@ open class NovelReaderActivity : ComponentActivity() {
                 book = metadata,
                 onBack = { finish() },
                 onLookupRequested = ::onLookupRequested,
+                isPopupActive = isPopupActive,
             )
             PopupOverlay()
         }
