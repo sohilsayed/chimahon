@@ -153,7 +153,11 @@ class AnkiDroidBridge(private val context: Context) {
         result
     }
 
-    suspend fun findNotes(expression: String, modelName: String? = null): List<Long> =
+    suspend fun getDeckId(deckName: String): Long = withContext(Dispatchers.IO) {
+        findDeckId(deckName)
+    }
+
+    suspend fun findNotes(expression: String, modelName: String? = null, deckId: Long? = null): List<Long> =
         withContext(Dispatchers.IO) {
             if (!hasPermission()) return@withContext emptyList()
             val ids = mutableListOf<Long>()
@@ -173,6 +177,10 @@ class AnkiDroidBridge(private val context: Context) {
                         if (modelName != null) {
                             val actualModel = findModelName(mid)
                             if (actualModel != modelName) continue
+                        }
+
+                        if (deckId != null) {
+                            if (!isNoteInDeck(nid, deckId)) continue
                         }
 
                         ids.add(nid)
@@ -477,28 +485,80 @@ class AnkiDroidBridge(private val context: Context) {
         throw Exception("AnkiDroid failed to copy the media")
     }
 
-    private fun fieldChecksum(data: String): Long {
-        return try {
-            // Normalize and strip HTML tags/entities
-            var s = data.replace(Regex("(?i)<(br|p|div|li|tr|td|th|h[1-6])[^>]*>"), " ")
-                .replace(Regex("<[^>]+>"), "")
-                .replace("&nbsp;", " ")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&amp;", "&")
-                .replace("&quot;", "\"")
-                .replace("&apos;", "'")
-
-            s = Normalizer.normalize(s, Normalizer.Form.NFC)
-            val cleaned = s.replace(Regex("\\s+"), " ").trim()
-            if (cleaned.isEmpty()) return 0L
-
-            val md = MessageDigest.getInstance("SHA-1")
-            val hash = md.digest(cleaned.toByteArray(StandardCharsets.UTF_8))
-
-            val hex = hash.joinToString("") { "%02x".format(it) }
-            hex.substring(0, 8).toLong(16)
+    private fun isNoteInDeck(noteId: Long, deckId: Long): Boolean {
+        val noteUri = Uri.withAppendedPath(NOTES_URI, noteId.toString())
+        val cardsUri = Uri.withAppendedPath(noteUri, "cards")
+        var inDeck = false
+        try {
+            context.contentResolver.query(
+                cardsUri,
+                arrayOf("deck_id"),
+                null,
+                null,
+                null
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    if (c.getLong(0) == deckId) {
+                        inDeck = true
+                        break
+                    }
+                }
+            }
         } catch (e: Exception) {
+            Log.e(TAG, "isNoteInDeck", e)
+        }
+        return inDeck
+    }
+
+    private val STYLE_PATTERN = Regex("(?s)<style.*?>.*?</style>")
+    private val SCRIPT_PATTERN = Regex("(?s)<script.*?>.*?</script>")
+    private val TAG_PATTERN = Regex("<.*?>")
+    private val IMG_PATTERN = Regex("<img src=[\"']?([^\"'>]+)[\"']? ?/?>")
+    private val HTML_ENTITIES_PATTERN = Regex("&#?\\w+;")
+
+    private fun entsToTxt(htmlText: String): String {
+        val htmlReplaced = htmlText.replace("&nbsp;", " ")
+        val sb = StringBuffer()
+        val matcher = java.util.regex.Pattern.compile("&#?\\w+;").matcher(htmlReplaced)
+        while (matcher.find()) {
+            val entity = matcher.group()
+            val decoded = android.text.Html.fromHtml(entity, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+            matcher.appendReplacement(sb, decoded)
+        }
+        matcher.appendTail(sb)
+        return sb.toString()
+    }
+
+    private fun stripHTML(s: String): String {
+        var strRep = STYLE_PATTERN.replace(s, "")
+        strRep = SCRIPT_PATTERN.replace(strRep, "")
+        strRep = TAG_PATTERN.replace(strRep, "")
+        return entsToTxt(strRep)
+    }
+
+    private fun stripHTMLMedia(s: String): String {
+        val replacedImg = IMG_PATTERN.replace(s) { matchResult ->
+            " ${matchResult.groupValues[1]} "
+        }
+        return stripHTML(replacedImg)
+    }
+
+    private fun fieldChecksum(data: String): Long {
+        val SHA1_ZEROES = "0000000000000000000000000000000000000000"
+        val strippedData = stripHTMLMedia(data)
+
+        return try {
+            val md = MessageDigest.getInstance("SHA-1")
+            val digest = md.digest(strippedData.toByteArray(StandardCharsets.UTF_8))
+            val bigInteger = BigInteger(1, digest)
+            var result = bigInteger.toString(16)
+
+            if (result.length < 40) {
+                result = SHA1_ZEROES.substring(0, SHA1_ZEROES.length - result.length) + result
+            }
+            result.substring(0, 8).toLong(16)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error making field checksum", e)
             0L
         }
     }

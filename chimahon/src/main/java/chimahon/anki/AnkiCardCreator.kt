@@ -214,7 +214,17 @@ object AnkiCardCreator {
             val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
             if (dupCheck) {
-                val existing = bridge.findNotes(filteredResult.term.expression, model)
+                val targetDeckId = if (dupScope == "deck" && deck.isNotBlank()) {
+                    try {
+                        bridge.getDeckId(deck)
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else {
+                    null
+                }
+
+                val existing = bridge.findNotes(filteredResult.term.expression, model, targetDeckId)
                 if (existing.isNotEmpty()) {
                     when (dupAction) {
                         "prevent" -> return AnkiResult.CardExists(existing.first())
@@ -930,7 +940,7 @@ object AnkiCardCreator {
     // =============================================================================
 
     private enum class PitchFormat { TEXT, POSITION, SVG, OVERLINE, COMPOSITE }
-    
+
     private fun buildPitchAccents(reading: String, pitches: Array<PitchEntry>, format: PitchFormat): String {
         if (pitches.isEmpty()) return ""
 
@@ -979,18 +989,18 @@ object AnkiCardCreator {
                 val morae = getMorae(reading)
                 val sb = StringBuilder()
                 sb.append("<div class=\"pitch-accent-composite\" style=\"display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap;\">")
-                
+
                 // 1. Number [0]
                 sb.append("<span class=\"pitch-number\" style=\"font-weight: bold;\">[$position]</span>")
-                
+
                 // 2. SVG (Graph)
                 sb.append(createPitchSvg(morae, position))
-                
+
                 // 3. Overline Text
                 sb.append(renderOverlineText(morae, position))
-                
+
                 sb.append("</div>")
-                "$prefix${sb.toString()}"
+                "$prefix$sb"
             }
         }
     }
@@ -1005,12 +1015,12 @@ object AnkiCardCreator {
                 p == 1 -> i == 0
                 else -> i > 0 && i < p
             }
-            
+
             val style = if (isHigh) "border-top: 1px solid currentColor;" else ""
             sb.append("<span class=\"pronunciation-mora\" style=\"$style\">")
             sb.append(escapeHtml(mora))
             sb.append("</span>")
-            
+
             // Add vertical line if it drops after this mora
             val dropsNext = (p == 1 && i == 0) || (p > 1 && i == p - 1)
             if (dropsNext) {
@@ -1025,7 +1035,7 @@ object AnkiCardCreator {
         val categories = linkedSetOf<String>()
         val moraCount = getMorae(reading).size
         if (moraCount == 0) return ""
-        
+
         for (group in pitches) {
             for (pos in group.pitchPositions) {
                 categories.add(pitchPositionToCategory(pos, moraCount))
@@ -1081,7 +1091,7 @@ object AnkiCardCreator {
         val morae = mutableListOf<String>()
         val smallKana = setOf(
             'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'っ', 'ゃ', 'ゅ', 'ょ', 'ゎ',
-            'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ッ', 'ャ', 'ュ', 'ョ', 'ヮ', 'ヵ', 'ヶ'
+            'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ッ', 'ャ', 'ュ', 'ョ', 'ヮ', 'ヵ', 'ヶ',
         )
         for (char in text) {
             if (morae.isNotEmpty() && char in smallKana) {
@@ -1116,16 +1126,20 @@ object AnkiCardCreator {
         val marginLr = 16
         val height = 45 // Reduced height since text is removed
         val svgWidth = Math.max(0, ((n) * stepWidth) + (marginLr * 2))
-        
+
         val points = mutableListOf<Point>()
         for (i in 0..n) {
-             val isHigh = when {
+            val isHigh = when {
                 p == 1 -> i == 0
                 p == 0 -> i > 0
                 p >= 2 -> {
-                    if (i == 0) false
-                    else if (i < p) true
-                    else false
+                    if (i == 0) {
+                        false
+                    } else if (i < p) {
+                        true
+                    } else {
+                        false
+                    }
                 }
                 else -> false
             }
@@ -1135,15 +1149,15 @@ object AnkiCardCreator {
         val svg = StringBuilder()
         val displayWidth = (svgWidth * 0.8).toInt() // Increased from 0.6 to 0.8
         svg.append("""<svg xmlns="http://www.w3.org/2000/svg" width="${displayWidth}px" height="40px" viewBox="0 0 $svgWidth $height" style="display: inline-block; vertical-align: middle;">""")
-        
+
         val strokeColor = "currentColor"
 
         // 2. Draw Paths (Step 1 was text, now removed)
         if (points.size > 1) {
             var d = "M ${points[0].x} ${points[0].y}"
             for (i in 1 until points.size) {
-                 // JJ style uses simple lines, but let's stick to the path model
-                 d += " L ${points[i].x} ${points[i].y}"
+                // JJ style uses simple lines, but let's stick to the path model
+                d += " L ${points[i].x} ${points[i].y}"
             }
             svg.append("""<path d="$d" fill="none" stroke="$strokeColor" stroke-width="2" />""")
         }
