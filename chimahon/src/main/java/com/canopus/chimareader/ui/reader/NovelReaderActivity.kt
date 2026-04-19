@@ -13,12 +13,13 @@ import androidx.core.view.WindowCompat
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelReaderSettings
+import com.canopus.chimareader.data.Statistics
 import java.io.File
 
 open class NovelReaderActivity : ComponentActivity() {
 
     companion object {
-        internal const val EXTRA_BOOK_DIR = "extra_book_dir"
+        const val EXTRA_BOOK_DIR = "extra_book_dir"
 
         /**
          * Set to [ChimaReaderActivity] from AppModule so that BookshelfScreen's
@@ -41,6 +42,12 @@ open class NovelReaderActivity : ComponentActivity() {
 
     /** Override in subclass to receive text selection events from the reader. */
     protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) = Unit
+
+    /** Override in subclass to handle TTSU progress synchronization on close. */
+    protected open fun onReaderClosed(bookTitle: String, progress: Double, charsRead: Int, timestamp: Long, statistics: List<Statistics>) = Unit
+
+    /** Override in subclass to handle background TTSU sync while reading. */
+    protected open fun onPeriodicSync(bookTitle: String, progress: Double, charsRead: Int, timestamp: Long, statistics: List<Statistics>) = Unit
 
     @Composable
     protected open fun PopupOverlay() {}
@@ -75,6 +82,12 @@ open class NovelReaderActivity : ComponentActivity() {
                 onBack = { finish() },
                 onLookupRequested = ::onLookupRequested,
                 isPopupActive = isPopupActive,
+                onDisposeReader = { title, progress, charsRead, timestamp, stats ->
+                    onReaderClosed(title, progress, charsRead, timestamp, stats)
+                },
+                onPeriodicSync = { title, progress, charsRead, timestamp, stats ->
+                    onPeriodicSync(title, progress, charsRead, timestamp, stats)
+                }
             )
             PopupOverlay()
         }

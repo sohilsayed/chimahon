@@ -24,6 +24,11 @@ data object NovelsTab : Tab {
 
     @Composable
     override fun Content() {
-        BookshelfScreen()
+        val context = androidx.compose.ui.platform.LocalContext.current
+        BookshelfScreen(
+            onSyncRequest = {
+                eu.kanade.tachiyomi.data.sync.ttsu.TtsuSyncManager(context).pullAllProgress()
+            }
+        )
     }
 }

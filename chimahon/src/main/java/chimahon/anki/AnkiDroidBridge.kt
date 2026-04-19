@@ -363,22 +363,6 @@ class AnkiDroidBridge(private val context: Context) {
         throw Exception("Model '$modelName' not found")
     }
 
-    private fun findModelName(modelId: Long): String {
-        try {
-            context.contentResolver.query(
-                MODELS_URI,
-                arrayOf(MODEL_NAME),
-                "$MODEL_ID=?",
-                arrayOf(modelId.toString()),
-                null,
-            )?.use { c ->
-                if (c.moveToFirst()) return c.getString(0)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "findModelName failed", e)
-        }
-        return "Unknown"
-    }
 
     private fun getModelFields(modelId: Long): List<String> {
         try {
@@ -559,4 +543,5 @@ class AnkiDroidBridge(private val context: Context) {
 
     private fun splitFields(str: String): List<String> =
         str.split(FIELD_SEPARATOR)
+
 }

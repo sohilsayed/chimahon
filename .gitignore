@@ -33,3 +33,4 @@ app/standard/preview/*
 /external_ocr_refs
 AGENTS.md
 /app/src/main/assets/ocr-test
+/app/src/main/assets/client_secrets.json

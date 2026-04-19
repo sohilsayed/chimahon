@@ -174,6 +174,10 @@ class NovelReaderSettings(private val context: Context) {
         prefs[PreferencesKeys.SCAN_LENGTH] ?: 50
     }
     
+    val keepScreenOn: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferencesKeys.KEEP_SCREEN_ON] ?: false
+    }
+    
     suspend fun setTheme(value: Theme) {
         dataStore.edit { prefs ->
             prefs[PreferencesKeys.THEME] = value.name
@@ -384,6 +388,12 @@ class NovelReaderSettings(private val context: Context) {
         }
     }
     
+    suspend fun setKeepScreenOn(value: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferencesKeys.KEEP_SCREEN_ON] = value
+        }
+    }
+    
     private object PreferencesKeys {
         val THEME = stringPreferencesKey("theme")
         val SYSTEM_LIGHT_SEPIA = booleanPreferencesKey("system_light_sepia")
@@ -420,6 +430,7 @@ class NovelReaderSettings(private val context: Context) {
         val POPUP_SWIPE_THRESHOLD = intPreferencesKey("popup_swipe_threshold")
         val MAX_RESULTS = intPreferencesKey("max_results")
         val SCAN_LENGTH = intPreferencesKey("scan_length")
+        val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
     }
 }
 

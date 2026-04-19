@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,7 +30,9 @@ fun StatisticsSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(
             modifier = Modifier
@@ -44,21 +47,39 @@ fun StatisticsSheet(
             )
 
             Section(title = "Session") {
-                StatRow("Characters Read", "0")
-                StatRow("Reading Speed", "0 / h")
-                StatRow("Reading Time", "0:00")
+                StatRow("Characters Read", viewModel.sessionCharactersRead.toString())
+                // Assuming simple speed calculation chars per minute * 60
+                // Speed calculation: chars / (time_in_seconds / 3600) = chars * 3600 / time_in_seconds
+                val timeReadingSeconds = maxOf(1.0, viewModel.sessionReadingTime)
+                val speed = (viewModel.sessionCharactersRead / timeReadingSeconds * 3600).toInt()
+                StatRow("Reading Speed", "$speed / h")
+                
+                val timeStr = formatDuration(viewModel.sessionReadingTime.toLong())
+                StatRow("Reading Time", timeStr)
+                
+                // Pause button
+                androidx.compose.material3.TextButton(
+                    onClick = { viewModel.isTimerPaused = !viewModel.isTimerPaused },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(if (viewModel.isTimerPaused) "Resume Timer" else "Pause Timer")
+                }
             }
 
             Section(title = "Today") {
-                StatRow("Characters Read", "0")
-                StatRow("Reading Speed", "0 / h")
-                StatRow("Reading Time", "0:00")
+                StatRow("Characters Read", viewModel.todayCharactersRead.toString())
+                val timeReadingSeconds = maxOf(1.0, viewModel.todayReadingTime)
+                val speed = (viewModel.todayCharactersRead / timeReadingSeconds * 3600).toInt()
+                StatRow("Reading Speed", "$speed / h")
+                StatRow("Reading Time", formatDuration(viewModel.todayReadingTime.toLong()))
             }
 
             Section(title = "All Time") {
-                StatRow("Characters Read", "0")
-                StatRow("Reading Speed", "0 / h")
-                StatRow("Reading Time", "0:00")
+                StatRow("Characters Read", viewModel.allTimeCharactersRead.toString())
+                val timeReadingSeconds = maxOf(1.0, viewModel.allTimeReadingTime)
+                val speed = (viewModel.allTimeCharactersRead / timeReadingSeconds * 3600).toInt()
+                StatRow("Reading Speed", "$speed / h")
+                StatRow("Reading Time", formatDuration(viewModel.allTimeReadingTime.toLong()))
             }
         }
     }
@@ -97,5 +118,17 @@ private fun StatRow(label: String, value: String) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
+    }
+}
+
+private fun formatDuration(totalSeconds: Long): String {
+    val seconds = totalSeconds % 60
+    val minutes = (totalSeconds / 60) % 60
+    val hours = totalSeconds / (60 * 60)
+    
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
