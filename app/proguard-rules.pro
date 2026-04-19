@@ -15,6 +15,9 @@
 -keep class chimahon.** { *; }
 -keepclassmembers class chimahon.** { *; }
 
+-keep class com.canopus.** { *; }
+-keepclassmembers class com.canopus.** { *; }
+
 # Injekt type resolution - FullTypeReference needs generic type info
 -keep class * extends uy.kohesive.injekt.api.TypeReference { *; }
 -keep class * extends uy.kohesive.injekt.api.FullTypeReference { *; }
