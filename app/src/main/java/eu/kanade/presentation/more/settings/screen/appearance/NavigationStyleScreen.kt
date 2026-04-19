@@ -83,12 +83,12 @@ class NavigationStyleScreen : Screen() {
         val navbarTitle = stringResource(SYMR.strings.pref_nav_section_navbar)
         val moreTitle = stringResource(SYMR.strings.pref_nav_section_more)
         val disabledTitle = stringResource(SYMR.strings.pref_nav_section_disabled)
-        val upToEntries = stringResource(SYMR.strings.pref_nav_up_to_n_entries, 4)
+
 
         // Build flat list: headers + tab entries
         val flatItems = remember(navTabLayoutStr) {
             val layout = NavTabLayout.parse(navTabLayoutStr)
-            buildFlatList(layout, resolvedTabTitles, navbarTitle, moreTitle, disabledTitle, upToEntries)
+            buildFlatList(layout, resolvedTabTitles, navbarTitle, moreTitle, disabledTitle)
         }
 
         val listState = remember { flatItems.toMutableStateList() }
@@ -159,10 +159,12 @@ class NavigationStyleScreen : Screen() {
                     ) { _, item ->
                         when (item) {
                             is NavListItem.Header -> {
-                                SectionHeader(
-                                    title = item.title,
-                                    subtitle = item.subtitle,
-                                )
+                                ReorderableItem(reorderableState, key = "header_${item.section.name}") {
+                                    SectionHeader(
+                                        title = item.title,
+                                        subtitle = item.subtitle,
+                                    )
+                                }
                             }
                             is NavListItem.TabEntry -> {
                                 ReorderableItem(reorderableState, key = "tab_${item.key}") {
@@ -176,7 +178,9 @@ class NavigationStyleScreen : Screen() {
                     }
 
                     item(key = "footer_spacer") {
-                        androidx.compose.foundation.layout.Spacer(Modifier.padding(vertical = 120.dp))
+                        ReorderableItem(reorderableState, key = "footer_spacer") {
+                            androidx.compose.foundation.layout.Spacer(Modifier.padding(vertical = 120.dp))
+                        }
                     }
                 }
             }
@@ -222,11 +226,10 @@ private fun buildFlatList(
     navbarTitle: String,
     moreTitle: String,
     disabledTitle: String,
-    upToEntries: String,
 ): List<NavListItem> {
     val items = mutableListOf<NavListItem>()
 
-    items.add(NavListItem.Header(NavSection.NAVBAR, navbarTitle, upToEntries))
+    items.add(NavListItem.Header(NavSection.NAVBAR, navbarTitle))
     layout.entries.filter { it.section == NavSection.NAVBAR }.forEach {
         items.add(NavListItem.TabEntry(it.key, tabTitles[it.key] ?: it.key, getTabIcon(it.key)))
     }

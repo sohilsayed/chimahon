@@ -37,15 +37,18 @@ data class NavTabLayout(
         const val KEY_NOVELS = "Novels"
 
         val ALL_KEYS = listOf(
-            KEY_LIBRARY, KEY_UPDATES, KEY_HISTORY,
-            KEY_BROWSE, KEY_DICTIONARY, KEY_NOVELS,
+            KEY_LIBRARY, KEY_NOVELS, KEY_UPDATES, KEY_HISTORY,
+            KEY_BROWSE, KEY_DICTIONARY,
         )
 
         /**
-         * Default layout: all tabs in navbar.
+         * Default layout: most tabs in navbar, Updates in more.
          */
         val DEFAULT = NavTabLayout(
-            ALL_KEYS.map { NavTabEntry(it, NavSection.NAVBAR) },
+            ALL_KEYS.map { key ->
+                val section = if (key == KEY_UPDATES) NavSection.MORE else NavSection.NAVBAR
+                NavTabEntry(key, section)
+            },
         )
 
         /**
