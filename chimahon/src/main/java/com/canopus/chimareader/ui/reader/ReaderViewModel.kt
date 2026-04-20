@@ -21,7 +21,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import com.canopus.chimareader.data.Statistics
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
@@ -149,6 +154,45 @@ class ReaderViewModel(
     var hideFurigana by mutableStateOf(false)
     var layoutAdvanced by mutableStateOf(false)
     var tapZonePercent by mutableIntStateOf(20)
+    var keepScreenOn by mutableStateOf(false)
+
+    // Tracks statistics for current reading session
+    var isTimerPaused by mutableStateOf(false)
+    var sessionReadingTime by mutableDoubleStateOf(0.0) // milliseconds
+    var totalExploredCharCount by mutableIntStateOf(0)
+    // To calculate session characters, we remember the initial char count
+    var initialCharCount by mutableIntStateOf(0)
+    
+    val sessionCharactersRead: Int
+        get() = maxOf(0, totalExploredCharCount - initialCharCount)
+
+    var fullStatistics = mutableStateListOf<Statistics>()
+    var lastSavedExploredCharCount = 0 // Made internal for UI calculation
+    var lastSavedSessionReadingTime = 0.0 // Made internal for UI calculation
+    private var lastPeriodicSaveTime = System.currentTimeMillis()
+    private var lastSavedBookmarkFingerprint: Pair<Int, Long>? = null
+
+    val todayCharactersRead: Int
+        get() {
+            val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val persistent = fullStatistics.find { it.dateKey == dateKey }?.charactersRead ?: 0
+            val sessionDelta = maxOf(0, totalExploredCharCount - lastSavedExploredCharCount)
+            return persistent + sessionDelta
+        }
+
+    val todayReadingTime: Double
+        get() {
+            val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val persistent = fullStatistics.find { it.dateKey == dateKey }?.readingTime ?: 0.0
+            val sessionDelta = maxOf(0.0, sessionReadingTime - lastSavedSessionReadingTime)
+            return persistent + sessionDelta
+        }
+
+    val allTimeCharactersRead: Int
+        get() = fullStatistics.sumOf { it.charactersRead } + maxOf(0, totalExploredCharCount - lastSavedExploredCharCount)
+
+    val allTimeReadingTime: Double
+        get() = fullStatistics.sumOf { it.readingTime } + maxOf(0.0, sessionReadingTime - lastSavedSessionReadingTime)
 
     val bridge = WebViewBridge()
     val chapterCount = document.spine().items.size
@@ -184,11 +228,37 @@ class ReaderViewModel(
             avoidPageBreak = settings.avoidPageBreak.first()
             hideFurigana = settings.readerHideFurigana.first()
             tapZonePercent = settings.chapterTapZones.first()
+            keepScreenOn = settings.keepScreenOn.first()
         }
 
         val bookmark = BookStorage.loadBookmark(rootUrl)
         index = bookmark?.chapterIndex ?: 0
         currentProgress = bookmark?.progress ?: 0.0
+        lastSavedBookmarkFingerprint = bookmarkFingerprint(index, currentProgress)
+        
+        totalExploredCharCount = calculateExploredCharCount(currentProgress)
+        initialCharCount = totalExploredCharCount
+        lastSavedExploredCharCount = initialCharCount
+
+        val stats = BookStorage.loadStatistics(rootUrl)
+        if (stats != null) {
+            fullStatistics.addAll(stats)
+        }
+
+        // Timer for readingTime
+        scope.launch {
+            while (true) {
+                delay(1000)
+                if (!isTimerPaused) {
+                    sessionReadingTime += 1.0
+                }
+                // Periodic save stats every 60 seconds (more frequent than progress sync)
+                if (System.currentTimeMillis() - lastPeriodicSaveTime >= 60000L) {
+                    savePersistentStatistics()
+                    lastPeriodicSaveTime = System.currentTimeMillis()
+                }
+            }
+        }
 
         getCurrentChapter()?.let { file ->
             val fileUrl = "file://${file.absolutePath.replace("\\", "/")}"
@@ -246,6 +316,9 @@ class ReaderViewModel(
         scope.launch {
             settings.layoutAdvanced.collect { layoutAdvanced = it }
         }
+        scope.launch {
+            settings.keepScreenOn.collect { keepScreenOn = it }
+        }
     }
 
     fun updateTheme(value: Theme) = scope.launch { settings.setTheme(value) }
@@ -264,6 +337,7 @@ class ReaderViewModel(
     fun updateCharacterSpacing(value: Double) = scope.launch { settings.setCharacterSpacing(value) }
     fun updateLayoutAdvanced(value: Boolean) = scope.launch { settings.setLayoutAdvanced(value) }
     fun updateTapZonePercent(value: Int) = scope.launch { settings.setChapterTapZones(value) }
+    fun updateKeepScreenOn(value: Boolean) = scope.launch { settings.setKeepScreenOn(value) }
 
     fun getReaderSettings(context: Context): ReaderSettings {
         val fontUrl = if (FontManager.isCustomFont(context, selectedFont)) {
@@ -288,7 +362,7 @@ class ReaderViewModel(
             horizontalPadding = horizontalPadding,
             verticalPadding = verticalPadding,
             selectedFont = selectedFont,
-            fontUrl = fontUrl?.toString(),
+            fontUrl = fontUrl,
             theme = theme.name.lowercase(),
             backgroundColor = bg,
             textColor = txt,
@@ -334,10 +408,18 @@ class ReaderViewModel(
         return null
     }
 
-    fun saveBookmark(progress: Double) {
+    fun saveBookmark(progress: Double, forceStatisticsSave: Boolean = false) {
+        val bookmarkFingerprint = bookmarkFingerprint(index, progress)
         currentProgress = progress
         bridge.updateProgress(progress)
+
+        if (!forceStatisticsSave && lastSavedBookmarkFingerprint == bookmarkFingerprint) {
+            return
+        }
+
         persistBookmark(progress)
+        savePersistentStatistics()
+        lastSavedBookmarkFingerprint = bookmarkFingerprint
     }
 
     fun nextChapter(): Boolean {
@@ -371,16 +453,70 @@ class ReaderViewModel(
         }
     }
 
+    private fun calculateExploredCharCount(progress: Double): Int {
+        var count = 0
+        for (i in 0 until index) {
+            count += document.getChapterCharacters(i)
+        }
+        val currentChapterChars = document.getChapterCharacters(index)
+        count += (currentChapterChars * progress).toInt()
+        return count
+    }
+
     private fun persistBookmark(progress: Double) {
+        totalExploredCharCount = calculateExploredCharCount(progress)
+        
         BookStorage.save(
             Bookmark(
                 chapterIndex = index,
                 progress = progress,
-                characterCount = 0,
+                characterCount = totalExploredCharCount,
                 lastModified = System.currentTimeMillis()
             ),
             rootUrl,
             FileNames.bookmark
         )
+    }
+
+    private fun bookmarkFingerprint(index: Int, progress: Double): Pair<Int, Long> {
+        return index to progress.toBits()
+    }
+
+    private fun savePersistentStatistics() {
+        val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        
+        val deltaChars = maxOf(0, totalExploredCharCount - lastSavedExploredCharCount)
+        val deltaTime = maxOf(0.0, sessionReadingTime - lastSavedSessionReadingTime)
+        
+        if (deltaChars == 0 && deltaTime < 1.0) return
+
+        var dailyStats = fullStatistics.find { it.dateKey == dateKey }
+        if (dailyStats == null) {
+            dailyStats = Statistics(
+                title = document.title ?: "Unknown",
+                dateKey = dateKey,
+                lastStatisticModified = System.currentTimeMillis()
+            )
+            fullStatistics.add(dailyStats)
+        }
+        
+        dailyStats.charactersRead += deltaChars
+        dailyStats.readingTime += deltaTime
+        dailyStats.lastStatisticModified = System.currentTimeMillis()
+        
+        // Update speeds
+        val charsPerSec = if (dailyStats.readingTime > 0) dailyStats.charactersRead / dailyStats.readingTime else 0.0
+        val speedPerHour = (charsPerSec * 3600).toInt()
+        
+        // Ensure readingTime unit is seconds for SPEED calculation
+        // speed = chars / (time_in_seconds / 3600) = chars * 3600 / time_in_seconds
+        dailyStats.lastReadingSpeed = speedPerHour
+        dailyStats.maxReadingSpeed = maxOf(dailyStats.maxReadingSpeed, speedPerHour)
+        
+        // Persistence
+        BookStorage.saveStatistics(fullStatistics.toList(), rootUrl)
+        
+        lastSavedExploredCharCount = totalExploredCharCount
+        lastSavedSessionReadingTime = sessionReadingTime
     }
 }

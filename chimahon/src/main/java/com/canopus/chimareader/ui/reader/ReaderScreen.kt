@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import com.canopus.chimareader.data.BookMetadata
+import com.canopus.chimareader.data.Statistics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,7 +35,7 @@ enum class ActiveSheet {
 fun ReaderScreen(
     book: BookMetadata,
     onBack: () -> Unit,
-    onLookupRequested: ((word: String, sentence: String, x: Float, y: Float) -> Unit)? = null,
+    onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
     isPopupActive: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -66,13 +67,6 @@ fun ReaderScreen(
             throw error
         } catch (error: Exception) {
             ReaderLoadState.Error(error.message ?: "Could not open book")
-        }
-    }
-
-    DisposableEffect(loadState) {
-        onDispose {
-            val readyState = loadState as? ReaderLoadState.Ready ?: return@onDispose
-            readyState.viewModel.saveBookmark(readyState.viewModel.currentProgress)
         }
     }
 
@@ -112,6 +106,14 @@ fun ReaderScreen(
             is ReaderLoadState.Ready -> {
                 val viewModel = state.viewModel
                 
+                val view = LocalView.current
+                DisposableEffect(viewModel.keepScreenOn) {
+                    view.keepScreenOn = viewModel.keepScreenOn
+                    onDispose {
+                        view.keepScreenOn = false
+                    }
+                }
+
                 // Initialize SasayakiPlayer if not already
                 if (viewModel.sasayakiPlayer == null) {
                     val rootDir = viewModel.rootUrl
@@ -126,6 +128,12 @@ fun ReaderScreen(
                     )
                 }
                 
+                DisposableEffect(Unit) {
+                    onDispose {
+                        viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
+                    }
+                }
+
                 // HUD visibility state - toggled by edge taps
                 var showHud by remember { mutableStateOf(true) }
 
@@ -156,7 +164,7 @@ fun ReaderScreen(
                     swipeThreshold = chapterSwipeDistance,
                     tapZonePx = tapZonePx,
                     isPopupActive = isPopupActive,
-                    onTextSelected = { word, sentence, x, y -> onLookupRequested?.invoke(word, sentence, x, y) },
+                    onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
                 )
 
                 // Top HUD - always visible when showHud is true
@@ -197,11 +205,13 @@ fun ReaderScreen(
         is ReaderLoadState.Ready -> {
             val viewModel = state.viewModel
             activeSheet?.let { sheet ->
-                when (sheet) {
-                    ActiveSheet.Appearance -> AppearanceSheet(viewModel) { activeSheet = null }
-                    ActiveSheet.Chapters -> ChapterListSheet(viewModel) { activeSheet = null }
-                    ActiveSheet.Statistics -> StatisticsSheet(viewModel) { activeSheet = null }
-                    ActiveSheet.Sasayaki -> SasayakiSheet(viewModel) { activeSheet = null }
+                ReaderThemedArea(viewModel.getReaderSettings(context)) {
+                    when (sheet) {
+                        ActiveSheet.Appearance -> AppearanceSheet(viewModel) { activeSheet = null }
+                        ActiveSheet.Chapters -> ChapterListSheet(viewModel) { activeSheet = null }
+                        ActiveSheet.Statistics -> StatisticsSheet(viewModel) { activeSheet = null }
+                        ActiveSheet.Sasayaki -> SasayakiSheet(viewModel) { activeSheet = null }
+                    }
                 }
             }
         }
@@ -283,7 +293,7 @@ private fun ReaderBottomBar(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(onClick = onOpenChapters) {
                 Icon(
-                    Icons.Default.List, 
+                    Icons.AutoMirrored.Filled.List,
                     contentDescription = "Chapters",
                     tint = Color(contentColor)
                 )
@@ -292,6 +302,13 @@ private fun ReaderBottomBar(
                 Icon(
                     Icons.Default.Settings, 
                     contentDescription = "Appearance",
+                    tint = Color(contentColor)
+                )
+            }
+            IconButton(onClick = onOpenStatistics) {
+                Icon(
+                    Icons.Default.Info, 
+                    contentDescription = "Statistics",
                     tint = Color(contentColor)
                 )
             }
@@ -314,4 +331,41 @@ private fun ReaderMessage(
         Spacer(modifier = Modifier.padding(8.dp))
         Text(text, style = MaterialTheme.typography.bodyLarge)
     }
+}
+
+@Composable
+private fun ReaderThemedArea(
+    readerSettings: ReaderSettings,
+    content: @Composable () -> Unit
+) {
+    val bgColor = Color(readerSettings.backgroundColor)
+    val textColor = Color(readerSettings.textColor)
+    
+    // Create a comprehensive ColorScheme based on the reader's background and text colors.
+    // This overrides global app theme values while inside the themed area.
+    val colorScheme = MaterialTheme.colorScheme.copy(
+        primary = textColor,
+        onPrimary = bgColor,
+        primaryContainer = textColor.copy(alpha = 0.12f),
+        onPrimaryContainer = textColor,
+        secondary = textColor.copy(alpha = 0.8f),
+        onSecondary = bgColor,
+        secondaryContainer = textColor.copy(alpha = 0.08f),
+        onSecondaryContainer = textColor,
+        tertiary = textColor.copy(alpha = 0.7f),
+        onTertiary = bgColor,
+        surface = bgColor,
+        onSurface = textColor,
+        surfaceVariant = bgColor.copy(alpha = 0.9f),
+        onSurfaceVariant = textColor.copy(alpha = 0.7f),
+        background = bgColor,
+        onBackground = textColor,
+        outline = textColor.copy(alpha = 0.5f),
+        outlineVariant = textColor.copy(alpha = 0.2f),
+        surfaceContainer = bgColor,
+        surfaceContainerHigh = bgColor,
+        surfaceContainerHighest = bgColor
+    )
+    
+    MaterialTheme(colorScheme = colorScheme, content = content)
 }

@@ -24,5 +24,7 @@ data class Statistics(
     var altMinReadingSpeed: Int = 0,
     var lastReadingSpeed: Int = 0,
     var maxReadingSpeed: Int = 0,
-    var lastStatisticModified: Int = 0,
+    var lastStatisticModified: Long = 0,
+    var completedBook: Int? = null,
+    var completedData: Statistics? = null
 )
