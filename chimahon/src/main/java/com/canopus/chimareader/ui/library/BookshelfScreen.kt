@@ -28,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,6 +45,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -74,14 +78,20 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookshelfScreen() {
+fun BookshelfScreen(
+    onSyncRequest: (suspend () -> Boolean)? = null
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var books by remember { mutableStateOf<List<BookMetadata>>(emptyList()) }
     var isImporting by remember { mutableStateOf(false) }
+    var isSyncing by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     var showDeleteDialog by remember { mutableStateOf<BookMetadata?>(null) }
+    
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
 
     fun loadBooks() {
         scope.launch {
@@ -117,19 +127,53 @@ fun BookshelfScreen() {
         topBar = {
             TopAppBar(
                 title = { 
-                    Text(
-                        "Library", 
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.headlineMedium
-                    ) 
+                    if (isSearching) {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search books...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                            )
+                        )
+                    } else {
+                        Text(
+                            "Library", 
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                    }
                 },
                 actions = {
-                    if (isImporting) {
+                    if (isSearching) {
+                        IconButton(onClick = { 
+                            isSearching = false
+                            searchQuery = ""
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Cancel Search")
+                        }
+                    } else if (isImporting || isSyncing) {
                         CircularProgressIndicator(
                             modifier = Modifier.padding(end = 16.dp).size(24.dp),
                             strokeWidth = 2.dp
                         )
                     } else {
+                        IconButton(onClick = { isSearching = true }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                        IconButton(onClick = {
+                            scope.launch {
+                                isSyncing = true
+                                onSyncRequest?.invoke()
+                                loadBooks() // Refresh UI after sync
+                                isSyncing = false
+                            }
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Sync with Google Drive")
+                        }
                         IconButton(onClick = { epubPicker.launch("application/epub+zip") }) {
                             Icon(Icons.Default.Add, contentDescription = "Import EPUB")
                         }
@@ -208,6 +252,15 @@ fun BookshelfScreen() {
                 }
             }
         } else {
+            val filteredBooks = if (searchQuery.isEmpty()) {
+                books
+            } else {
+                books.filter { 
+                    it.title?.contains(searchQuery, ignoreCase = true) == true ||
+                    it.folder?.contains(searchQuery, ignoreCase = true) == true
+                }
+            }
+
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 110.dp),
                 contentPadding = PaddingValues(
@@ -219,7 +272,7 @@ fun BookshelfScreen() {
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-                items(books, key = { it.id }) { book ->
+                items(filteredBooks, key = { it.id }) { book ->
                     BookCard(
                         book = book,
                         onClick = {
