@@ -55,26 +55,14 @@ fun AppearanceSheet(
     }
 
     val readerSettings = viewModel.getReaderSettings(context)
-    val bgColor = Color(readerSettings.backgroundColor)
-    val textColor = Color(readerSettings.textColor)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = bgColor,
-        contentColor = textColor,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        val themedColorScheme = MaterialTheme.colorScheme.copy(
-            surface = bgColor,
-            onSurface = textColor,
-            surfaceVariant = bgColor.copy(alpha = 0.8f),
-            onSurfaceVariant = textColor.copy(alpha = 0.8f),
-            primary = textColor, // Use text color as primary for buttons in the sheet
-            outline = textColor.copy(alpha = 0.5f)
-        )
-
-        MaterialTheme(colorScheme = themedColorScheme) {
-            Column(
+        Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
@@ -262,6 +250,19 @@ fun AppearanceSheet(
                         onCheckedChange = { viewModel.updateHideFurigana(it) }
                     )
                 }
+
+                // Keep screen on
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Text("Keep screen on", style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = viewModel.keepScreenOn,
+                        onCheckedChange = { viewModel.updateKeepScreenOn(it) }
+                    )
+                }
             }
 
             // Margins
@@ -417,5 +418,4 @@ fun AppearanceSheet(
             }
         }
     }
-}
 }
