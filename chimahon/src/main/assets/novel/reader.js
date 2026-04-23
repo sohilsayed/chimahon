@@ -1,5 +1,23 @@
 window.hoshiReader = {
     isRtl: false,
+    continuousMode: false,
+    ttuRegexNegated: /[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\p{Radical}\p{Unified_Ideograph}]+/gimu,
+
+    isVertical: function() {
+        return window.getComputedStyle(document.body).writingMode === "vertical-rl";
+    },
+
+    countChars: function(text) {
+        return Array.from(text.replace(this.ttuRegexNegated, '')).length;
+    },
+
+    createWalker: function(rootNode) {
+        const root = rootNode || document.body;
+        return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode: (n) => this.isFurigana(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+        });
+    },
+
     paginate: function(direction) {
         var el = document.scrollingElement || document.documentElement;
         var ph = window.innerHeight;
@@ -57,53 +75,128 @@ window.hoshiReader = {
     },
 
     calculateProgress: function() {
-        var el = document.scrollingElement || document.documentElement;
-        var ph = window.innerHeight;
-        var pw = window.innerWidth;
-        var vMax = el.scrollHeight - ph;
-        var hMax = el.scrollWidth - pw;
-        if (vMax > 1) return vMax > 0 ? window.scrollY / vMax : 0;
-        if (hMax > 1) return hMax > 0 ? Math.abs(window.scrollX) / hMax : 0;
-        return 0;
+        if (!this.continuousMode) {
+            var el = document.scrollingElement || document.documentElement;
+            var ph = window.innerHeight;
+            var pw = window.innerWidth;
+            var vMax = el.scrollHeight - ph;
+            var hMax = el.scrollWidth - pw;
+            if (vMax > 1) return vMax > 0 ? window.scrollY / vMax : 0;
+            if (hMax > 1) return hMax > 0 ? Math.abs(window.scrollX) / hMax : 0;
+            return 0;
+        }
+
+        var vertical = this.isVertical();
+        var walker = this.createWalker();
+        var totalChars = 0;
+        var exploredChars = 0;
+        var node;
+
+        while (node = walker.nextNode()) {
+            var nodeLen = this.countChars(node.textContent);
+            totalChars += nodeLen;
+
+            if (nodeLen > 0) {
+                var range = document.createRange();
+                range.selectNodeContents(node);
+                var rect = range.getBoundingClientRect();
+                // If the node is entirely above (or to the right of) the viewport, count it as explored
+                if (vertical ? (rect.left > window.innerWidth) : (rect.bottom < 0)) {
+                    exploredChars += nodeLen;
+                }
+            }
+        }
+
+        return totalChars > 0 ? exploredChars / totalChars : 0;
     },
 
     restoreProgress: function(progress, isRtl) {
         this.isRtl = !!isRtl;
-        var el = document.scrollingElement || document.documentElement;
-        var ph = window.innerHeight;
-        var pw = window.innerWidth;
-        var vMax = el.scrollHeight - ph;
-        var hMax = el.scrollWidth - pw;
         var p = Math.min(1, Math.max(0, progress));
 
-        console.log('[hoshi] restore: progress=' + p + ' vMax=' + vMax + ' hMax=' + hMax);
+        if (!this.continuousMode) {
+            var el = document.scrollingElement || document.documentElement;
+            var ph = window.innerHeight;
+            var pw = window.innerWidth;
+            var vMax = el.scrollHeight - ph;
+            var hMax = el.scrollWidth - pw;
 
-        if (vMax > 1) {
-            var target = Math.round(vMax * p);
-            // Align to page boundary
-            target = Math.round(target / ph) * ph;
-            window.scrollTo(0, Math.min(target, vMax));
-        } else if (hMax > 1) {
-            var target = Math.round(hMax * p);
-            target = Math.round(target / pw) * pw;
-            if (this.isRtl) {
-                window.scrollTo(-Math.min(target, hMax), 0);
-            } else {
-                window.scrollTo(Math.min(target, hMax), 0);
+            if (vMax > 1) {
+                var target = Math.round(vMax * p);
+                target = Math.round(target / ph) * ph;
+                window.scrollTo(0, Math.min(target, vMax));
+            } else if (hMax > 1) {
+                var target = Math.round(hMax * p);
+                target = Math.round(target / pw) * pw;
+                if (this.isRtl) {
+                    window.scrollTo(-Math.min(target, hMax), 0);
+                } else {
+                    window.scrollTo(Math.min(target, hMax), 0);
+                }
+            }
+            this.notifyRestoreComplete();
+            return;
+        }
+
+        // Character-based restoration for continuous mode
+        var walker = this.createWalker();
+        var totalChars = 0;
+        var node;
+        while (node = walker.nextNode()) {
+            totalChars += this.countChars(node.textContent);
+        }
+
+        if (totalChars <= 0) {
+            this.notifyRestoreComplete();
+            return;
+        }
+
+        var targetCharCount = Math.ceil(totalChars * p);
+        var runningSum = 0;
+        var targetNode = null;
+
+        walker = this.createWalker();
+        while (node = walker.nextNode()) {
+            runningSum += this.countChars(node.textContent);
+            targetNode = node;
+            if (runningSum > targetCharCount) {
+                break;
             }
         }
 
-        this.notifyRestoreComplete();
+        if (targetNode) {
+            var el = targetNode.parentElement;
+            if (el) {
+                el.scrollIntoView({
+                    block: p >= 0.999999 ? 'end' : 'start',
+                    behavior: 'instant'
+                });
+            }
+        }
+
+        requestAnimationFrame(() => {
+            document.body.style.transform = 'translateZ(0)';
+            requestAnimationFrame(() => {
+                document.body.style.transform = '';
+                this.notifyRestoreComplete();
+            });
+        });
     },
 
     notifyRestoreComplete: function() {
-        if (window.HoshiAndroid && window.HoshiAndroid.restoreCompleted) {
-            window.HoshiAndroid.restoreCompleted();
-            return;
-        }
-        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.restoreCompleted) {
-            window.webkit.messageHandlers.restoreCompleted.postMessage(null);
-        }
+        requestAnimationFrame(() => {
+            document.body.style.transform = 'translateZ(0)';
+            requestAnimationFrame(() => {
+                document.body.style.transform = '';
+                if (window.HoshiAndroid && window.HoshiAndroid.restoreCompleted) {
+                    window.HoshiAndroid.restoreCompleted();
+                    return;
+                }
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.restoreCompleted) {
+                    window.webkit.messageHandlers.restoreCompleted.postMessage(null);
+                }
+            });
+        });
     },
 
     registerCopyText: function() {

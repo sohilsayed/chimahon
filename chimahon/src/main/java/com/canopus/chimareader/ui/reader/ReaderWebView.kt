@@ -254,6 +254,33 @@ private class ReaderAndroidWebView(
     internal var lastLoadedHeight: Int = -1
     internal var lastLoadedVerticalWriting: Boolean? = null
 
+    private var lastProgressReportTime = 0L
+    private val reportProgressRunnable = Runnable {
+        if (continuousMode && !isImageOnly) {
+            evaluateJavascript("(function() { return window.hoshiReader.calculateProgress(); })()") { p ->
+                p?.trim()?.trim('"')?.toDoubleOrNull()?.let {
+                    pendingProgress = it
+                    onProgressChanged(it)
+                }
+            }
+        }
+    }
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        super.onScrollChanged(l, t, oldl, oldt)
+        if (continuousMode && !isImageOnly) {
+            val now = System.currentTimeMillis()
+            if (now - lastProgressReportTime > 1000L) {
+                lastProgressReportTime = now
+                removeCallbacks(reportProgressRunnable)
+                post(reportProgressRunnable)
+            } else {
+                removeCallbacks(reportProgressRunnable)
+                postDelayed(reportProgressRunnable, 1000L)
+            }
+        }
+    }
+
     private val gestureDetector = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
