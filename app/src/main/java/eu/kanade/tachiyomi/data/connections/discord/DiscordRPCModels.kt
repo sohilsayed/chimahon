@@ -22,7 +22,7 @@ internal const val RICH_PRESENCE_APPLICATION_ID = "1424627741256585271"
 val DOWNLOAD_BUTTON_LABEL_RES = R.string.discord_download_button
 const val DOWNLOAD_BUTTON_URL = "https://komikku-app.github.io/download/"
 const val DISCORD_BUTTON_LABEL = "Discord"
-const val DISCORD_BUTTON_URL = "https://discord.gg/85jB7V5AJR"
+const val DISCORD_BUTTON_URL = "https://discord.gg/jr4VEZTtpM"
 
 @Serializable
 data class Activity(

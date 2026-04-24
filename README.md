@@ -7,7 +7,7 @@
 
 [![GitHub downloads](https://img.shields.io/github/downloads/sohilsayed/chimahon/latest/total?label=Latest%20Downloads&labelColor=27303D&color=0D1111&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/sohilsayed/chimahon/releases/latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/sohilsayed/chimahon/total?label=Total%20Downloads&labelColor=27303D&color=0D1111&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/sohilsayed/chimahon/releases)
-[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white&label=)](https://discord.gg/zZAZXce7d)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white&label=)](https://discord.gg/jr4VEZTtpM)
 
 ---
 
@@ -57,7 +57,7 @@ Chimahon retains all the features of **Komikku** and **Mihon**:
 ## 🤝 Contributing & Support
 
 - **Bugs/Requests**: Please check the [Changelog](./CHANGELOG.md) and open an [Issue](https://github.com/sohilsayed/chimahon/issues).
-- **Discord**: Join our community for help and discussion: [Join Discord](https://discord.gg/zZAZXce7d)
+- **Discord**: Join our community for help and discussion: [Join Discord](https://discord.gg/jr4VEZTtpM)
 - **Contributing**: Pull requests are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 ### Credits & Acknowledgments
