@@ -16,6 +16,16 @@ import androidx.compose.ui.Modifier
 import chimahon.DictionaryRepository
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
 
 /**
  * App-side subclass of [NovelReaderActivity] that wires text-selection events
@@ -27,6 +37,72 @@ import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
  * automatically lands here without any chimahon → app module import.
  */
 class ChimaReaderActivity : NovelReaderActivity() {
+    
+    private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
+
+    override fun handleVolumeKey(forward: Boolean): Boolean {
+        if (!readerPreferences.readWithVolumeKeys().get()) {
+            return false
+        }
+        
+        val inverted = readerPreferences.readWithVolumeKeysInverted().get()
+        val finalForward = if (inverted) !forward else forward
+        return super.handleVolumeKey(finalForward)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (isPopupActive) return super.onKeyDown(keyCode, event)
+        if (!readerPreferences.readWithVolumeKeys().get()) return super.onKeyDown(keyCode, event)
+        
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> return true
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (isPopupActive) return super.onKeyUp(keyCode, event)
+        if (!readerPreferences.readWithVolumeKeys().get()) return super.onKeyUp(keyCode, event)
+
+        return super.onKeyUp(keyCode, event)
+    }
+
+    @Composable
+    override fun AdditionalAppearanceSettings() {
+        val volumeKeys by remember { readerPreferences.readWithVolumeKeys().changes() }.collectAsState(readerPreferences.readWithVolumeKeys().get())
+        val volumeKeysInverted by remember { readerPreferences.readWithVolumeKeysInverted().changes() }.collectAsState(readerPreferences.readWithVolumeKeysInverted().get())
+
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Navigation", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Use volume keys to navigate", style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = volumeKeys,
+                    onCheckedChange = { readerPreferences.readWithVolumeKeys().set(it) }
+                )
+            }
+
+            if (volumeKeys) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Invert volume keys", style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = volumeKeysInverted,
+                        onCheckedChange = { readerPreferences.readWithVolumeKeysInverted().set(it) }
+                    )
+                }
+            }
+        }
+    }
 
     /**
      * Backing state for the lookup popup. Using Activity-level `mutableStateOf`

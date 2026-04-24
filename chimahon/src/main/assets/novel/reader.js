@@ -228,13 +228,6 @@ window.hoshiReader = {
         return el?.closest('p, div, .glossary-content') || null;
     },
 
-    createWalker: function(rootNode) {
-        const root = rootNode || document.body;
-        return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-            acceptNode: (n) => this.isFurigana(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
-        });
-    },
-
     getCaretRange: function(x, y) {
         if (document.caretPositionFromPoint) {
             const pos = document.caretPositionFromPoint(x, y);

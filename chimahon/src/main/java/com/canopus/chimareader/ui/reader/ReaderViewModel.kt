@@ -44,6 +44,7 @@ sealed interface WebViewCommand {
     data class ChangeMode(val continuous: Boolean) : WebViewCommand
     data class ApplySettings(val settings: ReaderSettings) : WebViewCommand
     data class ChangeFocusMode(val focusMode: Boolean) : WebViewCommand
+    data class Paginate(val forward: Boolean) : WebViewCommand
 }
 
 data class ReaderSettings(
@@ -97,6 +98,10 @@ class WebViewBridge {
 
     fun clearSasayakiCue() {
         send(WebViewCommand.ClearSasayakiCue)
+    }
+
+    fun paginate(forward: Boolean) {
+        send(WebViewCommand.Paginate(forward))
     }
 }
 

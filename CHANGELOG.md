@@ -4,6 +4,25 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.4.2]
+
+### Added
+- Volume key navigation in Novel Reader.
+- Customizable font size setting for the dictionary popup.
+- Progress and reading statistics tracking for Novel Reader.
+- Themed loading screen in Novel Reader matching selected background/text colors.
+- More Anki markers.
+
+### Changed
+- Improve Anki markers.
+- Improved auto-update reliability and download integrity checking.
+- Optimized continuous mode scrolling and position restoration in Novel Reader.
+
+### Fixed
+- Inline image layout drops and viewport overflows in the Novel Reader.
+- Navigation and boundary detection on image-only pages in Novel Reader.
+- Dictionary popup dismissal logic when interacting with the Webtoon reader.
+
 ## [v1.4.1]
 
 ### Added

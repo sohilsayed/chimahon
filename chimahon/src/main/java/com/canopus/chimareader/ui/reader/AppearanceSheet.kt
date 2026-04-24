@@ -26,6 +26,7 @@ import kotlin.math.roundToInt
 @Composable
 fun AppearanceSheet(
     viewModel: ReaderViewModel,
+    additionalSettings: @Composable ColumnScope.() -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -416,6 +417,9 @@ fun AppearanceSheet(
                     }
                 }
             }
+
+            // Additional app-side settings (like volume buttons)
+            additionalSettings()
         }
     }
 }

@@ -39,11 +39,49 @@ open class NovelReaderActivity : ComponentActivity() {
     /** Controls whether the reader interactions (taps, selection) are enabled. */
     protected var isPopupActive by androidx.compose.runtime.mutableStateOf(false)
 
+    protected var readerViewModel by androidx.compose.runtime.mutableStateOf<ReaderViewModel?>(null)
+
+    protected open fun handleVolumeKey(forward: Boolean): Boolean {
+        val vm = readerViewModel ?: return false
+        vm.bridge.paginate(forward)
+        return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (isPopupActive) return super.onKeyDown(keyCode, event)
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (isPopupActive) return super.onKeyUp(keyCode, event)
+
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                if (handleVolumeKey(false)) return true
+            }
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                if (handleVolumeKey(true)) return true
+            }
+            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_PAGE_UP -> {
+                handleVolumeKey(false)
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_PAGE_DOWN -> {
+                handleVolumeKey(true)
+                return true
+            }
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
     /** Override in subclass to receive text selection events from the reader. */
     protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) = Unit
 
     @Composable
     protected open fun PopupOverlay() {}
+
+    @Composable
+    protected open fun AdditionalAppearanceSettings() {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -75,6 +113,8 @@ open class NovelReaderActivity : ComponentActivity() {
                 onBack = { finish() },
                 onLookupRequested = ::onLookupRequested,
                 isPopupActive = isPopupActive,
+                onViewModelReady = { readerViewModel = it },
+                additionalSettings = { AdditionalAppearanceSettings() }
             )
             PopupOverlay()
         }

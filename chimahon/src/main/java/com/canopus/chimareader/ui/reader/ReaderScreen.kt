@@ -37,6 +37,8 @@ fun ReaderScreen(
     onBack: () -> Unit,
     onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
     isPopupActive: Boolean = false,
+    onViewModelReady: (ReaderViewModel?) -> Unit = {},
+    additionalSettings: @Composable ColumnScope.() -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -47,6 +49,24 @@ fun ReaderScreen(
 
     // Collect swipe and tap settings
     val chapterSwipeDistance by settings.chapterSwipeDistance.collectAsState(initial = 96)
+
+    val currentTheme by settings.theme.collectAsState(initial = com.canopus.chimareader.data.Theme.SYSTEM)
+    val customBg by settings.customBackgroundColor.collectAsState(initial = 0xFFF2E2C9.toInt())
+    val customTxt by settings.customTextColor.collectAsState(initial = 0xFF000000.toInt())
+    
+    val initialSettings = remember(currentTheme, customBg, customTxt) {
+        val (bg, txt) = when (currentTheme) {
+            com.canopus.chimareader.data.Theme.LIGHT -> 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
+            com.canopus.chimareader.data.Theme.DARK -> 0xFF121212.toInt() to 0xFFE0E0E0.toInt()
+            com.canopus.chimareader.data.Theme.SEPIA -> 0xFFF2E2C9.toInt() to 0xFF3C2C1C.toInt()
+            com.canopus.chimareader.data.Theme.CUSTOM -> customBg to customTxt
+            com.canopus.chimareader.data.Theme.SYSTEM -> {
+                val isDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                if (isDark) 0xFF121212.toInt() to 0xFFE0E0E0.toInt() else 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
+            }
+        }
+        ReaderSettings(backgroundColor = bg, textColor = txt)
+    }
 
     val loadState by produceState<ReaderLoadState>(initialValue = ReaderLoadState.Loading, key1 = book.id) {
         value = try {
@@ -70,11 +90,20 @@ fun ReaderScreen(
         }
     }
 
-    val bgColor = if (loadState is ReaderLoadState.Ready) {
-        Color((loadState as ReaderLoadState.Ready).viewModel.getReaderSettings(context).backgroundColor)
+    val currentSettings = if (loadState is ReaderLoadState.Ready) {
+        val vm = (loadState as ReaderLoadState.Ready).viewModel
+        LaunchedEffect(vm) {
+            onViewModelReady(vm)
+        }
+        vm.getReaderSettings(context)
     } else {
-        MaterialTheme.colorScheme.background
+        LaunchedEffect(Unit) {
+            onViewModelReady(null)
+        }
+        initialSettings
     }
+
+    val bgColor = Color(currentSettings.backgroundColor)
 
     BoxWithConstraints(
         modifier = Modifier
@@ -100,101 +129,102 @@ fun ReaderScreen(
                     }
                 }
         }
-        when (val state = loadState) {
-            ReaderLoadState.Loading -> ReaderMessage("Opening...", loading = true)
-            is ReaderLoadState.Error -> ReaderMessage(state.message)
-            is ReaderLoadState.Ready -> {
-                val viewModel = state.viewModel
-                
-                val view = LocalView.current
-                DisposableEffect(viewModel.keepScreenOn) {
-                    view.keepScreenOn = viewModel.keepScreenOn
-                    onDispose {
-                        view.keepScreenOn = false
+        
+        ReaderThemedArea(currentSettings) {
+            when (val state = loadState) {
+                ReaderLoadState.Loading -> ReaderMessage("Opening...", loading = true)
+                is ReaderLoadState.Error -> ReaderMessage(state.message)
+                is ReaderLoadState.Ready -> {
+                    val viewModel = state.viewModel
+                    
+                    val view = LocalView.current
+                    DisposableEffect(viewModel.keepScreenOn) {
+                        view.keepScreenOn = viewModel.keepScreenOn
+                        onDispose {
+                            view.keepScreenOn = false
+                        }
                     }
-                }
 
-                // Initialize SasayakiPlayer if not already
-                if (viewModel.sasayakiPlayer == null) {
-                    val rootDir = viewModel.rootUrl
-                    viewModel.sasayakiPlayer = SasayakiPlayer(
-                        context = context,
-                        rootDir = rootDir,
+                    // Initialize SasayakiPlayer if not already
+                    if (viewModel.sasayakiPlayer == null) {
+                        val rootDir = viewModel.rootUrl
+                        viewModel.sasayakiPlayer = SasayakiPlayer(
+                            context = context,
+                            rootDir = rootDir,
+                            bridge = viewModel.bridge,
+                            loadChapter = { chapterIndex -> 
+                                viewModel.jumpToChapter(chapterIndex)
+                            },
+                            getCurrentIndex = { viewModel.index }
+                        )
+                    }
+                    
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
+                        }
+                    }
+
+                    // HUD visibility state - toggled by edge taps
+                    var showHud by remember { mutableStateOf(true) }
+
+                    val tapZonePx = with(density) { 64.dp.toPx() }.toInt()
+
+                    // Single WebView handles all chapters
+                    ReaderWebView(
+                        modifier = Modifier.fillMaxWidth().then(heightModifier),
                         bridge = viewModel.bridge,
-                        loadChapter = { chapterIndex -> 
-                            viewModel.jumpToChapter(chapterIndex)
-                        },
-                        getCurrentIndex = { viewModel.index }
-                    )
-                }
-                
-                DisposableEffect(Unit) {
-                    onDispose {
-                        viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
-                    }
-                }
-
-                // HUD visibility state - toggled by edge taps
-                var showHud by remember { mutableStateOf(true) }
-
-                val density = LocalDensity.current
-                val tapZonePx = with(density) { 64.dp.toPx() }.toInt()
-
-                // Single WebView handles all chapters
-                ReaderWebView(
-                    modifier = Modifier.fillMaxWidth().then(heightModifier),
-                    bridge = viewModel.bridge,
-                    continuousMode = viewModel.continuousMode,
-                    isImageOnly = viewModel.isCurrentChapterImageOnly,
-                    readerSettings = viewModel.getReaderSettings(context),
-                    focusMode = focusMode,
-                    onNextChapter = {
-                        viewModel.sasayakiPlayer?.prepareTransition()
-                        viewModel.nextChapter()
-                    },
-                    onPreviousChapter = {
-                        viewModel.sasayakiPlayer?.prepareTransition()
-                        viewModel.previousChapter()
-                    },
-                    onProgressChanged = { viewModel.saveBookmark(it) },
-                    onLoadFailed = { },
-                    onTap = { if (focusMode) focusMode = false },
-                    onTapTop = { showHud = !showHud },
-                    onTapBottom = { showHud = !showHud },
-                    swipeThreshold = chapterSwipeDistance,
-                    tapZonePx = tapZonePx,
-                    isPopupActive = isPopupActive,
-                    onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
-                )
-
-                // Top HUD - always visible when showHud is true
-                if (showHud) {
-                    ReaderTopBar(
-                        title = viewModel.document.title().orEmpty(),
-                        onBack = onBack,
-                        onToggleHud = { showHud = false },
-                        backgroundColor = viewModel.getReaderSettings(context).backgroundColor,
-                        contentColor = viewModel.getReaderSettings(context).textColor,
-                        modifier = Modifier.align(Alignment.TopCenter)
-                    )
-                }
-
-                // Bottom HUD - always visible when showHud is true
-                if (showHud) {
-                    val readerSettings = viewModel.getReaderSettings(context)
-                    ReaderBottomBar(
+                        continuousMode = viewModel.continuousMode,
+                        isImageOnly = viewModel.isCurrentChapterImageOnly,
+                        readerSettings = viewModel.getReaderSettings(context),
                         focusMode = focusMode,
-                        progressText = "${(viewModel.currentProgress * 100).toInt()}%",
-                        backgroundColor = readerSettings.backgroundColor,
-                        contentColor = readerSettings.textColor,
-                        onToggleHud = { showHud = false },
-                        onToggleFocusMode = { focusMode = true },
-                        onOpenChapters = { activeSheet = ActiveSheet.Chapters },
-                        onOpenAppearance = { activeSheet = ActiveSheet.Appearance },
-                        onOpenStatistics = { activeSheet = ActiveSheet.Statistics },
-                        onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki },
-                        modifier = Modifier.align(Alignment.BottomCenter)
+                        onNextChapter = {
+                            viewModel.sasayakiPlayer?.prepareTransition()
+                            viewModel.nextChapter()
+                        },
+                        onPreviousChapter = {
+                            viewModel.sasayakiPlayer?.prepareTransition()
+                            viewModel.previousChapter()
+                        },
+                        onProgressChanged = { viewModel.saveBookmark(it) },
+                        onLoadFailed = { },
+                        onTap = { if (focusMode) focusMode = false },
+                        onTapTop = { showHud = !showHud },
+                        onTapBottom = { showHud = !showHud },
+                        swipeThreshold = chapterSwipeDistance,
+                        tapZonePx = tapZonePx,
+                        isPopupActive = isPopupActive,
+                        onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
                     )
+
+                    // Top HUD - always visible when showHud is true
+                    if (showHud) {
+                        ReaderTopBar(
+                            title = viewModel.document.title().orEmpty(),
+                            onBack = onBack,
+                            onToggleHud = { showHud = false },
+                            backgroundColor = currentSettings.backgroundColor,
+                            contentColor = currentSettings.textColor,
+                            modifier = Modifier.align(Alignment.TopCenter)
+                        )
+                    }
+
+                    // Bottom HUD - always visible when showHud is true
+                    if (showHud) {
+                        ReaderBottomBar(
+                            focusMode = focusMode,
+                            progressText = "${(viewModel.currentProgress * 100).toInt()}%",
+                            backgroundColor = currentSettings.backgroundColor,
+                            contentColor = currentSettings.textColor,
+                            onToggleHud = { showHud = false },
+                            onToggleFocusMode = { focusMode = true },
+                            onOpenChapters = { activeSheet = ActiveSheet.Chapters },
+                            onOpenAppearance = { activeSheet = ActiveSheet.Appearance },
+                            onOpenStatistics = { activeSheet = ActiveSheet.Statistics },
+                            onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki },
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        )
+                    }
                 }
             }
         }
@@ -207,7 +237,7 @@ fun ReaderScreen(
             activeSheet?.let { sheet ->
                 ReaderThemedArea(viewModel.getReaderSettings(context)) {
                     when (sheet) {
-                        ActiveSheet.Appearance -> AppearanceSheet(viewModel) { activeSheet = null }
+                        ActiveSheet.Appearance -> AppearanceSheet(viewModel, additionalSettings) { activeSheet = null }
                         ActiveSheet.Chapters -> ChapterListSheet(viewModel) { activeSheet = null }
                         ActiveSheet.Statistics -> StatisticsSheet(viewModel) { activeSheet = null }
                         ActiveSheet.Sasayaki -> SasayakiSheet(viewModel) { activeSheet = null }

@@ -214,6 +214,9 @@ fun ReaderWebView(
                     is WebViewCommand.ChangeFocusMode -> {
                         v.focusMode = command.focusMode
                     }
+                    is WebViewCommand.Paginate -> {
+                        v.paginate(command.forward)
+                    }
                     else -> {}
                 }
             }
@@ -449,6 +452,12 @@ private class ReaderAndroidWebView(
                         if (window.HoshiAndroid && window.HoshiAndroid.onBackgroundTap)
                             window.HoshiAndroid.onBackgroundTap(clientX, clientY);
                         return false;
+                    },
+                    paginate: function(direction) {
+                        return 'limit';
+                    },
+                    calculateProgress: function() {
+                        return 0;
                     }
                 };
 
@@ -594,7 +603,7 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader.registerCopyText();
                 window.hoshiReader.continuousMode = true;
-                window.hoshiReader.restoreProgress($pendingProgress);
+                window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
             })();
         """.trimIndent()
     }
@@ -807,6 +816,39 @@ private class ReaderAndroidWebView(
         }
     }
 
+    fun paginate(forward: Boolean) {
+        if (isImageOnly) {
+            val changed = if (forward) onNextChapter() else onPreviousChapter()
+            if (changed) visibility = View.INVISIBLE
+            return
+        }
+
+        val direction = if (forward) "forward" else "backward"
+        evaluateJavascript("""
+            (function() {
+                if (!window.hoshiReader || typeof window.hoshiReader.paginate !== 'function') return 'limit';
+                return window.hoshiReader.paginate('$direction');
+            })()
+        """.trimIndent()) { result ->
+            val res = result?.trim('"')
+            if (res == "scrolled") {
+                updateProgressFromJs()
+            } else {
+                val changed = if (forward) onNextChapter() else onPreviousChapter()
+                if (changed) visibility = View.INVISIBLE
+            }
+        }
+    }
+
+    private fun updateProgressFromJs() {
+        evaluateJavascript("window.hoshiReader.calculateProgress()") { p ->
+            p?.trim()?.trim('"')?.toDoubleOrNull()?.let {
+                pendingProgress = it
+                onProgressChanged(it)
+            }
+        }
+    }
+
     private fun navigateContinuous(forward: Boolean): Boolean {
         val isVerticalScroll = !readerSettings.verticalWriting
         val script = """
@@ -851,12 +893,7 @@ private class ReaderAndroidWebView(
             })()
         """.trimIndent()) { result ->
             if (result?.trim('"') == "scrolled") {
-                evaluateJavascript("(function() { return window.hoshiReader.calculateProgress(); })()") { p ->
-                    p?.trim()?.trim('"')?.toDoubleOrNull()?.let {
-                        pendingProgress = it
-                        onProgressChanged(it)
-                    }
-                }
+                updateProgressFromJs()
             } else {
                 val changed = fallback()
                 if (changed) visibility = View.INVISIBLE
