@@ -413,11 +413,12 @@ private class ReaderAndroidWebView(
         }
 
         appendLine("p { margin-top: 0 !important; margin-bottom: 0 !important; }")
-
-        appendLine("img { max-width: 100%; height: auto; }")
-        appendLine("svg { max-width: 100%; height: auto; }")
-
         appendLine("body * { font-family: inherit !important; }")
+    }
+
+    private fun buildImageCSS(ih: Int): String {
+        val imgMaxH = Math.round(ih * 0.85)
+        return "img, svg { max-width: 100% !important; max-height: ${imgMaxH}px !important; object-fit: contain !important; }"
     }
 
     fun injectReader() {
@@ -551,7 +552,7 @@ private class ReaderAndroidWebView(
                 if (s) s.remove();
                 s = document.createElement('style');
                 s.id = 'hoshi-style';
-                s.textContent = ${jsString(css)};
+                s.textContent = ${jsString(css)} + ${jsString(buildImageCSS(height))};
                 document.head.appendChild(s);
 
                 $readerJs
@@ -638,10 +639,7 @@ private class ReaderAndroidWebView(
                 if (s) s.remove();
                 s = document.createElement('style');
                 s.id = 'hoshi-style';
-                var imgMaxH = Math.round(ih * 0.85);
-                var imgMaxW = Math.round(iw * 0.90);
-                s.textContent = ${jsString(css)} +
-                    'img, svg { max-width: ' + imgMaxW + 'px !important; max-height: ' + imgMaxH + 'px !important; object-fit: contain !important; }';
+                s.textContent = ${jsString(css)} + ${jsString(buildImageCSS(height))};
                 document.head.appendChild(s);
 
                 $readerJs
@@ -739,7 +737,12 @@ private class ReaderAndroidWebView(
                 var b = document.body;
                 if (!b) return;
                 var wrapper = document.getElementById('hoshi-content-wrapper');
-                if (!wrapper) return;
+                if (!wrapper) {
+                    wrapper = document.createElement('div');
+                    wrapper.id = 'hoshi-content-wrapper';
+                    while (b.firstChild) wrapper.appendChild(b.firstChild);
+                    b.appendChild(wrapper);
+                }
 
                 var iw = window.innerWidth;
                 var ih = window.innerHeight;

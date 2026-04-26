@@ -235,6 +235,10 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         initializeMigrator()
+        
+        // Chimahon -->
+        com.canopus.chimareader.data.NovelMigration.migrateOldBooks(this)
+        // Chimahon <--
     }
 
     private fun initializeMigrator() {

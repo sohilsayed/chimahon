@@ -9,6 +9,7 @@ import com.canopus.chimareader.data.epub.EpubParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipFile
 
@@ -47,18 +48,17 @@ object BookImporter {
                 return@withContext ImportResult(error = "Not a valid EPUB file: ${e.message}")
             }
 
-            val bookId = UUID.randomUUID()
+            // We'll calculate the stableId after parsing metadata to ensure parity with migration
             val booksDir = BookStorage.getBooksDirectory(context)
             Log.d(TAG, "Books directory: ${booksDir.absolutePath}")
             booksDir.mkdirs()
             
-            val bookDir = File(booksDir, bookId.toString())
-            Log.d(TAG, "Book directory: ${bookDir.absolutePath}")
-            bookDir.mkdirs()
+            val tempExtractDir = File(context.cacheDir, "temp_extract_${System.currentTimeMillis()}")
+            tempExtractDir.mkdirs()
 
             ZipFile(tempFile).use { zip ->
                 zip.entries().asSequence().forEach { entry ->
-                    val file = File(bookDir, entry.name)
+                    val file = File(tempExtractDir, entry.name)
                     if (entry.isDirectory) {
                         file.mkdirs()
                     } else {
@@ -66,23 +66,46 @@ object BookImporter {
                         zip.getInputStream(entry).use { input ->
                             file.outputStream().use { output -> input.copyTo(output) }
                         }
-
-                        val ext = file.extension.lowercase()
-
-                        if (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" || ext == "gif") {
-                            normaliseImageInPlace(file)
-                        }
-
-                        if (ext == "html" || ext == "xhtml" || ext == "htm") {
-                            preWrapBodyContent(file)
-                        }
-
-                        if (ext == "css") {
-                            cleanBookCss(file)
-                        }
                     }
                 }
             }
+            
+            val extractedBook = EpubParser.parse(tempExtractDir)
+            val title = extractedBook.title ?: "Unknown"
+            val author = extractedBook.author ?: ""
+            
+            val stableId = md5Hex("${title.trim().lowercase()}|${author.trim().lowercase()}")
+            val bookDir = File(booksDir, stableId)
+            
+            Log.d(TAG, "Stable ID (Title+Author): $stableId ($title | $author)")
+            
+            var existingBookmark: Bookmark? = null
+            var existingStats: List<Statistics>? = null
+            var existingLastAccess: Long? = null
+
+            // Move from temp to final destination
+            if (bookDir.exists()) {
+                existingBookmark = BookStorage.loadBookmark(bookDir)
+                existingStats = BookStorage.loadStatistics(bookDir)
+                existingLastAccess = BookStorage.loadMetadata(bookDir)?.lastAccess
+                bookDir.deleteRecursively()
+            }
+            tempExtractDir.renameTo(bookDir)
+            
+            // Re-run normalisation and pre-wrapping on the final directory
+            bookDir.walkTopDown().forEach { file ->
+                val ext = file.extension.lowercase()
+                if (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" || ext == "gif") {
+                    normaliseImageInPlace(file)
+                }
+                if (ext == "html" || ext == "xhtml" || ext == "htm") {
+                    preWrapBodyContent(file)
+                }
+                if (ext == "css") {
+                    cleanBookCss(file)
+                }
+            }
+            
             tempFile.delete()
 
             Log.d(TAG, "Extracted to: ${bookDir.absolutePath}")
@@ -90,23 +113,27 @@ object BookImporter {
             val extractedFiles = bookDir.walkTopDown().take(20).map { it.relativeTo(bookDir).path }.toList()
             Log.d(TAG, "Extracted files (first 20): $extractedFiles")
 
-            val extractedBook = EpubParser.parse(bookDir)
-            // Use coverHref which now includes contentDirectory
-            val coverAbsPath = extractedBook.coverHref?.let { File(bookDir, it).absolutePath }
-            val title = extractedBook.title ?: "Unknown"
+            Log.d(TAG, "Finalized to: ${bookDir.absolutePath}")
+            
+            val coverAbsPath = extractedBook.coverPath?.let { File(bookDir, it).absolutePath }
 
             Log.d(TAG, "Parsed EPUB: title=$title, contentDir=${extractedBook.contentDirectory}, chapters=${extractedBook.spine.items.size}")
             
 
             val metadata = BookMetadata(
-                id = bookId.toString(),
+                id = stableId,
                 title = title,
                 cover = coverAbsPath,
-                folder = bookId.toString(),
-                lastAccess = System.currentTimeMillis()
+                folder = stableId,
+                lastAccess = existingLastAccess ?: System.currentTimeMillis(),
+                hash = stableId,
+                isGhost = false
             )
             BookStorage.saveMetadata(metadata, bookDir)
             BookStorage.saveSpineCache(extractedBook.spine, bookDir)
+
+            existingBookmark?.let { BookStorage.saveBookmark(it, bookDir) }
+            existingStats?.let { BookStorage.saveStatistics(it, bookDir) }
 
             return@withContext ImportResult(metadata = metadata)
         } catch (e: Exception) {
@@ -293,5 +320,23 @@ object BookImporter {
                 "${selector}{${cleaned}}"
             }
         }
+    }
+
+    private fun md5Hex(input: String): String {
+        val digest = MessageDigest.getInstance("MD5")
+        val bytes = digest.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun md5Hex(file: File): String {
+        val digest = MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                digest.update(buffer, 0, bytesRead)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }

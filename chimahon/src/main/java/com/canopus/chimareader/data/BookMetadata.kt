@@ -9,4 +9,6 @@ data class BookMetadata(
     val cover: String? = null,
     val folder: String? = null,
     val lastAccess: Long = System.currentTimeMillis(),
+    val hash: String? = null,
+    val isGhost: Boolean = false,
 )

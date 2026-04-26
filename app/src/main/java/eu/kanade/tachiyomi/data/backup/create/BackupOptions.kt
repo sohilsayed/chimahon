@@ -21,6 +21,9 @@ data class BackupOptions(
     val customInfo: Boolean = true,
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // Chimahon -->
+    val novels: Boolean = true,
+    // Chimahon <--
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -38,10 +41,13 @@ data class BackupOptions(
         customInfo,
         savedSearchesFeeds,
         // SY <--
+        // Chimahon -->
+        novels,
+        // Chimahon <--
     )
 
     fun canCreate() =
-        libraryEntries || categories || appSettings || extensionRepoSettings || sourceSettings || savedSearchesFeeds
+        libraryEntries || categories || appSettings || extensionRepoSettings || sourceSettings || savedSearchesFeeds || novels
 
     companion object {
         val libraryOptions = persistentListOf(
@@ -94,6 +100,13 @@ data class BackupOptions(
                 setter = { options, enabled -> options.copy(savedSearchesFeeds = enabled) },
             ),
             // SY <--
+            // Chimahon -->
+            Entry(
+                label = MR.strings.backup_option_novels,
+                getter = BackupOptions::novels,
+                setter = { options, enabled -> options.copy(novels = enabled) },
+            ),
+            // Chimahon <--
         )
 
         val settingsOptions = persistentListOf(
@@ -135,6 +148,9 @@ data class BackupOptions(
             customInfo = array[10],
             savedSearchesFeeds = array[11],
             // SY <--
+            // Chimahon -->
+            novels = array.getOrElse(12) { true },
+            // Chimahon <--
         )
     }
 

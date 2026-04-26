@@ -63,6 +63,13 @@ abstract class SyncService(
         )
         // SY <--
 
+        // Chimahon -->
+        val mergedNovelsList = mergeNovelLists(
+            localSyncData.backup?.backupNovels,
+            remoteSyncData.backup?.backupNovels,
+        )
+        // Chimahon <--
+
         // Create the merged Backup object
         val mergedBackup = Backup(
             backupManga = mergedMangaList,
@@ -74,6 +81,10 @@ abstract class SyncService(
             // SY -->
             backupSavedSearches = mergedSavedSearchesList,
             // SY <--
+
+            // Chimahon -->
+            backupNovels = mergedNovelsList,
+            // Chimahon <--
         )
 
         // Create the merged SData object
@@ -522,4 +533,52 @@ abstract class SyncService(
         return mergedSearches
     }
     // SY <--
+
+    // Chimahon -->
+    private fun mergeNovelLists(
+        localNovelList: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>?,
+        remoteNovelList: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>?
+    ): List<eu.kanade.tachiyomi.data.backup.models.BackupNovel> {
+        val localNovelsSafe = localNovelList.orEmpty()
+        val remoteNovelsSafe = remoteNovelList.orEmpty()
+
+        val localNovelMap = localNovelsSafe.associateBy { it.id }
+        val remoteNovelMap = remoteNovelsSafe.associateBy { it.id }
+
+        val mergedList = (localNovelMap.keys + remoteNovelMap.keys).distinct().mapNotNull { id ->
+            val local = localNovelMap[id]
+            val remote = remoteNovelMap[id]
+
+            when {
+                local != null && remote == null -> local
+                local == null && remote != null -> remote
+                local != null && remote != null -> {
+                    // Merge stats
+                    val localStatsMap = local.stats.associateBy { it.dateKey }
+                    val remoteStatsMap = remote.stats.associateBy { it.dateKey }
+                    val mergedStats = (localStatsMap.keys + remoteStatsMap.keys).distinct().mapNotNull { dateKey ->
+                        val localStat = localStatsMap[dateKey]
+                        val remoteStat = remoteStatsMap[dateKey]
+                        when {
+                            localStat != null && remoteStat == null -> localStat
+                            localStat == null && remoteStat != null -> remoteStat
+                            localStat != null && remoteStat != null -> {
+                                if (localStat.lastStatisticModified >= remoteStat.lastStatisticModified) localStat else remoteStat
+                            }
+                            else -> null
+                        }
+                    }
+
+                    if (local.lastModified >= remote.lastModified) {
+                        local.copy(stats = mergedStats)
+                    } else {
+                        remote.copy(stats = mergedStats)
+                    }
+                }
+                else -> null
+            }
+        }
+        return mergedList
+    }
+    // Chimahon <--
 }

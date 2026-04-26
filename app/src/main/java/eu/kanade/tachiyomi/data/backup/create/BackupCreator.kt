@@ -59,6 +59,9 @@ class BackupCreator(
     // KMK -->
     private val feedBackupCreator: FeedBackupCreator = FeedBackupCreator(),
     // KMK <--
+    // Chimahon -->
+    private val novelBackupCreator: eu.kanade.tachiyomi.data.backup.create.creators.NovelBackupCreator = eu.kanade.tachiyomi.data.backup.create.creators.NovelBackupCreator(context),
+    // Chimahon <--
     // SY -->
     private val savedSearchBackupCreator: SavedSearchBackupCreator = SavedSearchBackupCreator(),
     private val getMergedManga: GetMergedManga = Injekt.get(),
@@ -111,6 +114,10 @@ class BackupCreator(
                 // KMK -->
                 backupFeeds = backupFeeds(options),
                 // KMK <--
+
+                // Chimahon -->
+                backupNovels = backupNovels(options),
+                // Chimahon <--
             )
 
             val byteArray = parser.encodeToByteArray(Backup.serializer(), backup)
@@ -195,6 +202,14 @@ class BackupCreator(
         return feedBackupCreator()
     }
     // KMK <--
+
+    // Chimahon -->
+    fun backupNovels(options: BackupOptions): List<eu.kanade.tachiyomi.data.backup.models.BackupNovel> {
+        if (!options.novels) return emptyList()
+
+        return novelBackupCreator.backupNovels()
+    }
+    // Chimahon <--
 
     companion object {
         private const val MAX_AUTO_BACKUPS: Int = 4

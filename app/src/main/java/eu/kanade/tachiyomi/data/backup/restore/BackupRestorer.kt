@@ -46,6 +46,9 @@ class BackupRestorer(
     // KMK -->
     private val feedRestorer: FeedRestorer = FeedRestorer(),
     // KMK <--
+    // Chimahon -->
+    private val novelRestorer: eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer = eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer(context),
+    // Chimahon <--
 ) {
 
     private var restoreAmount = 0
@@ -102,6 +105,11 @@ class BackupRestorer(
         if (options.sourceSettings) {
             restoreAmount += 1
         }
+        // Chimahon -->
+        if (options.novels) {
+            restoreAmount += backup.backupNovels.size
+        }
+        // Chimahon <--
 
         coroutineScope {
             if (options.categories) {
@@ -129,6 +137,11 @@ class BackupRestorer(
             if (options.extensionRepoSettings) {
                 restoreExtensionRepos(backup.backupExtensionRepo)
             }
+            // Chimahon -->
+            if (options.novels) {
+                restoreNovels(backup.backupNovels)
+            }
+            // Chimahon <--
 
             // TODO: optionally trigger online library + tracker update
         }
@@ -275,6 +288,28 @@ class BackupRestorer(
                 }
             }
     }
+
+    // Chimahon -->
+    private fun CoroutineScope.restoreNovels(backupNovels: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>) = launch {
+        ensureActive()
+        
+        try {
+            novelRestorer.restore(backupNovels)
+        } catch (e: Exception) {
+            errors.add(Date() to "Error Restoring Novels: ${e.message}")
+        }
+
+        restoreProgress += backupNovels.size
+        with(notifier) {
+            showRestoreProgress(
+                context.stringResource(MR.strings.label_novels),
+                restoreProgress,
+                restoreAmount,
+                isSync,
+            ).show(Notifications.ID_RESTORE_PROGRESS)
+        }
+    }
+    // Chimahon <--
 
     private fun writeErrorLog(): File {
         try {

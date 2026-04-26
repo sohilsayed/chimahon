@@ -276,8 +276,12 @@ fun BookshelfScreen(
                     BookCard(
                         book = book,
                         onClick = {
-                            val bookDir = BookStorage.getBookDirectory(context, book.folder ?: book.id)
-                            NovelReaderActivity.launch(context, bookDir)
+                            if (book.isGhost) {
+                                epubPicker.launch("application/epub+zip")
+                            } else {
+                                val bookDir = BookStorage.getBookDirectory(context, book.folder ?: book.id)
+                                NovelReaderActivity.launch(context, bookDir)
+                            }
                         },
                         onDelete = { showDeleteDialog = book }
                     )
@@ -323,6 +327,24 @@ private fun BookCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            
+            if (book.isGhost) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .align(Alignment.BottomCenter)
+                        .padding(vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "MISSING FILE",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             
             // Menu button

@@ -98,6 +98,9 @@ class SyncManager(
             readEntries = syncOptions.readEntries,
             savedSearchesFeeds = syncOptions.savedSearchesFeeds,
             // SY <--
+            // Chimahon -->
+            novels = syncOptions.novels,
+            // Chimahon <--
         )
 
         logcat(LogPriority.DEBUG) { "Begin create backup" }
@@ -117,6 +120,9 @@ class SyncManager(
             // KMK -->
             backupFeeds = backupCreator.backupFeeds(backupOptions),
             // KMK <--
+            // Chimahon -->
+            backupNovels = backupCreator.backupNovels(backupOptions),
+            // Chimahon <--
         )
         logcat(LogPriority.DEBUG) { "End create backup" }
 
@@ -170,13 +176,13 @@ class SyncManager(
         }
 
         // Stop the sync early if the remote backup is null or empty
-        if (remoteBackup.backupManga.isEmpty()) {
+        if (remoteBackup.backupManga.isEmpty() && remoteBackup.backupNovels.isEmpty()) {
             notifier.showSyncError("No data found on remote server.")
             return
         }
 
         // Check if it's first sync based on lastSyncTimestamp
-        if (syncPreferences.lastSyncTimestamp().get() == 0L && databaseManga.isNotEmpty()) {
+        if (syncPreferences.lastSyncTimestamp().get() == 0L && (databaseManga.isNotEmpty() || backup.backupNovels.isNotEmpty())) {
             // It's first sync no need to restore data. (just update remote data)
             syncPreferences.lastSyncTimestamp().set(Date().time)
             notifier.showSyncSuccess("Updated remote data successfully")
@@ -201,10 +207,13 @@ class SyncManager(
             // KMK -->
             backupFeeds = remoteBackup.backupFeeds,
             // KMK <--
+            // Chimahon -->
+            backupNovels = remoteBackup.backupNovels,
+            // Chimahon <--
         )
 
         // It's local sync no need to restore data. (just update remote data)
-        if (filteredFavorites.isEmpty()) {
+        if (filteredFavorites.isEmpty() && remoteBackup.backupNovels.isEmpty()) {
             // update the sync timestamp
             syncPreferences.lastSyncTimestamp().set(Date().time)
             notifier.showSyncSuccess("Sync completed successfully")
@@ -223,6 +232,9 @@ class SyncManager(
                     sourceSettings = true,
                     libraryEntries = true,
                     extensionRepoSettings = true,
+                    // Chimahon -->
+                    novels = true,
+                    // Chimahon <--
                 ),
             )
 

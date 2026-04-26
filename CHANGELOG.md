@@ -4,6 +4,20 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+
+## [v1.5.0]
+
+### Added
+- Local Audio support.
+- Novel progress and stats sync.
+- Dict selection at at anki export marker.
+
+### Fixed
+- fixes to auto update.
+- Update discord link to a working one.
+- migration to the new wrapper for novels.
+
+
 ## [v1.4.2]
 
 ### Added

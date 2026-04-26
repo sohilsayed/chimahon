@@ -14,6 +14,9 @@ data class RestoreOptions(
     // SY -->
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // Chimahon -->
+    val novels: Boolean = true,
+    // Chimahon <--
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -25,6 +28,9 @@ data class RestoreOptions(
         // SY -->
         savedSearchesFeeds,
         // SY <--
+        // Chimahon -->
+        novels,
+        // Chimahon <--
     )
 
     fun canRestore() =
@@ -33,7 +39,8 @@ data class RestoreOptions(
             appSettings ||
             extensionRepoSettings ||
             sourceSettings /* SY --> */ ||
-            savedSearchesFeeds /* SY <-- */
+            savedSearchesFeeds /* SY <-- */ ||
+            novels
 
     companion object {
         val options = persistentListOf(
@@ -71,6 +78,13 @@ data class RestoreOptions(
                 setter = { options, enabled -> options.copy(savedSearchesFeeds = enabled) },
             ),
             // SY <--
+            // Chimahon -->
+            Entry(
+                label = MR.strings.backup_option_novels,
+                getter = RestoreOptions::novels,
+                setter = { options, enabled -> options.copy(novels = enabled) },
+            ),
+            // Chimahon <--
         )
 
         fun fromBooleanArray(array: BooleanArray) = RestoreOptions(
@@ -82,6 +96,9 @@ data class RestoreOptions(
             // SY -->
             savedSearchesFeeds = array[5],
             // SY <--
+            // Chimahon -->
+            novels = array.getOrElse(6) { true },
+            // Chimahon <--
         )
     }
 
