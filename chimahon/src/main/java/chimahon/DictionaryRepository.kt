@@ -84,6 +84,7 @@ class DictionaryRepository(
     private fun extractImagePaths(glossary: String): Set<String> {
         val text = glossary.trim()
         if (text.isEmpty() || !(text.startsWith("{") || text.startsWith("["))) return emptySet()
+        if (!text.contains("\"img\"") && !text.contains("\"image\"")) return emptySet()
 
         return runCatching {
             val root: Any = if (text.startsWith("[")) JSONArray(text) else JSONObject(text)

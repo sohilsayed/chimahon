@@ -96,9 +96,20 @@ private data class TabLookupFrame(
 )
 
 
+private var cachedDictionaryPaths: List<String>? = null
+private var lastProfileHash: Int? = null
+private var lastDictDirModified: Long = 0L
+
 fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.anki.AnkiProfile? = null): List<String> {
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
     if (!dictionariesDir.exists()) return emptyList()
+
+    val currentModified = dictionariesDir.lastModified()
+    val currentProfileHash = activeProfileOverride?.hashCode() ?: 0
+
+    if (cachedDictionaryPaths != null && lastProfileHash == currentProfileHash && lastDictDirModified == currentModified) {
+        return cachedDictionaryPaths!!
+    }
 
     val allDicts = dictionariesDir.listFiles()
         ?.filter { it.isDirectory }
@@ -142,7 +153,11 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
     val enabled = activeProfile.enabledDictionaries
     val finalNames = if (enabled.isEmpty()) orderedNames else orderedNames.filter { it in enabled }
 
-    return finalNames.map { File(dictionariesDir, it).absolutePath }
+    val result = finalNames.map { File(dictionariesDir, it).absolutePath }
+    cachedDictionaryPaths = result
+    lastProfileHash = currentProfileHash
+    lastDictDirModified = currentModified
+    return result
 }
 
 data object DictionaryTab : Tab {
@@ -196,6 +211,7 @@ data object DictionaryTab : Tab {
         val recursiveNavMode by dictionaryPreferences.recursiveLookupMode().collectAsState()
         val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
         val customCss by dictionaryPreferences.customCss().collectAsState()
+        val wordAudioEnabled by dictionaryPreferences.wordAudioEnabled().collectAsState()
         // ── Lookup history stack ──────────────────────────────────────────────
         val lookupStack = remember { mutableStateListOf<TabLookupFrame>() }
         var activeTabIndex by remember { mutableIntStateOf(0) }
@@ -227,12 +243,14 @@ data object DictionaryTab : Tab {
                 var existing: Set<String> = emptySet()
                 if (ankiEnabled && lookupResult.results.isNotEmpty()) {
                     val unique = lookupResult.results.map { it.term.expression }.distinct()
-                    existing = AnkiCardCreator.checkExistingCards(
-                        context = context,
-                        expressions = unique,
-                        deckName = ankiDeck,
-                        dupScope = ankiDupScope,
-                    )
+                    existing = withContext(Dispatchers.IO) {
+                        AnkiCardCreator.checkExistingCards(
+                            context = context,
+                            expressions = unique,
+                            deckName = ankiDeck,
+                            dupScope = ankiDupScope,
+                        )
+                    }
                 }
 
                 val frame = TabLookupFrame(
@@ -449,7 +467,7 @@ data object DictionaryTab : Tab {
                     recursiveNavMode = recursiveNavMode,
                     fontSize = popupFontSizePref,
                     customCss = customCss,
-                    wordAudioEnabled = remember { Injekt.get<DictionaryPreferences>().wordAudioEnabled() }.collectAsState().value,
+                    wordAudioEnabled = wordAudioEnabled,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },
@@ -510,13 +528,7 @@ data object DictionaryTab : Tab {
             }
 
             try {
-                val lookup = sessionManager.lookup(query = query, termPaths = dictionaryPaths)
-                val dumpDir = dumpSearchDebugArtifacts(
-                    externalFilesDir = externalFilesDir,
-                    query = query,
-                    result = lookup,
-                )
-                lookup.copy(debugDumpDir = dumpDir)
+                sessionManager.lookup(query = query, termPaths = dictionaryPaths)
             } catch (e: Throwable) {
                 LookupUiResult(
                     results = emptyList(),
@@ -528,62 +540,6 @@ data object DictionaryTab : Tab {
                 )
             }
         }
-    }
-
-    private fun dumpSearchDebugArtifacts(
-        externalFilesDir: File,
-        query: String,
-        result: LookupUiResult,
-    ): String? {
-        return runCatching {
-            val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
-            val safeQuery = query.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(48).ifBlank { "query" }
-            val dumpDir = File(externalFilesDir, "dictionary-debug/$timestamp-$safeQuery")
-            if (!dumpDir.exists()) {
-                dumpDir.mkdirs()
-            }
-
-            val stylesText = result.styles.joinToString("\n\n/* --- */\n\n") { it.styles }
-            File(dumpDir, "styles.css").writeText(stylesText)
-
-            val jsonGlossaries = mutableListOf<JSONObject>()
-            result.results.forEach { lookup ->
-                lookup.term.glossaries.forEach { glossary ->
-                    val raw = glossary.glossary.trim()
-                    if (raw.startsWith("{") || raw.startsWith("[")) {
-                        jsonGlossaries += JSONObject().apply {
-                            put("dictName", glossary.dictName)
-                            put("term", lookup.term.expression)
-                            put("reading", lookup.term.reading)
-                            put("rawGlossary", raw)
-                        }
-                    }
-                }
-            }
-            val jsonText = jsonGlossaries.joinToString("\n") { it.toString() }
-            File(dumpDir, "glossaries.jsonl").writeText(jsonText)
-
-            val metricsText = result.diagnostics?.let {
-                """
-                query=$query
-                total_ms=${it.totalMs}
-                create_session_ms=${it.sessionCreateMs}
-                rebuild_ms=${it.rebuildMs}
-                lookup_ms=${it.lookupMs}
-                media_ms=${it.mediaMs}
-                ram_mb_before=${it.ramBeforeMb}
-                ram_mb_after=${it.ramAfterMb}
-                result_count=${it.resultCount}
-                json_glossary_count=${it.jsonGlossaryCount}
-                css_bytes=${it.cssBytes}
-                """.trimIndent()
-            } ?: "no diagnostics"
-            File(dumpDir, "metrics.txt").writeText(metricsText)
-
-            dumpDir.absolutePath
-        }.onFailure {
-            Log.w("DictionaryPerf", "Failed to dump search debug artifacts", it)
-        }.getOrNull()
     }
 
     private class DictionarySessionManager {
@@ -718,6 +674,7 @@ data object DictionaryTab : Tab {
         private fun extractImagePaths(glossary: String): Set<String> {
             val text = glossary.trim()
             if (text.isEmpty() || !(text.startsWith("{") || text.startsWith("["))) return emptySet()
+            if (!text.contains("\"img\"") && !text.contains("\"image\"")) return emptySet()
 
             return runCatching {
                 val root: Any = if (text.startsWith("[")) JSONArray(text) else JSONObject(text)

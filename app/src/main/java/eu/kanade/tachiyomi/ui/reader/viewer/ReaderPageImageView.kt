@@ -111,23 +111,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
     internal var ocrBlocks: List<OcrTextBlock> = emptyList()
     internal var activeOcrBlock: OcrTextBlock? = null
     internal var ocrLayoutCache: Pair<OcrTextBlock, StaticLayout>? = null
+    internal var ocrPopupLookupString: String? = null
 
     var onOcrLookup: ((String) -> Unit)? = null
     var onDismissOcrPopup: (() -> Unit)? = null
-
-    // ==================== Dictionary Popup State ====================
-    private var ocrWebView: WebView? = null
-    private var dictionaryRepository: DictionaryRepository? = null
-    var ocrPopupLookupString: String? = null
-        private set
 
     var onShowOcrPopup: (
         (
             lookupString: String,
             fullText: String,
             charOffset: Int,
-            webView: WebView,
-            repository: DictionaryRepository,
             screenX: Float,
             screenY: Float,
             mediaInfo: chimahon.MediaInfo?,
@@ -139,22 +132,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
     var onScaleChanged: ((newScale: Float) -> Unit)? = null
     var onViewClicked: (() -> Unit)? = null
 
-    private val lifecycleOwner = context as? LifecycleOwner
-    private val lifecycleObserver = object : DefaultLifecycleObserver {
-        override fun onDestroy(owner: LifecycleOwner) {
-            releaseOcrResources()
-            owner.lifecycle.removeObserver(this)
-        }
-    }
-
     /**
      * For automatic background. Will be set as background color when [onImageLoaded] is called.
      */
     var pageBackground: Drawable? = null
-
-    init {
-        lifecycleOwner?.lifecycle?.addObserver(lifecycleObserver)
-    }
 
     @CallSuper
     open fun onImageLoaded() {
@@ -408,44 +389,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val ssivWidth = MATCH_PARENT
         val ssivHeight = if (isWebtoon) WRAP_CONTENT else MATCH_PARENT
         addView(pageView, ssivWidth, ssivHeight)
-
-        // Pre-warm WebView for OCR dictionary lookup in both reader modes.
-        ensureOcrResources()
-    }
-
-    private fun ensureOcrResources() {
-        if (ocrWebView == null) {
-            ocrWebView = createOcrWebView(context)
-        }
-        if (dictionaryRepository == null) {
-            dictionaryRepository = DictionaryRepository(context.getExternalFilesDir(null))
-        }
-    }
-
-    private fun releaseOcrResources() {
-        ocrWebView?.destroy()
-        ocrWebView = null
-        dictionaryRepository?.close()
-        dictionaryRepository = null
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun createOcrWebView(ctx: Context): WebView {
-        return WebView(ctx).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.blockNetworkLoads = true
-            settings.loadsImagesAutomatically = true
-            setBackgroundColor(0x00000000)
-            // Pre-load bootstrap HTML to avoid startup delay on first lookup
-            loadDataWithBaseURL(
-                "https://dictionary.local/",
-                getDictionaryBootstrapHtml(ctx),
-                "text/html",
-                "utf-8",
-                null,
-            )
-        }
     }
 
     private fun SubsamplingScaleImageView.setupZoom(config: Config?) {
@@ -714,15 +657,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
             return true
         }
 
-        ensureOcrResources()
-        val webView = ocrWebView
-        val repository = dictionaryRepository
-        if (webView != null && repository != null) {
-            ocrPopupLookupString = lookupString
-            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, screenX, screenY, null)
-        } else {
-            logcat(LogPriority.WARN) { "OCR popup: webView or repository is null" }
-        }
+        ocrPopupLookupString = lookupString
+        onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, screenX, screenY, null)
         return true
     }
 

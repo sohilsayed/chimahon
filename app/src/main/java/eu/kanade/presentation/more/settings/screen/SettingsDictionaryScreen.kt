@@ -925,7 +925,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                         updated.remove(normalizedName)
                     }
                 } else {
-                    updated[normalizedName] = convertToStorageFormat(effectiveDisplayValue)
+                    updated[normalizedName] = effectiveDisplayValue
                 }
                 updateProfile { copy(ankiFieldMap = org.json.JSONObject(updated).toString()) }
             }
@@ -1115,7 +1115,6 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 modelFields.forEach { fieldName ->
                                     val storageValue = fieldMap[fieldName] ?: ""
                                     val displayValue = storageValue
-                                        .replace("<br>", "")
                                         .ifBlank { "{}" }
                                     AnkiFieldMappingRow(
                                         fieldName = fieldName,
@@ -1139,7 +1138,6 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 customFieldNames.forEach { fieldName ->
                                     val storageValue = fieldMap[fieldName] ?: ""
                                     val displayValue = storageValue
-                                        .replace("<br>", "")
                                         .ifBlank { "{}" }
                                     AnkiFieldMappingRow(
                                         fieldName = fieldName,
@@ -1381,7 +1379,8 @@ object SettingsDictionaryScreen : SearchableSettings {
                         .fillMaxWidth()
                         .padding(top = 8.dp),
                     textStyle = MaterialTheme.typography.bodySmall,
-                    singleLine = true,
+                    singleLine = false,
+                    maxLines = 5,
                 )
 
                 IconButton(
@@ -1435,11 +1434,10 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     text = { Text(dictName, style = MaterialTheme.typography.bodyMedium) },
                                     onClick = {
                                         val markerStr = "{${Marker.SINGLE_GLOSSARY}-$dictName}"
-                                        val normalizedValue = fieldValue.replace("<br>", "")
-                                        val newValue = if (normalizedValue.contains(markerStr)) {
-                                            normalizedValue.replace(markerStr, "")
+                                        val newValue = if (fieldValue.contains(markerStr)) {
+                                            fieldValue.replace(markerStr, "")
                                         } else {
-                                            normalizedValue + markerStr
+                                            fieldValue + markerStr
                                         }
                                         onValueChange(newValue)
                                         singleGlossaryExpanded = false
@@ -1448,7 +1446,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     leadingIcon = {
                                         val markerStr = "{${Marker.SINGLE_GLOSSARY}-$dictName}"
                                         androidx.compose.material3.Checkbox(
-                                            checked = fieldValue.replace("<br>", "").contains(markerStr),
+                                            checked = fieldValue.contains(markerStr),
                                             onCheckedChange = null,
                                             modifier = Modifier.size(20.dp),
                                         )
@@ -1460,11 +1458,10 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 text = { Text("All dictionaries", style = MaterialTheme.typography.bodyMedium) },
                                 onClick = {
                                     val markerStr = "{${Marker.SINGLE_GLOSSARY}-all}"
-                                    val normalizedValue = fieldValue.replace("<br>", "")
-                                    val newValue = if (normalizedValue.contains(markerStr)) {
-                                        normalizedValue.replace(markerStr, "")
+                                    val newValue = if (fieldValue.contains(markerStr)) {
+                                        fieldValue.replace(markerStr, "")
                                     } else {
-                                        normalizedValue + markerStr
+                                        fieldValue + markerStr
                                     }
                                     onValueChange(newValue)
                                     singleGlossaryExpanded = false
@@ -1473,7 +1470,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 leadingIcon = {
                                     val markerStr = "{${Marker.SINGLE_GLOSSARY}-all}"
                                     androidx.compose.material3.Checkbox(
-                                        checked = fieldValue.replace("<br>", "").contains(markerStr),
+                                        checked = fieldValue.contains(markerStr),
                                         onCheckedChange = null,
                                         modifier = Modifier.size(20.dp),
                                     )
@@ -1490,11 +1487,10 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 )
                             },
                             onClick = {
-                                val normalizedValue = fieldValue.replace("<br>", "")
                                 val newValue = if (isSelected) {
-                                    normalizedValue.replace("{$marker}", "")
+                                    fieldValue.replace("{$marker}", "")
                                 } else {
-                                    normalizedValue + "{$marker}"
+                                    fieldValue + "{$marker}"
                                 }
                                 onValueChange(newValue)
                                 dropdownExpanded = false
@@ -1678,16 +1674,8 @@ object SettingsDictionaryScreen : SearchableSettings {
 
     private fun parseMarkersForDisplay(fieldValue: String): List<String> {
         if (fieldValue.isBlank()) return emptyList()
-        val normalized = fieldValue.replace("<br>", "")
         val markerRegex = Regex("""\{([a-zA-Z0-9-]+)\}""")
-        return markerRegex.findAll(normalized).map { it.groupValues[1] }.toList()
-    }
-
-    private fun convertToStorageFormat(displayValue: String): String {
-        if (displayValue.isBlank()) return ""
-        val markers = parseMarkersForDisplay(displayValue)
-        if (markers.isEmpty()) return displayValue
-        return markers.joinToString("<br>") { "{$it}" }
+        return markerRegex.findAll(fieldValue).map { it.groupValues[1] }.toList()
     }
 }
 

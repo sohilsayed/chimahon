@@ -60,6 +60,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.async
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.transition.platform.MaterialContainerTransform
 import com.hippo.unifile.UniFile
@@ -253,6 +254,7 @@ class ReaderActivity : BaseActivity() {
         val anchorX: Float,
         val anchorY: Float,
         val mediaInfo: chimahon.MediaInfo? = null,
+        val deferredLookup: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>,
     )
 
     var isScrollingThroughPages = false
@@ -614,6 +616,7 @@ class ReaderActivity : BaseActivity() {
                     pendingGlossaryIndex = glossaryIndex
                     launchImageCropper()
                 },
+                initialLookupDeferred = popupState.deferredLookup,
             )
         }
 
@@ -621,7 +624,16 @@ class ReaderActivity : BaseActivity() {
         when (val viewer = viewModel.state.value.viewer) {
             is PagerViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _ ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, _ ->
+                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+                        val activeProfile = prefs.profileStore.getActiveProfile()
+                        
+                        // PRE-DISPATCH LOOKUP
+                        val deferredLookup = lifecycleScope.async(kotlinx.coroutines.Dispatchers.IO) {
+                             val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+                             dictionaryRepository!!.lookup(lookupString.trim(), termPaths)
+                        }
+
                         runOnUiThread {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
@@ -632,8 +644,9 @@ class ReaderActivity : BaseActivity() {
                             } else {
                                 null
                             }
+                            ensureOcrResources()
                             ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
+                                OcrPopupState(lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository!!, anchorX, anchorY, mediaInfo, deferredLookup)
                         }
                     }
                 }
@@ -645,7 +658,16 @@ class ReaderActivity : BaseActivity() {
             }
             is WebtoonViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _ ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, _ ->
+                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+                        val activeProfile = prefs.profileStore.getActiveProfile()
+                        
+                        // PRE-DISPATCH LOOKUP
+                        val deferredLookup = lifecycleScope.async(kotlinx.coroutines.Dispatchers.IO) {
+                             val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+                             dictionaryRepository!!.lookup(lookupString.trim(), termPaths)
+                        }
+
                         runOnUiThread {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
@@ -656,8 +678,9 @@ class ReaderActivity : BaseActivity() {
                             } else {
                                 null
                             }
+                            ensureOcrResources()
                             ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
+                                OcrPopupState(lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository!!, anchorX, anchorY, mediaInfo, deferredLookup)
                         }
                     }
                 }
@@ -676,6 +699,7 @@ class ReaderActivity : BaseActivity() {
     override fun onDestroy() {
         super.onDestroy()
         viewModel.state.value.viewer?.destroy()
+        releaseOcrResources()
         config = null
         menuToggleToast?.cancel()
         readingModeToast?.cancel()
@@ -1167,6 +1191,7 @@ class ReaderActivity : BaseActivity() {
         )
         binding.readerContainer.addView(loadingIndicator)
 
+        ensureOcrResources()
         startPostponedEnterTransition()
     }
 
@@ -1851,6 +1876,45 @@ class ReaderActivity : BaseActivity() {
             withUIContext {
                 toast(MR.strings.anki_card_error)
             }
+        }
+    }
+
+    // ==================== Dictionary Popup State ====================
+    private var ocrWebView: android.webkit.WebView? = null
+    private var dictionaryRepository: chimahon.DictionaryRepository? = null
+
+    private fun ensureOcrResources() {
+        if (ocrWebView == null) {
+            ocrWebView = createOcrWebView(this)
+        }
+        if (dictionaryRepository == null) {
+            dictionaryRepository = chimahon.DictionaryRepository(getExternalFilesDir(null))
+        }
+    }
+
+    private fun releaseOcrResources() {
+        ocrWebView?.destroy()
+        ocrWebView = null
+        dictionaryRepository?.close()
+        dictionaryRepository = null
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createOcrWebView(ctx: Context): android.webkit.WebView {
+        return android.webkit.WebView(ctx).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.blockNetworkLoads = true
+            settings.loadsImagesAutomatically = true
+            setBackgroundColor(0x00000000)
+            // Pre-load bootstrap HTML to avoid startup delay on first lookup
+            loadDataWithBaseURL(
+                "https://dictionary.local/",
+                eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(ctx),
+                "text/html",
+                "utf-8",
+                null,
+            )
         }
     }
 }

@@ -353,7 +353,8 @@ private class WordAudioBridge(
                         wordAudioService.getAudioData(filePath, sourceId)
                     } ?: return@launch
                     
-                    val tempFile = File.createTempFile("word_audio", ".mp3", context.cacheDir)
+                    val extension = "." + (filePath.substringAfterLast('.', "mp3"))
+                    val tempFile = File.createTempFile("word_audio", extension, context.cacheDir)
                     tempFile.writeBytes(data)
                     
                     player.setDataSource(tempFile.absolutePath)
@@ -657,16 +658,20 @@ private fun readTextAsset(context: Context, assetPath: String): String {
     }
 }
 
-private fun getDictionaryTitle(context: Context, dirName: String): String {
-    val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-    val dictDir = File(dictionariesDir, dirName)
-    val indexFile = File(dictDir, "index.json")
-    if (!indexFile.exists()) return dirName
+private val dictionaryTitleCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    return try {
-        val json = indexFile.readText()
-        org.json.JSONObject(json).optString("title", dirName)
-    } catch (e: Exception) {
-        dirName
+private fun getDictionaryTitle(context: Context, dirName: String): String {
+    return dictionaryTitleCache.getOrPut(dirName) {
+        val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
+        val dictDir = File(dictionariesDir, dirName)
+        val indexFile = File(dictDir, "index.json")
+        if (!indexFile.exists()) return@getOrPut dirName
+
+        try {
+            val json = indexFile.readText()
+            org.json.JSONObject(json).optString("title", dirName)
+        } catch (e: Exception) {
+            dirName
+        }
     }
 }

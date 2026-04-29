@@ -77,6 +77,7 @@ fun OcrLookupPopup(
     screenshot: Bitmap? = null,
     onRequestScreenshot: (() -> Bitmap?)? = null,
     onCropTriggered: ((Long, Int?) -> Unit)? = null,
+    initialLookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -131,9 +132,10 @@ fun OcrLookupPopup(
     val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
     val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
     val customCss by dictionaryPreferences.customCss().collectAsState()
+    val wordAudioEnabled by dictionaryPreferences.wordAudioEnabled().collectAsState()
 
     /** Perform a dictionary lookup and push a new frame onto the stack. */
-    fun pushLookup(query: String, isRecursive: Boolean = false) {
+    fun pushLookup(query: String, isRecursive: Boolean = false, deferredResult: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null) {
         val cleanQuery = if (isRecursive) {
             query.replace(Regex("[\\s\\p{Punct}「」『』【】（）〔〕［］｛｝〈〉《》…、。！？!?]+"), "").trim()
         } else {
@@ -152,11 +154,13 @@ fun OcrLookupPopup(
             isLoading = true
             errorMessage = null
             try {
-                val termPaths = withContext(Dispatchers.IO) {
-                    getDictionaryPaths(context, activeProfile)
-                }
-                val result = withContext(Dispatchers.IO) {
-                    repository.lookup(finalQuery, termPaths)
+                val result = if (deferredResult != null) {
+                    deferredResult.await()
+                } else {
+                    withContext(Dispatchers.IO) {
+                        val termPaths = getDictionaryPaths(context, activeProfile)
+                        repository.lookup(finalQuery, termPaths)
+                    }
                 }
 
                 if (isRecursive && result.results.isEmpty()) {
@@ -357,7 +361,7 @@ fun OcrLookupPopup(
         // Reset the stack and load the initial term
         lookupStack.clear()
         activeTabIndex = 0
-        pushLookup(lookupString)
+        pushLookup(lookupString, deferredResult = initialLookupDeferred)
     }
 
     // Callbacks forwarded from the WebView bridge
@@ -420,7 +424,7 @@ fun OcrLookupPopup(
                         tabs = buildTabs(),
                         recursiveNavMode = recursiveNavMode,
                         customCss = customCss,
-                        wordAudioEnabled = dictionaryPreferences.wordAudioEnabled().collectAsState().value,
+                        wordAudioEnabled = wordAudioEnabled,
                         webViewProvider = { webView },
                         onAnkiLookup = onAnkiLookup,
                         onRecursiveLookup = onRecursiveLookup,

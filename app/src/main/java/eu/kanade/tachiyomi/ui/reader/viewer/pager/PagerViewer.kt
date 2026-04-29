@@ -49,8 +49,6 @@ abstract class PagerViewer(
             lookupString: String,
             fullText: String,
             charOffset: Int,
-            webView: WebView,
-            repository: DictionaryRepository,
             anchorX: Float,
             anchorY: Float,
             mediaInfo: chimahon.MediaInfo?,
