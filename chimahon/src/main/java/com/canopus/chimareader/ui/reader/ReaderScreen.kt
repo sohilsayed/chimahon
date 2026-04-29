@@ -165,6 +165,12 @@ fun ReaderScreen(
                         }
                     }
 
+                    LaunchedEffect(isPopupActive) {
+                        if (!isPopupActive) {
+                            viewModel.bridge.send(WebViewCommand.ClearSelection)
+                        }
+                    }
+
                     // HUD visibility state - toggled by edge taps
                     var showHud by remember { mutableStateOf(true) }
 

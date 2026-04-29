@@ -110,6 +110,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     internal var ocrBlocks: List<OcrTextBlock> = emptyList()
     internal var activeOcrBlock: OcrTextBlock? = null
+    val hasActiveOcrBlock: Boolean get() = activeOcrBlock != null
+    internal var activeOcrCharOffset: Int = 0
+    internal var activeOcrMatchedCount: Int = 0
     internal var ocrLayoutCache: Pair<OcrTextBlock, StaticLayout>? = null
 
     var onOcrLookup: ((String) -> Unit)? = null
@@ -635,9 +638,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
         ocrBlocks = emptyList()
         activeOcrBlock = null
+        activeOcrCharOffset = 0
+        activeOcrMatchedCount = 0
         ocrLayoutCache = null
         ocrPopupLookupString = null
         onDismissOcrPopup?.invoke()
+    }
+
+    fun refineActiveOcrBlock(charCount: Int) {
+        activeOcrMatchedCount = charCount
+        (pageView as? SubsamplingScaleImageView)?.invalidate()
     }
 
     override fun onDetachedFromWindow() {
@@ -653,6 +663,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
         if (activeOcrBlock != null) {
             logcat { "OCR dismiss active block on pan/zoom" }
             activeOcrBlock = null
+            activeOcrCharOffset = 0
+            activeOcrMatchedCount = 0
             ocrLayoutCache = null
             onDismissOcrPopup?.invoke()
             (pageView as? SubsamplingScaleImageView)?.invalidate()
@@ -688,6 +700,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 "OCR tap: activate block vertical=${block.vertical} chars=${block.fullText.length} x=$viewX y=$viewY"
             }
             activeOcrBlock = block
+            activeOcrCharOffset = 0
+            activeOcrMatchedCount = 0
             ocrLayoutCache = null
             ocrPopupLookupString = null
             (pageView as? SubsamplingScaleImageView)?.invalidate()
@@ -696,6 +710,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
         // Immediately trigger dictionary popup at the tapped character position
         val ssiv = pageView as? SubsamplingScaleImageView ?: return true
         val charOffset = getCharOffset(block, viewX, viewY, ssiv) ?: 0
+        activeOcrCharOffset = charOffset
+        activeOcrMatchedCount = 0 // Reset until dictionary matches
         if (charOffset !in block.fullText.indices) {
             logcat(LogPriority.WARN) { "OCR char offset out of bounds: offset=$charOffset len=${block.fullText.length}" }
             return true

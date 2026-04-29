@@ -46,6 +46,8 @@ sealed interface WebViewCommand {
     data class ApplySettings(val settings: ReaderSettings) : WebViewCommand
     data class ChangeFocusMode(val focusMode: Boolean) : WebViewCommand
     data class Paginate(val forward: Boolean) : WebViewCommand
+    data object ClearSelection : WebViewCommand
+    data class HighlightSelection(val charCount: Int) : WebViewCommand
 }
 
 data class ReaderSettings(

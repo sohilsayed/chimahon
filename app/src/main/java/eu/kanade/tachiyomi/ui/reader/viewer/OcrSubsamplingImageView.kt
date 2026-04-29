@@ -77,6 +77,12 @@ class OcrSubsamplingImageView(
         color = Color.argb(180, 255, 255, 255)
     }
 
+    private val highlightPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.argb(100, 130, 150, 200) // Soft blue highlight
+    }
+
     // ==================== Rendering ====================
 
     override fun onDraw(canvas: Canvas) {
@@ -156,8 +162,11 @@ class OcrSubsamplingImageView(
         val geometries = block.lineGeometries
         if (geometries != null && geometries.size == block.lines.size) {
             // Per-line rendering logic (matches reference userscript)
+            var currentOffset = 0
             for (i in block.lines.indices) {
-                drawLineOrientedText(canvas, block.lines[i], geometries[i], block.vertical, host)
+                val text = block.lines[i]
+                drawLineOrientedText(canvas, text, currentOffset, geometries[i], block.vertical, host)
+                currentOffset += text.length
             }
         } else {
             // Fallback: block-level rendering
@@ -170,7 +179,7 @@ class OcrSubsamplingImageView(
                 backgroundPaint,
             )
             if (block.vertical) {
-                drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH)
+                drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH, host)
             } else {
                 val layout = buildLayoutForHorizontal(block, screenW, screenH, host)
                 host.ocrLayoutCache = Pair(block, layout)
@@ -188,6 +197,7 @@ class OcrSubsamplingImageView(
     private fun drawLineOrientedText(
         canvas: Canvas,
         text: String,
+        lineStartOffset: Int,
         geo: OcrLineGeometry,
         isVertical: Boolean,
         host: ReaderPageImageView,
@@ -225,16 +235,16 @@ class OcrSubsamplingImageView(
 
         if (lineIsVertical) {
             // For vertical lines, we use per-character column draw
-            drawColumnText(canvas, text, tl, sW, sH)
+            drawColumnText(canvas, text, lineStartOffset, tl, sW, sH, host)
         } else {
             // For horizontal lines, we now use binary search for ideal font size
-            drawHorizontalLineText(canvas, text, tl, sW, sH)
+            drawHorizontalLineText(canvas, text, lineStartOffset, tl, sW, sH, host)
         }
 
         canvas.restore()
     }
 
-    private fun drawHorizontalLineText(canvas: Canvas, text: String, tl: PointF, sW: Float, sH: Float) {
+    private fun drawHorizontalLineText(canvas: Canvas, text: String, lineStartOffset: Int, tl: PointF, sW: Float, sH: Float, host: ReaderPageImageView) {
         val density = context.resources.displayMetrics.density
 
         // Binary search for maximizing font size, similar to userscript's findBestFit
@@ -264,10 +274,29 @@ class OcrSubsamplingImageView(
         val baselineShift = -(fm.ascent + fm.descent) / 2f
 
         // Centered drawing
-        canvas.drawText(text, tl.x + sW / 2f, tl.y + sH / 2f + baselineShift, textPaint)
+        val charWidth = sW / text.length.coerceAtLeast(1)
+        val matchedStart = host.activeOcrCharOffset - lineStartOffset
+        val matchedEnd = matchedStart + host.activeOcrMatchedCount
+
+        text.forEachIndexed { i, ch ->
+            val xCenter = tl.x + charWidth * (i + 0.5f)
+            val yCenter = tl.y + sH / 2f
+            
+            if (host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
+                canvas.drawRect(
+                    tl.x + charWidth * i,
+                    tl.y,
+                    tl.x + charWidth * (i + 1),
+                    tl.y + sH,
+                    highlightPaint
+                )
+            }
+            
+            canvas.drawText(ch.toString(), xCenter, yCenter + baselineShift, textPaint)
+        }
     }
 
-    private fun drawColumnText(canvas: Canvas, text: String, tl: PointF, sW: Float, sH: Float) {
+    private fun drawColumnText(canvas: Canvas, text: String, lineStartOffset: Int, tl: PointF, sW: Float, sH: Float, host: ReaderPageImageView) {
         val density = context.resources.displayMetrics.density
         val rowStep = sH / text.length.coerceAtLeast(1)
 
@@ -299,9 +328,22 @@ class OcrSubsamplingImageView(
         val fm = textPaint.fontMetrics
         val baselineShift = -(fm.ascent + fm.descent) / 2f
         val x = tl.x + sW / 2f
+        val matchedStart = host.activeOcrCharOffset - lineStartOffset
+        val matchedEnd = matchedStart + host.activeOcrMatchedCount
 
         text.forEachIndexed { i, ch ->
             val yCenter = tl.y + rowStep * (i + 0.5f)
+
+            if (host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
+                canvas.drawRect(
+                    tl.x,
+                    tl.y + rowStep * i,
+                    tl.x + sW,
+                    tl.y + rowStep * (i + 1),
+                    highlightPaint
+                )
+            }
+
             canvas.drawText(ch.toString(), x, yCenter + baselineShift, textPaint)
         }
     }
@@ -312,6 +354,7 @@ class OcrSubsamplingImageView(
         tlScreen: PointF,
         screenW: Float,
         screenH: Float,
+        host: ReaderPageImageView,
     ) {
         val columns = block.lines.filter { it.isNotEmpty() }.ifEmpty { listOf(block.fullText) }
         if (columns.isEmpty()) return
@@ -332,14 +375,29 @@ class OcrSubsamplingImageView(
         val baselineShift = -(fm.ascent + fm.descent) / 2f
         val contentTop = tlScreen.y + (screenH - rowStep * maxCharsPerColumn) / 2f
 
+        var currentOffset = 0
         columns.forEachIndexed { columnIndex, text ->
             // Japanese vertical text convention: first column starts at right edge.
             val x = tlScreen.x + screenW - columnWidth * (columnIndex + 0.5f)
+            val matchedStart = host.activeOcrCharOffset - currentOffset
+            val matchedEnd = matchedStart + host.activeOcrMatchedCount
 
             text.forEachIndexed { charIndex, ch ->
                 val yCenter = contentTop + rowStep * (charIndex + 0.5f)
+
+                if (host.activeOcrMatchedCount > 0 && charIndex in matchedStart until matchedEnd) {
+                    canvas.drawRect(
+                        x - columnWidth / 2f,
+                        contentTop + rowStep * charIndex,
+                        x + columnWidth / 2f,
+                        contentTop + rowStep * (charIndex + 1),
+                        highlightPaint
+                    )
+                }
+
                 canvas.drawText(ch.toString(), x, yCenter + baselineShift, textPaint)
             }
+            currentOffset += text.length
         }
     }
 

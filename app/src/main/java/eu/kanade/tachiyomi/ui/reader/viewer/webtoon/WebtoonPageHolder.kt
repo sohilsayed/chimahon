@@ -438,4 +438,11 @@ class WebtoonPageHolder(
     fun dismissActiveOcrBlock() {
         frame.dismissActiveOcrBlock()
     }
+
+    /**
+     * Refine the active OCR block highlight to a specific character count.
+     */
+    fun refineActiveOcrBlock(charCount: Int) {
+        frame.refineActiveOcrBlock(charCount)
+    }
 }

@@ -175,6 +175,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 mediaInfo = null,
                 onRequestScreenshot = null,
                 onCropTriggered = null,
+                onTermMatched = { charCount ->
+                    readerViewModel?.bridge?.send(com.canopus.chimareader.ui.reader.WebViewCommand.HighlightSelection(charCount))
+                },
                 modifier = Modifier,
             )
         }

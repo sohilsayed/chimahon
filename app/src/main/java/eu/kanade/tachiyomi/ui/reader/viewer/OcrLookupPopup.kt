@@ -77,6 +77,7 @@ fun OcrLookupPopup(
     screenshot: Bitmap? = null,
     onRequestScreenshot: (() -> Bitmap?)? = null,
     onCropTriggered: ((Long, Int?) -> Unit)? = null,
+    onTermMatched: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -162,6 +163,16 @@ fun OcrLookupPopup(
                 if (isRecursive && result.results.isEmpty()) {
                     isLoading = false
                     return@launch
+                }
+
+                if (!isRecursive && result.results.isNotEmpty()) {
+                    val firstMatched = result.results.firstOrNull()?.matched
+                    if (firstMatched != null) {
+                        val charCount = firstMatched.codePointCount(0, firstMatched.length)
+                        withContext(Dispatchers.Main) {
+                            onTermMatched?.invoke(charCount)
+                        }
+                    }
                 }
 
                 var existing: Set<String> = emptySet()

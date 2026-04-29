@@ -217,6 +217,12 @@ fun ReaderWebView(
                     is WebViewCommand.Paginate -> {
                         v.paginate(command.forward)
                     }
+                    is WebViewCommand.ClearSelection -> {
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.clearSelection) { window.hoshiReader.clearSelection(); }", null)
+                    }
+                    is WebViewCommand.HighlightSelection -> {
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.highlightSelection) { window.hoshiReader.highlightSelection(${command.charCount}); }", null)
+                    }
                     else -> {}
                 }
             }
@@ -412,6 +418,7 @@ private class ReaderAndroidWebView(
             appendLine("html, body { writing-mode: horizontal-tb !important; }")
         }
 
+        appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
         appendLine("p { margin-top: 0 !important; margin-bottom: 0 !important; }")
         appendLine("body * { font-family: inherit !important; }")
     }

@@ -326,6 +326,7 @@ window.hoshiReader = {
     handleTap: function(clientX, clientY) {
         const hit = this.getCharacterAtPoint(clientX, clientY);
         if (!hit) {
+            this.clearSelection();
             if (window.HoshiAndroid && window.HoshiAndroid.onBackgroundTap) {
                 window.HoshiAndroid.onBackgroundTap(clientX, clientY);
             }
@@ -339,22 +340,27 @@ window.hoshiReader = {
         let word = '';
         let node = hit.node;
         let offset = hit.offset;
+        let ranges = [];
 
         walker.currentNode = node;
         while (word.length < maxLength && node) {
             const content = node.textContent;
+            let start = offset;
             while (offset < content.length && word.length < maxLength) {
                 const char = content[offset];
                 if (this.isScanBoundary(char)) break;
                 word += char;
                 offset++;
             }
+            if (offset > start) ranges.push({ node: node, start: start, end: offset });
             if (offset < content.length || word.length >= maxLength) break;
             node = walker.nextNode();
             offset = 0;
         }
 
         if (word.length > 0) {
+            this.clearSelection();
+            this.selectionRanges = ranges;
             const sentence = this.getSentence(hit.node, hit.offset);
             if (window.HoshiAndroid && window.HoshiAndroid.onTextSelected) {
                 window.HoshiAndroid.onTextSelected(word, sentence, clientX, clientY);
@@ -362,10 +368,39 @@ window.hoshiReader = {
             }
         }
 
+        this.clearSelection();
         if (window.HoshiAndroid && window.HoshiAndroid.onBackgroundTap) {
             window.HoshiAndroid.onBackgroundTap(clientX, clientY);
         }
         return false;
+    },
+
+    highlightSelection: function(charCount) {
+        if (!this.selectionRanges || !this.selectionRanges.length || !CSS.highlights) return;
+        var highlights = [];
+        var remaining = charCount;
+        for (var i = 0; i < this.selectionRanges.length; i++) {
+            var r = this.selectionRanges[i];
+            if (remaining <= 0) break;
+            var end = r.start;
+            while (end < r.end && remaining > 0) {
+                var char = String.fromCodePoint(r.node.textContent.codePointAt(end));
+                end += char.length;
+                remaining--;
+            }
+            var range = document.createRange();
+            range.setStart(r.node, r.start);
+            range.setEnd(r.node, end);
+            highlights.push(range);
+        }
+        CSS.highlights.set('hoshi-selection', new Highlight(...highlights));
+    },
+
+    clearSelection: function() {
+        if (CSS.highlights && CSS.highlights.has('hoshi-selection')) {
+            CSS.highlights.delete('hoshi-selection');
+        }
+        this.selectionRanges = null;
     },
 
     registerTextSelection: function() {

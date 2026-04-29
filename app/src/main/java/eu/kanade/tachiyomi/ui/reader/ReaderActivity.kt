@@ -112,6 +112,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerConfig
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerPageHolder
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
@@ -613,6 +614,27 @@ class ReaderActivity : BaseActivity() {
                     pendingNoteId = noteId
                     pendingGlossaryIndex = glossaryIndex
                     launchImageCropper()
+                },
+                onTermMatched = { charCount ->
+                    val viewer = viewModel.state.value.viewer
+                    if (viewer is WebtoonViewer) {
+                        for (i in 0 until viewer.recycler.childCount) {
+                            val h = viewer.recycler.getChildViewHolder(viewer.recycler.getChildAt(i)) as? WebtoonPageHolder
+                            if (h?.hasActiveOcrBlock == true) {
+                                h.refineActiveOcrBlock(charCount)
+                                break
+                            }
+                        }
+                    } else if (viewer is PagerViewer) {
+                        // For PagerViewer, we need to find the active holder among pager children
+                        for (i in 0 until viewer.pager.childCount) {
+                            val h = viewer.pager.getChildAt(i) as? PagerPageHolder
+                            if (h?.hasActiveOcrBlock == true) {
+                                h.refineActiveOcrBlock(charCount)
+                                break
+                            }
+                        }
+                    }
                 },
             )
         }
