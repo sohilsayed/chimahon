@@ -16,7 +16,7 @@ object NovelMigration {
         }
 
         Log.d(TAG, "Starting Novel Migration to stable IDs")
-        
+
         val booksDir = BookStorage.getBooksDirectory(context)
         if (!booksDir.exists()) {
             prefs.edit().putBoolean("novel_migration_v2_done", true).apply()
@@ -48,7 +48,7 @@ object NovelMigration {
                             hash = hash,
                             id = hash,
                             folder = hash,
-                            cover = metadata.cover?.replace(bookDir.name, hash)
+                            cover = metadata.cover?.replace(bookDir.name, hash),
                         )
                         BookStorage.saveMetadata(newMetadata, bookDir)
 
@@ -61,7 +61,12 @@ object NovelMigration {
                                 Log.d(TAG, "Renamed folder successfully to $hash")
                             }
                         } else {
-                            Log.w(TAG, "Target $hash already exists, skipping rename")
+                            // Target already exists — merge this dir's data into it, then remove the duplicate
+                            Log.w(TAG, "Target $hash already exists; merging ${bookDir.name} into it and removing duplicate")
+                            mergeIntoTarget(sourceDir = bookDir, targetDir = newBookDir)
+                            if (!bookDir.deleteRecursively()) {
+                                Log.e(TAG, "Failed to delete duplicate source dir ${bookDir.name}")
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to migrate ${bookDir.name}: ${e.message}")
@@ -86,7 +91,7 @@ object NovelMigration {
                             folder = hash,
                             lastAccess = System.currentTimeMillis(),
                             hash = hash,
-                            isGhost = false
+                            isGhost = false,
                         )
                         BookStorage.saveMetadata(newMetadata, bookDir)
 
@@ -98,7 +103,12 @@ object NovelMigration {
                                 Log.d(TAG, "Renamed folder successfully to $hash")
                             }
                         } else {
-                            Log.w(TAG, "Target $hash already exists, skipping rename")
+                            // Target already exists — merge this dir's data into it, then remove the duplicate
+                            Log.w(TAG, "Target $hash already exists; merging ${bookDir.name} into it and removing duplicate")
+                            mergeIntoTarget(sourceDir = bookDir, targetDir = newBookDir)
+                            if (!bookDir.deleteRecursively()) {
+                                Log.e(TAG, "Failed to delete duplicate source dir ${bookDir.name}")
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "No metadata and EPUB parse failed for ${bookDir.name}: ${e.message}")
@@ -109,6 +119,45 @@ object NovelMigration {
 
         prefs.edit().putBoolean("novel_migration_v2_done", true).apply()
         Log.d(TAG, "Novel Migration v2 complete")
+    }
+
+    /**
+     * Merges bookmark and statistics from [sourceDir] into [targetDir], keeping whichever
+     * version of each record is newer. The EPUB content files in [targetDir] are left
+     * untouched — only user-progress data is merged.
+     */
+    private fun mergeIntoTarget(sourceDir: File, targetDir: File) {
+        // Bookmark: keep the more recently modified one
+        val sourceBookmark = BookStorage.loadBookmark(sourceDir)
+        val targetBookmark = BookStorage.loadBookmark(targetDir)
+        if (sourceBookmark != null) {
+            val sourceMod = sourceBookmark.lastModified ?: 0L
+            val targetMod = targetBookmark?.lastModified ?: 0L
+            if (sourceMod > targetMod) {
+                BookStorage.saveBookmark(sourceBookmark, targetDir)
+                Log.d(TAG, "mergeIntoTarget: used source bookmark (newer)")
+            }
+        }
+
+        // Statistics: merge by dateKey, keeping the entry with the later lastStatisticModified
+        val sourceStats = BookStorage.loadStatistics(sourceDir) ?: emptyList()
+        if (sourceStats.isNotEmpty()) {
+            val targetStatsMap = (BookStorage.loadStatistics(targetDir) ?: emptyList())
+                .associateBy { it.dateKey }
+                .toMutableMap()
+            var changed = false
+            for (stat in sourceStats) {
+                val existing = targetStatsMap[stat.dateKey]
+                if (existing == null || stat.lastStatisticModified > existing.lastStatisticModified) {
+                    targetStatsMap[stat.dateKey] = stat
+                    changed = true
+                }
+            }
+            if (changed) {
+                BookStorage.saveStatistics(targetStatsMap.values.toList(), targetDir)
+                Log.d(TAG, "mergeIntoTarget: merged ${sourceStats.size} source stat entries")
+            }
+        }
     }
 
     private fun md5Hex(input: String): String {

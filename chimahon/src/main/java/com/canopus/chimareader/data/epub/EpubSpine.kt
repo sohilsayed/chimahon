@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 enum class PageProgressionDirection {
     LTR,
     RTL,
-    DEFAULT;
+    DEFAULT,
+    ;
 
     companion object {
         fun fromString(value: String?): PageProgressionDirection {

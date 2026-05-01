@@ -63,34 +63,34 @@ class SasayakiPlayer(
     private val rootDir: File,
     private val bridge: WebViewBridge,
     private val loadChapter: (Int) -> Unit,
-    private val getCurrentIndex: () -> Int
+    private val getCurrentIndex: () -> Int,
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var player: ExoPlayer? = null
-    
+
     var matchData: SasayakiMatchData? = null
         private set
     var timeline = CueTimeline(null)
         private set
-        
+
     var playback = SasayakiPlaybackData(lastPosition = 0.0)
     var isPlaying = false
     var duration: Double = 0.0
     var currentTime: Double = 0.0
-    
+
     var delay: Double = 0.0
         set(value) {
             field = value
             savePlayback()
             updateCue(currentTime)
         }
-        
+
     var currentCue: SasayakiMatch? = null
     var pendingCue: SasayakiMatch? = null
     var chapterTransition = false
     private var shouldResume = false
     private var stopPlaybackTime: Double? = null
-    
+
     var hasPlayedOnce = false
     var autoScroll = true // Mapped from Settings ideally
 
@@ -133,7 +133,7 @@ class SasayakiPlayer(
             setMediaItem(mediaItem)
             prepare()
             seekTo((currentTime * 1000).toLong())
-            
+
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlayingNow: Boolean) {
                     this@SasayakiPlayer.isPlaying = isPlayingNow
@@ -187,31 +187,31 @@ class SasayakiPlayer(
         player?.let {
             if (it.duration > 0) duration = it.duration / 1000.0
         }
-        
+
         stopPlaybackTime?.let { stopTime ->
             if (seconds >= stopTime) {
                 player?.pause()
                 stopPlaybackTime = null
             }
         }
-        
+
         playback.lastPosition = seconds
         updateCue(seconds)
     }
 
     private fun updateCue(time: Double) {
         if (!hasAudio || !hasMatch || chapterTransition) return
-        
+
         val lookupTime = time - delay
         val cue = timeline.cueAt(lookupTime)
-        
+
         if (cue == null) {
             clearDisplayedCue()
             return
         }
-        
+
         if (cue.id == currentCue?.id) return
-        
+
         val currentIndex = getCurrentIndex()
         if (cue.chapterIndex == currentIndex) {
             displayCue(cue, reveal = autoScroll && hasPlayedOnce)
@@ -226,24 +226,24 @@ class SasayakiPlayer(
 
     fun handleRestoreCompleted(currentIndex: Int) {
         if (!hasMatch || !chapterTransition) return
-        
+
         val cue: SasayakiMatch? = when {
             pendingCue?.chapterIndex == currentIndex -> pendingCue
             timeline.cueAt(currentTime - delay)?.chapterIndex == currentIndex -> timeline.cueAt(currentTime - delay)
             else -> null
         }
-        
+
         val resume = shouldResume
         chapterTransition = false
         shouldResume = false
         pendingCue = null
-        
+
         if (cue != null) {
             displayCue(cue, reveal = autoScroll && hasPlayedOnce)
         } else {
             clearDisplayedCue()
         }
-        
+
         if (resume) {
             player?.play()
         }

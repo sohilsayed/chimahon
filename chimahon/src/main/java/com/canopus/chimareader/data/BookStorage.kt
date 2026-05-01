@@ -8,7 +8,6 @@ import java.io.File
 
 object BookStorage {
 
-
     fun getBooksDirectory(context: android.content.Context): File {
         return File(context.filesDir, "novels")
     }
@@ -42,7 +41,7 @@ object BookStorage {
         val json = kotlinx.serialization.json.Json { prettyPrint = true }
         val data = kotlinx.serialization.json.Json.encodeToString(
             kotlinx.serialization.serializer<T>(),
-            `object`
+            `object`,
         )
         targetFile.writeText(data)
     }
@@ -126,6 +125,14 @@ object BookStorage {
             }
         }
         return books
+            .groupBy { it.id }
+            .map { (_, dupes) ->
+                if (dupes.size == 1) {
+                    dupes.first()
+                } else {
+                    dupes.minWith(compareBy({ it.isGhost }, { -(it.lastAccess) }))
+                }
+            }
     }
 
     fun deleteBook(context: android.content.Context, bookId: String): Boolean {
@@ -136,7 +143,8 @@ object BookStorage {
     enum class BookStorageError {
         ACCESS_DENIED,
         DOCUMENTS_DIRECTORY_NOT_FOUND,
-        EPUB_IMPORT_FAILED;
+        EPUB_IMPORT_FAILED,
+        ;
 
         fun message(): String = when (this) {
             ACCESS_DENIED -> "Could not access .epub file"

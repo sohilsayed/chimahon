@@ -82,7 +82,7 @@ class EpubExtractor(private val epubFile: File) : EpubExtractorBase() {
         fun fromFile(epubFile: File): EpubExtractor {
             return EpubExtractor(epubFile)
         }
-        
+
         fun fromDirectory(directory: File): EpubExtractorBase {
             return DirectoryExtractor(directory)
         }
@@ -90,7 +90,7 @@ class EpubExtractor(private val epubFile: File) : EpubExtractorBase() {
 }
 
 class DirectoryExtractor(private val directory: File) : EpubExtractorBase() {
-    
+
     override fun getFileContent(path: String): String? {
         return try {
             val file = File(directory, path)
@@ -99,7 +99,7 @@ class DirectoryExtractor(private val directory: File) : EpubExtractorBase() {
             null
         }
     }
-    
+
     override fun getFileStream(path: String): InputStream? {
         return try {
             val file = File(directory, path)
@@ -108,7 +108,7 @@ class DirectoryExtractor(private val directory: File) : EpubExtractorBase() {
             null
         }
     }
-    
+
     override fun getContentDirectory(packageOpfPath: String): String {
         val lastSlash = packageOpfPath.lastIndexOf('/')
         return if (lastSlash > 0) {
@@ -117,7 +117,7 @@ class DirectoryExtractor(private val directory: File) : EpubExtractorBase() {
             ""
         }
     }
-    
+
     override fun close() {
         // No-op for directory-based extractor
     }
@@ -128,17 +128,17 @@ abstract class EpubExtractorBase {
     abstract fun getFileStream(path: String): InputStream?
     abstract fun getContentDirectory(packageOpfPath: String): String
     abstract fun close()
-    
+
     fun getPackageOpfPath(): String {
         val containerXml = getFileContent("META-INF/container.xml")
             ?: throw EpubParseException("Missing META-INF/container.xml")
-        
+
         val opfPath = parseContainerXml(containerXml)
             ?: throw EpubParseException("Could not find package.opf in container.xml")
-        
+
         return opfPath
     }
-    
+
     private fun parseContainerXml(xml: String): String? {
         return try {
             val doc = org.jsoup.parser.Parser.xmlParser().parseInput(xml, "")

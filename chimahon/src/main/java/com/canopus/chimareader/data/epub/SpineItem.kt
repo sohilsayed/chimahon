@@ -9,11 +9,11 @@ data class SpineItem(
     val linear: Boolean = true,
     val type: SpineItemType = SpineItemType.TEXT,
     /** Resolved file:// URL for the image — non-null only when type == IMAGE_ONLY. */
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
 )
 
 @Serializable
 enum class SpineItemType {
     TEXT,
-    IMAGE_ONLY
+    IMAGE_ONLY,
 }

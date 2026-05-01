@@ -31,9 +31,9 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -79,7 +79,7 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookshelfScreen(
-    onSyncRequest: (suspend () -> Boolean)? = null
+    onSyncRequest: (suspend () -> Boolean)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -89,7 +89,7 @@ fun BookshelfScreen(
     var isSyncing by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     var showDeleteDialog by remember { mutableStateOf<BookMetadata?>(null) }
-    
+
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
 
@@ -107,7 +107,7 @@ fun BookshelfScreen(
     }
 
     val epubPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
@@ -126,7 +126,7 @@ fun BookshelfScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     if (isSearching) {
                         TextField(
                             value = searchQuery,
@@ -137,19 +137,19 @@ fun BookshelfScreen(
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
-                            )
+                            ),
                         )
                     } else {
                         Text(
-                            "Library", 
+                            "Library",
                             fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.headlineMedium
+                            style = MaterialTheme.typography.headlineMedium,
                         )
                     }
                 },
                 actions = {
                     if (isSearching) {
-                        IconButton(onClick = { 
+                        IconButton(onClick = {
                             isSearching = false
                             searchQuery = ""
                         }) {
@@ -158,7 +158,7 @@ fun BookshelfScreen(
                     } else if (isImporting || isSyncing) {
                         CircularProgressIndicator(
                             modifier = Modifier.padding(end = 16.dp).size(24.dp),
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.dp,
                         )
                     } else {
                         IconButton(onClick = { isSearching = true }) {
@@ -181,7 +181,7 @@ fun BookshelfScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
-                )
+                ),
             )
         },
         snackbarHost = {
@@ -192,13 +192,13 @@ fun BookshelfScreen(
                         TextButton(onClick = { importError = null }) {
                             Text("Dismiss")
                         }
-                    }
+                    },
                 ) {
                     Text(error)
                 }
             }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
     ) { paddingValues ->
         // Delete confirmation dialog
         showDeleteDialog?.let { book ->
@@ -216,7 +216,7 @@ fun BookshelfScreen(
                                 loadBooks()
                                 showDeleteDialog = null
                             }
-                        }
+                        },
                     ) {
                         Text("Delete", color = MaterialTheme.colorScheme.error)
                     }
@@ -225,7 +225,7 @@ fun BookshelfScreen(
                     TextButton(onClick = { showDeleteDialog = null }) {
                         Text("Cancel")
                     }
-                }
+                },
             )
         }
 
@@ -241,13 +241,13 @@ fun BookshelfScreen(
                     Text(
                         text = "Your library is empty",
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Tap + to import an EPUB file",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
                 }
             }
@@ -255,9 +255,9 @@ fun BookshelfScreen(
             val filteredBooks = if (searchQuery.isEmpty()) {
                 books
             } else {
-                books.filter { 
+                books.filter {
                     it.title?.contains(searchQuery, ignoreCase = true) == true ||
-                    it.folder?.contains(searchQuery, ignoreCase = true) == true
+                        it.folder?.contains(searchQuery, ignoreCase = true) == true
                 }
             }
 
@@ -283,7 +283,7 @@ fun BookshelfScreen(
                                 NovelReaderActivity.launch(context, bookDir)
                             }
                         },
-                        onDelete = { showDeleteDialog = book }
+                        onDelete = { showDeleteDialog = book },
                     )
                 }
             }
@@ -302,7 +302,7 @@ private fun BookCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick),
     ) {
         Box(
             modifier = Modifier
@@ -312,7 +312,7 @@ private fun BookCard(
                 .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(6.dp))
                 .clip(RoundedCornerShape(6.dp))
                 .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             if (book.cover != null) {
                 AsyncImage(
@@ -325,10 +325,10 @@ private fun BookCard(
                 Text(
                     text = "No Cover",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            
+
             if (book.isGhost) {
                 Box(
                     modifier = Modifier
@@ -336,38 +336,38 @@ private fun BookCard(
                         .background(Color.Black.copy(alpha = 0.6f))
                         .align(Alignment.BottomCenter)
                         .padding(vertical = 4.dp),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = "MISSING FILE",
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
-            
+
             // Menu button
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(4.dp)
+                    .padding(4.dp),
             ) {
                 IconButton(
                     onClick = { showMenu = true },
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(24.dp),
                 ) {
                     Icon(
                         Icons.Default.MoreVert,
                         contentDescription = "More options",
                         tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(18.dp),
                     )
                 }
-                
+
                 DropdownMenu(
                     expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
+                    onDismissRequest = { showMenu = false },
                 ) {
                     DropdownMenuItem(
                         text = { Text("Delete") },
@@ -377,28 +377,28 @@ private fun BookCard(
                         },
                         leadingIcon = {
                             Icon(Icons.Default.Delete, contentDescription = null)
-                        }
+                        },
                     )
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         Text(
             text = book.title ?: "Unknown Title",
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
         )
-        
+
         // Example: Subtitle / Author
         Text(
             text = "EPUB Document",
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

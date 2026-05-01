@@ -195,6 +195,7 @@ fun ReaderScreen(
                         tapZonePx = tapZonePx,
                         isPopupActive = isPopupActive,
                         onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
+                        onInternalLinkClicked = { viewModel.jumpToUrl(it) },
                     )
 
                     // Top HUD - always visible when showHud is true

@@ -30,7 +30,7 @@ object FontManager {
         try {
             val fileName = getFileName(context, uri) ?: "imported_font_${System.currentTimeMillis()}.ttf"
             val targetFile = File(getFontsDir(context), fileName)
-            
+
             context.contentResolver.openInputStream(uri)?.use { input ->
                 targetFile.outputStream().use { output ->
                     input.copyTo(output)

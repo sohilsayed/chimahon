@@ -23,7 +23,7 @@ import java.util.Locale
 @Composable
 fun StatisticsSheet(
     viewModel: ReaderViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val scrollState = rememberScrollState()
@@ -39,11 +39,11 @@ fun StatisticsSheet(
                 .fillMaxWidth()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Text(
                 "Statistics",
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.headlineSmall,
             )
 
             Section(title = "Session") {
@@ -53,14 +53,14 @@ fun StatisticsSheet(
                 val timeReadingSeconds = maxOf(1.0, viewModel.sessionReadingTime)
                 val speed = (viewModel.sessionCharactersRead / timeReadingSeconds * 3600).toInt()
                 StatRow("Reading Speed", "$speed / h")
-                
+
                 val timeStr = formatDuration(viewModel.sessionReadingTime.toLong())
                 StatRow("Reading Time", timeStr)
-                
+
                 // Pause button
                 androidx.compose.material3.TextButton(
                     onClick = { viewModel.isTimerPaused = !viewModel.isTimerPaused },
-                    modifier = Modifier.align(Alignment.End)
+                    modifier = Modifier.align(Alignment.End),
                 ) {
                     Text(if (viewModel.isTimerPaused) "Resume Timer" else "Pause Timer")
                 }
@@ -92,7 +92,7 @@ private fun Section(title: String, content: @Composable () -> Unit) {
             text = title,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             content()
@@ -105,18 +105,18 @@ private fun StatRow(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -125,7 +125,7 @@ private fun formatDuration(totalSeconds: Long): String {
     val seconds = totalSeconds % 60
     val minutes = (totalSeconds / 60) % 60
     val hours = totalSeconds / (60 * 60)
-    
+
     return if (hours > 0) {
         String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {

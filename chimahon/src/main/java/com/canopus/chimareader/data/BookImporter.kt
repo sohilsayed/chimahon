@@ -15,7 +15,7 @@ import java.util.zip.ZipFile
 
 data class ImportResult(
     val metadata: BookMetadata? = null,
-    val error: String? = null
+    val error: String? = null,
 )
 
 object BookImporter {
@@ -27,7 +27,7 @@ object BookImporter {
     suspend fun importEpub(context: Context, uri: Uri): ImportResult = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting import from URI: $uri")
-            
+
             val tempFile = File(context.cacheDir, "import_${System.currentTimeMillis()}.epub")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 tempFile.outputStream().use { output -> input.copyTo(output) }
@@ -52,7 +52,7 @@ object BookImporter {
             val booksDir = BookStorage.getBooksDirectory(context)
             Log.d(TAG, "Books directory: ${booksDir.absolutePath}")
             booksDir.mkdirs()
-            
+
             val tempExtractDir = File(context.cacheDir, "temp_extract_${System.currentTimeMillis()}")
             tempExtractDir.mkdirs()
 
@@ -69,16 +69,16 @@ object BookImporter {
                     }
                 }
             }
-            
+
             val extractedBook = EpubParser.parse(tempExtractDir)
             val title = extractedBook.title ?: "Unknown"
             val author = extractedBook.author ?: ""
-            
+
             val stableId = md5Hex("${title.trim().lowercase()}|${author.trim().lowercase()}")
             val bookDir = File(booksDir, stableId)
-            
+
             Log.d(TAG, "Stable ID (Title+Author): $stableId ($title | $author)")
-            
+
             var existingBookmark: Bookmark? = null
             var existingStats: List<Statistics>? = null
             var existingLastAccess: Long? = null
@@ -91,7 +91,7 @@ object BookImporter {
                 bookDir.deleteRecursively()
             }
             tempExtractDir.renameTo(bookDir)
-            
+
             // Re-run normalisation and pre-wrapping on the final directory
             bookDir.walkTopDown().forEach { file ->
                 val ext = file.extension.lowercase()
@@ -105,20 +105,19 @@ object BookImporter {
                     cleanBookCss(file)
                 }
             }
-            
+
             tempFile.delete()
 
             Log.d(TAG, "Extracted to: ${bookDir.absolutePath}")
-            
+
             val extractedFiles = bookDir.walkTopDown().take(20).map { it.relativeTo(bookDir).path }.toList()
             Log.d(TAG, "Extracted files (first 20): $extractedFiles")
 
             Log.d(TAG, "Finalized to: ${bookDir.absolutePath}")
-            
+
             val coverAbsPath = extractedBook.coverPath?.let { File(bookDir, it).absolutePath }
 
             Log.d(TAG, "Parsed EPUB: title=$title, contentDir=${extractedBook.contentDirectory}, chapters=${extractedBook.spine.items.size}")
-            
 
             val metadata = BookMetadata(
                 id = stableId,
@@ -127,7 +126,7 @@ object BookImporter {
                 folder = stableId,
                 lastAccess = existingLastAccess ?: System.currentTimeMillis(),
                 hash = stableId,
-                isGhost = false
+                isGhost = false,
             )
             BookStorage.saveMetadata(metadata, bookDir)
             BookStorage.saveSpineCache(extractedBook.spine, bookDir)
@@ -155,15 +154,15 @@ object BookImporter {
             }
 
             val needsDownsample = w > MAX_DIM || h > MAX_DIM || (w.toLong() * h) > MAX_PIXELS
-            if (!needsDownsample) return  // small enough — leave it alone
+            if (!needsDownsample) return // small enough — leave it alone
 
             val sampleSize = calculateInSampleSize(w, h)
-            Log.w(TAG, "normalise: ${file.name} ${w}x${h} → 1:$sampleSize sample")
+            Log.w(TAG, "normalise: ${file.name} ${w}x$h → 1:$sampleSize sample")
 
             val mimeType = bounds.outMimeType ?: ""
             val mightHaveAlpha = mimeType.contains("png", ignoreCase = true) ||
-                                 mimeType.contains("gif", ignoreCase = true) ||
-                                 mimeType.contains("webp", ignoreCase = true)
+                mimeType.contains("gif", ignoreCase = true) ||
+                mimeType.contains("webp", ignoreCase = true)
 
             val decodeOpts = BitmapFactory.Options().apply {
                 inJustDecodeBounds = false
@@ -178,22 +177,25 @@ object BookImporter {
 
             try {
                 val hasAlpha = bitmap.hasAlpha() && mightHaveAlpha
+
                 @Suppress("DEPRECATION")
                 val format: Bitmap.CompressFormat
                 val quality: Int
                 if (hasAlpha) {
                     // Lossless WebP to preserve transparency
-                    format = if (android.os.Build.VERSION.SDK_INT >= 30)
+                    format = if (android.os.Build.VERSION.SDK_INT >= 30) {
                         Bitmap.CompressFormat.WEBP_LOSSLESS
-                    else
+                    } else {
                         Bitmap.CompressFormat.WEBP
+                    }
                     quality = 100
                 } else {
                     // Lossy WebP — smallest file, no transparency needed
-                    format = if (android.os.Build.VERSION.SDK_INT >= 30)
+                    format = if (android.os.Build.VERSION.SDK_INT >= 30) {
                         Bitmap.CompressFormat.WEBP_LOSSY
-                    else
+                    } else {
                         Bitmap.CompressFormat.WEBP
+                    }
                     quality = 82
                 }
 
@@ -246,7 +248,7 @@ object BookImporter {
             if (text.contains("hoshi-content-wrapper")) return
 
             val bodyTagStart = text.indexOf("<body", ignoreCase = true)
-            if (bodyTagStart < 0) return  // no <body> — skip (e.g. CSS-only file)
+            if (bodyTagStart < 0) return // no <body> — skip (e.g. CSS-only file)
             val bodyTagEnd = text.indexOf('>', bodyTagStart)
             if (bodyTagEnd < 0) return
 
@@ -317,7 +319,7 @@ object BookImporter {
                 match.value // not targeting html/body — leave unchanged
             } else {
                 val cleaned = layoutPropRe.replace(declarations, "")
-                "${selector}{${cleaned}}"
+                "$selector{$cleaned}"
             }
         }
     }

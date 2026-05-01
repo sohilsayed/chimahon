@@ -158,6 +158,13 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 }
         )
 
+        val mediaInfo = readerViewModel?.let { vm ->
+            chimahon.MediaInfo(
+                mangaTitle = vm.document.title ?: "",
+                chapterName = vm.getCurrentChapterTitle() ?: ""
+            )
+        }
+
         eu.kanade.presentation.theme.TachiyomiTheme {
             OcrLookupPopup(
                 lookupString = state.word,
@@ -172,7 +179,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 anchorX = state.anchorX,
                 anchorY = state.anchorY,
                 // No screenshot — plain text selection only
-                mediaInfo = null,
+                mediaInfo = mediaInfo,
                 onRequestScreenshot = null,
                 onCropTriggered = null,
                 modifier = Modifier,

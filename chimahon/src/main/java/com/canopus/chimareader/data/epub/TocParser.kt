@@ -34,8 +34,8 @@ class TocParser {
                     id = id,
                     label = label,
                     href = href,
-                    children = children
-                )
+                    children = children,
+                ),
             )
         }
 
@@ -74,8 +74,8 @@ class TocParser {
                         id = java.util.UUID.randomUUID().toString(),
                         label = label,
                         href = href,
-                        children = children
-                    )
+                        children = children,
+                    ),
                 )
             }
         }

@@ -16,7 +16,7 @@ class OpfParser {
             metadata = metadata,
             manifest = manifest,
             spine = spine,
-            contentDir = contentDir
+            contentDir = contentDir,
         )
     }
 
@@ -34,7 +34,7 @@ class OpfParser {
             return EpubCreator(
                 name = name,
                 role = creatorEl.attr("opf:role").takeIf { it.isNotBlank() },
-                fileAs = creatorEl.attr("opf:file-as").takeIf { it.isNotBlank() }
+                fileAs = creatorEl.attr("opf:file-as").takeIf { it.isNotBlank() },
             )
         }
 
@@ -45,7 +45,7 @@ class OpfParser {
             return EpubCreator(
                 name = name,
                 role = contribEl.attr("opf:role").takeIf { it.isNotBlank() },
-                fileAs = contribEl.attr("opf:file-as").takeIf { it.isNotBlank() }
+                fileAs = contribEl.attr("opf:file-as").takeIf { it.isNotBlank() },
             )
         }
 
@@ -68,7 +68,7 @@ class OpfParser {
             relation = selectText("$dc|relation"),
             source = selectText("$dc|source"),
             type = selectText("$dc|type"),
-            coverId = coverId
+            coverId = coverId,
         )
     }
 
@@ -86,7 +86,7 @@ class OpfParser {
                     id = id,
                     href = href,
                     mediaType = EpubMediaType.fromString(mediaType),
-                    properties = properties
+                    properties = properties,
                 )
             }
         }
@@ -95,7 +95,7 @@ class OpfParser {
 
         return EpubManifest(
             id = manifestId,
-            items = items
+            items = items,
         )
     }
 
@@ -110,8 +110,8 @@ class OpfParser {
                     SpineItem(
                         idref = idref,
                         id = itemref.attr("id").takeIf { it.isNotBlank() },
-                        linear = linear
-                    )
+                        linear = linear,
+                    ),
                 )
             }
         }
@@ -132,7 +132,7 @@ class OpfParser {
             id = spineEl?.attr("id"),
             toc = tocId,
             pageProgressionDirection = PageProgressionDirection.fromString(direction),
-            items = items
+            items = items,
         )
     }
 
@@ -140,6 +140,6 @@ class OpfParser {
         val metadata: EpubMetadata,
         val manifest: EpubManifest,
         val spine: EpubSpine,
-        val contentDir: String
+        val contentDir: String,
     )
 }

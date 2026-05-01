@@ -638,7 +638,7 @@ class ReaderActivity : BaseActivity() {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
                                 chimahon.MediaInfo(
-                                    mangaTitle = state.manga!!.ogTitle,
+                                    mangaTitle = state.manga!!.title,
                                     chapterName = state.currentChapter!!.chapter.name,
                                 )
                             } else {
@@ -672,7 +672,7 @@ class ReaderActivity : BaseActivity() {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
                                 chimahon.MediaInfo(
-                                    mangaTitle = state.manga!!.ogTitle,
+                                    mangaTitle = state.manga!!.title,
                                     chapterName = state.currentChapter!!.chapter.name,
                                 )
                             } else {

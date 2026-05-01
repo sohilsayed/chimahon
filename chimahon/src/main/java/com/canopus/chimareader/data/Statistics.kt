@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class StatisticsSyncMode(val value: String) {
     MERGE("Merge"),
-    REPLACE("Replace");
+    REPLACE("Replace"),
+    ;
 
     companion object {
         fun fromValue(value: String): StatisticsSyncMode {
@@ -26,5 +27,5 @@ data class Statistics(
     var maxReadingSpeed: Int = 0,
     var lastStatisticModified: Long = 0,
     var completedBook: Int? = null,
-    var completedData: Statistics? = null
+    var completedData: Statistics? = null,
 )

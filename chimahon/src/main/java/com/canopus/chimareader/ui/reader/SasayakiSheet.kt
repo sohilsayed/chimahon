@@ -30,16 +30,16 @@ import java.io.FileOutputStream
 @Composable
 fun SasayakiSheet(
     viewModel: ReaderViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val context = LocalContext.current
-    
+
     val audioPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        
+
         // In a real app we'd copy this safely into BookStorage
         val tempFile = File(context.cacheDir, "sasayaki_imported.m4a")
         context.contentResolver.openInputStream(uri)?.use { input ->
@@ -58,34 +58,34 @@ fun SasayakiSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Text(
                 "Sasayaki",
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.headlineSmall,
             )
 
             if (viewModel.sasayakiPlayer?.hasAudio == true) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("Audio Synchronization", style = MaterialTheme.typography.titleMedium)
                     IconButton(onClick = { viewModel.sasayakiPlayer?.togglePlayback() }) {
                         val icon = if (viewModel.sasayakiPlayer?.isPlaying == true) {
                             // Using a placeholder icon since pause icon requires extended material icons
-                            Icons.Default.PlayArrow 
+                            Icons.Default.PlayArrow
                         } else {
                             Icons.Default.PlayArrow
                         }
                         Icon(icon, contentDescription = "Toggle Playback")
                     }
                 }
-                
+
                 Button(
                     onClick = { audioPicker.launch("audio/*") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Replace Audio File")
                 }
@@ -93,12 +93,12 @@ fun SasayakiSheet(
                 Text(
                     "No audio file matched or imported.",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                
+
                 Button(
                     onClick = { audioPicker.launch("audio/*") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Import Audio File")
                 }

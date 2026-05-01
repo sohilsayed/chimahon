@@ -69,7 +69,7 @@ data class EpubBook(
      */
     fun getChapterCharacters(index: Int): Int {
         if (chapterLengthCache.containsKey(index)) return chapterLengthCache[index]!!
-        
+
         val spineType = linearSpineItems.getOrNull(index)?.type
         if (spineType == SpineItemType.IMAGE_ONLY) {
             chapterLengthCache[index] = 0
@@ -83,23 +83,23 @@ data class EpubBook(
         return try {
             val doc = Jsoup.parse(file, "UTF-8", "")
             val text = doc.text()
-            
+
             // TTSU Regex matching: Japanese/Chinese characters, digits and alphabet
             // /[^\d\w○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚｦ-ﾝ\p{IsHan}]+/
             val ttsuRegex = Regex("[^0-9a-zA-Z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚｦ-ﾝ\\p{IsHan}]")
             val filteredText = text.replace(ttsuRegex, "")
-            
+
             // In JS Array.from(s).length provides the codepoint count (surrogate pairs count as 1)
             val charCount = filteredText.codePointCount(0, filteredText.length)
             chapterLengthCache[index] = charCount
             charCount
-        } catch(e: Exception) {
+        } catch (e: Exception) {
             0
         }
     }
 
     /**
-     * Converts an absolute character count back into a 
+     * Converts an absolute character count back into a
      * specific chapter index and decimal progress (0.0 to 1.0) for that chapter.
      */
     fun convertCharsToProgress(totalExploredChars: Int): Pair<Int, Double> {

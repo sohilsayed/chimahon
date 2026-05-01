@@ -7,26 +7,26 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.canopus.chimareader.data.BookStorage
-import com.canopus.chimareader.data.FileNames
 import com.canopus.chimareader.data.BookMetadata
+import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.Bookmark
-import com.canopus.chimareader.data.NovelReaderSettings
-import com.canopus.chimareader.data.Theme
+import com.canopus.chimareader.data.FileNames
 import com.canopus.chimareader.data.FontManager
+import com.canopus.chimareader.data.NovelReaderSettings
+import com.canopus.chimareader.data.Statistics
+import com.canopus.chimareader.data.Theme
 import com.canopus.chimareader.data.epub.EpubBook
 import com.canopus.chimareader.data.epub.SpineItemType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.delay
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import com.canopus.chimareader.data.Statistics
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ sealed interface WebViewCommand {
     data class HighlightSasayakiCue(
         val cueId: String,
         val reveal: Boolean,
-        val onProgress: ((Double) -> Unit)? = null
+        val onProgress: ((Double) -> Unit)? = null,
     ) : WebViewCommand
     data object ClearSasayakiCue : WebViewCommand
     data class UpdateTextColor(val hex: String?) : WebViewCommand
@@ -64,7 +64,7 @@ data class ReaderSettings(
     val hideFurigana: Boolean = false,
     val layoutAdvanced: Boolean = false,
     val tapZonePercent: Int = 20,
-    val continuousMode: Boolean = false
+    val continuousMode: Boolean = false,
 )
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ class WebViewBridge {
 
 class ReaderLoaderViewModel(
     context: Context,
-    book: BookMetadata
+    book: BookMetadata,
 ) {
     var document: EpubBook? = null
         private set
@@ -136,7 +136,7 @@ class ReaderViewModel(
     val document: EpubBook,
     val rootUrl: File,
     val settings: NovelReaderSettings,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
 ) {
     var index by mutableIntStateOf(0)
     var currentProgress by mutableDoubleStateOf(0.0)
@@ -167,7 +167,7 @@ class ReaderViewModel(
     var totalExploredCharCount by mutableIntStateOf(0)
     // To calculate session characters, we remember the initial char count
     var initialCharCount by mutableIntStateOf(0)
-    
+
     val sessionCharactersRead: Int
         get() = maxOf(0, totalExploredCharCount - initialCharCount)
 
@@ -240,7 +240,7 @@ class ReaderViewModel(
         index = bookmark?.chapterIndex ?: 0
         currentProgress = bookmark?.progress ?: 0.0
         lastSavedBookmarkFingerprint = bookmarkFingerprint(index, currentProgress)
-        
+
         totalExploredCharCount = calculateExploredCharCount(currentProgress)
         initialCharCount = totalExploredCharCount
         lastSavedExploredCharCount = initialCharCount
@@ -347,8 +347,10 @@ class ReaderViewModel(
     fun getReaderSettings(context: Context): ReaderSettings {
         val fontUrl = if (FontManager.isCustomFont(context, selectedFont)) {
             FontManager.getFontUri(context, selectedFont)
-        } else null
-        
+        } else {
+            null
+        }
+
         val (bg, txt) = when (theme) {
             Theme.LIGHT -> 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
             Theme.DARK -> 0xFF121212.toInt() to 0xFFE0E0E0.toInt()
@@ -377,7 +379,7 @@ class ReaderViewModel(
             hideFurigana = hideFurigana,
             layoutAdvanced = layoutAdvanced,
             tapZonePercent = tapZonePercent,
-            continuousMode = continuousMode
+            continuousMode = continuousMode,
         )
     }
 
@@ -413,6 +415,18 @@ class ReaderViewModel(
         return null
     }
 
+    fun getFlattenedToc(): List<com.canopus.chimareader.data.epub.TocEntry> {
+        val result = mutableListOf<com.canopus.chimareader.data.epub.TocEntry>()
+        fun flatten(entries: List<com.canopus.chimareader.data.epub.TocEntry>) {
+            for (entry in entries) {
+                result.add(entry)
+                flatten(entry.children)
+            }
+        }
+        flatten(document.tableOfContents)
+        return result
+    }
+
     fun saveBookmark(progress: Double, forceStatisticsSave: Boolean = false) {
         val bookmarkFingerprint = bookmarkFingerprint(index, progress)
         currentProgress = progress
@@ -446,7 +460,41 @@ class ReaderViewModel(
         }
     }
 
+    /**
+     * Resolves a raw `file://` URL (possibly carrying a #fragment) that came from an in-page
+     * link click inside the WebView, finds the matching spine index, saves the current progress
+     * bookmark, and then delegates to [jumpToChapter].
+     *
+     * If the URL cannot be matched to any spine item (e.g. external http link) the call is
+     * silently ignored – the WebView already blocked the navigation via shouldOverrideUrlLoading.
+     */
+    fun jumpToUrl(url: String) {
+        val fragment = url.substringAfter("#", missingDelimiterValue = "")
+        val targetPath = url.substringBefore("#")
+            .removePrefix("file://")
+            .replace("\\", "/")
+
+        val spineCount = document.linearSpineItems.size
+        for (i in 0 until spineCount) {
+            val chapterPath = document.chapterAbsolutePath(i.toUInt())
+                ?.replace("\\", "/") ?: continue
+            if (chapterPath == targetPath) {
+                // Save progress before jumping so stats are consistent
+                saveBookmark(currentProgress)
+                jumpToChapter(i, fragment.ifEmpty { null })
+                return
+            }
+        }
+        android.util.Log.w("ReaderViewModel", "jumpToUrl: no spine match for $url")
+    }
+
     private fun loadChapter(newIndex: Int, progress: Double) {
+        // Flush any accumulated session delta to persistent statistics BEFORE we
+        // change the index. persistBookmark() calls calculateExploredCharCount()
+        // which uses the current index — if we change it first the delta is lost.
+        persistBookmark(currentProgress)
+        savePersistentStatistics()
+
         index = newIndex
         saveBookmark(progress)
         getCurrentChapter()?.let { file ->
@@ -470,16 +518,16 @@ class ReaderViewModel(
 
     private fun persistBookmark(progress: Double) {
         totalExploredCharCount = calculateExploredCharCount(progress)
-        
+
         BookStorage.save(
             Bookmark(
                 chapterIndex = index,
                 progress = progress,
                 characterCount = totalExploredCharCount,
-                lastModified = System.currentTimeMillis()
+                lastModified = System.currentTimeMillis(),
             ),
             rootUrl,
-            FileNames.bookmark
+            FileNames.bookmark,
         )
     }
 
@@ -489,10 +537,10 @@ class ReaderViewModel(
 
     private fun savePersistentStatistics() {
         val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        
+
         val deltaChars = maxOf(0, totalExploredCharCount - lastSavedExploredCharCount)
         val deltaTime = maxOf(0.0, sessionReadingTime - lastSavedSessionReadingTime)
-        
+
         if (deltaChars == 0 && deltaTime < 1.0) return
 
         var dailyStats = fullStatistics.find { it.dateKey == dateKey }
@@ -500,27 +548,27 @@ class ReaderViewModel(
             dailyStats = Statistics(
                 title = document.title ?: "Unknown",
                 dateKey = dateKey,
-                lastStatisticModified = System.currentTimeMillis()
+                lastStatisticModified = System.currentTimeMillis(),
             )
             fullStatistics.add(dailyStats)
         }
-        
+
         dailyStats.charactersRead += deltaChars
         dailyStats.readingTime += deltaTime
         dailyStats.lastStatisticModified = System.currentTimeMillis()
-        
+
         // Update speeds
         val charsPerSec = if (dailyStats.readingTime > 0) dailyStats.charactersRead / dailyStats.readingTime else 0.0
         val speedPerHour = (charsPerSec * 3600).toInt()
-        
+
         // Ensure readingTime unit is seconds for SPEED calculation
         // speed = chars / (time_in_seconds / 3600) = chars * 3600 / time_in_seconds
         dailyStats.lastReadingSpeed = speedPerHour
         dailyStats.maxReadingSpeed = maxOf(dailyStats.maxReadingSpeed, speedPerHour)
-        
+
         // Persistence
         BookStorage.saveStatistics(fullStatistics.toList(), rootUrl)
-        
+
         lastSavedExploredCharCount = totalExploredCharCount
         lastSavedSessionReadingTime = sessionReadingTime
     }

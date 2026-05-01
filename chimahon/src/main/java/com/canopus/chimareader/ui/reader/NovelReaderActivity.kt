@@ -3,12 +3,12 @@ package com.canopus.chimareader.ui.reader
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
@@ -114,7 +114,7 @@ open class NovelReaderActivity : ComponentActivity() {
                 onLookupRequested = ::onLookupRequested,
                 isPopupActive = isPopupActive,
                 onViewModelReady = { readerViewModel = it },
-                additionalSettings = { AdditionalAppearanceSettings() }
+                additionalSettings = { AdditionalAppearanceSettings() },
             )
             PopupOverlay()
         }

@@ -11,5 +11,5 @@ package com.canopus.chimareader.data
 enum class ActiveSheet {
     APPEARANCE,
     CHAPTERS,
-    STATISTICS
+    STATISTICS,
 }

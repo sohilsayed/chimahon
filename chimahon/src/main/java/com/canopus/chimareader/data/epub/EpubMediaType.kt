@@ -16,7 +16,8 @@ enum class EpubMediaType(val value: String) {
     MP3("audio/mpeg"),
     MP4("audio/mp4"),
     CSS("text/css"),
-    UNKNOWN("application/octet-stream");
+    UNKNOWN("application/octet-stream"),
+    ;
 
     companion object {
         fun fromString(value: String?): EpubMediaType {

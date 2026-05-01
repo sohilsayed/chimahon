@@ -1,5 +1,7 @@
 package com.canopus.chimareader.ui.reader
 
+import android.R.attr.overScrollMode
+import android.R.attr.visibility
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -20,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import com.google.common.io.Files.append
 import kotlinx.coroutines.delay
 import java.io.BufferedReader
 import java.io.File
@@ -43,6 +46,7 @@ fun ReaderWebView(
     tapZonePx: Int = 100,
     isPopupActive: Boolean = false,
     onTextSelected: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    onInternalLinkClicked: (url: String) -> Unit = {},
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -96,6 +100,7 @@ fun ReaderWebView(
                 swipeThreshold = swipeThreshold,
                 tapZonePx = tapZonePx,
                 onTextSelectedCallback = onTextSelected,
+                onInternalLinkClicked = onInternalLinkClicked,
             ).apply {
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
@@ -119,6 +124,43 @@ fun ReaderWebView(
                     }
                 }
                 webViewClient = object : WebViewClient() {
+
+                    override fun shouldOverrideUrlLoading(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                    ): Boolean {
+                        val url = request?.url?.toString() ?: return false
+                        val currentFile = currentUrl
+                            ?.removePrefix("file://")
+                            ?.substringBefore("#")
+                        val targetFile = url
+                            .removePrefix("file://")
+                            .substringBefore("#")
+                        val fragment = url.substringAfter("#", missingDelimiterValue = "")
+
+                        Log.d("ReaderWebView", "shouldOverrideUrlLoading: url=$url currentFile=$currentFile targetFile=$targetFile fragment=$fragment")
+
+                        if (currentFile != null && currentFile == targetFile) {
+                            // Same chapter file – just scroll to the fragment via JS (no reload)
+                            if (fragment.isNotEmpty()) {
+                                val escapedId = fragment.replace("\\", "\\\\").replace("'", "\\'")
+                                val js = """
+                                    (function() {
+                                        var el = document.getElementById('$escapedId')
+                                            || document.querySelector('[name="$escapedId"]');
+                                        if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+                                    })();
+                                """.trimIndent()
+                                post { evaluateJavascript(js, null) }
+                            }
+                            return true // always intercept – no full reload
+                        }
+
+                        // Different chapter file (or external URL) – hand off to ViewModel
+                        post { onInternalLinkClicked(url) }
+                        return true
+                    }
+
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         Log.d("ReaderWebView", "onPageStarted: url=$url")
                         alpha = 0f
@@ -136,7 +178,7 @@ fun ReaderWebView(
                         detail: android.webkit.RenderProcessGoneDetail?,
                     ): Boolean {
                         val reason = if (detail?.didCrash() == true) "WebView crashed"
-                                     else "WebView killed by system (OOM)"
+                        else "WebView killed by system (OOM)"
                         Log.e("ReaderWebView", "onRenderProcessGone: $reason")
                         post {
                             onLoadFailed("Renderer died ($reason). Try disabling hardware acceleration or 'Avoid page breaks'.")
@@ -217,6 +259,9 @@ fun ReaderWebView(
                     is WebViewCommand.Paginate -> {
                         v.paginate(command.forward)
                     }
+                    is WebViewCommand.JumpToFragment -> {
+                        v.jumpToFragment(command.fragment)
+                    }
                     else -> {}
                 }
             }
@@ -242,6 +287,7 @@ private class ReaderAndroidWebView(
     private val tapZonePx: Int = 100,
     var isPopupActive: Boolean = false,
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    internal val onInternalLinkClicked: (url: String) -> Unit = {},
 ) : WebView(context) {
 
     private var touchStartX = 0f
@@ -403,6 +449,18 @@ private class ReaderAndroidWebView(
         }
     }
 
+    fun jumpToFragment(fragment: String) {
+        val escapedId = fragment.replace("\\", "\\\\").replace("'", "\\'")
+        val js = """
+            (function() {
+                var el = document.getElementById('$escapedId')
+                    || document.querySelector('[name="$escapedId"]');
+                if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+            })();
+        """.trimIndent()
+        evaluateJavascript(js, null)
+    }
+
     private fun buildBaseCSS(): String = buildString {
         val vw = readerSettings.verticalWriting
 
@@ -414,12 +472,13 @@ private class ReaderAndroidWebView(
 
         appendLine("p { margin-top: 0 !important; margin-bottom: 0 !important; }")
         appendLine("body * { font-family: inherit !important; }")
+        appendLine("img.chima-image-block, svg.chima-image-block { position: static !important; }")
     }
 
-    private fun buildImageCSS(ih: Int): String {
-        val imgMaxH = Math.round(ih * 0.85)
-        return "img, svg { max-width: 100% !important; max-height: ${imgMaxH}px !important; object-fit: contain !important; }"
-    }
+    // Safe fallback for inline / gaiji images — keeps them from overflowing their container
+    // but doesn't fight the per-mode block-img rules injected below.
+    private fun buildImageCSS(): String =
+        "img { max-width: 100% !important; height: auto !important; }"
 
     fun injectReader() {
         Log.d("ReaderWebView", "injectReader: ${width}x${height} continuous=$continuousMode imageOnly=$isImageOnly")
@@ -548,12 +607,55 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
+                // Compute padding in px (applied on both sides of wrapper).
+                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
+                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
+
+                // Usable content area inside the padded wrapper.
+                // Images are constrained to at most one viewport's worth of content area
+                // so they don't dominate the scroll and overflow the padding.
+                var contentW = Math.max(1, iw - 2 * hPad);
+                var contentH = Math.max(1, ih - 2 * vPad);
+                document.documentElement.style.setProperty('--hoshi-image-max-width', contentW + 'px');
+                document.documentElement.style.setProperty('--hoshi-image-max-height', contentH + 'px');
+
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
                 s = document.createElement('style');
                 s.id = 'hoshi-style';
-                s.textContent = ${jsString(css)} + ${jsString(buildImageCSS(height))};
+                s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
+
+                // Continuous-mode image rules:
+                // .chima-image-block  → large images: block-level, centered, constrained
+                // everything else     → inline images: stay in text flow, just capped at max-width
+                var contImgStyle = document.getElementById('chima-cont-img-style');
+                if (contImgStyle) contImgStyle.remove();
+                contImgStyle = document.createElement('style');
+                contImgStyle.id = 'chima-cont-img-style';
+                contImgStyle.textContent = [
+                    'img.chima-image-block, svg.chima-image-block {',
+                    '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
+                    '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
+                    '  width: auto !important;',
+                    '  height: auto !important;',
+                    '  display: block !important;',
+                    '  margin-left: auto !important;',
+                    '  margin-right: auto !important;',
+                    '  margin-top: 12px !important;',
+                    '  margin-bottom: 12px !important;',
+                    '  object-fit: contain !important;',
+                    '}',
+                    'img:not(.chima-image-block), svg:not(.chima-image-block) {',
+                    '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
+                    '  width: auto !important;',
+                    '  height: auto !important;',
+                    '  min-width: 1em !important;',
+                    '  vertical-align: middle !important;',
+                    '  display: inline-block !important;',
+                    '}'
+                ].join(' ');
+                document.head.appendChild(contImgStyle);
 
                 $readerJs
 
@@ -569,8 +671,6 @@ private class ReaderAndroidWebView(
                     b.appendChild(wrapper);
                 }
 
-                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
-                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
                 wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
@@ -600,11 +700,58 @@ private class ReaderAndroidWebView(
                 b.style.setProperty('box-sizing', 'border-box', 'important');
                 b.style.setProperty('width', iw + 'px', 'important');
                 b.style.setProperty('min-height', ih + 'px', 'important');
-                document.documentElement.style.setProperty('height', '100%', 'important');
+                b.style.setProperty('height', 'auto', 'important');
+                document.documentElement.style.setProperty('height', 'auto', 'important');
 
                 window.hoshiReader.registerCopyText();
                 window.hoshiReader.continuousMode = true;
-                window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
+
+                // Classify images as .chima-image-block (large, standalone) or leave inline.
+                // Wait for all images to finish loading before classifying and restoring progress —
+                // late-loading images shift element positions and cause scrollIntoView() to land
+                // at the wrong offset.
+                var allMediaCont = Array.from(document.querySelectorAll('img, svg'));
+                var imagePromises = allMediaCont.map(function(el) {
+                    return new Promise(function(resolve) {
+                        var tag = el.tagName.toLowerCase();
+                        var isGaiji = el.classList.contains('gaiji') || el.classList.contains('gaiji-line');
+                        var classify = function() {
+                            if (!isGaiji) {
+                                var isLarge = false;
+                                if (tag === 'img') {
+                                    isLarge = el.naturalWidth > 300 || el.naturalHeight > 300;
+                                } else if (tag === 'svg') {
+                                    var vb = el.viewBox && el.viewBox.baseVal;
+                                    var w = vb ? vb.width : (el.width ? el.width.baseVal.value : 0);
+                                    var h = vb ? vb.height : (el.height ? el.height.baseVal.value : 0);
+                                    isLarge = w > 300 || h > 300;
+                                }
+                                if (isLarge) {
+                                    // Only block-promote if no text siblings in parent
+                                    var isInlineContext = Array.from(el.parentElement?.childNodes || []).some(function(n) {
+                                        return n !== el &&
+                                            ((n.nodeType === 3 && n.textContent.trim().length > 0) ||
+                                             (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
+                                              n.textContent.trim().length > 0));
+                                    });
+                                    if (!isInlineContext) el.classList.add('chima-image-block');
+                                }
+                            }
+                            resolve();
+                        };
+                        if (tag === 'img') {
+                            if (el.complete && el.naturalWidth > 0) { classify(); }
+                            else { el.onload = classify; el.onerror = function() { resolve(); }; }
+                        } else {
+                            classify();
+                        }
+                    });
+                });
+                Promise.all(imagePromises)
+                    .then(function() { return new Promise(function(r) { setTimeout(r, 50); }); })
+                    .then(function() {
+                        window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
+                    });
             })();
         """.trimIndent()
     }
@@ -614,6 +761,10 @@ private class ReaderAndroidWebView(
         val css = buildBaseCSS()
         val bg = readerSettings.resolvedBgHex()
         val tc = readerSettings.resolvedTextHex()
+        // In vertical-rl paged mode the column axis is horizontal (width), so
+        // bottomOverlap reserves one line-height worth of space on the trailing
+        // edge — same as Hoshi's bottomOverlapPx = fontSize in vertical mode.
+        val bottomOverlapPx = if (vw) readerSettings.fontSize else 0
 
         return """
             (function() {
@@ -635,12 +786,56 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
+                // Compute padding in px (applied on both sides of wrapper).
+                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
+                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
+
+                // Usable content area inside the padded wrapper.
+                var contentW = Math.max(1, iw - 2 * hPad);
+                var contentH = Math.max(1, ih - 2 * vPad);
+
+                // Image sizing: constrained to the usable content area.
+                // bottomOverlap reserves trailing-edge space so the image doesn't
+                // bleed into the next column (matches Hoshi's bottomOverlapPx).
+                var imageMaxW = Math.max(1, contentW);
+                var imageMaxH = Math.max(1, contentH - $bottomOverlapPx);
+                document.documentElement.style.setProperty('--hoshi-image-max-width', imageMaxW + 'px');
+                document.documentElement.style.setProperty('--hoshi-image-max-height', imageMaxH + 'px');
+
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
                 s = document.createElement('style');
                 s.id = 'hoshi-style';
-                s.textContent = ${jsString(css)} + ${jsString(buildImageCSS(height))};
+                s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
+
+                // Block-image rules: large images/SVGs classified as .chima-image-block by JS below.
+                var blockImgStyle = document.getElementById('chima-block-img-style');
+                if (blockImgStyle) blockImgStyle.remove();
+                blockImgStyle = document.createElement('style');
+                blockImgStyle.id = 'chima-block-img-style';
+                blockImgStyle.textContent = [
+                    'img.chima-image-block, svg.chima-image-block {',
+                    '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
+                    '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
+                    '  width: auto !important;',
+                    '  height: auto !important;',
+                    '  display: block !important;',
+                    '  margin: auto !important;',
+                    '  break-inside: avoid !important;',
+                    '  -webkit-column-break-inside: avoid !important;',
+                    '  object-fit: contain !important;',
+                    '}',
+                    'img:not(.chima-image-block), svg:not(.chima-image-block) {',
+                    '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
+                    '  width: auto !important;',
+                    '  height: auto !important;',
+                    '  min-width: 1em !important;',
+                    '  vertical-align: middle !important;',
+                    '  display: inline-block !important;',
+                    '}'
+                ].join(' ');
+                document.head.appendChild(blockImgStyle);
 
                 $readerJs
 
@@ -656,8 +851,6 @@ private class ReaderAndroidWebView(
                     b.appendChild(wrapper);
                 }
 
-                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
-                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
                 wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
@@ -672,7 +865,14 @@ private class ReaderAndroidWebView(
 
                 ${if (readerSettings.avoidPageBreak) """
                 var abStyle = document.createElement('style');
-                abStyle.textContent = 'img, svg, figure, table, tr, td, th { break-inside: avoid !important; -webkit-column-break-inside: avoid !important; page-break-inside: avoid !important; }';
+                abStyle.textContent = [
+                    'img, svg, figure, table, tr, td, th,',
+                    'p:has(> img:only-child), div:has(> img:only-child), span.img, div.img, p.img {',
+                    '  break-inside: avoid !important;',
+                    '  -webkit-column-break-inside: avoid !important;',
+                    '  page-break-inside: avoid !important;',
+                    '}'
+                ].join(' ');
                 document.head.appendChild(abStyle);
                 """ else ""}
 
@@ -710,7 +910,53 @@ private class ReaderAndroidWebView(
                 document.documentElement.style.setProperty('overflow', 'hidden', 'important');
 
                 window.hoshiReader.registerCopyText();
-                window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
+
+                // Classify images and SVGs as .chima-image-block if large (naturalWidth/Height > 300).
+                // Gaiji inline glyphs are explicitly excluded. Classification happens after images
+                // load so naturalWidth is available. Then a 50ms settle lets column layout stabilise
+                // before restoreProgress() snaps to the correct page.
+                var allMediaPaged = Array.from(document.querySelectorAll('img, svg'));
+                var imagePromises = allMediaPaged.map(function(el) {
+                    return new Promise(function(resolve) {
+                        var tag = el.tagName.toLowerCase();
+                        var isGaiji = el.classList.contains('gaiji') || el.classList.contains('gaiji-line');
+                        var classify = function() {
+                            if (!isGaiji) {
+                                var isLarge = false;
+                                if (tag === 'img') {
+                                    isLarge = el.naturalWidth > 300 || el.naturalHeight > 300;
+                                } else if (tag === 'svg') {
+                                    var vb = el.viewBox && el.viewBox.baseVal;
+                                    var w = vb ? vb.width : (el.width ? el.width.baseVal.value : 0);
+                                    var h = vb ? vb.height : (el.height ? el.height.baseVal.value : 0);
+                                    isLarge = w > 300 || h > 300;
+                                }
+                                if (isLarge) {
+                                    // Only block-promote if no text siblings in parent
+                                    var isInlineContext = Array.from(el.parentElement?.childNodes || []).some(function(n) {
+                                        return n !== el &&
+                                            ((n.nodeType === 3 && n.textContent.trim().length > 0) ||
+                                             (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
+                                              n.textContent.trim().length > 0));
+                                    });
+                                    if (!isInlineContext) el.classList.add('chima-image-block');
+                                }
+                            }
+                            resolve();
+                        };
+                        if (tag === 'img') {
+                            if (el.complete && el.naturalWidth > 0) { classify(); }
+                            else { el.onload = classify; el.onerror = function() { resolve(); }; }
+                        } else {
+                            classify();
+                        }
+                    });
+                });
+                Promise.all(imagePromises)
+                    .then(function() { return new Promise(function(r) { setTimeout(r, 50); }); })
+                    .then(function() {
+                        window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
+                    });
             })();
         """.trimIndent()
     }
@@ -859,13 +1105,13 @@ private class ReaderAndroidWebView(
                 var el = document.scrollingElement || document.documentElement;
                 var ph = window.innerHeight;
                 var pw = window.innerWidth;
-                var tol = 15; 
+                var tol = 15;
                 var isV = $isVerticalScroll;
 
                 if (isV) {
                     var y = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
                     var maxY = el.scrollHeight - ph;
-                    if (maxY <= 5) return 'limit'; 
+                    if (maxY <= 5) return 'limit';
                     if ('$forward' === 'true')  return y >= maxY - tol ? 'limit' : 'scrolling';
                     if ('$forward' === 'false') return y <= tol        ? 'limit' : 'scrolling';
                 } else {
@@ -878,7 +1124,7 @@ private class ReaderAndroidWebView(
                 return 'scrolling';
             })()
         """.trimIndent()
-        
+
         evaluateJavascript(script) { result ->
             if (result?.trim('"') == "limit") {
                 val changed = if (forward) onNextChapter() else onPreviousChapter()
