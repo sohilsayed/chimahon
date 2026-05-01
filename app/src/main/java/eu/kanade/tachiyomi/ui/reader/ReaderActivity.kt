@@ -782,6 +782,22 @@ class ReaderActivity : BaseActivity() {
      * Dispatches a key event. If the viewer doesn't handle it, call the default implementation.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Chimahon: Redirect volume keys to the OCR popup if it's active
+        ocrPopupState?.let { popup ->
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_VOLUME_UP -> {
+                        popup.webView.evaluateJavascript("window.DictionaryRenderer?.navigate(-1);", null)
+                        return true
+                    }
+                    KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        popup.webView.evaluateJavascript("window.DictionaryRenderer?.navigate(1);", null)
+                        return true
+                    }
+                }
+            }
+        }
+
         val handled = viewModel.state.value.viewer?.handleKeyEvent(event) ?: false
         return handled || super.dispatchKeyEvent(event)
     }

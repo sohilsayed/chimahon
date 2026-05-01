@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -31,6 +33,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import eu.kanade.domain.ui.model.ThemeMode
+import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.theme.colorscheme.CustomColorScheme
 import chimahon.DictionaryRepository
 import chimahon.LookupResult
 import chimahon.MediaInfo
@@ -39,6 +46,7 @@ import chimahon.anki.AnkiResult
 import chimahon.util.ImageEncoder
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryColorScheme
 import eu.kanade.tachiyomi.ui.dictionary.TabInfo
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.util.system.toast
@@ -133,6 +141,22 @@ fun OcrLookupPopup(
     val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
     val customCss by dictionaryPreferences.customCss().collectAsState()
     val wordAudioEnabled by dictionaryPreferences.wordAudioEnabled().collectAsState()
+
+    val systemIsDark = isSystemInDarkTheme()
+    val amoled by dictionaryPreferences.themeDarkAmoled().collectAsState()
+    val customColor by dictionaryPreferences.customColor().collectAsState()
+
+    val uiPreferences = remember { Injekt.get<UiPreferences>() }
+    val seedColor = if (customColor == 0) uiPreferences.colorTheme().get() else customColor
+    val isDark = remember(seedColor, customColor, systemIsDark) {
+        if (customColor != 0) Color(seedColor).luminance() < 0.5f else systemIsDark
+    }
+    val colorScheme = remember(isDark, amoled, seedColor) {
+        getDictionaryColorScheme(isDark, amoled, seedColor)
+    }
+    val BgColor = remember(isDark, amoled, seedColor, colorScheme) {
+        if (amoled && isDark) Color.Black else colorScheme.surface
+    }
 
     /** Perform a dictionary lookup and push a new frame onto the stack. */
     fun pushLookup(query: String, isRecursive: Boolean = false, deferredResult: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null) {
@@ -393,8 +417,8 @@ fun OcrLookupPopup(
                 ) {
                     // Consume taps on the popup itself to prevent them from falling through to the reader
                 },
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(8.dp),
+            color = BgColor,
             tonalElevation = 0.dp,
             shadowElevation = 6.dp,
         ) {

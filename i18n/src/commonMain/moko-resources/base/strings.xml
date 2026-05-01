@@ -611,7 +611,6 @@
     <string name="pref_anki_duplicate_prevent">Don\'t add</string>
     <string name="pref_anki_duplicate_add">Add anyway</string>
     <string name="pref_anki_duplicate_overwrite">Update existing</string>
-    <string name="pref_anki_duplicate_open">Open in Anki</string>
     <string name="pref_anki_default_tags">Default tags</string>
     <string name="pref_anki_no_ankidroid">AnkiDroid is not installed</string>
     <string name="pref_anki_permission_denied">AnkiDroid permission denied</string>

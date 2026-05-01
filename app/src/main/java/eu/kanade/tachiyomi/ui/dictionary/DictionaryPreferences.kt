@@ -4,6 +4,7 @@ import chimahon.anki.AnkiProfile
 import chimahon.anki.AnkiProfileStore
 import chimahon.audio.WordAudioPreferences
 import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.preference.getEnum
 
 class DictionaryPreferences(
     private val preferenceStore: PreferenceStore,
@@ -24,6 +25,9 @@ class DictionaryPreferences(
     fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
+
+    fun themeDarkAmoled() = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)
+    fun customColor() = preferenceStore.getInt("pref_dictionary_custom_color", 0)
 
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 

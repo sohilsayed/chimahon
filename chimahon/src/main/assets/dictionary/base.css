@@ -1,13 +1,20 @@
 :root {
-  color-scheme: light dark;
-  --bg: var(--bg-dynamic, transparent);
-  --fg: var(--fg-dynamic, #222);
-  --secondary: var(--secondary-dynamic, #777);
+  --bg: #ffffff;
+  --fg: #1f1f1f;
+  --secondary: #757575;
   --accent: #2ecc71;
   --on-accent: #ffffff;
-  --border: var(--border-dynamic, rgba(128, 128, 128, 0.15));
-  --hover-bg: var(--hover-bg-dynamic, rgba(128, 128, 128, 0.1));
-  
+  --border: rgba(0, 0, 0, 0.08);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+
+  --font-size-no-units: 14;
+  --font-size: 14px;
+  --line-height: 1.4;
+
+  --headword-font-size: 1.6em;
+  --tag-font-size: 0.75em;
+  --thin-border-size: 1px;
+
   /* Tag Category Colors */
   --tag-default-background-color: #8a8a91;
   --tag-name-background-color: #b6327a;
@@ -29,41 +36,59 @@
   --entry-vertical-padding: 0.5em;
   --entry-horizontal-padding: 0.5em;
   --compact-list-separator: ' | ';
-
-  /* Typography & Layout */
-  --headword-font-size: 1.8em;
-  --font-size: 14px;
-  --line-height: 1.5;
 }
 
 :root[data-theme="dark"] {
-  --fg: var(--fg-dynamic, #ddd);
-  --border: var(--border-dynamic, rgba(255, 255, 255, 0.12));
+  /* Colors are injected dynamically by the WebView in DictionaryEntryWebView.kt */
 }
 
-html, body {
+html {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  width: 100%;
+}
+
+body {
   margin: 0;
   padding: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: var(--line-height);
+  font-size: calc(1px * var(--font-size-no-units));
+  overflow-x: hidden;
+  width: 100%;
 }
 
 .entries {
-  padding: 0.5em;
+  padding: 4px;
 }
 
 .entry {
-  padding: 0.5em 0;
-  position: relative;
+  padding: 8px 0;
 }
 
 .entry + .entry {
-  border-top: 1px solid var(--border);
+  border-top: var(--thin-border-size) solid var(--border);
 }
 
-/* ── Headword ────────────────────────────────────────────────── */
+/* ── Headword ────────────────────────────────────────── */
+.entry-headword-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.headword {
+  flex: 1;
+  min-width: 0;
+  display: inline-block;
+  vertical-align: baseline;
+}
+
 .headword-term {
   font-size: var(--headword-font-size);
   font-weight: 700;
@@ -73,47 +98,39 @@ html, body {
 .headword-term.popular { color: var(--accent); }
 .headword-term.rare { color: var(--secondary); opacity: 0.7; }
 
-.headword-reading {
-  font-size: 1.2rem;
-  margin-left: 0.5em;
-  color: var(--secondary);
-}
-
-.headword ruby rt {
+.headword-furigana {
   font-size: 0.55em;
   opacity: 0.9;
+  margin-left: 0.2em;
 }
 
-.entry-headword-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 0.4em;
-}
+/* Remove unused .headword-reading - JS uses .headword-furigana */
 
-/* ── Tags ────────────────────────────────────────────────────── */
+/* ── Tags ────────────────────────────────────────────── */
 .tag {
   --tag-color: var(--tag-default-background-color);
   display: inline-flex;
-  font-size: 0.75em;
-  margin: 0 0.3em 0.2em 0;
+  font-size: var(--tag-font-size);
+  margin-right: 3px;
+  margin-bottom: 3px;
   vertical-align: middle;
 }
 
 .tag-label {
   background-color: var(--tag-color);
   border-radius: 3px;
-  padding: 0.1em 0.4em;
+  padding: 1px 5px;
   color: #fff;
-  font-weight: 700;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .tag-body {
   background-color: color-mix(in srgb, var(--tag-color) 80%, black);
   border-radius: 0 3px 3px 0;
-  padding: 0.1em 0.4em;
+  padding: 1px 5px;
   color: #fff;
-  font-weight: 700;
+  font-weight: 600;
   margin-left: 1px;
 }
 
@@ -126,34 +143,103 @@ html, body {
   box-shadow: 0 0 0 2px var(--accent);
   opacity: 1;
 }
+
 .tag.selected {
   filter: brightness(1.2);
 }
 
-/* ── Dictionary Grouping ─────────────────────────────────────── */
+/* ── Collapsible Dictionary Header ───────────────────── */
 .dictionary-group {
-  margin-top: 1.2em;
-  border-top: 1px solid var(--border);
-  padding-top: 0.8em;
+  margin-top: 4px;
+  padding-top: 2px;
 }
 
 .dictionary-group:first-of-type {
-  border-top: none;
-  margin-top: 0.5em;
+  margin-top: 2px;
   padding-top: 0;
 }
 
 .dictionary-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5em;
-  margin-bottom: 0.5em;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: 3px 0;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--secondary);
+  transition: color 0.2s;
 }
 
+.dictionary-header:hover {
+  color: var(--fg);
+}
+
+.dictionary-header.selected {
+  color: var(--accent);
+}
+
+.dictionary-header.selected .dict-name-label {
+  font-weight: 700;
+}
+
+.dict-arrow {
+  display: flex;
+  align-items: center;
+  margin-right: 3px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.dictionary-group[data-collapsed="true"] .dict-arrow {
+  transform: rotate(-90deg);
+}
+
+.dictionary-group[data-collapsed="true"] .definition-list {
+  display: none;
+}
+
+/* ── Deinflection Row ────────────────────────────────── */
+.entry-deinflection-row {
+  font-size: 0.85em;
+  opacity: 0.6;
+  margin-top: -2px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deinflection-chain {
+  font-family: inherit;
+}
+
+.inflection-details {
+  background: var(--hover-bg);
+  padding: 8px;
+  border-radius: 8px;
+  margin: 4px 0 8px 0;
+  font-size: 0.9em;
+  border: 1px solid var(--border);
+  white-space: pre-wrap; /* Supports new lines from \n */
+}
+
+.inflection-rule-chains {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.dict-name-label {
+  flex: 1;
+}
+
+/* ── Definitions ─────────────────────────────────────── */
 .definition-list {
-  margin: 0.4em 0;
-  padding-left: 1.4em;
-  list-style-type: decimal;
+  margin: 4px 0;
+  padding-left: 1em;
+  list-style-type: none;
 }
 
 .definition-list[data-count='1'] {
@@ -162,268 +248,261 @@ html, body {
 }
 
 .definition-item {
-  margin-bottom: 0.4em;
-  line-height: 1.5;
+  margin-bottom: 6px;
+  line-height: 1.4;
 }
 
 /* ── Pitch Accent ────────────────────────────────────────────── */
 
-/* Matches Yomitan's --pronunciation-annotation-color convention so that
-   custom dictionary CSS targeting that variable works out of the box. */
 :root {
-  --pronunciation-annotation-color: var(--fg, #222);
-}
-:root[data-theme="dark"] {
-  --pronunciation-annotation-color: var(--fg, #ddd);
+  --pronunciation-annotation-color: var(--fg);
 }
 
 .pitches-section {
-  margin: 0.4em 0 0.8em 0;
+  margin: 4px 0 8px 0;
   color: var(--fg);
 }
 
-/* ── Downstep notation [N] ───────────────────────────── */
-/* Hidden by default; custom dictionary CSS can show it by targeting
-   .pronunciation-downstep-notation-container */
+.pronunciation-group-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  row-gap: 8px;
+}
+
 .pronunciation-downstep-notation-container {
   display: none;
 }
-.pronunciation-downstep-notation {
-  display: inline;
-}
+.pronunciation-downstep-notation { display: inline; }
 .pronunciation-downstep-notation-prefix,
 .pronunciation-downstep-notation-number,
-.pronunciation-downstep-notation-suffix {
-  display: inline;
-}
+.pronunciation-downstep-notation-suffix { display: inline; }
 
-/* ── Mora text line ──────────────────────────────────── */
-.pronunciation-text {
-  display: inline;
-}
-.pronunciation-mora {
-  display: inline-block;
-  position: relative;
-}
-.pronunciation-mora-line {
-  border-color: var(--pronunciation-annotation-color);
-}
+.pronunciation-text { display: inline; font-size: 0.9em; }
+.pronunciation-mora { display: inline-block; position: relative; }
+.pronunciation-mora-line { border-color: var(--pronunciation-annotation-color); }
 .pronunciation-mora[data-pitch=high] > .pronunciation-mora-line {
-  display: block;
-  user-select: none;
-  pointer-events: none;
-  position: absolute;
-  top: 0.1em;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top-width: 0.1em;
-  border-top-style: solid;
+  display: block; user-select: none; pointer-events: none; position: absolute;
+  top: 0.1em; left: 0; right: 0; height: 0; border-top-width: 0.1em; border-top-style: solid;
 }
 .pronunciation-mora[data-pitch=high][data-pitch-next=low] > .pronunciation-mora-line {
-  right: -0.1em;
-  height: 0.4em;
-  border-right-width: 0.1em;
-  border-right-style: solid;
+  right: -0.1em; height: 0.4em; border-right-width: 0.1em; border-right-style: solid;
 }
 .pronunciation-mora[data-pitch=high][data-pitch-next=low] {
-  padding-right: 0.1em;
-  margin-right: 0.1em;
+  padding-right: 0.1em; margin-right: 0.1em;
 }
 
-/* ── Per-character spans ─────────────────────────────── */
-.pronunciation-character {
-  display: inline;
-}
-.pronunciation-character-group {
-  display: inline-block;
-  position: relative;
-}
+.pronunciation-character { display: inline; }
+.pronunciation-character-group { display: inline-block; position: relative; }
 
-/* ── Devoice indicator (dotted circle over the mora) ─── */
 .pronunciation-devoice-indicator {
-  display: block;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 1.125em;
-  height: 1.125em;
-  border-radius: 50%;
-  box-sizing: border-box;
-  z-index: 1;
-  transform: translate(-50%, -50%);
-  border: 1.5px dotted #c83c28;
+  display: block; position: absolute; left: 50%; top: 50%; width: 1.125em; height: 1.125em;
+  border-radius: 50%; box-sizing: border-box; z-index: 1; transform: translate(-50%, -50%); border: 1.5px dotted #c83c28;
 }
 
-/* ── Nasal indicator (small solid circle, top-right) ─── */
 .pronunciation-nasal-indicator {
-  display: block;
-  position: absolute;
-  right: -0.125em;
-  top: 0.125em;
-  width: 0.375em;
-  height: 0.375em;
-  border-radius: 50%;
-  box-sizing: border-box;
-  z-index: 1;
-  border: 1.5px solid #c83c28;
+  display: block; position: absolute; right: -0.125em; top: 0.125em; width: 0.375em; height: 0.375em;
+  border-radius: 50%; box-sizing: border-box; z-index: 1; border: 1.5px solid #c83c28;
 }
-/* Hidden combining handakuten for copy-paste fidelity */
-.pronunciation-nasal-diacritic {
-  position: absolute;
-  width: 0;
-  height: 0;
-  opacity: 0;
-}
+.pronunciation-nasal-diacritic { position: absolute; width: 0; height: 0; opacity: 0; }
 
-/* ── SVG pitch graph ─────────────────────────────────── */
 .pronunciation-graph {
-  display: inline-block;
-  vertical-align: middle;
-  height: 1.5em;
-  overflow: visible;
-  color: inherit;
+  display: inline-block; vertical-align: middle; height: 1.2em; overflow: visible; color: inherit;
 }
-.pronunciation-graph-line,
-.pronunciation-graph-line-tail {
-  fill: none;
-  stroke: var(--pronunciation-annotation-color);
-  stroke-width: 5;
+.pronunciation-graph-line, .pronunciation-graph-line-tail {
+  fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5;
 }
-.pronunciation-graph-line-tail {
-  stroke-dasharray: 5 5;
-}
-.pronunciation-graph-dot {
-  fill: var(--pronunciation-annotation-color);
-  stroke: var(--pronunciation-annotation-color);
-  stroke-width: 5;
-}
-.pronunciation-graph-dot-downstep1 {
-  fill: none;
-  stroke: var(--pronunciation-annotation-color);
-  stroke-width: 5;
-}
-.pronunciation-graph-dot-downstep2 {
-  fill: var(--pronunciation-annotation-color);
-}
-.pronunciation-graph-triangle {
-  fill: none;
-  stroke: var(--pronunciation-annotation-color);
-  stroke-width: 5;
-}
+.pronunciation-graph-line-tail { stroke-dasharray: 5 5; }
+.pronunciation-graph-dot { fill: var(--pronunciation-annotation-color); stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
+.pronunciation-graph-dot-downstep1 { fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
+.pronunciation-graph-dot-downstep2 { fill: var(--pronunciation-annotation-color); }
+.pronunciation-graph-triangle { fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
 
 /* ── Structured content: tables & images ─────────────── */
-/* Required for custom dictionary CSS that targets these Yomitan classes. */
-.gloss-sc-th,
-.gloss-sc-td,
-th,
-td {
-  border: 1px solid currentColor;
-  padding: 4px 7px;
+.gloss-sc-th, .gloss-sc-td, th, td {
+  border: 1px solid currentColor; padding: 4px 7px;
 }
 
-.gloss-link {
-  color: inherit;
-}
+.gloss-link { color: inherit; }
 
 .gloss-image-link {
-  color: inherit;
-  text-decoration: none;
-  display: inline-block;
-  max-width: 100%;
+  color: inherit; text-decoration: none; display: inline-block; max-width: 100%;
 }
 
 .gloss-image-container {
-  position: relative;
-  display: inline-block;
-  max-width: min(100%, 36em);
-  font-size: 1px;
-  overflow: hidden;
+  position: relative; display: inline-block; max-width: min(100%, 36em); font-size: 1px; overflow: hidden;
 }
 
-.gloss-image-sizer {
-  display: block;
-  width: 100%;
-}
+.gloss-image-sizer { display: block; width: 100%; }
 
 .gloss-image-background {
-  position: absolute;
-  inset: 0;
-  background-color: var(--border);
-  background-image: var(--image);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
+  position: absolute; inset: 0; background-color: var(--border); background-image: var(--image);
+  background-position: center; background-repeat: no-repeat; background-size: contain;
 }
 
 .gloss-image {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; max-height: 8em;
 }
 
-.gloss-image-link[data-background="false"] .gloss-image-background {
-  display: none;
-}
+.gloss-image-link[data-background="false"] .gloss-image-background { display: none; }
+.gloss-image-link[data-appearance=monochrome] .gloss-image { opacity: 0; }
 
-.gloss-image-link[data-appearance=monochrome] .gloss-image {
-  opacity: 0;
-}
-
-/* ── Anki & Audio ────────────────────────────────────────────── */
-.anki-add-btn {
-  width: 26px;
-  height: 26px;
-  border: 1.5px solid var(--border);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--fg);
-  font-weight: bold;
-  margin-left: auto;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.anki-add-btn.anki-added {
-  color: #2ecc71;
-  border-color: #2ecc71;
-}
-
-.word-audio-btn {
+/* ── Icons & Buttons ─────────────────────────────────── */
+.word-audio-btn, .anki-add-btn, .anki-open-btn {
   background: none;
   border: none;
-  font-size: 1.2em;
+  padding: 4px;
+  color: var(--secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+}
+.word-audio-btn:hover, .anki-add-btn:hover, .anki-open-btn:hover {
+  background: var(--hover-bg);
   color: var(--fg);
+}
+.anki-add-btn.anki-added { color: #4CAF50; }
+
+.anki-open-btn {
+  margin-left: 4px;
+}
+
+/* Only constrain SVGs inside icon buttons, not pitch diagrams */
+.word-audio-btn svg, .anki-add-btn svg, .anki-open-btn svg, .dict-arrow svg {
+  display: block; flex-shrink: 0;
+  width: 20px; height: 20px;
+  fill: currentColor;
 }
 
 /* ── Tabs ────────────────────────────────────────────────────── */
 .lookup-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 8px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  overflow-x: auto;
+  display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); background: var(--bg);
+  position: sticky; top: 0; z-index: 10; overflow-x: auto;
 }
 
 .lookup-tab {
-  padding: 4px 12px;
+  padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); font-size: 0.85em; white-space: nowrap;
+  background: transparent; color: var(--fg); cursor: pointer;
+}
+
+.lookup-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.lookup-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Floating Navigation */
+.floating-nav-container {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 2000;
+}
+
+.floating-nav-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s, background 0.2s, transform 0.1s;
+  padding: 0;
+}
+
+.floating-nav-btn:hover {
+  opacity: 0.9;
+}
+
+.floating-nav-btn:active {
+  transform: scale(0.95);
+}
+
+.floating-nav-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+/* Tabs / Navigation */
+.lookup-tabs {
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  transform: translateY(0);
+}
+
+.lookup-tabs.tabs-hidden {
+  transform: translateY(-100%);
+}
+
+.lookup-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.lookup-tab {
+  padding: 6px 14px;
   border-radius: 20px;
   border: 1px solid var(--border);
-  font-size: 0.85em;
-  white-space: nowrap;
+  background: var(--hover-bg);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .lookup-tab.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.lookup-tab.stack-button {
+  background: var(--bg);
+  border-color: var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lookup-tab:active {
+  transform: scale(0.96);
+}
+
+.hoshi-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--secondary);
+  font-style: italic;
 }

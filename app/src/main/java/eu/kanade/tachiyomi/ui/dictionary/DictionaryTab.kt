@@ -240,34 +240,41 @@ data object DictionaryTab : Tab {
                     sessionManager = sessionManager,
                 )
 
-                var existing: Set<String> = emptySet()
-                if (ankiEnabled && lookupResult.results.isNotEmpty()) {
-                    val unique = lookupResult.results.map { it.term.expression }.distinct()
-                    existing = withContext(Dispatchers.IO) {
-                        AnkiCardCreator.checkExistingCards(
-                            context = context,
-                            expressions = unique,
-                            deckName = ankiDeck,
-                            dupScope = ankiDupScope,
-                        )
-                    }
-                }
-
-                val frame = TabLookupFrame(
+                val initialFrame = TabLookupFrame(
                     query = rawQuery,
                     results = lookupResult.results,
                     styles = lookupResult.styles,
                     mediaDataUris = lookupResult.mediaDataUris,
-                    existingExpressions = existing,
+                    existingExpressions = emptySet(),
                 )
-                // Truncate forward history, then push
+                
+                // Truncate forward history, then push initial results IMMEDIATELY
                 while (lookupStack.size > activeTabIndex + 1) lookupStack.removeAt(lookupStack.size - 1)
-                lookupStack.add(frame)
+                lookupStack.add(initialFrame)
                 activeTabIndex = lookupStack.size - 1
 
                 errorMessage = lookupResult.error
                 hasSearched = true
                 isLoading = false
+
+                // Now run Anki check in background without blocking the UI
+                if (ankiEnabled && lookupResult.results.isNotEmpty()) {
+                    val unique = lookupResult.results.map { it.term.expression }.distinct()
+                    scope.launch(Dispatchers.IO) {
+                        val existing = AnkiCardCreator.checkExistingCards(
+                            context = context,
+                            expressions = unique,
+                            deckName = ankiDeck,
+                            dupScope = ankiDupScope,
+                        )
+                        withContext(Dispatchers.Main) {
+                            // Only update if we are still on the same frame
+                            if (activeTabIndex < lookupStack.size && lookupStack[activeTabIndex].query == rawQuery) {
+                                lookupStack[activeTabIndex] = lookupStack[activeTabIndex].copy(existingExpressions = existing)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -282,8 +289,7 @@ data object DictionaryTab : Tab {
                 }
                 return@LaunchedEffect
             }
-            // Debounce for 300ms
-            delay(300)
+            // Debounce removed for instant search
 
             // If we are at the root or typing in the main box, reset history to start a new search
             // (Unless it was already the same query in the current frame)
@@ -302,8 +308,8 @@ data object DictionaryTab : Tab {
         }
 
         // Simple callback for Anki lookup - index maps to results array, glossaryIndex is optional
-        val onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = if (ankiEnabled) {
-            { resultIndex, glossaryIndex, selectedDict, popupSelection ->
+        val onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = if (ankiEnabled) {
+            { resultIndex, glossaryIndex, selectedDict, popupSelection, forceOpen ->
                 val result = results.getOrNull(resultIndex)
                 if (result != null) {
                     scope.launch {
@@ -320,6 +326,7 @@ data object DictionaryTab : Tab {
                             glossaryIndex = glossaryIndex,
                             popupSelection = popupSelection,
                             selectedDict = selectedDict,
+                            forceOpen = forceOpen,
                         )
                         when (ankiResult) {
                             is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
@@ -343,8 +350,28 @@ data object DictionaryTab : Tab {
         }
 
         LaunchedEffect(Unit) {
-            // Mount after first frame so the search field appears immediately,
-            // then keep the WebView warm for the first lookup payload.
+            // Warm up the native session in the background
+            launch(Dispatchers.IO) {
+                val paths = getDictionaryPaths(context, activeProfile)
+                sessionManager.warmUp(paths)
+            }
+            
+            // Pre-load the WebView shell immediately
+            if (retainedWebView == null) {
+                retainedWebView = WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    loadDataWithBaseURL(
+                        "https://hoshi.local/popup/",
+                        getDictionaryBootstrapHtml(context),
+                        "text/html",
+                        "utf-8",
+                        null
+                    )
+                }
+            }
+
+            // Mount after first frame so the search field appears immediately
             yield()
             shouldMountWebView = true
         }
@@ -479,6 +506,7 @@ data object DictionaryTab : Tab {
                     onBack = {
                         if (activeTabIndex > 0) activeTabIndex--
                     },
+                    forceDefaultTheme = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -552,6 +580,20 @@ data object DictionaryTab : Tab {
         private var configuredTermPaths: List<String> = emptyList()
         private var cachedStyles: List<DictionaryStyle> = emptyList()
 
+        fun warmUp(termPaths: List<String>) {
+            val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
+            if (termPaths != configuredTermPaths) {
+                HoshiDicts.rebuildQuery(
+                    session = activeSession,
+                    termPaths = termPaths.toTypedArray(),
+                    freqPaths = termPaths.toTypedArray(),
+                    pitchPaths = termPaths.toTypedArray(),
+                )
+                cachedStyles = HoshiDicts.getStyles(activeSession).toList()
+                configuredTermPaths = termPaths
+            }
+        }
+
         fun lookup(query: String, termPaths: List<String>): LookupUiResult {
             val t0 = SystemClock.elapsedRealtime()
             val ramBefore = currentUsedRamMb()
@@ -566,14 +608,7 @@ data object DictionaryTab : Tab {
 
             if (termPaths != configuredTermPaths) {
                 val rebuildStart = SystemClock.elapsedRealtime()
-                HoshiDicts.rebuildQuery(
-                    session = activeSession,
-                    termPaths = termPaths.toTypedArray(),
-                    freqPaths = termPaths.toTypedArray(),
-                    pitchPaths = termPaths.toTypedArray(),
-                )
-                cachedStyles = HoshiDicts.getStyles(activeSession).toList()
-                configuredTermPaths = termPaths
+                warmUp(termPaths)
                 rebuildMs = SystemClock.elapsedRealtime() - rebuildStart
             }
 

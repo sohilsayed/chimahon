@@ -39,6 +39,27 @@ import androidx.compose.runtime.collectAsState
 class ChimaReaderActivity : NovelReaderActivity() {
     
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
+    private var popupWebView: WebView? = null
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (isPopupActive) {
+            popupWebView?.let { webView ->
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    when (event.keyCode) {
+                        android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                            webView.evaluateJavascript("window.DictionaryRenderer?.navigate(-1);", null)
+                            return true
+                        }
+                        android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                            webView.evaluateJavascript("window.DictionaryRenderer?.navigate(1);", null)
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun handleVolumeKey(forward: Boolean): Boolean {
         if (!readerPreferences.readWithVolumeKeys().get()) {
@@ -137,7 +158,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         // current lookup result isn't destroyed on every keystroke / recompose.
         val externalFilesDir = getExternalFilesDir(null)
         val repo = remember { DictionaryRepository(externalFilesDir) }
-        val webView = remember { WebView(this) }
+        val webView = remember { WebView(this).also { popupWebView = it } }
 
         BackHandler {
             lookupState = null

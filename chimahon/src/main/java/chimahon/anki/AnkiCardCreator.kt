@@ -6,12 +6,12 @@ import chimahon.GlossaryEntry
 import chimahon.LookupResult
 import chimahon.MediaInfo
 import chimahon.PitchEntry
-import org.json.JSONArray
-import org.json.JSONObject
-import chimahon.audio.WordAudioService
 import chimahon.audio.WordAudioResult
+import chimahon.audio.WordAudioService
 import eu.kanade.tachiyomi.network.NetworkHelper
 import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -95,30 +95,30 @@ object Marker {
 
     val ALL: List<String> = listOf(
         // Core/Common
-        EXPRESSION, READING, GLOSSARY, SENTENCE, SCREENSHOT, WORD_AUDIO, 
-        SELECTED_GLOSSARY, SINGLE_GLOSSARY, 
-        
+        EXPRESSION, READING, GLOSSARY, SENTENCE, SCREENSHOT, WORD_AUDIO,
+        SELECTED_GLOSSARY, SINGLE_GLOSSARY,
+
         // Furigana
-        FURIGANA, FURIGANA_PLAIN, 
-        
+        FURIGANA, FURIGANA_PLAIN,
+
         // Glossary variants
         GLOSSARY_BRIEF, GLOSSARY_PLAIN, GLOSSARY_NO_DICT, GLOSSARY_FIRST, GLOSSARY_FIRST_BRIEF,
-        
+
         // Sentence/Cloze
         SENTENCE_BOLD, CLOZE_PREFIX, CLOZE_BODY, CLOZE_BODY_KANA, CLOZE_SUFFIX,
-        
+
         // Pitch Accent
         PITCH_ACCENTS, PITCH_ACCENT_POSITIONS, PITCH_ACCENT_CATEGORIES, PITCH_ACCENT_GRAPHS, PITCH_ACCENT_COMPOSITE, MORAE,
-        
+
         // Frequencies
         FREQUENCIES, FREQUENCY_LOWEST, FREQUENCY_HARMONIC_RANK, FREQUENCY_AVERAGE_RANK,
-        
+
         // Meta
         TAGS, CONJUGATION, DICTIONARY, DICTIONARY_ALIAS,
-        
+
         // Source/Context
         BOOK, CHAPTER, MEDIA, DOCUMENT_TITLE,
-        
+
         // Other
         SENTENCE_AUDIO, POPUP_SELECTION_TEXT,
     )
@@ -207,6 +207,7 @@ object AnkiCardCreator {
         selection: String? = null,
         selectedDict: String? = null,
         popupSelection: String? = null,
+        forceOpen: Boolean = false,
     ): AnkiResult {
         android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, fieldMapJson=$fieldMapJson, glossaryIndex=$glossaryIndex, popupSelection=$popupSelection")
 
@@ -292,6 +293,7 @@ object AnkiCardCreator {
 
                 val existing = bridge.findNotes(result.term.expression, null, targetDeckId)
                 if (existing.isNotEmpty()) {
+                    if (forceOpen) return AnkiResult.OpenCard(existing.first())
                     when (dupAction) {
                         "prevent" -> return AnkiResult.CardExists(existing.first())
                         "open" -> return AnkiResult.OpenCard(existing.first())
@@ -334,7 +336,11 @@ object AnkiCardCreator {
         if (!bridge.hasPermission()) return existing
 
         val targetDeckId = if (dupScope == "deck" && deckName.isNotBlank()) {
-            try { bridge.getDeckId(deckName) } catch (_: Exception) { null }
+            try {
+                bridge.getDeckId(deckName)
+            } catch (_: Exception) {
+                null
+            }
         } else {
             null
         }
@@ -514,7 +520,9 @@ object AnkiCardCreator {
         Marker.FURIGANA_PLAIN -> buildFuriganaPlain(result.term.expression, result.term.reading)
         Marker.GLOSSARY -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
-            brief = false, noDictTag = false, firstOnly = false
+            brief = false,
+            noDictTag = false,
+            firstOnly = false,
         )
         Marker.GLOSSARY_BRIEF -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -542,7 +550,7 @@ object AnkiCardCreator {
         )
         Marker.GLOSSARY_PLAIN -> buildGlossaryPlain(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
-            noDictTag = false
+            noDictTag = false,
         )
         Marker.SENTENCE -> cloze?.let { escapeHtml(it.sentence) } ?: ""
         Marker.SENTENCE_BOLD -> cloze?.let { "${escapeHtml(it.prefix)}<b>${escapeHtml(it.body)}</b>${escapeHtml(it.suffix)}" } ?: ""

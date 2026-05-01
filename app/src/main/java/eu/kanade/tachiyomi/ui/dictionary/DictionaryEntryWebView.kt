@@ -12,14 +12,19 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import chimahon.DictionaryStyle
@@ -33,11 +38,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import chimahon.audio.WordAudioService
-import chimahon.audio.WordAudioResult
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.BuildConfig
+import eu.kanade.domain.ui.model.ThemeMode
+import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.theme.colorscheme.*
+import com.materialkolor.PaletteStyle
+import tachiyomi.presentation.core.util.collectAsState
 
 private const val ANKI_SCHEME = "anki"
 private const val ANKI_PATH_ADD = "add"
+private const val ANKI_PATH_OPEN = "open"
 
 private const val HOSHI_SCHEME = "hoshi"
 private const val HOSHI_HOST_LOOKUP = "lookup"
@@ -73,15 +84,26 @@ fun DictionaryEntryWebView(
     onRecursiveLookup: ((String) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    forceDefaultTheme: Boolean = false,
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-    val isDark = colorScheme.surface.luminance() < 0.5f
+    val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+    val amoled by dictionaryPreferences.themeDarkAmoled().collectAsState()
+    val customColor by dictionaryPreferences.customColor().collectAsState()
+
     val context = LocalContext.current
-    val accentHex = "#%06X".format(0xFFFFFF and colorScheme.primary.toArgb())
-    val onAccentHex = "#%06X".format(0xFFFFFF and colorScheme.onPrimary.toArgb())
-    val fgHex = "#%06X".format(0xFFFFFF and colorScheme.onSurface.toArgb())
-    val bgHex = "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
-    val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outline.toArgb())
+    val uiPreferences = remember { Injekt.get<UiPreferences>() }
+    val seedColor = if (customColor == 0 || forceDefaultTheme) uiPreferences.colorTheme().get() else customColor
+
+    val systemIsDark = isSystemInDarkTheme()
+    val isDark = remember(seedColor, customColor, systemIsDark) {
+        if (customColor != 0) Color(seedColor).luminance() < 0.5f else systemIsDark
+    }
+    val colorScheme = remember(isDark, amoled, seedColor) {
+        getDictionaryColorScheme(isDark, amoled, seedColor)
+    }
+    val BgColor = remember(isDark, amoled, seedColor, colorScheme) {
+        if (amoled && isDark) Color.Black else colorScheme.surface
+    }
 
     val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode, wordAudioEnabled) {
         val buildStart = SystemClock.elapsedRealtime()
@@ -90,6 +112,9 @@ fun DictionaryEntryWebView(
             context, results, styles, mediaDataUris, placeholder, isDark,
             showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
             prefs.wordAudioAutoplay().get(), activeProfile, existingExpressions, tabs, recursiveNavMode,
+            onAnkiLookup = { index, glossary, selectedDict, popupSelection, forceOpen ->
+                state.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, forceOpen)
+            },
             wordAudioEnabled = wordAudioEnabled,
         )
         Log.i(
@@ -99,14 +124,17 @@ fun DictionaryEntryWebView(
         result
     }
 
-    AndroidView<WebView>(
-        factory = { ctx: Context ->
+    Box(modifier = modifier.background(BgColor)) {
+        AndroidView<WebView>(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx: Context ->
             val webView = webViewProvider?.invoke(ctx) ?: WebView(ctx)
 
             if (webView.tag == null) {
                 val state = DictionaryWebViewState(ctx, webViewProvider = { webView })
                 webView.apply {
-                    setBackgroundColor(0x00000000)
+                    alpha = 0f
+                    setBackgroundColor(BgColor.toArgb())
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.loadsImagesAutomatically = true
@@ -118,6 +146,13 @@ fun DictionaryEntryWebView(
                     settings.displayZoomControls = false
                     isVerticalScrollBarEnabled = false
                     isHorizontalScrollBarEnabled = false
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        settings.forceDark = WebSettings.FORCE_DARK_OFF
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        settings.isAlgorithmicDarkeningAllowed = false
+                    }
 
                     disableSafeBrowsingForDictionary(this)
 
@@ -154,15 +189,16 @@ fun DictionaryEntryWebView(
                                 return true // consume any unknown hoshi:// URLs
                             }
 
-                            // ── anki://add — Anki card creation ──
-                            if (url.scheme == ANKI_SCHEME && url.host == ANKI_PATH_ADD) {
+                            // ── anki://add or anki://open ──
+                            if (url.scheme == ANKI_SCHEME && (url.host == ANKI_PATH_ADD || url.host == ANKI_PATH_OPEN)) {
+                                val forceOpen = url.host == ANKI_PATH_OPEN
                                 val index = url.getQueryParameter("index")?.toIntOrNull()
                                 val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
                                 val selectedDict = url.getQueryParameter("selected_dict")
                                 val popupSelection = url.getQueryParameter("popup_selection")
                                 if (index != null && index >= 0) {
-                                    android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: index=$index, glossary=$glossary, selectedDict=$selectedDict, popupSelection=$popupSelection")
-                                    s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection)
+                                    android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: index=$index, forceOpen=$forceOpen, glossary=$glossary, selectedDict=$selectedDict, popupSelection=$popupSelection")
+                                    s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, forceOpen)
                                 }
                                 return true // Consumed
                             }
@@ -189,6 +225,19 @@ fun DictionaryEntryWebView(
                                             url += "&popup_selection=" + encodeURIComponent(popupSelection);
                                         }
                                         window.location.href = url;
+                                    },
+                                    openInAnki: function(index, glossary, selectedDict, popupSelection) {
+                                        var url = "anki://open?index=" + index;
+                                        if (glossary !== undefined && glossary !== null) {
+                                            url += "&glossary=" + glossary;
+                                        }
+                                        if (selectedDict) {
+                                            url += "&selected_dict=" + encodeURIComponent(selectedDict);
+                                        }
+                                        if (popupSelection) {
+                                            url += "&popup_selection=" + encodeURIComponent(popupSelection);
+                                        }
+                                        window.location.href = url;
                                     }
                                 };
                                 window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled(true);
@@ -202,6 +251,7 @@ fun DictionaryEntryWebView(
                                 """.trimIndent(),
                                 null,
                             )
+                            view.alpha = 1f
                             s.flush(view)
                             s.injectCustomCss(view)
                         }
@@ -211,7 +261,7 @@ fun DictionaryEntryWebView(
 
                     loadDataWithBaseURL(
                         "https://dictionary.local/",
-                        getDictionaryBootstrapHtml(ctx),
+                        getDictionaryBootstrapHtml(ctx, colorScheme, isDark, seedColor, amoled),
                         "text/html",
                         "utf-8",
                         null,
@@ -226,6 +276,22 @@ fun DictionaryEntryWebView(
             webView.requestFocus()
             webView.setOnLongClickListener { false }
 
+            webView.setOnKeyListener { v, keyCode, event ->
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    when (keyCode) {
+                        android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                            (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(-1);", null)
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                            (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(1);", null)
+                            true
+                        }
+                        else -> false
+                    }
+                } else false
+            }
+
             webView
         },
         update = { webView: WebView ->
@@ -237,24 +303,9 @@ fun DictionaryEntryWebView(
             state.fontSize = fontSize
             state.pendingPayload = payload
 
-            val theme = if (isDark) "dark" else "light"
-            val secondaryHex = "#%06X".format(0xFFFFFF and colorScheme.onSurfaceVariant.toArgb())
-            val hoverHex = "#%06X".format(0xFFFFFF and colorScheme.surfaceVariant.toArgb())
-
-            webView.evaluateJavascript(
-                "(function(r) {" +
-                    "r.dataset.theme = '$theme';" +
-                    "r.dataset.pageType = 'popup';" +
-                    "r.style.setProperty('--accent', '$accentHex');" +
-                    "r.style.setProperty('--on-accent', '$onAccentHex');" +
-                    "r.style.setProperty('--fg-dynamic', '$fgHex');" +
-                    "r.style.setProperty('--bg-dynamic', '$bgHex');" +
-                    "r.style.setProperty('--secondary-dynamic', '$secondaryHex');" +
-                    "r.style.setProperty('--border-dynamic', '$borderHex');" +
-                    "r.style.setProperty('--hover-bg-dynamic', '$hoverHex');" +
-                    "})(document.documentElement);",
-                null,
-            )
+            // Theme is completely static to the WebView based on data-theme attribute.
+            
+            webView.setBackgroundColor(BgColor.toArgb())
 
             // Set base font size
             webView.evaluateJavascript(
@@ -264,18 +315,12 @@ fun DictionaryEntryWebView(
                     "document.body.style.fontSize = v;" +
                     "document.documentElement.style.transform = 'none';" +
                     "document.documentElement.style.transformOrigin = 'top left';" +
+                    "document.documentElement.dataset.pageType = 'popup';" +
+                    "document.documentElement.dataset.theme = '${if (isDark) "dark" else "light"}';" +
                     "})('$fontSize');",
                 null,
             )
 
-            if (headerText.isNotEmpty()) {
-                val escapedHeader = org.json.JSONObject.quote(headerText.take(20))
-                webView.evaluateJavascript(
-                    "window.DictionaryRenderer && window.DictionaryRenderer.renderHeader($escapedHeader);",
-                    null,
-                )
-            }
-            
             state.customCss = customCss
             if (state.pageReady) {
                 state.injectCustomCss(webView)
@@ -289,8 +334,8 @@ fun DictionaryEntryWebView(
 
             webView.evaluateJavascript("window.DictionaryRenderer?.clear();", null)
         },
-        modifier = modifier,
     )
+    }
 }
 
 // JavaScript bridge for zero-overhead payload transfer
@@ -390,7 +435,7 @@ private class DictionaryWebViewState(
     val wordAudioBridge: WordAudioBridge = WordAudioBridge(context, webViewProvider)
     var pageReady: Boolean = false
     var fontSize: Int = 16
-    var onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = null
+    var onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null
     var onRecursiveLookup: ((String) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
@@ -476,6 +521,7 @@ private fun buildRenderPayload(
         w.endArray()
 
         w.name("ankiEnabled").value(activeProfile.ankiEnabled)
+        w.name("ankiDupAction").value(activeProfile.ankiDupAction)
 
         w.name("placeholder").value(placeholder)
         w.name("isDark").value(isDark)
@@ -617,39 +663,98 @@ private fun disableSafeBrowsingForDictionary(webView: WebView) {
 }
 
 @Volatile
-private var dictionaryBootstrapHtmlCache: String? = null
-private val dictionaryBootstrapHtmlLock = Any()
+private var dictionaryCssCache: String? = null
+@Volatile
+private var dictionaryJsCache: String? = null
+private val dictionaryAssetLock = Any()
 
-internal fun getDictionaryBootstrapHtml(context: Context): String {
-    dictionaryBootstrapHtmlCache?.let { return it }
-
-    synchronized(dictionaryBootstrapHtmlLock) {
-        dictionaryBootstrapHtmlCache?.let { return it }
-
-        val css = readTextAsset(context, "dictionary/base.css")
-        val js = readTextAsset(context, "dictionary/renderer.js")
-            .replace("</script", "<\\/script")
-
-        val html = """
-            <!doctype html>
-            <html data-theme="light">
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width,initial-scale=1.0">
-              <style>$css</style>
-              <style id="dictionary-styles"></style>
-              <style id="hoshi-custom-css"></style>
-            </head>
-            <body>
-              <main id="entries" class="entries"></main>
-              <script>$js</script>
-            </body>
-            </html>
-        """.trimIndent()
-
-        dictionaryBootstrapHtmlCache = html
-        return html
+internal fun getDictionaryBootstrapHtml(
+    context: Context,
+    colorScheme: androidx.compose.material3.ColorScheme? = null,
+    isDark: Boolean? = null,
+    seedColor: Int? = null,
+    isAmoled: Boolean = false,
+): String {
+    var css = ""
+    var js = ""
+    
+    if (!BuildConfig.DEBUG) {
+        synchronized(dictionaryAssetLock) {
+            if (dictionaryCssCache == null) {
+                dictionaryCssCache = readDictionaryAsset(context, "base.css")
+                dictionaryJsCache = readDictionaryAsset(context, "renderer.js").replace("</script", "<\\/script")
+            }
+            css = dictionaryCssCache!!
+            js = dictionaryJsCache!!
+        }
+    } else {
+        css = readDictionaryAsset(context, "base.css")
+        js = readDictionaryAsset(context, "renderer.js").replace("</script", "<\\/script")
     }
+
+    val dynamicThemeCss = if (colorScheme != null) {
+        val accentHex = "#%06X".format(0xFFFFFF and colorScheme.primary.toArgb())
+        val onAccentHex = "#%06X".format(0xFFFFFF and colorScheme.onPrimary.toArgb())
+        val fgHex = "#%06X".format(0xFFFFFF and colorScheme.onSurface.toArgb())
+        val bgHex = if (isAmoled && isDark == true) {
+            "#000000"
+        } else {
+            "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
+        }
+        val secondaryHex = "#%06X".format(0xFFFFFF and colorScheme.onSurfaceVariant.toArgb())
+        val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outlineVariant.toArgb())
+        val hoverHex = "#%06X".format(0xFFFFFF and colorScheme.surfaceVariant.toArgb())
+        """
+          <style id="dynamic-theme">
+            :root, :root[data-theme="dark"], :root[data-theme="light"] {
+                --accent: $accentHex;
+                --on-accent: $onAccentHex;
+                --fg: $fgHex;
+                --bg: $bgHex;
+                --secondary: $secondaryHex;
+                --border: $borderHex;
+                --hover-bg: $hoverHex;
+                --pronunciation-annotation-color: $fgHex;
+            }
+          </style>
+        """
+    } else ""
+    
+    val themeAttr = if (isDark == true) "dark" else "light"
+
+    return """
+        <!doctype html>
+        <html data-theme="$themeAttr">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1.0">
+          <style>${"$css"}</style>${"$dynamicThemeCss"}
+          <style id="dictionary-styles"></style>
+          <style id="hoshi-custom-css"></style>
+        </head>
+        <body>
+          <main id="entries" class="entries"></main>
+          <script>${"$js"}</script>
+        </body>
+        </html>
+    """.trimIndent()
+}
+
+private fun readDictionaryAsset(context: Context, filename: String): String {
+    // In debug mode, try loading from external debug directory first
+    if (BuildConfig.DEBUG) {
+        val debugDir = File(context.getExternalFilesDir(null), "debug/dictionary")
+        val debugFile = File(debugDir, filename)
+        if (debugFile.exists()) {
+            try {
+                Log.i("DictionaryRender", "Loaded $filename from debug directory")
+                return debugFile.readText(StandardCharsets.UTF_8)
+            } catch (e: Exception) {
+                Log.e("DictionaryRender", "Failed to read debug $filename", e)
+            }
+        }
+    }
+    return readTextAsset(context, "dictionary/$filename")
 }
 
 private fun readTextAsset(context: Context, assetPath: String): String {
@@ -674,4 +779,17 @@ private fun getDictionaryTitle(context: Context, dirName: String): String {
             dirName
         }
     }
+}
+
+fun getDictionaryColorScheme(
+    isDark: Boolean,
+    isAmoled: Boolean,
+    seedColor: Int,
+): ColorScheme {
+    val uiPreferences = Injekt.get<UiPreferences>()
+    val baseScheme = CustomColorScheme(
+        seed = Color(seedColor),
+        style = PaletteStyle.TonalSpot // Low-key, subtle gradient
+    )
+    return baseScheme.getColorScheme(isDark, isAmoled, false)
 }

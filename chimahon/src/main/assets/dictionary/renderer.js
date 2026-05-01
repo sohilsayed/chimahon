@@ -14,6 +14,7 @@
   let _selectedDictionaries = {}; // entryIndex -> dictName
   let _wordAudioEnabled = true;
   let _listenersInstalled = false;
+  let _lastAnkiDupAction = -1; // -1 = unknown/not set
   const HAS_NATIVE_SCOPE = (() => {
     try {
       if (!window.CSS || !CSS.supports) return false;
@@ -71,9 +72,40 @@
     return new TextDecoder('utf-8').decode(bytes);
   }
 
-  function sanitizeDictionaryStyles(cssText) {
+  function sanitizeDictionaryStyles(cssText, dictName) {
     if (!cssText || typeof cssText !== 'string') return '';
-    return cssText;
+    let processed = cssText;
+
+    // 1. Cap excessive margins/padding (e.g., 2em -> 0.5em)
+    // Many dictionaries designed for full-screen web views use margins that are too large for mobile popups.
+    processed = processed.replace(/(margin-left|padding-left)\s*:\s*([^;!\}]+?)\s*(!important)?\s*;/gi, (match, prop, val, imp) => {
+      const num = parseFloat(val);
+      if (isNaN(num)) return match;
+      
+      if (num > 0.8 && (val.includes('em') || val.includes('rem'))) {
+        return `${prop}: 0.5em ${imp || ''};`;
+      }
+      if (num > 12 && val.includes('px')) {
+        return `${prop}: 8px ${imp || ''};`;
+      }
+      return match;
+    });
+
+    // 2. Scale down huge headlines (2em -> 1.4em)
+    processed = processed.replace(/(font-size)\s*:\s*([^;!\}]+?)\s*(!important)?\s*;/gi, (match, prop, val, imp) => {
+      const num = parseFloat(val);
+      if (isNaN(num)) return match;
+
+      if (num > 1.6 && (val.includes('em') || val.includes('rem'))) {
+        return `${prop}: 1.4em ${imp || ''};`;
+      }
+      return match;
+    });
+    
+    // 3. Fix potential body tag leaks
+    processed = processed.replace(/^\s*body\s*\{/gm, '.dict-content-root {');
+
+    return processed;
   }
 
   function splitSelectorList(selectorText) {
@@ -378,7 +410,7 @@
 
     for (const styleEntry of stylesPayload) {
       if (typeof styleEntry === 'string') {
-        const legacyCss = sanitizeDictionaryStyles(styleEntry);
+        const legacyCss = sanitizeDictionaryStyles(styleEntry, 'Legacy');
         if (legacyCss) {
           parts.push(legacyCss);
           debugLog('buildScopedDictionaryCss.legacy', {
@@ -392,7 +424,7 @@
 
       const dictName = typeof styleEntry.dictName === 'string' ? styleEntry.dictName : '';
       const rawCss = typeof styleEntry.styles === 'string' ? styleEntry.styles : '';
-      const css = sanitizeDictionaryStyles(rawCss);
+      const css = sanitizeDictionaryStyles(rawCss, dictName);
       if (!dictName || !css) continue;
 
       const escapedName = dictName.replace(/"/g, '\\"');
@@ -644,11 +676,11 @@
 
   let _tabs = [];          // [{label, active}]
   let _tabsEl = null;      // the .lookup-tabs DOM node
+  const _scrollPositions = new Map(); // 'navMode-activeIndex' -> scrollTop
 
   function getOrCreateTabsEl() {
-    if (_tabsEl && _tabsEl.parentElement) return _tabsEl;
+    if (_tabsEl) return _tabsEl;
     _tabsEl = document.createElement('div');
-    _tabsEl.id = 'lookup-tabs';
     _tabsEl.className = 'lookup-tabs';
     return _tabsEl;
   }
@@ -656,35 +688,28 @@
   let _navMode = 'tabs';
 
   function renderTabBar(tabs, navMode) {
-    if (navMode) _navMode = navMode;
-    _tabs = Array.isArray(tabs) ? tabs : [];
     const container = document.getElementById('entries');
     if (!container) return;
 
-    if (_tabs.length <= 1) {
-      // Hide / remove the tab bar when there is only one (or zero) entries
-      if (_tabsEl && _tabsEl.parentElement) _tabsEl.remove();
-      return;
-    }
+    // Find the index of the currently active tab from the CURRENT tabs array (not stale _tabs)
+    const activeIndex = tabs.findIndex(t => t.active);
 
     const el = getOrCreateTabsEl();
     el.textContent = '';
+    el.className = 'lookup-tabs';
 
     if (_navMode === 'stack') {
-      const btn = document.createElement('button');
-      btn.className = 'lookup-tab stack-button';
-      btn.title = 'Back';
-      
-      const label = document.createElement('span');
-      label.textContent = '← Back';
-      btn.appendChild(label);
-      
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        navigateTo('hoshi://back');
-      };
-      
-      el.appendChild(btn);
+      if (activeIndex > 0) {
+        const btn = document.createElement('button');
+        btn.className = 'lookup-tab stack-button';
+        btn.title = 'Back';
+        btn.innerHTML = '<span>← Back</span>';
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          navigateTo('hoshi://back');
+        };
+        el.appendChild(btn);
+      }
     } else {
       _tabs.forEach((tab, i) => {
         const btn = document.createElement('button');
@@ -693,37 +718,43 @@
         btn.setAttribute('data-tab-index', String(i));
 
         const label = document.createElement('span');
-        label.textContent = tab.label.length > 12 ? tab.label.slice(0, 12) + '…' : tab.label;
+        label.textContent = tab.label.length > 20 ? tab.label.slice(0, 20) + '…' : tab.label;
         btn.appendChild(label);
 
         if (!tab.active) {
-          // Show a small × to indicate the tab is closeable / navigatable
           btn.onclick = (e) => {
             e.stopPropagation();
             navigateTo('hoshi://tab?index=' + i);
           };
         }
-
         el.appendChild(btn);
       });
     }
 
-    // Prepend tab bar before first non-tab child
     if (!el.parentElement) {
       container.insertBefore(el, container.firstChild);
     }
 
-    // Auto-scroll the active tab into view
-    requestAnimationFrame(() => {
-      const activeBtn = el.querySelector('.lookup-tab.active');
-      if (activeBtn) activeBtn.scrollIntoView({block: 'nearest', inline: 'center', behavior: 'smooth'});
-    });
+    if (activeIndex >= 0) {
+      setTimeout(() => {
+        const activeBtn = el.querySelector(`[data-tab-index="${activeIndex}"]`);
+        if (activeBtn) {
+          activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      }, 100);
+    }
   }
 
   // ── Navigation helper ─────────────────────────────────────────────────────
 
   function navigateTo(url) {
-    // Using location.href is the most reliable way to fire shouldOverrideUrlLoading
+    // Proactively save scroll position before navigating
+    const activeIndex = _tabs.findIndex(t => t.active);
+    if (activeIndex >= 0) {
+      const scrollKey = (_navMode || 'tabs') + '-' + activeIndex;
+      _scrollPositions.set(scrollKey, window.scrollY);
+      debugLog('navigateTo.saveScroll', {key: scrollKey, y: window.scrollY});
+    }
     window.location.href = url;
   }
 
@@ -746,7 +777,7 @@
       // Skip interactive controls — buttons, dict tags, inflection toggles, etc.
       const target = e.target;
       if (!target) return;
-      if (target.closest('button, .anki-add-btn, .lookup-tab, .inflection-toggle, .tag')) return;
+      if (target.closest('button, .anki-add-btn, .lookup-tab, .inflection-toggle, .tag, .dictionary-header')) return;
 
       const word = extractTextAtPoint(e.clientX, e.clientY);
       if (!word) return;
@@ -1334,42 +1365,60 @@
     return headword;
   }
 
-  function appendInflectionSection(body, rules, process) {
-    if (!process) return;
+  function createDeinflectionRow(process, rules) {
+    if (!process || !Array.isArray(process) || process.length === 0) return null;
 
-    const container = document.createElement('div');
-    container.className = 'inflection-toggle';
+    const row = document.createElement('div');
+    row.className = 'entry-deinflection-row';
+    
+    // Clean process: "name: description" -> "name"
+    const cleanProcess = process.map(p => {
+      const colonIdx = p.indexOf(': ');
+      return colonIdx !== -1 ? p.substring(0, colonIdx) : p;
+    });
 
-    const toggle = document.createElement('span');
-    toggle.className = 'inflection-toggle-label';
-    toggle.textContent = 'Deinflection ▸';
-    container.appendChild(toggle);
+    const label = document.createElement('span');
+    label.className = 'deinflection-label';
+    // Show the chain of clean rules like Yomitan
+    label.textContent = '« ' + cleanProcess.join(' « ');
+    row.appendChild(label);
 
     const details = document.createElement('div');
     details.className = 'inflection-details';
     details.style.display = 'none';
-    const chains = document.createElement('ul');
-    chains.className = 'inflection-rule-chains';
-    const li = document.createElement('li');
-    li.textContent = process;
-    chains.appendChild(li);
-    details.appendChild(chains);
+    
+    // In details, show full info including rules and descriptions
+    const fullProcess = process.join('\n');
+    const cleanRules = rules ? [...new Set(rules.split(/\s+/))].join(' ') : '';
+    const text = cleanRules ? `${cleanRules}\n${fullProcess}` : fullProcess;
+    details.textContent = text;
 
     let expanded = false;
-    container.onclick = () => {
+    row.onclick = (e) => {
+      e.stopPropagation();
       expanded = !expanded;
       details.style.display = expanded ? 'block' : 'none';
-      toggle.textContent = expanded ? 'Deinflection ▾' : 'Deinflection ▸';
+      // No longer need to toggle textContent as the label itself is the data
     };
 
-    container.appendChild(details);
-    body.appendChild(container);
+    return { row, details };
   }
+
+  const ICONS = {
+    volume_up: '<svg viewBox="0 0 24 24" width="20" height="24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>',
+    add_circle: '<svg viewBox="0 0 24 24" width="20" height="24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v5h-2v-5H7v-2h4V7h2v4h4v2z"/></svg>',
+    check_circle: '<svg viewBox="0 0 24 24" width="20" height="24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>',
+    expand_more: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>',
+    menu_book: '<svg viewBox="0 0 24 24" width="20" height="24" fill="currentColor"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5-1.95 0-4.05.4-5.5 1.5v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 18.55 5.05 18 7 18c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.1-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V5c-.65-.45-1.35-.75-2-.9zM3 18.5V7c1.1-.35 2.3-.5 3.5-.5 1.34 0 2.7.24 3.5.7v11.3c-.8-.46-2.16-.7-3.5-.7-1.2 0-2.4.15-3.5.5zm18 0c-1.1-.35-2.3-.5-3.5-.5-1.34 0-2.7.24-3.5.7V7.2c.8-.46 2.16-.7 3.5-.7 1.2 0 2.4.15 3.5.5v11.5z"/></svg>',
+    arrow_upward: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>',
+    arrow_downward: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>',
+    arrow_back: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>'
+  };
 
   function createAudioButton(expression, reading) {
     const audioBtn = document.createElement('button');
     audioBtn.className = 'word-audio-btn';
-    audioBtn.textContent = '🔊';
+    audioBtn.innerHTML = ICONS.volume_up;
     audioBtn.title = 'Play Word Audio';
     audioBtn.dataset.expression = expression;
     audioBtn.dataset.reading = reading;
@@ -1401,58 +1450,6 @@
   function appendDefinitionsSection(body, glossaries, mediaMap, group) {
     if (!glossaries || glossaries.length === 0) return;
 
-    if (!group) {
-        // FLAT LIST (Ungrouped)
-        const defSection = document.createElement('div');
-        defSection.className = 'entry-body-section';
-        const ol = document.createElement('ol');
-        ol.className = 'definition-list';
-        ol.dataset.count = String(glossaries.length);
-        
-        glossaries.forEach(gloss => {
-            const li = document.createElement('li');
-            li.className = 'definition-item ungrouped-item';
-            
-            const content = document.createElement('div');
-            content.className = 'definition-item-content';
-            
-            const tagList = document.createElement('div');
-            tagList.className = 'definition-tag-list';
-            if (gloss.dictName) {
-              const dictTag = createTag(gloss.dictName, 'dictionary');
-              dictTag.style.cursor = 'pointer';
-              dictTag.onclick = (e) => {
-                e.stopPropagation();
-                const entryIdx = li.closest('article').dataset.index;
-                const current = _selectedDictionaries[entryIdx];
-                li.closest('article').querySelectorAll('.tag[data-category="dictionary"]').forEach(t => t.classList.remove('selected'));
-                if (current === gloss.dictName) {
-                  delete _selectedDictionaries[entryIdx];
-                } else {
-                  _selectedDictionaries[entryIdx] = gloss.dictName;
-                  dictTag.classList.add('selected');
-                }
-              };
-              tagList.appendChild(dictTag);
-            }
-            if (gloss.definitionTags) {
-                gloss.definitionTags.split(/\s+/).forEach(t => { if(t) tagList.appendChild(createTag(t)); });
-            }
-            content.appendChild(tagList);
-
-            const glossContainer = document.createElement('div');
-            glossContainer.className = 'gloss-content';
-            glossContainer.appendChild(buildGlossaryNode(String(gloss.glossary || ''), gloss.dictName, mediaMap));
-            content.appendChild(glossContainer);
-            li.appendChild(content);
-            ol.appendChild(li);
-        });
-        defSection.appendChild(ol);
-        body.appendChild(defSection);
-        return;
-    }
-
-    // GROUPED BY DICTIONARY
     const groups = new Map();
     glossaries.forEach((gloss) => {
       const name = gloss.dictName || 'Unknown';
@@ -1462,44 +1459,65 @@
 
     for (const [dictName, dictGlossaries] of groups) {
       const dictSection = document.createElement('div');
-      dictSection.className = 'entry-body-section dictionary-group';
+      dictSection.className = 'dictionary-group';
       dictSection.dataset.dictionary = dictName;
+      dictSection.dataset.collapsed = "false";
 
       const dictHeader = document.createElement('div');
       dictHeader.className = 'dictionary-header';
-      if (dictName) {
-        const dictTag = createTag(dictName, 'dictionary');
-        dictTag.style.cursor = 'pointer';
-        dictTag.onclick = (e) => {
-          e.stopPropagation();
-          const entryIdx = dictSection.closest('article').dataset.index;
+      
+      const arrow = document.createElement('span');
+      arrow.className = 'dict-arrow';
+      arrow.innerHTML = ICONS.expand_more;
+      dictHeader.appendChild(arrow);
+
+      const label = document.createElement('span');
+      label.className = 'dict-name-label';
+      label.textContent = dictName;
+      dictHeader.appendChild(label);
+
+      let _collapseTogglePending = false;
+      dictHeader.onclick = (e) => {
+        e.stopPropagation(); // Prevent recursive lookup on header click
+        // Long-press (handled by pointerdown timer) sets this flag to select dict
+        // Short tap toggles collapse
+        if (_collapseTogglePending) { _collapseTogglePending = false; return; }
+        const isCollapsed = dictSection.dataset.collapsed === 'true';
+        dictSection.dataset.collapsed = String(!isCollapsed);
+      };
+
+      // Long-press to select dictionary for Anki export (preserved from original)
+      let _pressTimer = null;
+      dictHeader.addEventListener('pointerdown', () => {
+        _pressTimer = setTimeout(() => {
+          _collapseTogglePending = true;
+          const entryArticle = dictSection.closest('article');
+          const entryIdx = entryArticle ? entryArticle.dataset.index : null;
+          if (entryIdx == null) return;
+          // Deselect all dict headers in this entry
+          entryArticle.querySelectorAll('.dictionary-header').forEach(h => h.classList.remove('selected'));
           const current = _selectedDictionaries[entryIdx];
-          dictSection.closest('article').querySelectorAll('.tag[data-category="dictionary"]').forEach(t => t.classList.remove('selected'));
           if (current === dictName) {
             delete _selectedDictionaries[entryIdx];
           } else {
             _selectedDictionaries[entryIdx] = dictName;
-            dictTag.classList.add('selected');
+            dictHeader.classList.add('selected');
           }
-        };
-        dictHeader.appendChild(dictTag);
-      }
+        }, 400);
+      });
+      const cancelPress = () => { clearTimeout(_pressTimer); };
+      dictHeader.addEventListener('pointerup', cancelPress);
+      dictHeader.addEventListener('pointercancel', cancelPress);
       
-      if (dictGlossaries[0].termTags) {
-        dictGlossaries[0].termTags.split(/\s+/).forEach(t => {
-          if (t) dictHeader.appendChild(createTag(t));
-        });
-      }
       dictSection.appendChild(dictHeader);
 
       const ol = document.createElement('ol');
-      ol.className = 'definition-list entry-body-section-content'; // Added alias for masonry CSS
+      ol.className = 'definition-list';
       ol.dataset.count = String(dictGlossaries.length);
 
       dictGlossaries.forEach((gloss) => {
         const li = document.createElement('li');
         li.className = 'definition-item';
-        li.dataset.dictionary = dictName; // Added for colorizer compatibility
         
         const content = document.createElement('div');
         content.className = 'definition-item-content';
@@ -1943,7 +1961,7 @@
     }
   }
 
-  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms) {
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms, ankiDupAction) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
@@ -1973,7 +1991,7 @@
       // Check if expression is already in Anki (from payload)
       const isAlreadyAdded = existingSet.includes(expression);
       ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
-      ankiBtn.textContent = isAlreadyAdded ? '✓' : '+';
+      ankiBtn.innerHTML = isAlreadyAdded ? ICONS.check_circle : ICONS.add_circle;
       ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
       ankiBtn.setAttribute('data-index', String(result.index || 0));
       ankiBtn.setAttribute('data-expression', expression);
@@ -1988,7 +2006,31 @@
           AnkiBridge.addToAnki(entryIdx, '-1', selectedDict, selection);
         }
       };
-      headSection.appendChild(ankiBtn);
+
+      // Only show the add/check button if it's NOT a duplicate OR if the user wants to update/add-anyway.
+      // If it's a duplicate and action is "Don't add" (0 or 'prevent'), we only show the book icon below.
+      if (!isAlreadyAdded || (ankiDupAction !== 0 && ankiDupAction !== 'prevent')) {
+        headSection.appendChild(ankiBtn);
+      }
+
+      // Add "Open in Anki" book icon if the card exists (Yomitan style)
+      if (isAlreadyAdded) {
+        const bookBtn = document.createElement('button');
+        bookBtn.className = 'anki-open-btn';
+        bookBtn.innerHTML = ICONS.menu_book;
+        bookBtn.title = 'Open in Anki';
+        bookBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (typeof AnkiBridge !== 'undefined') {
+            const entryIdx = ankiBtn.getAttribute('data-index');
+            const selectedDict = _selectedDictionaries[entryIdx] || '';
+            const selection = _lastSelection || window.getSelection().toString();
+            // Use openInAnki specifically to ensure we open the card regardless of dupAction
+            AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
+          }
+        };
+        headSection.appendChild(bookBtn);
+      }
     }
     
     if (_wordAudioEnabled) {
@@ -1997,12 +2039,14 @@
 
     body.appendChild(headSection);
 
+    const deinflection = createDeinflectionRow(result.process, result.term ? result.term.rules : '');
+    if (deinflection) {
+      body.appendChild(deinflection.row);
+      body.appendChild(deinflection.details);
+    }
+
     const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
     appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
-
-    const rules = result.term && result.term.rules ? result.term.rules : '';
-    const process = Array.isArray(result.process) ? result.process.join(' -> ') : '';
-    appendInflectionSection(body, rules, process);
 
     const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
     appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
@@ -2013,10 +2057,10 @@
     return article;
   }
 
-  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText) {
+  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, ankiDupAction) {
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
     if (glossaries.length === 0) {
-      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false)];
+      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction)];
     }
 
     return glossaries.map((gloss) => {
@@ -2025,145 +2069,211 @@
           glossaries: [gloss]
         })
       });
-      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false);
+      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction);
     });
   }
 
   function renderHeader(text) {
-    if (!text) return;
-    const container = document.getElementById('entries');
-    if (!container) return;
-    const existing = container.querySelector('.popup-header');
-    if (existing) {
-      existing.textContent = text;
-      return;
+    // Disabled per user request - header will not render
+    return;
+  }
+
+  function renderFloatingNav() {
+    let container = document.getElementById('floating-nav');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'floating-nav';
+      container.className = 'floating-nav-container';
+      
+      const upBtn = document.createElement('button');
+      upBtn.className = 'floating-nav-btn';
+      upBtn.innerHTML = ICONS.arrow_upward;
+      upBtn.onclick = () => window.DictionaryRenderer.navigate(-1);
+
+      const downBtn = document.createElement('button');
+      downBtn.className = 'floating-nav-btn';
+      downBtn.innerHTML = ICONS.arrow_downward;
+      downBtn.onclick = () => window.DictionaryRenderer.navigate(1);
+
+      container.appendChild(upBtn);
+      container.appendChild(downBtn);
+      document.body.appendChild(container);
     }
-    const header = document.createElement('div');
-    header.className = 'popup-header';
-    header.textContent = text;
-    container.insertBefore(header, container.firstChild);
   }
 
   function render(payload) {
-    console.log('[DictionaryRenderJS] render called, payload type:', typeof payload, 'keys:', payload ? Object.keys(payload).join(',') : 'null');
-    
-    if (!payload || typeof payload !== 'object') {
-      console.error('[DictionaryRenderJS] render: invalid payload:', payload);
-      return;
-    }
-    
-    const started = performance.now();
-    const root = document.documentElement;
-    root.setAttribute('data-theme', payload.isDark ? 'dark' : 'light');
-    _wordAudioEnabled = payload.wordAudioEnabled !== false;
-
-    debugLog('render.start', {
-      isDark: !!payload.isDark,
-      styles: Array.isArray(payload.styles) ? payload.styles.length : 0,
-      results: Array.isArray(payload.results) ? payload.results.length : 0
-    });
-
-    const styleNode = document.getElementById('dictionary-styles');
-    if (styleNode) {
-      const stylesPayload = Array.isArray(payload.styles) ? payload.styles : [];
-
-      // Create a cache key based on dict names and CSS lengths
-      const stylesKey = stylesPayload
-        .map(s => `${s.dictName}:${(s.styles || '').length}`)
-        .join('|');
-
-      if (styleNode.dataset.cacheKey !== stylesKey) {
-        const cssText = buildScopedDictionaryCss(stylesPayload);
-        styleNode.textContent = cssText;
-        styleNode.dataset.cacheKey = stylesKey;
-        debugLog('render.stylesApplied', {styleTextLength: cssText.length});
-      } else {
-        debugLog('render.stylesCached', {cacheKey: stylesKey});
+    try {
+      if (!payload || typeof payload !== 'object') {
+        console.error('[DictionaryRenderJS] render: invalid payload:', payload);
+        return;
       }
-    }
+      
+      const started = performance.now();
+      const root = document.documentElement;
+      _wordAudioEnabled = payload.wordAudioEnabled !== false;
+      if (typeof payload.ankiDupAction === 'number') {
+        _lastAnkiDupAction = payload.ankiDupAction;
+      }
 
-    const container = document.getElementById('entries');
-    if (!container) return;
-    container.textContent = '';
-
-    // Re-attach tab bar (it was cleared)
-    const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
-    if (tabs.length > 1) {
-      renderTabBar(tabs, payload.recursiveNavMode);
-      // insertBefore because textContent='' removed it
-      if (_tabsEl) container.insertBefore(_tabsEl, container.firstChild);
-    }
-    const mediaMap = payload.mediaDataUris || {};
-    const results = Array.isArray(payload.results) ? payload.results : [];
-    const dictionaryOrder = Array.isArray(payload.dictionaryOrder) ? payload.dictionaryOrder : [];
-
-    if (dictionaryOrder.length > 0) {
-      const priorityMap = new Map();
-      dictionaryOrder.forEach((name, i) => priorityMap.set(name, i));
-      const getPriority = (name) => (priorityMap.has(name) ? priorityMap.get(name) : 999);
-
-      // 1. Sort results (stable sort primarily by matched length, tie-break by dict priority)
-      results.sort((a, b) => {
-        const lenA = (a.matched || '').length;
-        const lenB = (b.matched || '').length;
-        if (lenA !== lenB) return lenB - lenA;
-
-        const prioA = getPriority(a.term?.glossaries?.[0]?.dictName);
-        const prioB = getPriority(b.term?.glossaries?.[0]?.dictName);
-        return prioA - prioB;
+      debugLog('render.start', {
+        isDark: !!payload.isDark,
+        styles: Array.isArray(payload.styles) ? payload.styles.length : 0,
+        results: Array.isArray(payload.results) ? payload.results.length : 0
       });
 
-      // 2. Sort nested arrays within each result
-      for (const result of results) {
-        if (result.term) {
-          if (Array.isArray(result.term.glossaries)) {
-            result.term.glossaries.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-          }
-          if (Array.isArray(result.term.frequencies)) {
-            result.term.frequencies.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-          }
-          if (Array.isArray(result.term.pitches)) {
-            result.term.pitches.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-          }
-        }
-      }
-    }
+      const styleNode = document.getElementById('dictionary-styles');
+      if (styleNode) {
+        const stylesPayload = Array.isArray(payload.styles) ? payload.styles : [];
 
-    const existingExpressions = Array.isArray(payload.existingExpressions) ? payload.existingExpressions : [];
-    const groupTerms = payload.groupTerms !== false;
+        // Create a cache key based on dict names and CSS lengths
+        const stylesKey = stylesPayload
+          .map(s => `${s.dictName}:${(s.styles || '').length}`)
+          .join('|');
 
-    if (results.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hoshi-empty';
-      empty.textContent = payload.placeholder || '';
-      container.appendChild(empty);
-    } else {
-      const fragment = document.createDocumentFragment();
-      for (const result of results) {
-        const diagram = payload.showPitchDiagram !== false;
-        const number = payload.showPitchNumber !== false;
-        const text = payload.showPitchText !== false;
-        if (groupTerms) {
-          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms));
+        if (styleNode.dataset.cacheKey !== stylesKey) {
+          const cssText = buildScopedDictionaryCss(stylesPayload);
+          styleNode.textContent = cssText;
+          styleNode.dataset.cacheKey = stylesKey;
+          debugLog('render.stylesApplied', {styleTextLength: cssText.length});
         } else {
-          const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text);
-          articles.forEach(a => fragment.appendChild(a));
+          debugLog('render.stylesCached', {cacheKey: stylesKey});
         }
       }
-      container.appendChild(fragment);
 
-      if (payload.wordAudioAutoplay) {
-        const firstBtn = container.querySelector('.word-audio-btn');
-        if (firstBtn) firstBtn.click();
+      const container = document.getElementById('entries');
+      if (!container) return;
+
+      const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+      const navMode = payload.recursiveNavMode;
+      const activeIndex = tabs.findIndex(t => t.active);
+
+      // Save scroll position of the previously active tab
+      const oldActiveIndex = _tabs.findIndex(t => t.active);
+      if (oldActiveIndex >= 0) {
+        const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex;
+        _scrollPositions.set(scrollKey, window.scrollY);
+        debugLog('render.saveScroll', {key: scrollKey, y: window.scrollY});
       }
-    }
 
-    const elapsed = Math.round(performance.now() - started);
-    console.log('[DictionaryRenderJS] render_ms=', elapsed, 'results=', results.length);
-    
-    // Ensure recursive lookup tap listener is installed if enabled
-    if (_lookupEnabled) {
-      installTapListener();
+      // Update state
+      _tabs = tabs;
+      if (navMode) _navMode = navMode;
+      
+      // Clear container but preserve the style nodes in head
+      container.textContent = '';
+      
+      const mediaMap = payload.mediaDataUris || {};
+      const results = Array.isArray(payload.results) ? payload.results : [];
+
+      // Determine whether to show the tab bar:
+      // - tabs mode: need at least 2 tabs
+      // - stack mode: need active tab to NOT be the first one (activeIndex > 0 means there's a back target)
+      const showTabBar = (navMode === 'stack') ? activeIndex > 0 : tabs.length > 1;
+
+      if (showTabBar) {
+        renderTabBar(tabs, navMode);
+        // insertBefore because textContent='' removed it
+        if (_tabsEl) container.insertBefore(_tabsEl, container.firstChild);
+      } else if (_tabsEl && _tabsEl.parentElement) {
+        _tabsEl.remove();
+      }
+      const dictionaryOrder = Array.isArray(payload.dictionaryOrder) ? payload.dictionaryOrder : [];
+
+      if (dictionaryOrder.length > 0) {
+        const priorityMap = new Map();
+        dictionaryOrder.forEach((name, i) => priorityMap.set(name, i));
+        const getPriority = (name) => (priorityMap.has(name) ? priorityMap.get(name) : 999);
+
+        // 1. Sort results (stable sort primarily by matched length, tie-break by dict priority)
+        results.sort((a, b) => {
+          const lenA = (a.matched || '').length;
+          const lenB = (b.matched || '').length;
+          if (lenA !== lenB) return lenB - lenA;
+
+          const prioA = getPriority(a.term?.glossaries?.[0]?.dictName);
+          const prioB = getPriority(b.term?.glossaries?.[0]?.dictName);
+          return prioA - prioB;
+        });
+
+        // 2. Sort nested arrays within each result
+        for (const result of results) {
+          if (result.term) {
+            if (Array.isArray(result.term.glossaries)) {
+              result.term.glossaries.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
+            }
+            if (Array.isArray(result.term.frequencies)) {
+              result.term.frequencies.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
+            }
+            if (Array.isArray(result.term.pitches)) {
+              result.term.pitches.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
+            }
+          }
+        }
+      }
+
+      const existingExpressions = Array.isArray(payload.existingExpressions) ? payload.existingExpressions : [];
+      const groupTerms = payload.groupTerms !== false;
+
+      if (results.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'hoshi-empty';
+        empty.textContent = payload.placeholder || '';
+        container.appendChild(empty);
+      } else {
+        const fragment = document.createDocumentFragment();
+        for (const result of results) {
+          const diagram = payload.showPitchDiagram !== false;
+          const number = payload.showPitchNumber !== false;
+          const text = payload.showPitchText !== false;
+          if (groupTerms) {
+            fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms, payload.ankiDupAction));
+          } else {
+            const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, payload.ankiDupAction);
+            articles.forEach(a => fragment.appendChild(a));
+          }
+        }
+        container.appendChild(fragment);
+
+        // Show floating nav if there are multiple entries
+        if (results.length > 1) {
+          renderFloatingNav();
+        } else {
+          const nav = document.getElementById('floating-nav');
+          if (nav) nav.remove();
+        }
+
+        // Restore scroll position for the newly active tab
+        if (activeIndex >= 0) {
+          const scrollKey = (navMode || 'tabs') + '-' + activeIndex;
+          const savedScroll = _scrollPositions.get(scrollKey) || 0;
+          debugLog('render.restoreScroll', {key: scrollKey, y: savedScroll});
+          setTimeout(() => {
+            window.scrollTo(0, savedScroll);
+            _lastY = savedScroll; // Sync the hide/show tracker to the new position
+            if (_tabsEl) _tabsEl.classList.remove('tabs-hidden'); // Always show bar when switching tabs
+          }, 40);
+        } else {
+          // Fresh lookup — jump to top
+          window.scrollTo(0, 0);
+          _lastY = 0;
+          if (_tabsEl) _tabsEl.classList.remove('tabs-hidden');
+        }
+
+        if (payload.wordAudioAutoplay) {
+          const firstBtn = container.querySelector('.word-audio-btn');
+          if (firstBtn) firstBtn.click();
+        }
+      }
+
+      const elapsed = Math.round(performance.now() - started);
+      
+      // Ensure recursive lookup tap listener is installed if enabled
+      if (_lookupEnabled) {
+        installTapListener();
+      }
+    } catch (e) {
+      console.error('[DictionaryRenderJS] CRITICAL RENDER ERROR:', e);
+      if (e.stack) console.error(e.stack);
     }
   }
 
@@ -2183,6 +2293,18 @@
     render,
     renderHeader,
     clear,
+
+    renderPayloadObject(payload) {
+      try {
+        if (!payload) {
+          console.error('[DictionaryRenderJS] renderPayloadObject: no payload');
+          return;
+        }
+        render(payload);
+      } catch (e) {
+        console.error('[DictionaryRenderJS] renderPayloadObject error:', e.message);
+      }
+    },
 
     renderFromBase64(base64) {
       const json = decodeBase64Utf8(base64);
@@ -2215,7 +2337,134 @@
       if (enabled) installTapListener();
     },
 
+    navigate(delta) {
+      const groups = document.querySelectorAll('.entry');
+      if (groups.length === 0) return;
+
+      // Simple heuristic: find the group closest to the top of the viewport
+      let currentIndex = -1;
+      let minDiff = Infinity;
+      const viewportTop = 0;
+
+      groups.forEach((el, index) => {
+        const rect = el.getBoundingClientRect();
+        const diff = Math.abs(rect.top - viewportTop);
+        if (diff < minDiff) {
+          minDiff = diff;
+          currentIndex = index;
+        }
+      });
+
+      let nextIndex = currentIndex + delta;
+      if (nextIndex < 0) nextIndex = 0;
+      if (nextIndex >= groups.length) nextIndex = groups.length - 1;
+
+      if (groups[nextIndex]) {
+        _isJumping = true;
+        groups[nextIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        // Hide tab bar when using navigation buttons/volume keys as requested
+        if (_tabsEl) _tabsEl.classList.add('tabs-hidden');
+
+        // Reset after the smooth scroll finishes
+        setTimeout(() => { 
+          _isJumping = false; 
+        }, 500);
+      }
+    },
+
+    updateAnkiStatus(existingExpressionsJson) {
+      try {
+        const existing = JSON.parse(existingExpressionsJson);
+        const existingSet = Array.isArray(existing) ? new Set(existing) : new Set();
+        
+        const ankiDupAction = _lastAnkiDupAction;
+        const addButtons = document.querySelectorAll('.anki-add-btn');
+        addButtons.forEach(btn => {
+          const expr = btn.getAttribute('data-expression');
+          const isAdded = existingSet.has(expr);
+          
+          const wasAdded = btn.classList.contains('anki-added');
+          if (isAdded === wasAdded) {
+             // Even if no change in status, we might need to hide it based on dupAction
+             if (isAdded && ankiDupAction === 0) btn.style.display = 'none';
+             else btn.style.display = '';
+             return; 
+          }
+
+          if (isAdded) {
+            btn.classList.add('anki-added');
+            btn.innerHTML = ICONS.check_circle;
+            btn.title = 'Already in Anki';
+            
+            // If "Don't add", hide the button entirely
+            if (ankiDupAction === 0 || ankiDupAction === 'prevent') {
+              btn.style.display = 'none';
+            }
+
+            // Add book icon if not present
+            const head = btn.parentElement;
+            if (head && !head.querySelector('.anki-open-btn')) {
+              const bookBtn = document.createElement('button');
+              bookBtn.className = 'anki-open-btn';
+              bookBtn.innerHTML = ICONS.menu_book;
+              bookBtn.title = 'Open in Anki';
+              bookBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (typeof AnkiBridge !== 'undefined') {
+                  const entryIdx = btn.getAttribute('data-index');
+                  const selectedDict = _selectedDictionaries[entryIdx] || '';
+                  const selection = _lastSelection || window.getSelection().toString();
+                  AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
+                }
+              };
+              head.appendChild(bookBtn);
+            }
+          } else {
+            btn.classList.remove('anki-added');
+            btn.innerHTML = ICONS.add_circle;
+            btn.title = 'Add to Anki';
+            btn.style.display = '';
+            
+            // Remove book icon if present
+            const head = btn.parentElement;
+            const bookBtn = head ? head.querySelector('.anki-open-btn') : null;
+            if (bookBtn) bookBtn.remove();
+          }
+        });
+      } catch (e) {
+        console.error('[DictionaryRenderJS] updateAnkiStatus error:', e);
+      }
+    },
+
+    setTabHidden(hidden) {
+      if (_tabsEl) {
+        if (hidden) _tabsEl.classList.add('tabs-hidden');
+        else _tabsEl.classList.remove('tabs-hidden');
+      }
+    },
+
     onAudioResults: (id, results) => { /* overriden by UI */ }
   };
-})();
 
+  // ── Scroll Listener for Hiding Tabs ────────────────────────────────────────
+  let _lastY = 0;
+  let _isJumping = false;
+  const SCROLL_THRESHOLD = 4;
+  window.addEventListener('scroll', () => {
+    const y = Math.max(window.pageYOffset, document.documentElement.scrollTop, document.body.scrollTop, 0);
+    const delta = y - _lastY;
+    _lastY = y;
+
+    if (_isJumping) return;
+
+    // 1. Hide/Show Tab Bar
+    if (_tabsEl && Math.abs(delta) >= SCROLL_THRESHOLD) {
+      if (delta > 0 && y > 60) {
+        _tabsEl.classList.add('tabs-hidden');
+      } else if (delta < 0 || y <= 10) {
+        _tabsEl.classList.remove('tabs-hidden');
+      }
+    }
+  }, { passive: true });
+})();

@@ -1,12 +1,11 @@
 package eu.kanade.presentation.more.settings.screen.appearance
 
 import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,28 +26,21 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class AppCustomThemeColorPickerScreen : Screen() {
+class AppCustomThemeColorPickerScreen(private val isDictionary: Boolean = false) : Screen() {
 
     @Composable
     override fun Content() {
         val uiPreferences: UiPreferences = Injekt.get()
+        val dictionaryPreferences: eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences = Injekt.get()
 
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
         val controller = rememberColorPickerController()
 
-        val customColorPref = uiPreferences.colorTheme()
-        val customColor by customColorPref.collectAsState()
+        val customColor by (if (isDictionary) dictionaryPreferences.customColor() else uiPreferences.colorTheme()).collectAsState()
 
-        val appThemePref = uiPreferences.appTheme()
-
-        val currentColor by remember {
-            mutableIntStateOf(customColor)
-        }
-
-        LaunchedEffect(customColorPref) {
-            customColorPref.set(currentColor)
-        }
+        val customColorPref = if (isDictionary) dictionaryPreferences.customColor() else uiPreferences.colorTheme()
+        val appThemePref = if (isDictionary) null else uiPreferences.appTheme()
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -64,11 +56,14 @@ class AppCustomThemeColorPickerScreen : Screen() {
             ) {
                 ThemeColorPickerWidget(
                     controller = controller,
-                    initialColor = Color(currentColor),
+                    initialColor = Color(customColor),
                     onItemClick = { color, appTheme ->
                         customColorPref.set(color.toArgb())
-                        appThemePref.set(appTheme)
-                        (context as? Activity)?.let { ActivityCompat.recreate(it) }
+                        appThemePref?.set(appTheme)
+                        if (!isDictionary) {
+                            (context as? Activity)?.let { ActivityCompat.recreate(it) }
+                        }
+                        navigator.pop()
                     },
                 )
             }

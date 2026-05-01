@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,6 +94,10 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
+import eu.kanade.presentation.more.settings.screen.appearance.AppCustomThemeColorPickerScreen
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import tachiyomi.i18n.kmk.KMR
 import java.io.File
 import java.util.Collections.emptyList
 
@@ -253,6 +258,11 @@ object SettingsDictionaryScreen : SearchableSettings {
         val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
         val ocrBoxScale by ocrBoxScalePref.collectAsState()
 
+        val amoledPref = dictionaryPreferences.themeDarkAmoled()
+        val amoled by amoledPref.collectAsState()
+
+        val navigator = LocalNavigator.currentOrThrow
+
         val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
         val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
 
@@ -299,6 +309,19 @@ object SettingsDictionaryScreen : SearchableSettings {
                     onValueChanged = { newValue ->
                         ocrBoxScalePref.set(newValue / 100f)
                     },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(KMR.strings.pref_custom_color),
+                    subtitle = stringResource(KMR.strings.custom_color_description),
+                    enabled = true,
+                    onClick = {
+                        navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
+                    },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = amoledPref,
+                    title = stringResource(MR.strings.pref_dark_theme_pure_black),
+                    enabled = isSystemInDarkTheme(),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = showFreqHarmonicPref,
@@ -1208,15 +1231,13 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     value = when (dupAction) {
                                         "add" -> stringResource(MR.strings.pref_anki_duplicate_add)
                                         "overwrite" -> stringResource(MR.strings.pref_anki_duplicate_overwrite)
-                                        "open" -> stringResource(MR.strings.pref_anki_duplicate_open)
                                         else -> stringResource(MR.strings.pref_anki_duplicate_prevent)
                                     },
-                                    options = listOf("prevent", "add", "overwrite", "open"),
+                                    options = listOf("prevent", "add", "overwrite"),
                                     displayOptions = listOf(
                                         stringResource(MR.strings.pref_anki_duplicate_prevent),
                                         stringResource(MR.strings.pref_anki_duplicate_add),
                                         stringResource(MR.strings.pref_anki_duplicate_overwrite),
-                                        stringResource(MR.strings.pref_anki_duplicate_open),
                                     ),
                                     onValueChange = { updateProfile { copy(ankiDupAction = it) } },
                                 )
