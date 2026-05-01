@@ -11,7 +11,7 @@ class WordAudioDatabase(private val context: Context) {
 
     private val defaultSources = listOf(
         "nhk16", "daijisen", "shinmeikai8", "jpod", "jpod_alternate",
-        "taas", "ozk5", "forvo", "forvo_ext", "forvo_ext2"
+        "taas", "ozk5", "forvo", "forvo_ext", "forvo_ext2",
     )
 
     private fun katakanaToHiragana(text: String): String {
@@ -34,11 +34,11 @@ class WordAudioDatabase(private val context: Context) {
      */
     fun updatePath(path: String?): Boolean {
         if (path == dbPath && db != null) return true
-        
+
         close()
-        
+
         if (path == null) return false
-        
+
         val file = File(path)
         if (!file.exists() || !file.canRead()) {
             Log.w(TAG, "Database file not found or not readable: $path")
@@ -78,9 +78,9 @@ class WordAudioDatabase(private val context: Context) {
     fun findEntries(term: String, reading: String): List<LocalEntry> {
         val database = db ?: return emptyList()
         val results = mutableListOf<LocalEntry>()
-        
+
         val normalizedReading = katakanaToHiragana(reading)
-        
+
         // Sort order based on source priority
         val sourceOrder = StringBuilder("CASE source ")
         defaultSources.forEachIndexed { index, source ->
@@ -90,43 +90,45 @@ class WordAudioDatabase(private val context: Context) {
 
         val query = if (normalizedReading.isEmpty()) {
             """
-            SELECT file, source, speaker, display, reading, expression FROM entries 
-            WHERE expression = ? AND file LIKE '%.mp3'
+            SELECT file, source, speaker, display, reading, expression FROM entries
+            WHERE expression = ? AND (file LIKE '%.mp3' OR file LIKE '%.ogg' OR file LIKE '%.opus' OR file LIKE '%.wav' OR file LIKE '%.m4a' OR file LIKE '%.aac' OR file LIKE '%.flac')
             ORDER BY $sourceOrder
             LIMIT 1
             """.trimIndent()
         } else {
             """
-            SELECT file, source, speaker, display, reading, expression FROM entries 
-            WHERE (expression = ? OR reading = ?) AND file LIKE '%.mp3'
+            SELECT file, source, speaker, display, reading, expression FROM entries
+            WHERE (expression = ? OR reading = ?) AND (file LIKE '%.mp3' OR file LIKE '%.ogg' OR file LIKE '%.opus' OR file LIKE '%.wav' OR file LIKE '%.m4a' OR file LIKE '%.aac' OR file LIKE '%.flac')
             ORDER BY CASE WHEN reading = ? THEN 0 ELSE 1 END, $sourceOrder
             LIMIT 1
             """.trimIndent()
         }
-        
+
         val args = if (normalizedReading.isEmpty()) {
             arrayOf(term)
         } else {
             arrayOf(term, normalizedReading, normalizedReading)
         }
-        
+
         try {
             database.rawQuery(query, args).use { cursor ->
                 while (cursor.moveToNext()) {
-                    results.add(LocalEntry(
-                        file = cursor.getString(0) ?: "",
-                        sourceId = cursor.getString(1) ?: "",
-                        speaker = cursor.getString(2),
-                        display = cursor.getString(3),
-                        reading = cursor.getString(4) ?: "",
-                        expression = cursor.getString(5) ?: ""
-                    ))
+                    results.add(
+                        LocalEntry(
+                            file = cursor.getString(0) ?: "",
+                            sourceId = cursor.getString(1) ?: "",
+                            speaker = cursor.getString(2),
+                            display = cursor.getString(3),
+                            reading = cursor.getString(4) ?: "",
+                            expression = cursor.getString(5) ?: "",
+                        ),
+                    )
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error querying entries", e)
         }
-        
+
         return results
     }
 
@@ -135,10 +137,10 @@ class WordAudioDatabase(private val context: Context) {
      */
     fun getAudioData(filePath: String, sourceId: String): ByteArray? {
         val database = db ?: return null
-        
+
         // AnkiconnectAndroid schema uses 'android' table with 'file' and 'source' columns
         val query = "SELECT data FROM android WHERE file = ? AND source = ?"
-        
+
         return try {
             database.rawQuery(query, arrayOf(filePath, sourceId)).use { cursor ->
                 if (cursor.moveToFirst()) {
@@ -165,6 +167,6 @@ class WordAudioDatabase(private val context: Context) {
         val speaker: String?,
         val display: String?,
         val reading: String,
-        val expression: String
+        val expression: String,
     )
 }

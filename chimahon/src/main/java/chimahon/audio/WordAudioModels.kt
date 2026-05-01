@@ -10,21 +10,21 @@ data class WordAudioSource(
     val url: String,
     var isEnabled: Boolean = true,
     val isDefault: Boolean = false,
-    val type: SourceType = SourceType.ONLINE
+    val type: SourceType = SourceType.ONLINE,
 ) {
     enum class SourceType {
         LOCAL,
-        ONLINE
+        ONLINE,
     }
-    
+
     companion object {
         const val LOCAL_URL = "chimahon-local://android.db"
-        
+
         fun createLocal() = WordAudioSource(
             id = "local_audio",
             name = "Local Audio",
             url = LOCAL_URL,
-            type = SourceType.LOCAL
+            type = SourceType.LOCAL,
         )
     }
 }
@@ -33,5 +33,5 @@ data class WordAudioResult(
     val name: String,
     val url: String,
     val source: WordAudioSource,
-    val data: ByteArray? = null // For local audio bytes
+    val data: ByteArray? = null, // For local audio bytes
 )
