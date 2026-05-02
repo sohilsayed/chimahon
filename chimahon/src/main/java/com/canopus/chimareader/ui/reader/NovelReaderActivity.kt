@@ -13,6 +13,7 @@ import androidx.core.view.WindowCompat
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelReaderSettings
+import androidx.core.graphics.ColorUtils
 import java.io.File
 
 open class NovelReaderActivity : ComponentActivity() {
@@ -75,7 +76,10 @@ open class NovelReaderActivity : ComponentActivity() {
     }
 
     /** Override in subclass to receive text selection events from the reader. */
-    protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) = Unit
+    protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) = Unit
+
+    /** Override in subclass to dismiss the popup when background is tapped. */
+    protected open fun onDismissPopupRequested() = Unit
 
     protected open fun onDismissPopup() {
         isPopupActive = false
@@ -115,8 +119,10 @@ open class NovelReaderActivity : ComponentActivity() {
             ReaderScreen(
                 book = metadata,
                 onBack = { finish() },
-                onLookupRequested = ::onLookupRequested,
-                onDismissPopup = ::onDismissPopup,
+                onShowHudChanged = { visible -> setSystemBarsVisibility(visible) },
+                onThemeChanged = { bgColor -> updateSystemBarsTheme(bgColor) },
+                onLookupRequested = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
+                onDismissPopupRequested = { onDismissPopupRequested() },
                 isPopupActive = isPopupActive,
                 onViewModelReady = { readerViewModel = it },
                 additionalSettings = { AdditionalAppearanceSettings() },
@@ -146,5 +152,12 @@ open class NovelReaderActivity : ComponentActivity() {
             windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    private fun updateSystemBarsTheme(backgroundColor: Int) {
+        val windowInsetsController = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        val isLight = androidx.core.graphics.ColorUtils.calculateLuminance(backgroundColor) > 0.5
+        windowInsetsController.isAppearanceLightStatusBars = isLight
+        windowInsetsController.isAppearanceLightNavigationBars = isLight
     }
 }

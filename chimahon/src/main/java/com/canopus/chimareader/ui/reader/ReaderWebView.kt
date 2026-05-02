@@ -45,8 +45,8 @@ fun ReaderWebView(
     swipeThreshold: Int = 96,
     tapZonePx: Int = 100,
     isPopupActive: Boolean = false,
-    onDismissPopup: () -> Unit = {},
-    onTextSelected: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    onTextSelected: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    onDismissPopupRequested: () -> Unit = {},
     onInternalLinkClicked: (url: String) -> Unit = {},
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
@@ -98,10 +98,8 @@ fun ReaderWebView(
                 onTapTop = { if (!isPopupActive) onTapTop() },
                 onTapBottom = { if (!isPopupActive) onTapBottom() },
                 isPopupActive = isPopupActive,
-                onDismissPopup = onDismissPopup,
-                swipeThreshold = swipeThreshold,
-                tapZonePx = tapZonePx,
                 onTextSelectedCallback = onTextSelected,
+                onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
             ).apply {
                 settings.allowFileAccess = true
@@ -265,6 +263,12 @@ fun ReaderWebView(
                     is WebViewCommand.JumpToFragment -> {
                         v.jumpToFragment(command.fragment)
                     }
+                    is WebViewCommand.ClearSelection -> {
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.clearSelection) { window.hoshiReader.clearSelection(); }", null)
+                    }
+                    is WebViewCommand.HighlightSelection -> {
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.highlightSelection) { window.hoshiReader.highlightSelection(${command.charCount}); }", null)
+                    }
                     else -> {}
                 }
             }
@@ -289,8 +293,8 @@ private class ReaderAndroidWebView(
     private val swipeThreshold: Int = 96,
     private val tapZonePx: Int = 100,
     var isPopupActive: Boolean = false,
-    private val onDismissPopup: () -> Unit = {},
-    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    private val onDismissPopupRequested: () -> Unit = {},
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
 ) : WebView(context) {
 
@@ -321,6 +325,11 @@ private class ReaderAndroidWebView(
 
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
         super.onScrollChanged(l, t, oldl, oldt)
+        
+        if (isPopupActive) {
+            onDismissPopupRequested()
+        }
+        
         if (continuousMode && !isImageOnly) {
             val now = System.currentTimeMillis()
             if (now - lastProgressReportTime > 1000L) {
@@ -379,19 +388,19 @@ private class ReaderAndroidWebView(
                 animate().alpha(1f).setDuration(160).start()
             }
         },
-        onTextSelectedCallback = { word, sentence, x, y ->
-            if (!isPopupActive) {
-                post {
-                    val density = context.resources.displayMetrics.density
-                    onTextSelectedCallback(word, sentence, x * density, y * density)
-                }
+        onTextSelectedCallback = { word, sentence, x, y, w, h ->
+            post {
+                val density = context.resources.displayMetrics.density
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                onTextSelectedCallback(word, sentence, x * density + loc[0], y * density + loc[1], w * density, h * density)
             }
         },
         onBackgroundTap = { x, y ->
-            if (isPopupActive) {
-                post { onDismissPopup() }
-            } else {
-                post {
+            post {
+                if (isPopupActive) {
+                    onDismissPopupRequested()
+                } else {
                     val density = context.resources.displayMetrics.density
                     val eventX = x * density
                     val eventY = y * density
@@ -476,6 +485,7 @@ private class ReaderAndroidWebView(
             appendLine("html, body { writing-mode: horizontal-tb !important; }")
         }
 
+        appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
         appendLine("p { margin-top: 0 !important; margin-bottom: 0 !important; }")
         appendLine("body * { font-family: inherit !important; }")
         appendLine("img.chima-image-block, svg.chima-image-block { position: static !important; }")
@@ -1059,75 +1069,57 @@ private class ReaderAndroidWebView(
 
     override fun performClick(): Boolean = super.performClick()
 
+    fun paginate(forward: Boolean) {
+        if (forward) {
+            navigate("forward", onNextChapter)
+        } else {
+            navigate("backward", onPreviousChapter)
+        }
+    }
+
     private fun handleSwipe(forward: Boolean): Boolean {
         return when {
             isImageOnly -> {
+                // Image-only chapter = single page, any swipe changes chapter
                 val changed = if (forward) onNextChapter() else onPreviousChapter()
                 if (changed) visibility = View.INVISIBLE
                 true
             }
             continuousMode -> navigateContinuous(forward)
-            else -> navigate(if (forward) "forward" else "backward", if (forward) onNextChapter else onPreviousChapter)
-        }
-    }
-
-    fun paginate(forward: Boolean) {
-        if (isImageOnly) {
-            val changed = if (forward) onNextChapter() else onPreviousChapter()
-            if (changed) visibility = View.INVISIBLE
-            return
-        }
-
-        val direction = if (forward) "forward" else "backward"
-        evaluateJavascript("""
-            (function() {
-                if (!window.hoshiReader || typeof window.hoshiReader.paginate !== 'function') return 'limit';
-                return window.hoshiReader.paginate('$direction');
-            })()
-        """.trimIndent()) { result ->
-            val res = result?.trim('"')
-            if (res == "scrolled") {
-                updateProgressFromJs()
+            else -> if (forward) {
+                navigate("forward", onNextChapter)
             } else {
-                val changed = if (forward) onNextChapter() else onPreviousChapter()
-                if (changed) visibility = View.INVISIBLE
+                navigate("backward", onPreviousChapter)
             }
         }
     }
 
-    private fun updateProgressFromJs() {
-        evaluateJavascript("window.hoshiReader.calculateProgress()") { p ->
-            p?.trim()?.trim('"')?.toDoubleOrNull()?.let {
-                pendingProgress = it
-                onProgressChanged(it)
-            }
-        }
-    }
-
+    /**
+     * For continuous mode: check via JS whether we are at the scroll boundary.
+     * If yes, call the chapter callback; if not, let the WebView handle the scroll.
+     */
     private fun navigateContinuous(forward: Boolean): Boolean {
-        val isVerticalScroll = !readerSettings.verticalWriting
         val script = """
             (function() {
                 var el = document.scrollingElement || document.documentElement;
                 var ph = window.innerHeight;
                 var pw = window.innerWidth;
-                var tol = 15;
-                var isV = $isVerticalScroll;
-
-                if (isV) {
-                    var y = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
+                var vOver = el.scrollHeight - ph > 1;
+                var hOver = el.scrollWidth  - pw > 1;
+                if (vOver) {
+                    var y = Math.round(window.scrollY);
                     var maxY = el.scrollHeight - ph;
-                    if (maxY <= 5) return 'limit';
-                    if ('$forward' === 'true')  return y >= maxY - tol ? 'limit' : 'scrolling';
-                    if ('$forward' === 'false') return y <= tol        ? 'limit' : 'scrolling';
-                } else {
-                    var x = Math.max(Math.abs(window.scrollX), Math.abs(document.documentElement.scrollLeft), Math.abs(document.body.scrollLeft));
-                    var maxX = el.scrollWidth - pw;
-                    if (maxX <= 5) return 'limit';
-                    if ('$forward' === 'true')  return x >= maxX - tol ? 'limit' : 'scrolling';
-                    if ('$forward' === 'false') return x <= tol        ? 'limit' : 'scrolling';
+                    if ('$forward' === 'true')  return y >= maxY - 2 ? 'limit' : 'scrolling';
+                    if ('$forward' === 'false') return y <= 2       ? 'limit' : 'scrolling';
                 }
-                return 'scrolling';
+                if (hOver) {
+                    var x = window.scrollX;
+                    var maxX = el.scrollWidth - pw;
+                    var absX = Math.abs(x);
+                    if ('$forward' === 'true')  return absX >= maxX - 2 ? 'limit' : 'scrolling';
+                    if ('$forward' === 'false') return absX <= 2        ? 'limit' : 'scrolling';
+                }
+                return 'limit';
             })()
         """.trimIndent()
 
@@ -1136,29 +1128,95 @@ private class ReaderAndroidWebView(
                 val changed = if (forward) onNextChapter() else onPreviousChapter()
                 if (changed) visibility = View.INVISIBLE
             }
+            // else: still content to scroll — the WebView's own fling handles it
         }
         return true
     }
 
     private fun navigate(direction: String, fallback: () -> Boolean): Boolean {
-        evaluateJavascript("""
+        val script = """
             (function() {
-                if (!window.hoshiReader || typeof window.hoshiReader.paginate !== 'function') return 'limit';
+                if (!window.hoshiReader || typeof window.hoshiReader.paginate !== 'function') {
+                    return "limit";
+                }
                 return window.hoshiReader.paginate('$direction');
             })()
-        """.trimIndent()) { result ->
+        """.trimIndent()
+
+        evaluateJavascript(script) { result ->
             if (result?.trim('"') == "scrolled") {
-                updateProgressFromJs()
+                evaluateJavascript(
+                    "(function() { return window.hoshiReader.calculateProgress(); })()",
+                ) { progressResult ->
+                    progressResult
+                        ?.trim()
+                        ?.trim('"')
+                        ?.toDoubleOrNull()
+                        ?.let {
+                            pendingProgress = it
+                            onProgressChanged(it)
+                        }
+                }
             } else {
-                val changed = fallback()
-                if (changed) visibility = View.INVISIBLE
+                val chapterChanged = fallback()
+                if (chapterChanged) {
+                    visibility = View.INVISIBLE
+                }
             }
         }
         return true
     }
 }
 
-// JS snippet construction helpers shared across modes
+private class ReaderJavascriptBridge(
+    private val onRestoreCompleted: () -> Unit,
+    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
+) {
+    @JavascriptInterface
+    fun restoreCompleted() {
+        onRestoreCompleted()
+    }
+
+    @JavascriptInterface
+    fun onTextSelected(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
+        if (word.isNotBlank()) onTextSelectedCallback.invoke(word, sentence, x, y, w, h)
+    }
+
+    @JavascriptInterface
+    fun onBackgroundTap(x: Float, y: Float) {
+        onBackgroundTap.invoke(x, y)
+    }
+}
+
+private fun loadAssetText(context: Context, path: String): String {
+    return context.assets.open(path).use { input ->
+        BufferedReader(input.reader()).readText()
+    }
+}
+
+private fun jsString(value: String): String {
+    return buildString {
+        append('\'')
+        value.forEach { char ->
+            when (char) {
+                '\\' -> append("\\\\")
+                '\'' -> append("\\'")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(char)
+            }
+        }
+        append('\'')
+    }
+}
+
+private fun jsEscape(value: String): String = value
+    .replace("\\", "\\\\")
+    .replace("'", "\\'")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r")
 
 private fun fontJS(settings: ReaderSettings, wrapperVar: String): String = buildString {
     val fontUrl = settings.fontUrl
@@ -1198,8 +1256,6 @@ private fun furiganaJS(settings: ReaderSettings): String = if (settings.hideFuri
     if (furiganaStyle) furiganaStyle.remove();
 """.trimIndent()
 
-// ReaderSettings extension helpers
-
 private fun ReaderSettings.resolvedBgHex(): String = when (theme) {
     "dark"  -> "#1a1a1a"
     "sepia" -> "#f4ecd8"
@@ -1213,47 +1269,3 @@ private fun ReaderSettings.resolvedTextHex(): String = when (theme) {
     "light" -> "#000000"
     else    -> "#${String.format("%06X", 0xFFFFFF and textColor)}"
 }
-
-// JavaScript Bridge implementation
-
-private class ReaderJavascriptBridge(
-    private val onRestoreCompleted: () -> Unit,
-    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
-    private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
-) {
-    @JavascriptInterface fun restoreCompleted() = onRestoreCompleted()
-    @JavascriptInterface fun onTextSelected(word: String, sentence: String, x: Float, y: Float) {
-        if (word.isNotBlank()) onTextSelectedCallback(word, sentence, x, y)
-    }
-    @JavascriptInterface fun onBackgroundTap(x: Float, y: Float) {
-        onBackgroundTap.invoke(x, y)
-    }
-}
-
-// Generic utilities
-
-private fun loadAssetText(context: Context, path: String): String =
-    context.assets.open(path).use { BufferedReader(it.reader()).readText() }
-
-/** Escapes a string for safe embedding inside a JS single-quoted string literal. */
-private fun jsString(value: String): String = buildString {
-    append('\'')
-    value.forEach { char ->
-        when (char) {
-            '\\' -> append("\\\\")
-            '\'' -> append("\\'")
-            '\n' -> append("\\n")
-            '\r' -> append("\\r")
-            '\t' -> append("\\t")
-            else -> append(char)
-        }
-    }
-    append('\'')
-}
-
-/** Escapes a value for inline use inside an already-quoted JS string (no surrounding quotes added). */
-private fun jsEscape(value: String): String = value
-    .replace("\\", "\\\\")
-    .replace("'", "\\'")
-    .replace("\n", "\\n")
-    .replace("\r", "\\r")

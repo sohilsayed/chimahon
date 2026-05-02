@@ -23,6 +23,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import android.util.Log
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,6 +47,8 @@ sealed interface WebViewCommand {
     data class ApplySettings(val settings: ReaderSettings) : WebViewCommand
     data class ChangeFocusMode(val focusMode: Boolean) : WebViewCommand
     data class Paginate(val forward: Boolean) : WebViewCommand
+    data object ClearSelection : WebViewCommand
+    data class HighlightSelection(val charCount: Int) : WebViewCommand
 }
 
 data class ReaderSettings(
@@ -163,19 +167,21 @@ class ReaderViewModel(
 
     // Tracks statistics for current reading session
     var isTimerPaused by mutableStateOf(false)
-    var sessionReadingTime by mutableDoubleStateOf(0.0) // milliseconds
+    var sessionReadingTime by mutableDoubleStateOf(0.0) // seconds
     var totalExploredCharCount by mutableIntStateOf(0)
-    // To calculate session characters, we remember the initial char count
     var initialCharCount by mutableIntStateOf(0)
+    var lastSavedExploredCharCount = 0
+    var lastSavedSessionReadingTime = 0.0
 
     val sessionCharactersRead: Int
         get() = maxOf(0, totalExploredCharCount - initialCharCount)
 
-    var fullStatistics = mutableStateListOf<Statistics>()
-    var lastSavedExploredCharCount = 0 // Made internal for UI calculation
-    var lastSavedSessionReadingTime = 0.0 // Made internal for UI calculation
     private var lastPeriodicSaveTime = System.currentTimeMillis()
-    private var lastSavedBookmarkFingerprint: Pair<Int, Long>? = null
+
+    var fullStatistics = mutableStateListOf<Statistics>()
+
+    // Map of spineIndex -> accumulated character count (Hoshi Reader's currentTotal)
+    val accumulatedCharCounts = androidx.compose.runtime.mutableStateMapOf<Int, Int>()
 
     val todayCharactersRead: Int
         get() {
@@ -239,8 +245,6 @@ class ReaderViewModel(
         val bookmark = BookStorage.loadBookmark(rootUrl)
         index = bookmark?.chapterIndex ?: 0
         currentProgress = bookmark?.progress ?: 0.0
-        lastSavedBookmarkFingerprint = bookmarkFingerprint(index, currentProgress)
-
         totalExploredCharCount = calculateExploredCharCount(currentProgress)
         initialCharCount = totalExploredCharCount
         lastSavedExploredCharCount = initialCharCount
@@ -248,6 +252,17 @@ class ReaderViewModel(
         val stats = BookStorage.loadStatistics(rootUrl)
         if (stats != null) {
             fullStatistics.addAll(stats)
+            
+            // Migration: Heuristic to detect milliseconds stored as seconds
+            val migrated = fullStatistics.map { 
+                val speed = if (it.readingTime > 0) (it.charactersRead / it.readingTime * 3600) else 10000.0
+                if (speed < 500.0 && it.readingTime > 0) {
+                    Log.i("ReaderViewModel", "TTSU-STATS: Migrating entry '${it.dateKey}' from MS to Seconds (Speed: $speed)")
+                    it.copy(readingTime = it.readingTime / 1000.0)
+                } else it
+            }
+            fullStatistics.clear()
+            fullStatistics.addAll(migrated)
         }
 
         // Timer for readingTime
@@ -263,6 +278,16 @@ class ReaderViewModel(
                     lastPeriodicSaveTime = System.currentTimeMillis()
                 }
             }
+        }
+
+        // Background calculation of accumulated character counts for TOC (Hoshi Reader style)
+        scope.launch(Dispatchers.IO) {
+            var runningTotal = 0
+            for (i in 0 until document.linearSpineItems.size) {
+                accumulatedCharCounts[i] = runningTotal
+                runningTotal += document.getChapterCharacters(i)
+            }
+            accumulatedCharCounts[document.linearSpineItems.size] = runningTotal
         }
 
         getCurrentChapter()?.let { file ->
@@ -369,7 +394,7 @@ class ReaderViewModel(
             horizontalPadding = horizontalPadding,
             verticalPadding = verticalPadding,
             selectedFont = selectedFont,
-            fontUrl = fontUrl,
+            fontUrl = fontUrl?.toString(),
             theme = theme.name.lowercase(),
             backgroundColor = bg,
             textColor = txt,
@@ -416,29 +441,39 @@ class ReaderViewModel(
     }
 
     fun getFlattenedToc(): List<com.canopus.chimareader.data.epub.TocEntry> {
-        val result = mutableListOf<com.canopus.chimareader.data.epub.TocEntry>()
-        fun flatten(entries: List<com.canopus.chimareader.data.epub.TocEntry>) {
-            for (entry in entries) {
-                result.add(entry)
-                flatten(entry.children)
+        val flat = mutableListOf<com.canopus.chimareader.data.epub.TocEntry>()
+        fun flatten(entries: List<com.canopus.chimareader.data.epub.TocEntry>, depth: Int = 0) {
+            for (e in entries) {
+                // Add depth indentation to label if it's nested
+                val indent = "  ".repeat(depth)
+                flat.add(e.copy(label = "$indent${e.label}"))
+                flatten(e.children, depth + 1)
             }
         }
         flatten(document.tableOfContents)
-        return result
+        return flat
     }
 
-    fun saveBookmark(progress: Double, forceStatisticsSave: Boolean = false) {
-        val bookmarkFingerprint = bookmarkFingerprint(index, progress)
+    fun getSpineIndexForHref(href: String): Int? {
+        val decodedHref = java.net.URLDecoder.decode(href.substringBefore('#').substringBefore('?'), "UTF-8")
+        val fileName = decodedHref.substringAfterLast("/")
+        
+        for (i in 0 until document.linearSpineItems.size) {
+            val chapterHref = document.getChapterHref(i) ?: continue
+            val chapterFileName = chapterHref.substringAfterLast("/")
+            
+            if (chapterHref.endsWith(decodedHref) || chapterFileName == fileName) {
+                return i
+            }
+        }
+        return null
+    }
+
+    fun saveBookmark(progress: Double) {
         currentProgress = progress
         bridge.updateProgress(progress)
-
-        if (!forceStatisticsSave && lastSavedBookmarkFingerprint == bookmarkFingerprint) {
-            return
-        }
-
         persistBookmark(progress)
         savePersistentStatistics()
-        lastSavedBookmarkFingerprint = bookmarkFingerprint
     }
 
     fun nextChapter(): Boolean {
@@ -531,10 +566,6 @@ class ReaderViewModel(
         )
     }
 
-    private fun bookmarkFingerprint(index: Int, progress: Double): Pair<Int, Long> {
-        return index to progress.toBits()
-    }
-
     private fun savePersistentStatistics() {
         val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
@@ -560,14 +591,15 @@ class ReaderViewModel(
         // Update speeds
         val charsPerSec = if (dailyStats.readingTime > 0) dailyStats.charactersRead / dailyStats.readingTime else 0.0
         val speedPerHour = (charsPerSec * 3600).toInt()
-
         // Ensure readingTime unit is seconds for SPEED calculation
         // speed = chars / (time_in_seconds / 3600) = chars * 3600 / time_in_seconds
+
         dailyStats.lastReadingSpeed = speedPerHour
         dailyStats.maxReadingSpeed = maxOf(dailyStats.maxReadingSpeed, speedPerHour)
 
         // Persistence
         BookStorage.saveStatistics(fullStatistics.toList(), rootUrl)
+        Log.d("ReaderViewModel", "Saved statistics locally. Chars read today: ${dailyStats.charactersRead}")
 
         lastSavedExploredCharCount = totalExploredCharCount
         lastSavedSessionReadingTime = sessionReadingTime

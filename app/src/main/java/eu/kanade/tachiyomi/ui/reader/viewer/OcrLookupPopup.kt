@@ -87,12 +87,16 @@ fun OcrLookupPopup(
     repository: DictionaryRepository,
     anchorX: Float,
     anchorY: Float,
+    anchorWidth: Float = 0f,
+    anchorHeight: Float = 0f,
+    isVertical: Boolean,
     mediaInfo: MediaInfo? = null,
     screenshot: Bitmap? = null,
     onRequestScreenshot: (() -> Bitmap?)? = null,
     onCropTriggered: ((Long, Int?) -> Unit)? = null,
     initialLookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
     usePopup: Boolean = true,
+    onTermMatched: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -205,6 +209,16 @@ fun OcrLookupPopup(
 
             // Hide loading spinner — popup is visible
             isLoading = false
+
+            if (!isRecursive && result.results.isNotEmpty()) {
+                val firstMatched = result.results.firstOrNull()?.matched
+                if (firstMatched != null) {
+                    val charCount = firstMatched.codePointCount(0, firstMatched.length)
+                    scope.launch(Dispatchers.Main) {
+                        onTermMatched?.invoke(charCount)
+                    }
+                }
+            }
 
             // Anki duplicate check runs in background, doesn't block UI
             if (ankiEnabled && result.results.isNotEmpty()) {
@@ -401,40 +415,58 @@ fun OcrLookupPopup(
         null
     }
 
-    // === Positioning Logic: Right → Left → Below → Above ===
-    val spaceRight = screenWidthPx - anchorX - gapPx
-    val spaceLeft = anchorX - gapPx
-    val spaceBelow = screenHeightPx - anchorY - gapPx
-    val spaceAbove = anchorY - gapPx
+    // === Adaptive Positioning & Sizing Logic ===
+    // Use the bounding box of the anchor (e.g. OCR block or tapped point)
+    val anchorLeft = anchorX
+    val anchorTop = anchorY
+    val anchorRight = anchorX + anchorWidth
+    val anchorBottom = anchorY + anchorHeight
 
-    data class PopupPosition(val x: Float, val y: Float)
+    val spaceRight = screenWidthPx - anchorRight - gapPx
+    val spaceLeft = anchorLeft - gapPx
+    val spaceBelow = screenHeightPx - anchorBottom - gapPx
+    val spaceAbove = anchorTop - gapPx
 
-    val position: PopupPosition = when {
-        spaceRight >= popupWidthPx + paddingPx -> {
-            val x = anchorX + gapPx
-            val y = (anchorY - popupHeightPx / 2)
-                .coerceIn(paddingPx, screenHeightPx - popupHeightPx - paddingPx)
-            PopupPosition(x, y)
-        }
-        spaceLeft >= popupWidthPx + paddingPx -> {
-            val x = anchorX - popupWidthPx - gapPx
-            val y = (anchorY - popupHeightPx / 2)
-                .coerceIn(paddingPx, screenHeightPx - popupHeightPx - paddingPx)
-            PopupPosition(x, y)
-        }
-        spaceBelow >= popupHeightPx + paddingPx -> {
-            val x = (anchorX - popupWidthPx / 2)
-                .coerceIn(paddingPx, screenWidthPx - popupWidthPx - paddingPx)
-            val y = anchorY + gapPx
-            PopupPosition(x, y)
-        }
-        else -> {
-            val x = (anchorX - popupWidthPx / 2)
-                .coerceIn(paddingPx, screenWidthPx - popupWidthPx - paddingPx)
-            val y = (anchorY - popupHeightPx - gapPx).coerceAtLeast(paddingPx)
-            PopupPosition(x, y)
+    data class PopupLayoutResult(val x: Float, val y: Float, val widthPx: Float, val heightPx: Float)
+
+    val layoutResult = run {
+        // Hoshi logic: prefer sides for vertical text, top/bottom for horizontal text
+        val preferSide = isVertical || (maxOf(spaceRight, spaceLeft) >= popupWidthPx && maxOf(spaceRight, spaceLeft) > maxOf(spaceBelow, spaceAbove))
+
+        if (preferSide) {
+            // Side placement (Right or Left)
+            val actualWidthPx = minOf(maxOf(spaceRight, spaceLeft) - paddingPx, popupWidthPx)
+            val actualHeightPx = minOf(screenHeightPx - paddingPx * 2, popupHeightPx)
+
+            val x = if (spaceRight >= spaceLeft) {
+                anchorRight + gapPx
+            } else {
+                anchorLeft - actualWidthPx - gapPx
+            }
+            // Center Y relative to the anchor's vertical center
+            val anchorCenterY = anchorTop + anchorHeight / 2f
+            val y = (anchorCenterY - actualHeightPx / 2).coerceIn(paddingPx, screenHeightPx - actualHeightPx - paddingPx)
+            PopupLayoutResult(x, y, actualWidthPx, actualHeightPx)
+        } else {
+            // Top or Bottom placement
+            val actualWidthPx = minOf(screenWidthPx - paddingPx * 2, popupWidthPx)
+            val actualHeightPx = minOf(maxOf(spaceBelow, spaceAbove) - paddingPx, popupHeightPx)
+
+            // Center X relative to the anchor's horizontal center
+            val anchorCenterX = anchorLeft + anchorWidth / 2f
+            val x = (anchorCenterX - actualWidthPx / 2).coerceIn(paddingPx, screenWidthPx - actualWidthPx - paddingPx)
+            val y = if (spaceBelow >= spaceAbove) {
+                anchorBottom + gapPx
+            } else {
+                anchorTop - actualHeightPx - gapPx
+            }
+            PopupLayoutResult(x, y, actualWidthPx, actualHeightPx)
         }
     }
+
+    val actualWidthDp = with(density) { layoutResult.widthPx.toDp() }
+    val actualHeightDp = with(density) { layoutResult.heightPx.toDp() }
+
 
     LaunchedEffect(lookupString, ankiEnabled, ankiModel) {
         if (lookupString.isBlank()) {
@@ -464,8 +496,8 @@ fun OcrLookupPopup(
     fun PopupContent() {
         Surface(
             modifier = modifier
-                .width(maxWidthDp)
-                .height(maxHeightDp)
+                .width(actualWidthDp)
+                .height(actualHeightDp)
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -522,7 +554,7 @@ fun OcrLookupPopup(
 
     if (usePopup) {
         Popup(
-            offset = IntOffset(position.x.roundToInt(), position.y.roundToInt()),
+            offset = IntOffset(layoutResult.x.roundToInt(), layoutResult.y.roundToInt()),
             onDismissRequest = { onDismiss() },
             properties = PopupProperties(
                 focusable = false,
@@ -536,8 +568,8 @@ fun OcrLookupPopup(
             modifier = Modifier
                 .fillMaxSize()
                 .offset(
-                    x = with(LocalDensity.current) { position.x.toDp() },
-                    y = with(LocalDensity.current) { position.y.toDp() },
+                    x = with(LocalDensity.current) { layoutResult.x.toDp() },
+                    y = with(LocalDensity.current) { layoutResult.y.toDp() },
                 )
         ) {
             PopupContent()

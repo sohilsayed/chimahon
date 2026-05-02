@@ -1,6 +1,7 @@
 package com.canopus.chimareader.ui.reader
 
 import android.util.Log
+import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -35,8 +36,10 @@ enum class ActiveSheet {
 fun ReaderScreen(
     book: BookMetadata,
     onBack: () -> Unit,
-    onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
-    onDismissPopup: () -> Unit = {},
+    onShowHudChanged: (Boolean) -> Unit = {},
+    onThemeChanged: (backgroundColor: Int) -> Unit = {},
+    onLookupRequested: (String, String, Float, Float, Float, Float) -> Unit = { _, _, _, _, _, _ -> },
+    onDismissPopupRequested: () -> Unit = {},
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
     additionalSettings: @Composable ColumnScope.() -> Unit = {}
@@ -104,13 +107,16 @@ fun ReaderScreen(
         initialSettings
     }
 
+    LaunchedEffect(currentSettings.backgroundColor) {
+        onThemeChanged(currentSettings.backgroundColor)
+    }
+
     val bgColor = Color(currentSettings.backgroundColor)
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(bgColor)
-            .systemBarsPadding()
     ) {
         Log.d("ReaderScreen", "BoxWithConstraints: maxHeight=$maxHeight, maxWidth=$maxWidth")
         
@@ -162,12 +168,22 @@ fun ReaderScreen(
                     
                     DisposableEffect(Unit) {
                         onDispose {
-                            viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
+                            viewModel.saveBookmark(viewModel.currentProgress)
+                        }
+                    }
+
+                    LaunchedEffect(isPopupActive) {
+                        if (!isPopupActive) {
+                            viewModel.bridge.send(WebViewCommand.ClearSelection)
                         }
                     }
 
                     // HUD visibility state - toggled by edge taps
-                    var showHud by remember { mutableStateOf(true) }
+                    var showHud by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(showHud) {
+                        onShowHudChanged(showHud)
+                    }
 
                     val tapZonePx = with(density) { 64.dp.toPx() }.toInt()
 
@@ -195,25 +211,35 @@ fun ReaderScreen(
                         swipeThreshold = chapterSwipeDistance,
                         tapZonePx = tapZonePx,
                         isPopupActive = isPopupActive,
-                        onDismissPopup = onDismissPopup,
-                        onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
+                        onDismissPopupRequested = onDismissPopupRequested,
+                        onTextSelected = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
                     )
 
-                    // Top HUD - always visible when showHud is true
-                    if (showHud) {
+                    // Top HUD
+                    AnimatedVisibility(
+                        visible = showHud,
+                        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    ) {
                         ReaderTopBar(
                             title = viewModel.document.title().orEmpty(),
                             onBack = onBack,
                             onToggleHud = { showHud = false },
                             backgroundColor = currentSettings.backgroundColor,
                             contentColor = currentSettings.textColor,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                            modifier = Modifier.statusBarsPadding()
                         )
                     }
 
-                    // Bottom HUD - always visible when showHud is true
-                    if (showHud) {
+                    // Bottom HUD
+                    AnimatedVisibility(
+                        visible = showHud,
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    ) {
                         ReaderBottomBar(
                             focusMode = focusMode,
                             progressText = "${(viewModel.currentProgress * 100).toInt()}%",
@@ -224,8 +250,7 @@ fun ReaderScreen(
                             onOpenChapters = { activeSheet = ActiveSheet.Chapters },
                             onOpenAppearance = { activeSheet = ActiveSheet.Appearance },
                             onOpenStatistics = { activeSheet = ActiveSheet.Statistics },
-                            onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki },
-                            modifier = Modifier.align(Alignment.BottomCenter)
+                            onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki }
                         )
                     }
                 }

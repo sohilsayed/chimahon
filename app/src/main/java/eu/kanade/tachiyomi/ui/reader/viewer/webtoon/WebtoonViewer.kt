@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.WebtoonLayoutManager
 import chimahon.DictionaryRepository
+import chimahon.MediaInfo
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
@@ -58,7 +59,10 @@ class WebtoonViewer(
             charOffset: Int,
             anchorX: Float,
             anchorY: Float,
-            mediaInfo: chimahon.MediaInfo?,
+            anchorWidth: Float,
+            anchorHeight: Float,
+            isVertical: Boolean,
+            mediaInfo: MediaInfo?,
         ) -> Unit
     )? = null
 

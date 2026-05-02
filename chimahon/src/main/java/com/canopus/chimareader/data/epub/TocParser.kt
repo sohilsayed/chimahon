@@ -1,81 +1,85 @@
 package com.canopus.chimareader.data.epub
 
-import org.jsoup.nodes.Document
+import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 
 class TocParser {
 
     fun parse(tocContent: String, manifest: EpubManifest): List<TocEntry> {
-        val doc = Parser.xmlParser().parseInput(tocContent, "")
+        val doc = Jsoup.parse(tocContent, "", Parser.xmlParser())
+        val elements = doc.select("*")
 
-        return if (doc.select("navMap").isNotEmpty()) {
-            parseNcx(doc)
+        return if (elements.any { it.tagName().endsWith("navMap", ignoreCase = true) }) {
+            parseNcx(elements)
         } else {
-            parseXhtmlNav(doc)
+            parseXhtmlNav(elements)
         }
     }
 
-    private fun parseNcx(doc: Document): List<TocEntry> {
-        val navMap = doc.select("navMap").first() ?: return emptyList()
-        return parseNavPoints(navMap.select("navPoint"))
+    private fun parseNcx(elements: org.jsoup.select.Elements): List<TocEntry> {
+        val navMap = elements.firstOrNull { it.tagName().endsWith("navMap", ignoreCase = true) } ?: return emptyList()
+        return parseNavPoints(navMap)
     }
 
-    private fun parseNavPoints(navPoints: org.jsoup.select.Elements): List<TocEntry> {
+    private fun parseNavPoints(parent: org.jsoup.nodes.Element): List<TocEntry> {
         val entries = mutableListOf<TocEntry>()
 
-        navPoints.forEach { point ->
+        parent.children().filter { it.tagName().endsWith("navPoint", ignoreCase = true) }.forEach { point ->
             val id = point.attr("id").ifBlank { java.util.UUID.randomUUID().toString() }
-            val label = point.select("navLabel > text").first()?.text() ?: "Unknown"
-            val href = point.select("content").first()?.attr("src") ?: ""
-            val children = parseNavPoints(point.select("navPoint"))
+            val labelNode = point.children().firstOrNull { it.tagName().endsWith("navLabel", ignoreCase = true) }
+            val textNode = labelNode?.children()?.firstOrNull { it.tagName().endsWith("text", ignoreCase = true) }
+            val label = textNode?.text() ?: labelNode?.text() ?: "Unknown"
+            
+            val contentNode = point.children().firstOrNull { it.tagName().endsWith("content", ignoreCase = true) }
+            val href = contentNode?.attr("src") ?: ""
+            val decodedHref = java.net.URLDecoder.decode(href, "UTF-8")
+            val children = parseNavPoints(point)
 
             entries.add(
                 TocEntry(
                     id = id,
                     label = label,
-                    href = href,
-                    children = children,
-                ),
+                    href = decodedHref,
+                    children = children
+                )
             )
         }
 
         return entries
     }
 
-    private fun parseXhtmlNav(doc: Document): List<TocEntry> {
-        val nav = findTocNav(doc) ?: return emptyList()
-        val ol = nav.select("ol").first() ?: return emptyList()
+    private fun parseXhtmlNav(elements: org.jsoup.select.Elements): List<TocEntry> {
+        val nav = findTocNav(elements) ?: return emptyList()
+        val ol = nav.children().firstOrNull { it.tagName().endsWith("ol", ignoreCase = true) } ?: return emptyList()
         return parseOl(ol)
     }
 
-    private fun findTocNav(doc: Document): org.jsoup.nodes.Element? {
-        doc.select("nav").forEach { nav ->
-            val type = nav.attr("epub:type")
-            if (type.contains("toc")) {
-                return nav
-            }
+    private fun findTocNav(elements: org.jsoup.select.Elements): org.jsoup.nodes.Element? {
+        return elements.firstOrNull { nav ->
+            nav.tagName().endsWith("nav", ignoreCase = true) && 
+            (nav.attr("epub:type").contains("toc") || nav.attr("type").contains("toc"))
         }
-        return null
     }
 
     private fun parseOl(ol: org.jsoup.nodes.Element): List<TocEntry> {
         val entries = mutableListOf<TocEntry>()
 
-        ol.select("> li").forEach { li ->
-            val a = li.select("> a").first()
+        ol.children().filter { it.tagName().endsWith("li", ignoreCase = true) }.forEach { li ->
+            val a = li.children().firstOrNull { it.tagName().endsWith("a", ignoreCase = true) }
             if (a != null) {
                 val label = a.text().ifBlank { "Unknown" }
                 val href = a.attr("href")
-                val nestedOl = li.select("> ol").first()
+                val decodedHref = java.net.URLDecoder.decode(href, "UTF-8")
+                val nestedOl = li.children().firstOrNull { it.tagName().endsWith("ol", ignoreCase = true) }
                 val children = if (nestedOl != null) parseOl(nestedOl) else emptyList()
 
                 entries.add(
                     TocEntry(
                         id = java.util.UUID.randomUUID().toString(),
                         label = label,
-                        href = href,
-                        children = children,
-                    ),
+                        href = decodedHref,
+                        children = children
+                    )
                 )
             }
         }
@@ -83,12 +87,12 @@ class TocParser {
         return entries
     }
 
-    fun parseTocFromManifest(manifest: EpubManifest, extractor: EpubExtractorBase, contentDir: String): List<TocEntry> {
-        val tocId = manifest.items.entries.find { it.value.properties?.contains("nav") == true }?.key
+    fun parseToc(tocId: String?, manifest: EpubManifest, extractor: EpubExtractorBase, contentDir: String): List<TocEntry> {
+        val resolvedTocId = tocId ?: manifest.items.entries.find { it.value.properties?.contains("nav") == true }?.key
             ?: return emptyList()
 
-        val tocItem = manifest.items[tocId] ?: return emptyList()
-        val tocPath = tocItem.href
+        val tocItem = manifest.items[resolvedTocId] ?: return emptyList()
+        val tocPath = if (contentDir.isNotEmpty()) "$contentDir${tocItem.href}" else tocItem.href
 
         val tocContent = extractor.getFileContent(tocPath) ?: return emptyList()
 

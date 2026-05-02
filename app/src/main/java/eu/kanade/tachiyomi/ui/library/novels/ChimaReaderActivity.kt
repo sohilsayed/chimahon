@@ -34,6 +34,11 @@ import uy.kohesive.injekt.api.get
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlin.concurrent.thread
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * App-side subclass of [NovelReaderActivity] that wires text-selection events
@@ -48,6 +53,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
     
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
     private var popupWebView: WebView? = null
+    private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +63,14 @@ class ChimaReaderActivity : NovelReaderActivity() {
             val activeProfile = prefs.profileStore.getActiveProfile()
             val termPaths = getDictionaryPaths(this@ChimaReaderActivity, activeProfile)
             Injekt.get<DictionaryRepository>().warmUp(termPaths)
+        }
+        
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                novelReaderSettings.verticalWriting.collect {
+                    isVerticalWriting = it
+                }
+            }
         }
     }
 
@@ -170,18 +184,22 @@ class ChimaReaderActivity : NovelReaderActivity() {
      * can be set from the non-Composable [onLookupRequested] override.
      */
     private var lookupState by mutableStateOf<LookupState?>(null)
+    private var isVerticalWriting = true
 
     private data class LookupState(
         val word: String,
         val sentence: String,
         val anchorX: Float,
         val anchorY: Float,
+        val anchorWidth: Float,
+        val anchorHeight: Float,
+        val isVertical: Boolean,
     )
 
     private var lookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null
 
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
-    override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) {
+    override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
         val prefs = Injekt.get<DictionaryPreferences>()
         val activeProfile = prefs.profileStore.getActiveProfile()
         val termPaths = getDictionaryPaths(this, activeProfile)
@@ -190,15 +208,16 @@ class ChimaReaderActivity : NovelReaderActivity() {
             Injekt.get<DictionaryRepository>().lookup(word, termPaths)
         }
         
-        lookupState = LookupState(word, sentence, x, y)
+        lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting)
         isPopupActive = true
     }
 
-    override fun onDismissPopup() {
-        super.onDismissPopup()
+    override fun onDismissPopupRequested() {
+        super.onDismissPopupRequested()
         lookupState = null
         lookupDeferred?.cancel()
         lookupDeferred = null
+        isPopupActive = false
     }
 
     /**
@@ -240,7 +259,6 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 chapterName = vm.getCurrentChapterTitle() ?: ""
             )
         }
-
         eu.kanade.presentation.theme.TachiyomiTheme {
             OcrLookupPopup(
                 lookupString = state.word,
@@ -254,12 +272,18 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 repository = repo,
                 anchorX = state.anchorX,
                 anchorY = state.anchorY,
+                anchorWidth = state.anchorWidth,
+                anchorHeight = state.anchorHeight,
+                isVertical = state.isVertical,
                 // No screenshot — plain text selection only
                 mediaInfo = mediaInfo,
                 onRequestScreenshot = null,
                 onCropTriggered = null,
                 initialLookupDeferred = lookupDeferred,
                 usePopup = false,
+                onTermMatched = { charCount ->
+                    readerViewModel?.bridge?.send(com.canopus.chimareader.ui.reader.WebViewCommand.HighlightSelection(charCount))
+                },
                 modifier = Modifier,
             )
         }
