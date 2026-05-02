@@ -1,0 +1,111 @@
+import kotlin.Boolean;
+import kotlin.String;
+
+CREATE TABLE dictionary_profiles (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    language_code TEXT,
+    anki_enabled INTEGER AS Boolean NOT NULL DEFAULT 1,
+    anki_deck TEXT NOT NULL DEFAULT "",
+    anki_model TEXT NOT NULL DEFAULT "",
+    anki_field_map TEXT NOT NULL DEFAULT "{}",
+    anki_tags TEXT NOT NULL DEFAULT "",
+    anki_dup_check INTEGER AS Boolean NOT NULL DEFAULT 1,
+    anki_dup_scope TEXT NOT NULL DEFAULT "collection",
+    anki_dup_action TEXT NOT NULL DEFAULT "prevent",
+    anki_crop_mode TEXT NOT NULL DEFAULT "none",
+    dictionary_order TEXT NOT NULL DEFAULT "[]",
+    enabled_dictionaries TEXT NOT NULL DEFAULT "[]"
+);
+
+CREATE TABLE manga_dictionary_profiles (
+    manga_id INTEGER NOT NULL PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE CASCADE,
+    FOREIGN KEY(profile_id) REFERENCES dictionary_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE source_dictionary_profiles (
+    source_id INTEGER NOT NULL PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    FOREIGN KEY(source_id) REFERENCES sources(_id) ON DELETE CASCADE,
+    FOREIGN KEY(profile_id) REFERENCES dictionary_profiles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE language_dictionary_profiles (
+    language_code TEXT NOT NULL PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    FOREIGN KEY(profile_id) REFERENCES dictionary_profiles(id) ON DELETE CASCADE
+);
+
+-- Queries
+
+getProfiles:
+SELECT * FROM dictionary_profiles;
+
+getProfileById:
+SELECT * FROM dictionary_profiles WHERE id = :id;
+
+getProfileByManga:
+SELECT dp.* FROM dictionary_profiles dp
+JOIN manga_dictionary_profiles mdp ON dp.id = mdp.profile_id
+WHERE mdp.manga_id = :mangaId;
+
+getProfileBySource:
+SELECT dp.* FROM dictionary_profiles dp
+JOIN source_dictionary_profiles sdp ON dp.id = sdp.profile_id
+WHERE sdp.source_id = :sourceId;
+
+getProfileByLanguage:
+SELECT dp.* FROM dictionary_profiles dp
+JOIN language_dictionary_profiles ldp ON dp.id = ldp.profile_id
+WHERE ldp.language_code = :languageCode;
+
+upsertProfile:
+INSERT INTO dictionary_profiles(
+    id, name, language_code, anki_enabled, anki_deck, anki_model,
+    anki_field_map, anki_tags, anki_dup_check, anki_dup_scope,
+    anki_dup_action, anki_crop_mode, dictionary_order, enabled_dictionaries
+)
+VALUES ?
+ON CONFLICT(id) DO UPDATE SET
+    name = excluded.name,
+    language_code = excluded.language_code,
+    anki_enabled = excluded.anki_enabled,
+    anki_deck = excluded.anki_deck,
+    anki_model = excluded.anki_model,
+    anki_field_map = excluded.anki_field_map,
+    anki_tags = excluded.anki_tags,
+    anki_dup_check = excluded.anki_dup_check,
+    anki_dup_scope = excluded.anki_dup_scope,
+    anki_dup_action = excluded.anki_dup_action,
+    anki_crop_mode = excluded.anki_crop_mode,
+    dictionary_order = excluded.dictionary_order,
+    enabled_dictionaries = excluded.enabled_dictionaries;
+
+deleteProfile:
+DELETE FROM dictionary_profiles WHERE id = :id;
+
+setMangaProfile:
+INSERT INTO manga_dictionary_profiles(manga_id, profile_id)
+VALUES (:mangaId, :profileId)
+ON CONFLICT(manga_id) DO UPDATE SET profile_id = excluded.profile_id;
+
+setSourceProfile:
+INSERT INTO source_dictionary_profiles(source_id, profile_id)
+VALUES (:sourceId, :profileId)
+ON CONFLICT(source_id) DO UPDATE SET profile_id = excluded.profile_id;
+
+setLanguageProfile:
+INSERT INTO language_dictionary_profiles(language_code, profile_id)
+VALUES (:languageCode, :profileId)
+ON CONFLICT(language_code) DO UPDATE SET profile_id = excluded.profile_id;
+
+deleteMangaProfile:
+DELETE FROM manga_dictionary_profiles WHERE manga_id = :mangaId;
+
+deleteSourceProfile:
+DELETE FROM source_dictionary_profiles WHERE source_id = :sourceId;
+
+deleteLanguageProfile:
+DELETE FROM language_dictionary_profiles WHERE language_code = :languageCode;

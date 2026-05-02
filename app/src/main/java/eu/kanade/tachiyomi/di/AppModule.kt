@@ -66,6 +66,12 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import tachiyomi.data.Dictionary_profiles
+import tachiyomi.data.dictionary.DictionaryRepositoryImpl
+import tachiyomi.data.StringMapColumnAdapter
+import tachiyomi.data.StringSetColumnAdapter
+import tachiyomi.data.JsonStringListColumnAdapter
+import chimahon.dictionary.DictionaryProfileRepository
 
 // SY -->
 private const val LEGACY_DATABASE_NAME = "tachiyomi.db"
@@ -130,6 +136,11 @@ class AppModule(val app: Application) : InjektModule {
                 mangasAdapter = Mangas.Adapter(
                     genreAdapter = StringListColumnAdapter,
                     update_strategyAdapter = UpdateStrategyColumnAdapter,
+                ),
+                dictionary_profilesAdapter = Dictionary_profiles.Adapter(
+                    anki_field_mapAdapter = StringMapColumnAdapter,
+                    dictionary_orderAdapter = JsonStringListColumnAdapter,
+                    enabled_dictionariesAdapter = StringSetColumnAdapter,
                 ),
             )
         }
@@ -220,9 +231,10 @@ class AppModule(val app: Application) : InjektModule {
         }
 
         addSingletonFactory { WordAudioService(app) }
-        addSingletonFactory { DictionaryPreferences(get()) }
+        addSingletonFactory { DictionaryPreferences(get(), get()) }
         addSingletonFactory<WordAudioPreferences> { get<DictionaryPreferences>() }
 
+        addSingletonFactory { com.canopus.chimareader.data.NovelCategoryStorage(app) }
         addSingletonFactory { GoogleDriveService(app) }
     }
 }

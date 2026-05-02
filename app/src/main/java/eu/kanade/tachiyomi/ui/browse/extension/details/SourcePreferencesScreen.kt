@@ -58,12 +58,32 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
 
+        var showDictionaryProfileDialog by remember { mutableStateOf(false) }
+
+        if (showDictionaryProfileDialog) {
+            eu.kanade.tachiyomi.ui.manga.DictionaryProfileDialog(
+                mangaId = null,
+                sourceId = sourceId,
+                onDismissRequest = { showDictionaryProfileDialog = false },
+            )
+        }
+
         Scaffold(
             topBar = {
                 AppBar(
                     title = Injekt.get<SourceManager>().getOrStub(sourceId).toString(),
                     navigateUp = navigator::pop,
                     scrollBehavior = it,
+                    actions = {
+                        eu.kanade.presentation.components.AppBarActions(
+                            actions = kotlinx.collections.immutable.persistentListOf(
+                                eu.kanade.presentation.components.AppBar.OverflowAction(
+                                    title = tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.MR.strings.pref_dictionary_profile),
+                                    onClick = { showDictionaryProfileDialog = true },
+                                )
+                            )
+                        )
+                    }
                 )
             },
         ) { contentPadding ->

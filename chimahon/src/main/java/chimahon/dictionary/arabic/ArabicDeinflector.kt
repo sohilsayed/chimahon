@@ -1,40 +1,12 @@
 package chimahon.dictionary.arabic
 
-data class DeinflectionResult(val text: String, val conditionsOut: Set<String>)
+import chimahon.dictionary.Deinflector
+import chimahon.dictionary.DeinflectionResult
+import chimahon.dictionary.Rule
 
-sealed class Rule {
-    abstract val conditionsIn: Set<String>
-    abstract val conditionsOut: Set<String>
-    abstract val isInflected: Regex
+object ArabicDeinflector : Deinflector {
 
-    data class Prefix(
-        val inflectedPrefix: String,
-        val deinflectedPrefix: String,
-        override val conditionsIn: Set<String>,
-        override val conditionsOut: Set<String>,
-        override val isInflected: Regex,
-    ) : Rule()
-
-    data class Suffix(
-        val inflectedSuffix: String,
-        val deinflectedSuffix: String,
-        override val conditionsIn: Set<String>,
-        override val conditionsOut: Set<String>,
-        override val isInflected: Regex,
-    ) : Rule()
-
-    data class Sandwich(
-        val inflectedPrefix: String,
-        val deinflectedPrefix: String,
-        val inflectedSuffix: String,
-        val deinflectedSuffix: String,
-        override val conditionsIn: Set<String>,
-        override val conditionsOut: Set<String>,
-        override val isInflected: Regex,
-    ) : Rule()
-}
-
-object ArabicDeinflector {
+    override val languageCode: String = "ar"
 
     private val arabicLetters = "[\u0620-\u065F\u066E-\u06D3\u06D5\u06EE\u06EF\u06FA-\u06FC\u06FF]"
 
@@ -415,7 +387,7 @@ object ArabicDeinflector {
         directObjectPronouns3rd.forEach { add(suffixInflection("ن$it", "", setOf("cv_s"), setOf("cv"))) }
     }
 
-    fun deinflect(text: String, conditions: Set<String> = emptySet()): List<DeinflectionResult> {
+    override fun deinflect(text: String, conditions: Set<String>): List<DeinflectionResult> {
         val results = mutableListOf(DeinflectionResult(text, conditions))
         val seen = mutableSetOf(text to conditions)
 

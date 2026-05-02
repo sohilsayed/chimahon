@@ -411,6 +411,7 @@ class MangaScreen(
                     else -> {}
                 }
             }.takeIf { isConfigurableSource },
+            onClickDictionaryProfile = { showDictionaryProfileDialog = true },
             onClearManga = { screenModel.showClearMangaDialog() },
             onOpenMangaFolder = {
                 if (successState.mergedData == null) {
@@ -465,6 +466,15 @@ class MangaScreen(
         )
 
         var showScanlatorsDialog by remember { mutableStateOf(false) }
+        var showDictionaryProfileDialog by remember { mutableStateOf(false) }
+
+        if (showDictionaryProfileDialog) {
+            DictionaryProfileDialog(
+                mangaId = successState.manga.id,
+                sourceId = null,
+                onDismissRequest = { showDictionaryProfileDialog = false },
+            )
+        }
 
         val onDismissRequest = {
             screenModel.dismissDialog()

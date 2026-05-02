@@ -55,12 +55,21 @@ class ChimaReaderActivity : NovelReaderActivity() {
     private var popupWebView: WebView? = null
     private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this) }
 
-    private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
+    private var cachedActiveProfile: chimahon.dictionary.DictionaryProfile? = null
     private var cachedTermPaths: List<String>? = null
 
-    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
-        val prefs = Injekt.get<DictionaryPreferences>()
-        val profile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile().also { cachedActiveProfile = it }
+    private fun getOrRefreshLookupPaths(): Pair<chimahon.dictionary.DictionaryProfile, List<String>> {
+        val profile = cachedActiveProfile ?: runBlocking {
+            val getProfile = Injekt.get<chimahon.dictionary.GetDictionaryProfile>()
+            val sourceManager = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>()
+            val manga = readerViewModel?.state?.value?.manga
+            if (manga != null) {
+                val lang = sourceManager.get(manga.source)?.lang
+                getProfile.execute(mangaId = manga.id, sourceId = manga.source, lang = lang)
+            } else {
+                Injekt.get<DictionaryPreferences>().profileStore.getActiveProfile()
+            }
+        }.also { cachedActiveProfile = it }
         val paths = cachedTermPaths ?: getDictionaryPaths(this, profile).also { cachedTermPaths = it }
         return profile to paths
     }
@@ -72,12 +81,18 @@ class ChimaReaderActivity : NovelReaderActivity() {
         val prefs = Injekt.get<DictionaryPreferences>()
 
         // Warm up and populate the cache on a background thread.
-        thread(name = "DictionaryWarmup", start = true) {
-            val profile = prefs.profileStore.getActiveProfile()
-            val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
-            cachedActiveProfile = profile
-            cachedTermPaths = termPaths
-            Injekt.get<DictionaryRepository>().warmUp(termPaths)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val getProfile = Injekt.get<chimahon.dictionary.GetDictionaryProfile>()
+            val sourceManager = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>()
+            val manga = readerViewModel?.state?.map { it.manga }?.filterNotNull()?.first()
+            if (manga != null) {
+                val lang = sourceManager.get(manga.source)?.lang
+                val profile = getProfile.execute(mangaId = manga.id, sourceId = manga.source, lang = lang)
+                val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
+                cachedActiveProfile = profile
+                cachedTermPaths = termPaths
+                Injekt.get<DictionaryRepository>().warmUp(termPaths)
+            }
         }
 
         lifecycleScope.launch {
@@ -92,7 +107,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         // next lookup picks up the new dictionaries/order without a full restart.
         lifecycleScope.launch {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                prefs.rawActiveProfileId().changes().collect {
+                Injekt.get<chimahon.dictionary.DictionaryProfileRepository>().getProfiles().collect {
                     cachedActiveProfile = null
                     cachedTermPaths = null
                 }

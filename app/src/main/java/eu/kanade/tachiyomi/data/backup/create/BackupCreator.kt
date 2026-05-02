@@ -117,6 +117,7 @@ class BackupCreator(
 
                 // Chimahon -->
                 backupNovels = backupNovels(options),
+                backupNovelCategories = backupNovelCategories(options),
                 // Chimahon <--
             )
 
@@ -208,6 +209,12 @@ class BackupCreator(
         if (!options.novels) return emptyList()
 
         return novelBackupCreator.backupNovels()
+    }
+
+    fun backupNovelCategories(options: BackupOptions): List<eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory> {
+        if (!options.novels) return emptyList()
+
+        return novelBackupCreator.backupCategories()
     }
     // Chimahon <--
 

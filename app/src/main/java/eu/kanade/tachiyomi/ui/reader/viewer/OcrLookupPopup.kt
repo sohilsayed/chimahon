@@ -145,7 +145,7 @@ fun OcrLookupPopup(
     val ankiEnabled = activeProfile.ankiEnabled
     val ankiDeck = activeProfile.ankiDeck
     val ankiModel = activeProfile.ankiModel
-    val ankiFieldMap = activeProfile.ankiFieldMap
+    val ankiFieldMap = activeProfile.ankiFieldMapJson()
     val ankiDupCheck = activeProfile.ankiDupCheck
     val ankiDupScope = activeProfile.ankiDupScope
     val ankiDupAction = activeProfile.ankiDupAction

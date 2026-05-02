@@ -530,16 +530,13 @@ object SettingsDictionaryScreen : SearchableSettings {
     @Composable
     private fun getAnkiProfileGroup(): Preference.PreferenceGroup {
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
-        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
         val profileStore = dictionaryPreferences.profileStore
-
-        val profiles = remember(rawProfiles) { profileStore.getProfiles() }
-        val activeProfile = remember(profiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+        val profiles by profileStore.profilesFlow.collectAsState(initial = emptyList())
+        val activeProfile by profileStore.activeProfileFlow.collectAsState(initial = chimahon.dictionary.DictionaryProfile.default())
 
         var showNewDialog by remember { mutableStateOf(false) }
-        var showRenameDialog by remember { mutableStateOf<chimahon.anki.AnkiProfile?>(null) }
-        var showDeleteDialog by remember { mutableStateOf<chimahon.anki.AnkiProfile?>(null) }
+        var showRenameDialog by remember { mutableStateOf<chimahon.dictionary.DictionaryProfile?>(null) }
+        var showDeleteDialog by remember { mutableStateOf<chimahon.dictionary.DictionaryProfile?>(null) }
 
         if (showNewDialog) {
             var newName by remember { mutableStateOf("") }
@@ -876,15 +873,12 @@ object SettingsDictionaryScreen : SearchableSettings {
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val bridge = remember { AnkiDroidBridge(context) }
 
-        val dictionaries by dictionaryNames.collectAsState()
-
-        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
-        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
         val profileStore = dictionaryPreferences.profileStore
-        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+        val profiles by profileStore.profilesFlow.collectAsState(initial = emptyList())
+        val activeProfile by profileStore.activeProfileFlow.collectAsState(initial = chimahon.dictionary.DictionaryProfile.default())
 
-        val updateProfile: (chimahon.anki.AnkiProfile.() -> chimahon.anki.AnkiProfile) -> Unit = { transform ->
-            profileStore.updateProfile(profileStore.getActiveProfile().transform())
+        val updateProfile: (chimahon.dictionary.DictionaryProfile.() -> chimahon.dictionary.DictionaryProfile) -> Unit = { transform ->
+            profileStore.updateProfile(activeProfile.transform())
         }
 
         var pendingPermissionCheck by remember { mutableStateOf(false) }
@@ -908,7 +902,7 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val selectedDeck = activeProfile.ankiDeck
         val selectedModel = activeProfile.ankiModel
-        val fieldMapJson = activeProfile.ankiFieldMap
+        val fieldMapJson = activeProfile.ankiFieldMapJson()
         val dupCheck = activeProfile.ankiDupCheck
         val dupScope = activeProfile.ankiDupScope
         val dupAction = activeProfile.ankiDupAction
@@ -950,14 +944,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                 } else {
                     updated[normalizedName] = effectiveDisplayValue
                 }
-                updateProfile { copy(ankiFieldMap = org.json.JSONObject(updated).toString()) }
+                updateProfile { copy(ankiFieldMap = updated) }
             }
         }
 
         val removeCustomField: (String) -> Unit = { fieldName ->
             val updated = fieldMap.toMutableMap()
             updated.remove(fieldName)
-            updateProfile { copy(ankiFieldMap = org.json.JSONObject(updated).toString()) }
+            updateProfile { copy(ankiFieldMap = updated) }
         }
 
         // Check AnkiDroid status whenever screen is visible and enabled
@@ -999,14 +993,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                 modelFields = bridge.modelFieldNames(selectedModel)
 
                 // Only auto-detect if field map is empty (first-time setup)
-                if (fieldMapJson.isBlank() || fieldMapJson == "{}") {
+                if (activeProfile.ankiFieldMap.isEmpty()) {
                     val detectedMap = modelFields.mapIndexedNotNull { index, fieldName ->
                         val marker = Marker.autoDetect(fieldName, index)
                         if (marker != null) fieldName to "{$marker}" else null
                     }.toMap()
 
                     if (detectedMap.isNotEmpty()) {
-                        profileStore.updateProfile(profileStore.getActiveProfile().copy(ankiFieldMap = org.json.JSONObject(detectedMap).toString()))
+                        profileStore.updateProfile(profileStore.getActiveProfile().copy(ankiFieldMap = detectedMap))
                     }
                 }
             }
@@ -1098,7 +1092,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     if (it == selectedModel) {
                                         return@AnkiDropdownPreference
                                     }
-                                    updateProfile { copy(ankiModel = it, ankiFieldMap = "{}") }
+                                    updateProfile { copy(ankiModel = it, ankiFieldMap = emptyMap()) }
                                 },
                             )
 
@@ -1703,7 +1697,7 @@ object SettingsDictionaryScreen : SearchableSettings {
 private suspend fun importDictionaryFromUri(
     context: Context,
     uri: Uri,
-    activeProfile: chimahon.anki.AnkiProfile,
+    activeProfile: chimahon.dictionary.DictionaryProfile,
 ): Pair<String, Boolean> {
     return withContext(Dispatchers.IO) {
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")

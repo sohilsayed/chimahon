@@ -53,6 +53,7 @@ fun MangaToolbar(
     // KMK -->
     onClickRelatedMangas: (() -> Unit)?,
     onClickSourceSettings: (() -> Unit)?,
+    onClickDictionaryProfile: () -> Unit,
     onClearManga: () -> Unit,
     onOpenMangaFolder: (() -> Unit)?,
     // KMK <--
@@ -257,6 +258,12 @@ fun MangaToolbar(
                             ),
                         )
                     }
+                    add(
+                        AppBar.OverflowAction(
+                            title = stringResource(MR.strings.pref_dictionary_profile), // Assuming this string exists or we can use another string
+                            onClick = onClickDictionaryProfile,
+                        ),
+                    )
                     if (isDebugBuildType) {
                         add(
                             AppBar.OverflowAction(

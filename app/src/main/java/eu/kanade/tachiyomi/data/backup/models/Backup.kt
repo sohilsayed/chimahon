@@ -21,5 +21,6 @@ data class Backup(
     
     // Chimahon -->
     @ProtoNumber(700) var backupNovels: List<BackupNovel> = emptyList(),
+    @ProtoNumber(701) var backupNovelCategories: List<BackupNovelCategory> = emptyList(),
     // Chimahon <--
 )

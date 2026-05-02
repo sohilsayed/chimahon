@@ -1,13 +1,14 @@
 package eu.kanade.tachiyomi.ui.dictionary
 
-import chimahon.anki.AnkiProfile
-import chimahon.anki.AnkiProfileStore
+import chimahon.dictionary.DictionaryProfile
+import chimahon.dictionary.DictionaryProfileStore
 import chimahon.audio.WordAudioPreferences
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 
 class DictionaryPreferences(
     private val preferenceStore: PreferenceStore,
+    private val dictionaryRepository: chimahon.dictionary.DictionaryProfileRepository,
 ) : WordAudioPreferences {
 
     fun popupWidth() = preferenceStore.getInt("pref_dictionary_popup_width", 300)
@@ -43,13 +44,8 @@ class DictionaryPreferences(
     // AnkiProfileStore (single instance, lazy)
     // -------------------------------------------------------------------------
 
-    val profileStore: AnkiProfileStore by lazy {
-        AnkiProfileStore(
-            readProfiles = { rawProfiles().get() },
-            writeProfiles = { rawProfiles().set(it) },
-            readActiveId = { rawActiveProfileId().get() },
-            writeActiveId = { rawActiveProfileId().set(it) },
-        ).apply {
+    val profileStore: DictionaryProfileStore by lazy {
+        DictionaryProfileStore(dictionaryRepository).apply {
             if (getProfiles().isEmpty()) {
                 val legacyDicts = dictionaryOrder().get()
                     .split(",")
@@ -58,7 +54,7 @@ class DictionaryPreferences(
 
                 migrateIfEmpty(
                     defaultName = "Default",
-                    legacyValues = AnkiProfileStore.LegacyAnkiValues(
+                    legacyValues = DictionaryProfileStore.LegacyAnkiValues(
                         deck = legacyAnkiDeck().get(),
                         model = legacyAnkiModel().get(),
                         fieldMap = legacyAnkiFieldMap().get(),

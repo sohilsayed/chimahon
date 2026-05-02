@@ -108,6 +108,9 @@ class BackupRestorer(
         // Chimahon -->
         if (options.novels) {
             restoreAmount += backup.backupNovels.size
+            if (backup.backupNovelCategories.isNotEmpty()) {
+                restoreAmount += 1
+            }
         }
         // Chimahon <--
 
@@ -139,7 +142,7 @@ class BackupRestorer(
             }
             // Chimahon -->
             if (options.novels) {
-                restoreNovels(backup.backupNovels)
+                restoreNovels(backup.backupNovels, backup.backupNovelCategories)
             }
             // Chimahon <--
 
@@ -290,10 +293,17 @@ class BackupRestorer(
     }
 
     // Chimahon -->
-    private fun CoroutineScope.restoreNovels(backupNovels: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>) = launch {
+    private fun CoroutineScope.restoreNovels(
+        backupNovels: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>,
+        backupNovelCategories: List<eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory>
+    ) = launch {
         ensureActive()
         
         try {
+            novelRestorer.restoreCategories(backupNovelCategories)
+            if (backupNovelCategories.isNotEmpty()) {
+                restoreProgress += 1
+            }
             novelRestorer.restore(backupNovels)
         } catch (e: Exception) {
             errors.add(Date() to "Error Restoring Novels: ${e.message}")

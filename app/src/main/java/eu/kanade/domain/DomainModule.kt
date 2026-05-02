@@ -37,6 +37,8 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.upcoming.interactor.GetUpcomingManga
+import chimahon.dictionary.DictionaryProfileRepository
+import tachiyomi.data.dictionary.DictionaryProfileRepositoryImpl
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
@@ -101,6 +103,7 @@ import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addFactory
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
+import chimahon.dictionary.GetDictionaryProfile
 
 class DomainModule : InjektModule {
 
@@ -207,5 +210,8 @@ class DomainModule : InjektModule {
         addFactory { UpdateExtensionRepo(get(), get()) }
         addFactory { ToggleIncognito(get()) }
         addFactory { GetIncognitoState(get(), get(), get()) }
+
+        addSingletonFactory<DictionaryProfileRepository> { DictionaryProfileRepositoryImpl(get()) }
+        addFactory { GetDictionaryProfile(get()) }
     }
 }

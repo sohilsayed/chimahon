@@ -81,11 +81,11 @@ object HomeScreen : Screen() {
 
     private val ALL_TABS_MAP = mapOf(
         NavTabLayout.KEY_LIBRARY to LibraryTab,
+        NavTabLayout.KEY_NOVELS to NovelsTab,
         NavTabLayout.KEY_UPDATES to UpdatesTab,
         NavTabLayout.KEY_HISTORY to HistoryTab,
         NavTabLayout.KEY_BROWSE to BrowseTab,
         NavTabLayout.KEY_DICTIONARY to DictionaryTab,
-        NavTabLayout.KEY_NOVELS to NovelsTab,
     )
 
     @Composable

@@ -6,9 +6,15 @@ import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.Bookmark
 import com.canopus.chimareader.data.Statistics
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
+import eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory
 import java.io.File
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class NovelRestorer(private val context: Context) {
+class NovelRestorer(
+    private val context: Context,
+    private val novelCategoryStorage: com.canopus.chimareader.data.NovelCategoryStorage = Injekt.get()
+) {
 
     fun restore(backupNovels: List<BackupNovel>) {
         if (backupNovels.isEmpty()) return
@@ -18,6 +24,16 @@ class NovelRestorer(private val context: Context) {
             
             // Check if folder exists
             if (bookDir.exists()) {
+                // Merge Metadata
+                val localMetadata = BookStorage.loadMetadata(bookDir)
+                if (localMetadata != null) {
+                    val updatedMetadata = localMetadata.copy(
+                        author = backupNovel.author ?: localMetadata.author,
+                        categoryIds = (localMetadata.categoryIds + backupNovel.categoryIds).distinct()
+                    )
+                    BookStorage.saveMetadata(updatedMetadata, bookDir)
+                }
+
                 // Merge Bookmark
                 val localBookmark = BookStorage.loadBookmark(bookDir)
                 if (localBookmark == null || backupNovel.lastModified > (localBookmark.lastModified ?: 0L)) {
@@ -80,11 +96,13 @@ class NovelRestorer(private val context: Context) {
                 val metadata = BookMetadata(
                     id = backupNovel.id,
                     title = backupNovel.title,
+                    author = backupNovel.author,
                     cover = backupNovel.cover, // Might be broken link until EPUB import
                     folder = backupNovel.id,
                     lastAccess = backupNovel.lastModified,
                     hash = backupNovel.id,
-                    isGhost = true
+                    isGhost = true,
+                    categoryIds = backupNovel.categoryIds
                 )
                 BookStorage.saveMetadata(metadata, bookDir)
 
@@ -117,6 +135,32 @@ class NovelRestorer(private val context: Context) {
                     BookStorage.saveStatistics(stats, bookDir)
                 }
             }
+        }
+    }
+
+    fun restoreCategories(backupCategories: List<BackupNovelCategory>) {
+        if (backupCategories.isEmpty()) return
+
+        val currentCategories = novelCategoryStorage.loadAllCategories().toMutableList()
+        var changed = false
+
+        backupCategories.forEach { backupCategory ->
+            val existing = currentCategories.find { it.id == backupCategory.id || it.name == backupCategory.name }
+            if (existing == null) {
+                currentCategories.add(
+                    com.canopus.chimareader.data.NovelCategory(
+                        id = backupCategory.id,
+                        name = backupCategory.name,
+                        order = backupCategory.order.toInt(),
+                        flags = backupCategory.flags.toInt()
+                    )
+                )
+                changed = true
+            }
+        }
+
+        if (changed) {
+            novelCategoryStorage.saveAllCategories(currentCategories)
         }
     }
 }

@@ -49,6 +49,7 @@ import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.domain.ui.UiPreferences
+import chimahon.dictionary.DictionaryProfile
 import eu.kanade.presentation.theme.colorscheme.*
 import com.materialkolor.PaletteStyle
 import tachiyomi.presentation.core.util.collectAsState
@@ -76,7 +77,7 @@ fun DictionaryEntryWebView(
     fontSize: Int = 16,
     showFrequencyHarmonic: Boolean = false,
     groupTerms: Boolean = true,
-    activeProfile: chimahon.anki.AnkiProfile,
+    activeProfile: chimahon.dictionary.DictionaryProfile,
     existingExpressions: Set<String> = emptySet(),
     tabs: List<TabInfo> = emptyList(),
     showPitchDiagram: Boolean = true,
@@ -531,7 +532,7 @@ private fun buildRenderPayload(
     showPitchNumber: Boolean,
     showPitchText: Boolean,
     wordAudioAutoplay: Boolean,
-    activeProfile: chimahon.anki.AnkiProfile,
+    activeProfile: chimahon.dictionary.DictionaryProfile,
     existingExpressions: Set<String> = emptySet(),
     tabs: List<TabInfo> = emptyList(),
     recursiveNavMode: String = "tabs",

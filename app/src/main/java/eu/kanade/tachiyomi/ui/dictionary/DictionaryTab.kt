@@ -49,6 +49,9 @@ import chimahon.LookupResult
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiResult
+import chimahon.dictionary.DeinflectionResult
+import chimahon.dictionary.DictionaryProfile
+import chimahon.dictionary.DictionaryProfileStore
 import chimahon.dictionary.SimpleTextTypeDetector
 import chimahon.dictionary.TextType
 import chimahon.dictionary.TextTypeDetector
@@ -100,7 +103,7 @@ private var cachedDictionaryPaths: List<String>? = null
 private var lastProfileHash: Int? = null
 private var lastDictDirModified: Long = 0L
 
-fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.anki.AnkiProfile? = null): List<String> {
+fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.dictionary.DictionaryProfile? = null): List<String> {
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
     if (!dictionariesDir.exists()) return emptyList()
 
@@ -119,7 +122,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
     if (allDicts.isEmpty()) return emptyList()
 
     val prefs = try {
-        DictionaryPreferences(Injekt.get())
+        Injekt.get<DictionaryPreferences>()
     } catch (_: Exception) {
         return allDicts.map { File(dictionariesDir, it).absolutePath }
     }
@@ -128,7 +131,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
         // One-time migration: create "Default" profile from legacy flat keys.
         prefs.profileStore.migrateIfEmpty(
             defaultName = "Default",
-            legacyValues = chimahon.anki.AnkiProfileStore.LegacyAnkiValues(
+            legacyValues = chimahon.dictionary.DictionaryProfileStore.LegacyAnkiValues(
                 deck = prefs.legacyAnkiDeck().get(),
                 model = prefs.legacyAnkiModel().get(),
                 fieldMap = prefs.legacyAnkiFieldMap().get(),
@@ -189,15 +192,14 @@ data object DictionaryTab : Tab {
         val focusRequester = remember { FocusRequester() }
 
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
-        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
         val profileStore = dictionaryPreferences.profileStore
-        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+        val profiles by profileStore.profilesFlow.collectAsState(initial = emptyList())
+        val activeProfile by profileStore.activeProfileFlow.collectAsState(initial = chimahon.dictionary.DictionaryProfile.default())
 
         val ankiEnabled = activeProfile.ankiEnabled
         val ankiDeck = activeProfile.ankiDeck
         val ankiModel = activeProfile.ankiModel
-        val ankiFieldMap = activeProfile.ankiFieldMap
+        val ankiFieldMap = activeProfile.ankiFieldMapJson()
         val ankiDupCheck = activeProfile.ankiDupCheck
         val ankiDupScope = activeProfile.ankiDupScope
         val ankiDupAction = activeProfile.ankiDupAction

@@ -5,10 +5,16 @@ import android.util.Log
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
+import eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupStatEntry
 import java.security.MessageDigest
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class NovelBackupCreator(private val context: Context) {
+class NovelBackupCreator(
+    private val context: Context,
+    private val novelCategoryStorage: com.canopus.chimareader.data.NovelCategoryStorage = Injekt.get()
+) {
 
     private val TAG = "NovelBackupCreator"
 
@@ -78,13 +84,14 @@ class NovelBackupCreator(private val context: Context) {
                     BackupNovel(
                         id = stableId,
                         title = metadata.title ?: "",
-                        author = null,
+                        author = metadata.author,
                         cover = metadata.cover,
                         chapterIndex = bookmark?.chapterIndex ?: 0,
                         progress = bookmark?.progress ?: 0.0,
                         characterCount = bookmark?.characterCount ?: 0,
                         lastModified = bookmark?.lastModified ?: 0L,
-                        stats = backupStats
+                        stats = backupStats,
+                        categoryIds = metadata.categoryIds
                     )
                 )
             } catch (e: Exception) {
@@ -94,6 +101,18 @@ class NovelBackupCreator(private val context: Context) {
 
         Log.d(TAG, "Novel backup complete: ${backupNovels.size} novels")
         return backupNovels
+    }
+
+    fun backupCategories(): List<BackupNovelCategory> {
+        val categories = novelCategoryStorage.loadAllCategories()
+        return categories.map {
+            BackupNovelCategory(
+                id = it.id,
+                name = it.name,
+                order = it.order.toLong(),
+                flags = it.flags.toLong()
+            )
+        }
     }
 
     private fun md5Hex(input: String): String {

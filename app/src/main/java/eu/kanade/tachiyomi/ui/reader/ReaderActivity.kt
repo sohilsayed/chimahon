@@ -292,10 +292,13 @@ class ReaderActivity : BaseActivity() {
 
         if (viewModel.isOcrEnabled()) {
             ensureOcrResources()
-            val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+            val getProfile = Injekt.get<chimahon.dictionary.GetDictionaryProfile>()
+            val sourceManager = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>()
 
             lifecycleScope.launchIO {
-                val profile = prefs.profileStore.getActiveProfile()
+                val manga = viewModel.state.map { it.manga }.filterNotNull().first()
+                val lang = sourceManager.get(manga.source)?.lang
+                val profile = getProfile.execute(mangaId = manga.id, sourceId = manga.source, lang = lang)
                 val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
                 cachedActiveProfile = profile
                 cachedTermPaths = termPaths
@@ -969,8 +972,11 @@ class ReaderActivity : BaseActivity() {
                 if (enabled) {
                     ensureOcrResources()
                     lifecycleScope.launchIO {
-                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                        val activeProfile = prefs.profileStore.getActiveProfile()
+                        val getProfile = Injekt.get<chimahon.dictionary.GetDictionaryProfile>()
+                        val sourceManager = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>()
+                        val manga = viewModel.state.map { it.manga }.filterNotNull().first()
+                        val lang = sourceManager.get(manga.source)?.lang
+                        val activeProfile = getProfile.execute(mangaId = manga.id, sourceId = manga.source, lang = lang)
                         val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
                         dictionaryRepository.warmUp(termPaths)
                     }
@@ -1909,15 +1915,11 @@ class ReaderActivity : BaseActivity() {
 
             val prefs = Injekt.get<DictionaryPreferences>()
             val activeProfile = prefs.profileStore.getActiveProfile()
-            val fieldMapJson = activeProfile.ankiFieldMap
+            val fieldMapJson = activeProfile.ankiFieldMapJson()
             logcat(LogPriority.DEBUG) { "Field map JSON (Profile: ${activeProfile.name}): $fieldMapJson" }
 
-            val fieldMap = org.json.JSONObject(fieldMapJson)
             val fields = mutableMapOf<String, String>()
-            val keyIterator = fieldMap.keys()
-            while (keyIterator.hasNext()) {
-                val key = keyIterator.next()
-                val value = fieldMap.getString(key)
+            for ((key, value) in activeProfile.ankiFieldMap) {
                 logcat(LogPriority.DEBUG) { "Checking field: key=$key, value=$value, contains SCREENSHOT=${value.contains(chimahon.anki.Marker.SCREENSHOT)}" }
                 if (value.contains(chimahon.anki.Marker.SCREENSHOT)) {
                     fields[key] = "<img src=\"$filename\">"

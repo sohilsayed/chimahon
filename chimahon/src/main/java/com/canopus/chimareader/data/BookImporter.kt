@@ -81,13 +81,12 @@ object BookImporter {
 
             var existingBookmark: Bookmark? = null
             var existingStats: List<Statistics>? = null
-            var existingLastAccess: Long? = null
-
+            var existingMetadata = BookStorage.loadMetadata(bookDir)
+            
             // Move from temp to final destination
             if (bookDir.exists()) {
                 existingBookmark = BookStorage.loadBookmark(bookDir)
                 existingStats = BookStorage.loadStatistics(bookDir)
-                existingLastAccess = BookStorage.loadMetadata(bookDir)?.lastAccess
                 bookDir.deleteRecursively()
             }
             tempExtractDir.renameTo(bookDir)
@@ -122,11 +121,14 @@ object BookImporter {
             val metadata = BookMetadata(
                 id = stableId,
                 title = title,
+                author = author,
                 cover = coverAbsPath,
                 folder = stableId,
-                lastAccess = existingLastAccess ?: System.currentTimeMillis(),
+                lastAccess = existingMetadata?.lastAccess ?: System.currentTimeMillis(),
+                dateAdded = existingMetadata?.dateAdded ?: System.currentTimeMillis(),
                 hash = stableId,
                 isGhost = false,
+                categoryIds = existingMetadata?.categoryIds ?: emptyList(),
             )
             BookStorage.saveMetadata(metadata, bookDir)
             BookStorage.saveSpineCache(extractedBook.spine, bookDir)
