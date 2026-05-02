@@ -217,8 +217,8 @@ fun AppearanceSheet(
                     Slider(
                         value = viewModel.fontSize.toFloat(),
                         onValueChange = { viewModel.updateFontSize(it.roundToInt()) },
-                        valueRange = 12f..48f,
-                        steps = 36
+                        valueRange = 12f..72f,
+                        steps = 59
                     )
                 }
 

@@ -55,20 +55,46 @@ class ChimaReaderActivity : NovelReaderActivity() {
     private var popupWebView: WebView? = null
     private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this) }
 
+    private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
+    private var cachedTermPaths: List<String>? = null
+
+    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
+        val prefs = Injekt.get<DictionaryPreferences>()
+        val profile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile().also { cachedActiveProfile = it }
+        val paths = cachedTermPaths ?: getDictionaryPaths(this, profile).also { cachedTermPaths = it }
+        return profile to paths
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ensurePopupWebView()
+
+        val prefs = Injekt.get<DictionaryPreferences>()
+
+        // Warm up and populate the cache on a background thread.
         thread(name = "DictionaryWarmup", start = true) {
-            val prefs = Injekt.get<DictionaryPreferences>()
-            val activeProfile = prefs.profileStore.getActiveProfile()
-            val termPaths = getDictionaryPaths(this@ChimaReaderActivity, activeProfile)
+            val profile = prefs.profileStore.getActiveProfile()
+            val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
+            cachedActiveProfile = profile
+            cachedTermPaths = termPaths
             Injekt.get<DictionaryRepository>().warmUp(termPaths)
         }
-        
+
         lifecycleScope.launch {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 novelReaderSettings.verticalWriting.collect {
                     isVerticalWriting = it
+                }
+            }
+        }
+
+        // Invalidate cached profile+paths whenever the active profile changes so the
+        // next lookup picks up the new dictionaries/order without a full restart.
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                prefs.rawActiveProfileId().changes().collect {
+                    cachedActiveProfile = null
+                    cachedTermPaths = null
                 }
             }
         }
@@ -85,7 +111,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
             it.setBackgroundColor(0x00000000)
             // Pre-load bootstrap HTML to avoid startup delay on first lookup
             it.loadDataWithBaseURL(
-                "https://hoshi.local/popup/",
+                "https://chima.local/popup/",
                 eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(this),
                 "text/html",
                 "utf-8",
@@ -200,9 +226,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
-        val prefs = Injekt.get<DictionaryPreferences>()
-        val activeProfile = prefs.profileStore.getActiveProfile()
-        val termPaths = getDictionaryPaths(this, activeProfile)
+        val (_, termPaths) = getOrRefreshLookupPaths()
 
         lookupDeferred = lifecycleScope.async(Dispatchers.IO) {
             Injekt.get<DictionaryRepository>().lookup(word, termPaths)
@@ -210,6 +234,14 @@ class ChimaReaderActivity : NovelReaderActivity() {
         
         lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting)
         isPopupActive = true
+    }
+
+    /** Receives the sentence context asynchronously after onLookupRequested (Fix #4). */
+    override fun onSentenceReady(sentence: String) {
+        val current = lookupState ?: return
+        if (current.sentence.isBlank() && sentence.isNotBlank()) {
+            lookupState = current.copy(sentence = sentence)
+        }
     }
 
     override fun onDismissPopupRequested() {
@@ -239,19 +271,6 @@ class ChimaReaderActivity : NovelReaderActivity() {
             isPopupActive = false
         }
 
-        // Background scrim to capture and consume clicks outside the popup.
-        // This prevents the click from reaching the WebView and triggering navigation.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    lookupState = null
-                    isPopupActive = false
-                }
-        )
 
         val mediaInfo = readerViewModel?.let { vm ->
             chimahon.MediaInfo(

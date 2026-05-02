@@ -835,7 +835,7 @@ object AnkiCardCreator {
         }
         return try {
             when {
-                trimmed.startsWith("[") -> arrayToHtml(JSONArray(trimmed), dictionary)
+                trimmed.startsWith("[") -> arrayToHtml(JSONArray(trimmed), dictionary, "div")
                 else -> objectToHtml(JSONObject(trimmed), dictionary)
             }
         } catch (_: Exception) {
@@ -849,7 +849,7 @@ object AnkiCardCreator {
             .replace(Regex("(?i)<br\\s*/?>"), "\n")
             .replace(Regex("(?i)</(p|li|div|tr|h[1-6])>"), "\n")
             .replace(Regex("<[^>]+>"), " ")
-            .replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&lt;", "<").replace("&gt;", ">")
             .replace("&amp;", "&").replace("&quot;", "\"")
         return text
             .split('\n')
@@ -857,28 +857,40 @@ object AnkiCardCreator {
             .trim()
     }
 
-    private fun arrayToHtml(arr: JSONArray, dictionary: String): String {
-        if (arr.length() == 0) return ""
-
+    private fun arrayToHtml(arr: JSONArray, dictionary: String, parentTag: String): String {
         val allStrings = (0 until arr.length()).all { arr.get(it) is String }
         if (allStrings) {
-            if (arr.length() == 1) return contentValueToHtml(arr.getString(0), dictionary)
-            return "<ul>" + (0 until arr.length()).joinToString("") {
-                "<li>${contentValueToHtml(arr.getString(it), dictionary)}</li>"
-            } + "</ul>"
+            if (arr.length() == 1) return contentValueToHtml(arr.getString(0), dictionary, parentTag)
+            
+            // Only auto-wrap in UL if we are NOT already in a list-like tag
+            val isListParent = parentTag == "ul" || parentTag == "ol" || parentTag == "li" || parentTag == "span" || parentTag == "td" || parentTag == "th"
+            if (!isListParent) {
+                return """<ul style="margin: 0.2em 0; padding-left: 1.2em;">""" + (0 until arr.length()).joinToString("") {
+                    "<li>${contentValueToHtml(arr.getString(it), dictionary, "li")}</li>"
+                } + "</ul>"
+            }
         }
 
         return (0 until arr.length()).joinToString("") { i ->
-            contentValueToHtml(arr.get(i), dictionary)
+            contentValueToHtml(arr.get(i), dictionary, parentTag)
         }
     }
 
     private fun objectToHtml(node: JSONObject, dictionary: String): String {
         val type = node.optString("type", "")
+        if (type == "ruby") {
+            val expression = node.optString("headword", "")
+            val reading = node.optString("reading", "")
+            return if (reading.isNotEmpty() && reading != expression) {
+                "<ruby>$expression<rt>$reading</rt></ruby>"
+            } else {
+                expression
+            }
+        }
 
         if (type == "structured-content") {
             val content = node.opt("content") ?: return ""
-            return contentValueToHtml(content, dictionary)
+            return contentValueToHtml(content, dictionary, "div")
         }
 
         if (type == "image") {
@@ -889,7 +901,7 @@ object AnkiCardCreator {
 
         if (tag.isEmpty()) {
             val content = node.opt("content") ?: return ""
-            return contentValueToHtml(content, dictionary)
+            return contentValueToHtml(content, dictionary, "div")
         }
 
         val dataObj = node.optJSONObject("data")
@@ -909,7 +921,13 @@ object AnkiCardCreator {
 
         if (dataObj != null) {
             for (key in dataObj.keys()) {
-                sb.append(""" data-$key="${attrEscape(dataObj.get(key).toString())}"""")
+                val value = dataObj.get(key).toString()
+                if (key == "class") {
+                    sb.append(""" class="${attrEscape(value)}"""")
+                    sb.append(""" data-sc-class="${attrEscape(value)}"""")
+                } else {
+                    sb.append(""" data-sc-$key="${attrEscape(value)}"""")
+                }
             }
         }
 
@@ -919,6 +937,14 @@ object AnkiCardCreator {
                 "${camelToKebab(prop)}: ${attrEscape(styleObj.getString(prop))}"
             }
             sb.append(""" style="$cssStr"""")
+        } else {
+            // Apply compact default styles for common block tags in Anki
+            when (tag) {
+                "ul", "ol" -> sb.append(""" style="margin: 0.2em 0; padding-left: 1.2em;"""")
+                "p", "div" -> sb.append(""" style="margin: 0.1em 0;"""")
+                "table" -> sb.append(""" style="border-collapse: collapse; margin: 0.2em 0; width: auto; border: 1px solid #888;"""")
+                "th", "td" -> sb.append(""" style="border: 1px solid #888; padding: 2px 4px; vertical-align: top;"""" )
+            }
         }
 
         sb.append(">")
@@ -928,7 +954,7 @@ object AnkiCardCreator {
             if (tag == "table") {
                 sb.append(tableContentToHtml(content, dictionary))
             } else {
-                sb.append(contentValueToHtml(content, dictionary))
+                sb.append(contentValueToHtml(content, dictionary, tag))
             }
         }
 
@@ -941,14 +967,14 @@ object AnkiCardCreator {
         }
     }
 
-    private fun contentValueToHtml(value: Any?, dictionary: String): String = when (value) {
+    private fun contentValueToHtml(value: Any?, dictionary: String, parentTag: String): String = when (value) {
         null -> ""
         is String -> escapeHtmlWithLineBreaks(value)
         is Number -> value.toString()
         is Boolean -> value.toString()
-        is JSONArray -> arrayToHtml(value, dictionary)
+        is JSONArray -> arrayToHtml(value, dictionary, parentTag)
         is JSONObject -> objectToHtml(value, dictionary)
-        else -> escapeHtml(value.toString())
+        else -> value.toString()
     }
 
     private fun imageNodeToHtml(node: JSONObject): String {
@@ -957,22 +983,39 @@ object AnkiCardCreator {
 
         val sb = StringBuilder("<img")
         sb.append(""" src="${attrEscape(path)}"""")
-
+        
         node.optString("alt", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" alt="${attrEscape(it)}"""") }
         node.optString("title", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" title="${attrEscape(it)}"""") }
 
         val width = node.optInt("width", 0)
         val height = node.optInt("height", 0)
         val sizeUnits = node.optString("sizeUnits", "px")
+        val appearance = node.optString("appearance", "")
+        
+        val styleParts = mutableListOf<String>()
         if (width > 0 || height > 0) {
             val cssWidth = if (width > 0) "${width}$sizeUnits" else "auto"
             val cssHeight = if (height > 0) "${height}$sizeUnits" else "auto"
-            sb.append(""" style="width: $cssWidth; height: $cssHeight; vertical-align: middle;"""")
+            styleParts.add("width: $cssWidth")
+            styleParts.add("height: $cssHeight")
         }
-
-        val appearance = node.optString("appearance", "")
+        
+        styleParts.add("vertical-align: middle")
+        
         if (appearance == "monochrome") {
             sb.append(""" class="gloss-image-monochrome"""")
+            // Yomitan style masking: allows the image to inherit text color
+            styleParts.add("background-color: currentColor")
+            styleParts.add("-webkit-mask-image: url('${attrEscape(path)}')")
+            styleParts.add("-webkit-mask-repeat: no-repeat")
+            styleParts.add("-webkit-mask-size: contain")
+            styleParts.add("mask-image: url('${attrEscape(path)}')")
+            styleParts.add("mask-repeat: no-repeat")
+            styleParts.add("mask-size: contain")
+        }
+        
+        if (styleParts.isNotEmpty()) {
+            sb.append(""" style="${styleParts.joinToString("; ")}"""")
         }
 
         sb.append(" />")
@@ -995,7 +1038,7 @@ object AnkiCardCreator {
             }
             objectToHtml(tbody, dictionary)
         } else {
-            contentValueToHtml(content, dictionary)
+            contentValueToHtml(content, dictionary, "table")
         }
     }
 

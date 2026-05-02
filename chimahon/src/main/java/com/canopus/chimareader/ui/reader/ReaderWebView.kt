@@ -46,6 +46,7 @@ fun ReaderWebView(
     tapZonePx: Int = 100,
     isPopupActive: Boolean = false,
     onTextSelected: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    onSentenceReady: (sentence: String) -> Unit = {},
     onDismissPopupRequested: () -> Unit = {},
     onInternalLinkClicked: (url: String) -> Unit = {},
 ) {
@@ -99,6 +100,7 @@ fun ReaderWebView(
                 onTapBottom = { if (!isPopupActive) onTapBottom() },
                 isPopupActive = isPopupActive,
                 onTextSelectedCallback = onTextSelected,
+                onSentenceReadyCallback = onSentenceReady,
                 onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
             ).apply {
@@ -294,6 +296,7 @@ private class ReaderAndroidWebView(
     private val tapZonePx: Int = 100,
     var isPopupActive: Boolean = false,
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
     private val onDismissPopupRequested: () -> Unit = {},
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
 ) : WebView(context) {
@@ -414,6 +417,9 @@ private class ReaderAndroidWebView(
                 }
             }
         },
+        onSentenceReadyCallback = { sentence ->
+            post { onSentenceReadyCallback(sentence) }
+        },
     )
 
     init {
@@ -488,7 +494,7 @@ private class ReaderAndroidWebView(
         appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
         appendLine("p { margin-top: 0 !important; margin-bottom: 0 !important; }")
         appendLine("body * { font-family: inherit !important; }")
-        appendLine("img.chima-image-block, svg.chima-image-block { position: static !important; }")
+        appendLine("img.hoshi-image-block, svg.hoshi-image-block { position: static !important; }")
     }
 
     // Safe fallback for inline / gaiji images — keeps them from overflowing their container
@@ -643,14 +649,14 @@ private class ReaderAndroidWebView(
                 document.head.appendChild(s);
 
                 // Continuous-mode image rules:
-                // .chima-image-block  → large images: block-level, centered, constrained
+                // .hoshi-image-block  → large images: block-level, centered, constrained
                 // everything else     → inline images: stay in text flow, just capped at max-width
-                var contImgStyle = document.getElementById('chima-cont-img-style');
+                var contImgStyle = document.getElementById('hoshi-cont-img-style');
                 if (contImgStyle) contImgStyle.remove();
                 contImgStyle = document.createElement('style');
-                contImgStyle.id = 'chima-cont-img-style';
+                contImgStyle.id = 'hoshi-cont-img-style';
                 contImgStyle.textContent = [
-                    'img.chima-image-block, svg.chima-image-block {',
+                    'img.hoshi-image-block, svg.hoshi-image-block {',
                     '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
                     '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
                     '  width: auto !important;',
@@ -662,7 +668,7 @@ private class ReaderAndroidWebView(
                     '  margin-bottom: 12px !important;',
                     '  object-fit: contain !important;',
                     '}',
-                    'img:not(.chima-image-block), svg:not(.chima-image-block) {',
+                    'img:not(.hoshi-image-block), svg:not(.hoshi-image-block) {',
                     '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
@@ -722,7 +728,7 @@ private class ReaderAndroidWebView(
                 window.hoshiReader.registerCopyText();
                 window.hoshiReader.continuousMode = true;
 
-                // Classify images as .chima-image-block (large, standalone) or leave inline.
+                // Classify images as .hoshi-image-block (large, standalone) or leave inline.
                 // Wait for all images to finish loading before classifying and restoring progress —
                 // late-loading images shift element positions and cause scrollIntoView() to land
                 // at the wrong offset.
@@ -750,7 +756,7 @@ private class ReaderAndroidWebView(
                                              (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
                                               n.textContent.trim().length > 0));
                                     });
-                                    if (!isInlineContext) el.classList.add('chima-image-block');
+                                    if (!isInlineContext) el.classList.add('hoshi-image-block');
                                 }
                             }
                             resolve();
@@ -825,13 +831,13 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Block-image rules: large images/SVGs classified as .chima-image-block by JS below.
-                var blockImgStyle = document.getElementById('chima-block-img-style');
+                // Block-image rules: large images/SVGs classified as .hoshi-image-block by JS below.
+                var blockImgStyle = document.getElementById('hoshi-block-img-style');
                 if (blockImgStyle) blockImgStyle.remove();
                 blockImgStyle = document.createElement('style');
-                blockImgStyle.id = 'chima-block-img-style';
+                blockImgStyle.id = 'hoshi-block-img-style';
                 blockImgStyle.textContent = [
-                    'img.chima-image-block, svg.chima-image-block {',
+                    'img.hoshi-image-block, svg.hoshi-image-block {',
                     '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
                     '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
                     '  width: auto !important;',
@@ -842,7 +848,7 @@ private class ReaderAndroidWebView(
                     '  -webkit-column-break-inside: avoid !important;',
                     '  object-fit: contain !important;',
                     '}',
-                    'img:not(.chima-image-block), svg:not(.chima-image-block) {',
+                    'img:not(.hoshi-image-block), svg:not(.hoshi-image-block) {',
                     '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
@@ -927,7 +933,7 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader.registerCopyText();
 
-                // Classify images and SVGs as .chima-image-block if large (naturalWidth/Height > 300).
+                // Classify images and SVGs as .hoshi-image-block if large (naturalWidth/Height > 300).
                 // Gaiji inline glyphs are explicitly excluded. Classification happens after images
                 // load so naturalWidth is available. Then a 50ms settle lets column layout stabilise
                 // before restoreProgress() snaps to the correct page.
@@ -955,7 +961,7 @@ private class ReaderAndroidWebView(
                                              (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
                                               n.textContent.trim().length > 0));
                                     });
-                                    if (!isInlineContext) el.classList.add('chima-image-block');
+                                    if (!isInlineContext) el.classList.add('hoshi-image-block');
                                 }
                             }
                             resolve();
@@ -1172,6 +1178,7 @@ private class ReaderJavascriptBridge(
     private val onRestoreCompleted: () -> Unit,
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
+    private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
 ) {
     @JavascriptInterface
     fun restoreCompleted() {
@@ -1186,6 +1193,11 @@ private class ReaderJavascriptBridge(
     @JavascriptInterface
     fun onBackgroundTap(x: Float, y: Float) {
         onBackgroundTap.invoke(x, y)
+    }
+
+    @JavascriptInterface
+    fun onSentenceReady(sentence: String) {
+        onSentenceReadyCallback.invoke(sentence)
     }
 }
 

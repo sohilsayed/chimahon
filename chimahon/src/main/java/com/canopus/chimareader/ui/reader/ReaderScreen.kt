@@ -39,6 +39,7 @@ fun ReaderScreen(
     onShowHudChanged: (Boolean) -> Unit = {},
     onThemeChanged: (backgroundColor: Int) -> Unit = {},
     onLookupRequested: (String, String, Float, Float, Float, Float) -> Unit = { _, _, _, _, _, _ -> },
+    onSentenceReady: (sentence: String) -> Unit = {},
     onDismissPopupRequested: () -> Unit = {},
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
@@ -213,6 +214,7 @@ fun ReaderScreen(
                         isPopupActive = isPopupActive,
                         onDismissPopupRequested = onDismissPopupRequested,
                         onTextSelected = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
+                        onSentenceReady = onSentenceReady,
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
                     )
 
@@ -229,7 +231,9 @@ fun ReaderScreen(
                             onToggleHud = { showHud = false },
                             backgroundColor = currentSettings.backgroundColor,
                             contentColor = currentSettings.textColor,
-                            modifier = Modifier.statusBarsPadding()
+                            modifier = Modifier
+                                .statusBarsPadding()
+                                .displayCutoutPadding()
                         )
                     }
 
@@ -334,6 +338,7 @@ private fun ReaderBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(backgroundColor).copy(alpha = 0.9f))
+            .navigationBarsPadding()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null

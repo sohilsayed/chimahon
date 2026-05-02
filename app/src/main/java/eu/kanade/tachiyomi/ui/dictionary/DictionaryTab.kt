@@ -362,7 +362,7 @@ data object DictionaryTab : Tab {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     loadDataWithBaseURL(
-                        "https://hoshi.local/popup/",
+                        "https://chima.local/popup/",
                         getDictionaryBootstrapHtml(context),
                         "text/html",
                         "utf-8",

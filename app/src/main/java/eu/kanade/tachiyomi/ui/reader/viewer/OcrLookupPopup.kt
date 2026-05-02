@@ -53,6 +53,11 @@ import eu.kanade.tachiyomi.ui.dictionary.getDictionaryColorScheme
 import eu.kanade.tachiyomi.ui.dictionary.TabInfo
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.util.system.toast
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -101,7 +106,9 @@ fun OcrLookupPopup(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(initialLookupDeferred != null && !initialLookupDeferred.isCompleted) }
+    var isLoading by remember {
+        mutableStateOf(initialLookupDeferred != null && !initialLookupDeferred.isCompleted)
+    }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // ── Lookup history stack ──────────────────────────────────────────────
@@ -494,10 +501,39 @@ fun OcrLookupPopup(
 
     @Composable
     fun PopupContent() {
+        val swipeThreshold = with(density) { 56.dp.toPx() }
         Surface(
             modifier = modifier
                 .width(actualWidthDp)
                 .height(actualHeightDp)
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            val ignoreHeight = with(density) { 48.dp.toPx() }
+                            if (down.position.y < ignoreHeight) continue
+
+                            var totalDragX = 0f
+                            var totalDragY = 0f
+                            try {
+                                drag(down.id) { change ->
+                                    val delta = change.positionChange()
+                                    totalDragX += delta.x
+                                    totalDragY += delta.y
+                                    // If horizontal swipe is dominant and exceeds threshold, dismiss
+                                    if (kotlin.math.abs(totalDragX) > swipeThreshold && 
+                                        kotlin.math.abs(totalDragX) > kotlin.math.abs(totalDragY) * 1.5f
+                                    ) {
+                                        onDismiss()
+                                        throw CancellationException("Dismissed by swipe")
+                                    }
+                                }
+                            } catch (e: CancellationException) {
+                                if (e.message != "Dismissed by swipe") throw e
+                            }
+                        }
+                    }
+                }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },

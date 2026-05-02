@@ -292,11 +292,23 @@ class ReaderActivity : BaseActivity() {
 
         if (viewModel.isOcrEnabled()) {
             ensureOcrResources()
+            val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+
             lifecycleScope.launchIO {
-                val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                val activeProfile = prefs.profileStore.getActiveProfile()
-                val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+                val profile = prefs.profileStore.getActiveProfile()
+                val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                cachedActiveProfile = profile
+                cachedTermPaths = termPaths
                 dictionaryRepository.warmUp(termPaths)
+            }
+
+            lifecycleScope.launch {
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    prefs.rawActiveProfileId().changes().collect {
+                        cachedActiveProfile = null
+                        cachedTermPaths = null
+                    }
+                }
             }
         }
 
@@ -1951,14 +1963,22 @@ class ReaderActivity : BaseActivity() {
         ocrWebView = null
     }
 
+    private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
+    private var cachedTermPaths: List<String>? = null
+
+    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
+        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+        val profile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile().also { cachedActiveProfile = it }
+        val paths = cachedTermPaths ?: eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this, profile).also { cachedTermPaths = it }
+        return profile to paths
+    }
+
     /**
      * Start lookup work immediately. Session is warm, lookup is fast (~10-20ms),
      * so we can run it synchronously to avoid coroutine overhead.
      */
     private fun preDeferLookup(lookupString: String): kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2> {
-        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-        val activeProfile = prefs.profileStore.getActiveProfile()
-        val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+        val (_, termPaths) = getOrRefreshLookupPaths()
         val result = dictionaryRepository.lookup(lookupString.trim(), termPaths)
         return kotlinx.coroutines.CompletableDeferred(result)
     }
@@ -1973,7 +1993,7 @@ class ReaderActivity : BaseActivity() {
             setBackgroundColor(0x00000000)
             // Pre-load bootstrap HTML to avoid startup delay on first lookup
             loadDataWithBaseURL(
-                "https://hoshi.local/popup/",
+                "https://chima.local/popup/",
                 eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(ctx),
                 "text/html",
                 "utf-8",

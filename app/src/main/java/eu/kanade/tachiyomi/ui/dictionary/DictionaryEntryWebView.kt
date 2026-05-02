@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.ui.dictionary
 
+import eu.kanade.tachiyomi.R
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
@@ -55,10 +57,10 @@ private const val ANKI_SCHEME = "anki"
 private const val ANKI_PATH_ADD = "add"
 private const val ANKI_PATH_OPEN = "open"
 
-private const val HOSHI_SCHEME = "hoshi"
-private const val HOSHI_HOST_LOOKUP = "lookup"
-private const val HOSHI_HOST_TAB = "tab"
-private const val HOSHI_HOST_BACK = "back"
+private const val CHIMA_SCHEME = "chima"
+private const val CHIMA_HOST_LOOKUP = "lookup"
+private const val CHIMA_HOST_TAB = "tab"
+private const val CHIMA_HOST_BACK = "back"
 
 /** Represents one entry in the scrollable lookup-history tab bar shown inside the WebView. */
 data class TabInfo(val label: String, val active: Boolean)
@@ -111,7 +113,7 @@ fun DictionaryEntryWebView(
         if (amoled && isDark) Color.Black else colorScheme.surface
     }
 
-    val payloadObject = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode, wordAudioEnabled) {
+    val payloadObject = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, tabs, recursiveNavMode, wordAudioEnabled) {
         val buildStart = SystemClock.elapsedRealtime()
         val prefs = Injekt.get<DictionaryPreferences>()
         val result = buildRenderPayload(
@@ -147,7 +149,7 @@ fun DictionaryEntryWebView(
             factory = { ctx: Context ->
             val webView = webViewProvider?.invoke(ctx) ?: WebView(ctx)
 
-            val isAlreadyWarm = webView.url == "https://hoshi.local/popup/"
+            val isAlreadyWarm = webView.getTag(R.id.chima_webview_warm) == true
             
             if (webView.tag == null) {
                 val state = DictionaryWebViewState(ctx, webViewProvider = { webView })
@@ -187,8 +189,10 @@ fun DictionaryEntryWebView(
                             val s = view?.tag as? DictionaryWebViewState ?: return
                             s.pageReady = true
                             isPageReady = true
+                            view.setTag(R.id.chima_webview_warm, true)
                             val enableRecursive = s.onRecursiveLookup != null
                             view.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
+                            s.injectFontSize(view)
                             s.injectCustomCss(view)
                             s.flush(view)
                             view.alpha = 1f
@@ -201,25 +205,25 @@ fun DictionaryEntryWebView(
                             val url = request?.url ?: return false
                             val s = view?.tag as? DictionaryWebViewState
 
-                            // ── hoshi:// — recursive lookup, tab navigation, back ──
-                            if (url.scheme == HOSHI_SCHEME) {
+                            // ── chima:// — recursive lookup, tab navigation, back ──
+                            if (url.scheme == CHIMA_SCHEME) {
                                 when (url.host) {
-                                    HOSHI_HOST_LOOKUP -> {
+                                    CHIMA_HOST_LOOKUP -> {
                                         val q = url.getQueryParameter("q") ?: return true
                                         if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q)
                                         return true
                                     }
-                                    HOSHI_HOST_TAB -> {
+                                    CHIMA_HOST_TAB -> {
                                         val idx = url.getQueryParameter("index")?.toIntOrNull()
                                         if (idx != null) s?.onTabSelect?.invoke(idx)
                                         return true
                                     }
-                                    HOSHI_HOST_BACK -> {
+                                    CHIMA_HOST_BACK -> {
                                         s?.onBack?.invoke()
                                         return true
                                     }
                                 }
-                                return true // consume any unknown hoshi:// URLs
+                                return true // consume any unknown chima:// URLs
                             }
 
                             // ── anki://add or anki://open ──
@@ -251,7 +255,7 @@ fun DictionaryEntryWebView(
                     // Only load if not already at the correct shell URL
                     if (!isAlreadyWarm) {
                         loadDataWithBaseURL(
-                            "https://hoshi.local/popup/",
+                            "https://chima.local/popup/",
                             bootstrapHtml,
                             "text/html",
                             "UTF-8",
@@ -443,17 +447,30 @@ private class DictionaryWebViewState(
     fun injectCustomCss(webView: WebView) {
         if (customCss.isEmpty()) {
             webView.evaluateJavascript(
-                "var el = document.getElementById('hoshi-custom-css'); if (el) el.textContent = '';",
+                "var el = document.getElementById('chima-custom-css'); if (el) el.textContent = '';",
                 null
             )
             return
         }
         webView.evaluateJavascript(
             "(function(v) {" +
-                "var el = document.getElementById('hoshi-custom-css');" +
+                "var el = document.getElementById('chima-custom-css');" +
                 "if (el) el.textContent = v;" +
                 "})(decodeURIComponent('${java.net.URLEncoder.encode(customCss, "UTF-8").replace("+", "%20")}'));",
             null,
+        )
+    }
+
+    fun injectFontSize(webView: WebView) {
+        webView.evaluateJavascript(
+            "(function(v) {" +
+                "v = v + 'px';" +
+                "document.documentElement.style.fontSize = v;" +
+                "document.body.style.fontSize = v;" +
+                "document.documentElement.style.setProperty('--font-size-no-units', '$fontSize');" +
+                "document.documentElement.dataset.theme = '${if (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"}';" +
+                "})('$fontSize');",
+            null
         )
     }
 
@@ -488,6 +505,7 @@ private class DictionaryWebViewState(
 
         // Update bridge payload and trigger JS render
         bridge.setJson(p)
+        injectFontSize(webView)
         webView.evaluateJavascript(
             "window.DictionaryRenderer && window.DictionaryRenderer.renderFromBridge();",
             null,
@@ -722,10 +740,10 @@ internal fun getDictionaryBootstrapHtml(
         <html data-theme="$themeAttr">
         <head>
           <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width,initial-scale=1.0">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
           <style>$css</style>$dynamicThemeCss
           <style id="dictionary-styles"></style>
-          <style id="hoshi-custom-css"></style>
+          <style id="chima-custom-css"></style>
           <script>
             window.AnkiBridge = {
               addToAnki: function(index, glossary, selectedDict, popupSelection) {

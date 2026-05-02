@@ -393,7 +393,18 @@ window.hoshiReader = {
             }
 
             if (window.HoshiAndroid && window.HoshiAndroid.onTextSelected) {
-                window.HoshiAndroid.onTextSelected(word, sentence, minX, minY, maxX - minX, maxY - minY);
+                window.HoshiAndroid.onTextSelected(word, '', minX, minY, maxX - minX, maxY - minY);
+
+                const capturedNode = hit.node;
+                const capturedOffset = hit.offset;
+                const self = this;
+                setTimeout(function() {
+                    if (window.HoshiAndroid && window.HoshiAndroid.onSentenceReady) {
+                        const sentence = self.getSentence(capturedNode, capturedOffset);
+                        window.HoshiAndroid.onSentenceReady(sentence);
+                    }
+                }, 0);
+
                 return true;
             }
         }

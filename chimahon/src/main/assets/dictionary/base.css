@@ -47,6 +47,8 @@ html {
   padding: 0;
   background: var(--bg);
   width: 100%;
+  overflow-x: clip;
+  position: relative;
 }
 
 body {
@@ -57,12 +59,47 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: var(--line-height);
   font-size: calc(1px * var(--font-size-no-units));
-  overflow-x: hidden;
+  overflow-x: clip;
   width: 100%;
+  position: relative;
 }
 
 .entries {
   padding: 4px;
+}
+
+.definition-list *,
+.structured-content * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Re-apply sane list indentation with :where() (zero specificity) so
+   dictionary CSS can still override these if needed. */
+:where(.definition-list) ul,
+:where(.definition-list) ol,
+:where(.structured-content) ul,
+:where(.structured-content) ol {
+  padding-left: 1.2em;
+  margin: 0.15em 0;
+}
+
+:where(.definition-list) li,
+:where(.structured-content) li {
+  margin: 0.1em 0;
+}
+
+/* Tables inside structured content */
+:where(.structured-content) table {
+  border-collapse: collapse;
+}
+
+:where(.structured-content) th,
+:where(.structured-content) td {
+  border: 1px solid currentColor;
+  padding: 0.25em;
+  vertical-align: top;
 }
 
 .entry {
@@ -319,8 +356,27 @@ body {
 .pronunciation-graph-triangle { fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
 
 /* ── Structured content: tables & images ─────────────── */
+.structured-content div,
+.structured-content p,
+.structured-content ul,
+.structured-content ol {
+  margin: 4px 0;
+}
+
+.glossary-list {
+  margin: 4px 0;
+  padding-left: 1.2em;
+}
+
 .gloss-sc-th, .gloss-sc-td, th, td {
-  border: 1px solid currentColor; padding: 4px 7px;
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+  line-height: 1.2;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 6px 0;
 }
 
 .gloss-link { color: inherit; }
@@ -338,6 +394,19 @@ body {
 .gloss-image-background {
   position: absolute; inset: 0; background-color: var(--border); background-image: var(--image);
   background-position: center; background-repeat: no-repeat; background-size: contain;
+}
+
+.gloss-image-link[data-appearance=monochrome] .gloss-image-background {
+  background-color: currentColor;
+  background-image: none;
+  -webkit-mask-image: var(--image);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  mask-image: var(--image);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
 }
 
 .gloss-image {
@@ -380,20 +449,7 @@ body {
   fill: currentColor;
 }
 
-/* ── Tabs ────────────────────────────────────────────────────── */
-.lookup-tabs {
-  display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); background: var(--bg);
-  position: sticky; top: 0; z-index: 10; overflow-x: auto;
-}
 
-.lookup-tab {
-  padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); font-size: 0.85em; white-space: nowrap;
-  background: transparent; color: var(--fg); cursor: pointer;
-}
-
-.lookup-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-.lookup-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Floating Navigation */
 .floating-nav-container {
@@ -437,29 +493,22 @@ body {
   fill: currentColor;
 }
 
-/* Tabs / Navigation */
+/* ── Tabs ────────────────────────────────────────────────────── */
 .lookup-tabs {
   display: flex;
-  overflow-x: auto;
-  gap: 8px;
+  gap: 6px;
   padding: 8px 12px;
-  background: var(--bg);
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
   position: sticky;
   top: 0;
   z-index: 1000;
+  overflow-x: auto;
   white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   width: 100%;
   box-sizing: border-box;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform;
-  transform: translateY(0);
-}
-
-.lookup-tabs.tabs-hidden {
-  transform: translateY(-100%);
 }
 
 .lookup-tabs::-webkit-scrollbar {
@@ -467,16 +516,15 @@ body {
 }
 
 .lookup-tab {
-  padding: 6px 14px;
+  padding: 4px 12px;
   border-radius: 20px;
   border: 1px solid var(--border);
-  background: var(--hover-bg);
+  font-size: 0.85em;
+  white-space: nowrap;
+  background: transparent;
   color: var(--fg);
-  font-size: 13px;
-  font-weight: 500;
   cursor: pointer;
   flex: 0 0 auto;
-  transition: all 0.2s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -500,7 +548,7 @@ body {
   transform: scale(0.96);
 }
 
-.hoshi-empty {
+.chima-empty {
   padding: 40px 20px;
   text-align: center;
   color: var(--secondary);

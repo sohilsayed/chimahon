@@ -7,7 +7,7 @@
   const scopedStyleCache = new Map();
 
   // ── Recursive lookup state ────────────────────────────────────────────────
-  const HOSHI_SCHEME = 'hoshi:';
+  const CHIMA_SCHEME = 'chima:';
   const MAX_SCAN_CHARS = 24;   // chars to extract forward from tap point
 
   let _lastSelection = '';
@@ -76,37 +76,22 @@
     if (!cssText || typeof cssText !== 'string') return '';
     let processed = cssText;
 
-    // 1. Cap excessive margins/padding (e.g., 2em -> 0.5em)
-    // Many dictionaries designed for full-screen web views use margins that are too large for mobile popups.
-    processed = processed.replace(/(margin-left|padding-left)\s*:\s*([^;!\}]+?)\s*(!important)?\s*;/gi, (match, prop, val, imp) => {
-      const num = parseFloat(val);
-      if (isNaN(num)) return match;
-      
-      if (num > 0.8 && (val.includes('em') || val.includes('rem'))) {
-        return `${prop}: 0.5em ${imp || ''};`;
-      }
-      if (num > 12 && val.includes('px')) {
-        return `${prop}: 8px ${imp || ''};`;
-      }
-      return match;
-    });
-
-    // 2. Scale down huge headlines (2em -> 1.4em)
+    // Cap huge headlines to prevent them from dominating the popup layout.
     processed = processed.replace(/(font-size)\s*:\s*([^;!\}]+?)\s*(!important)?\s*;/gi, (match, prop, val, imp) => {
       const num = parseFloat(val);
       if (isNaN(num)) return match;
-
       if (num > 1.6 && (val.includes('em') || val.includes('rem'))) {
         return `${prop}: 1.4em ${imp || ''};`;
       }
       return match;
     });
-    
-    // 3. Fix potential body tag leaks
+
+    // Fix potential body tag leaks — remap to the content root class.
     processed = processed.replace(/^\s*body\s*\{/gm, '.dict-content-root {');
 
     return processed;
   }
+
 
   function splitSelectorList(selectorText) {
     const out = [];
@@ -153,6 +138,11 @@
     return splitSelectorList(selectorText)
       .map((sel) => {
         const trimmed = sel.trim();
+
+        // Handle modern CSS nesting '&' selector
+        if (trimmed.includes('&')) {
+          return trimmed.replace(/&/g, scopeSelector);
+        }
 
         // Dictionary CSS often defines custom properties at :root/body/html.
         // Prefixing as "[scope] :root" is invalid, so inject scope right after
@@ -530,6 +520,7 @@
       }
     }
 
+    // Margin sides: Jitendex uses numeric values which are treated as em units.
     const emSpacing = ['marginTop', 'marginLeft', 'marginRight', 'marginBottom'];
     for (const key of emSpacing) {
       const value = style[key];
@@ -706,12 +697,12 @@
         btn.innerHTML = '<span>← Back</span>';
         btn.onclick = (e) => {
           e.stopPropagation();
-          navigateTo('hoshi://back');
+          navigateTo(CHIMA_SCHEME + '//back');
         };
         el.appendChild(btn);
       }
     } else {
-      _tabs.forEach((tab, i) => {
+      tabs.forEach((tab, i) => {
         const btn = document.createElement('button');
         btn.className = 'lookup-tab' + (tab.active ? ' active' : '');
         btn.title = tab.label;
@@ -724,13 +715,14 @@
         if (!tab.active) {
           btn.onclick = (e) => {
             e.stopPropagation();
-            navigateTo('hoshi://tab?index=' + i);
+            navigateTo(CHIMA_SCHEME + '//tab?index=' + i);
           };
         }
         el.appendChild(btn);
       });
     }
 
+    // Prepend into #entries (insertBefore because textContent='' may have removed it)
     if (!el.parentElement) {
       container.insertBefore(el, container.firstChild);
     }
@@ -744,6 +736,7 @@
       }, 100);
     }
   }
+
 
   // ── Navigation helper ─────────────────────────────────────────────────────
 
@@ -782,7 +775,7 @@
       const word = extractTextAtPoint(e.clientX, e.clientY);
       if (!word) return;
 
-      navigateTo('hoshi://lookup?q=' + encodeURIComponent(word));
+      navigateTo(CHIMA_SCHEME + '//lookup?q=' + encodeURIComponent(word));
     }, {passive: false});
 
     document.addEventListener('selectionchange', () => {
@@ -1139,8 +1132,12 @@
 
     if (Array.isArray(content)) {
       const isStringArray = content.every((item) => typeof item === 'string');
-      const insideSpan = parent && parent.tagName === 'SPAN';
-      if (isStringArray && content.length > 1 && !insideSpan) {
+      const parentTag = parent && parent.tagName;
+      const isBlockParent = parentTag === 'DIV' || parentTag === 'SECTION' || parentTag === 'ARTICLE' || !parentTag;
+      
+      // Only auto-wrap in UL if we are in a block-level container.
+      // If we are already in a list (UL/OL/LI) or an inline container (SPAN), just append.
+      if (isStringArray && content.length > 1 && isBlockParent) {
         const ul = document.createElement('ul');
         ul.classList.add('glossary-list');
         content.forEach((child) => {
@@ -1985,6 +1982,10 @@
     const termTags = result.term ? result.term.termTags : '';
     headSection.appendChild(createHeadwordNode(expression, reading, termTags));
 
+    if (_wordAudioEnabled) {
+      headSection.appendChild(createAudioButton(expression, reading));
+    }
+
     if (ankiEnabled) {
       // Anki add button
       const ankiBtn = document.createElement('button');
@@ -2008,8 +2009,10 @@
       };
 
       // Only show the add/check button if it's NOT a duplicate OR if the user wants to update/add-anyway.
-      // If it's a duplicate and action is "Don't add" (0 or 'prevent'), we only show the book icon below.
-      if (!isAlreadyAdded || (ankiDupAction !== 0 && ankiDupAction !== 'prevent')) {
+      const isPreventAction = ankiDupAction === 0 || ankiDupAction === '0' || ankiDupAction === 'prevent';
+      const shouldShowAddBtn = !isAlreadyAdded || !isPreventAction;
+
+      if (shouldShowAddBtn) {
         headSection.appendChild(ankiBtn);
       }
 
@@ -2031,10 +2034,6 @@
         };
         headSection.appendChild(bookBtn);
       }
-    }
-    
-    if (_wordAudioEnabled) {
-      headSection.appendChild(createAudioButton(expression, reading));
     }
 
     body.appendChild(headSection);
@@ -2150,9 +2149,13 @@
       // Save scroll position of the previously active tab
       const oldActiveIndex = _tabs.findIndex(t => t.active);
       if (oldActiveIndex >= 0) {
-        const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex;
-        _scrollPositions.set(scrollKey, window.scrollY);
-        debugLog('render.saveScroll', {key: scrollKey, y: window.scrollY});
+        const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+        // Only save if we have a non-zero scroll, or if it's the first time
+        if (currentY > 0 || !_scrollPositions.has((_navMode || 'tabs') + '-' + oldActiveIndex)) {
+          const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex;
+          _scrollPositions.set(scrollKey, currentY);
+          debugLog('render.saveScroll', {key: scrollKey, y: currentY});
+        }
       }
 
       // Update state
@@ -2161,6 +2164,13 @@
       
       // Clear container but preserve the style nodes in head
       container.textContent = '';
+      _lastY = 0; // Reset scroll tracker for the new view
+      if (_tabsEl) {
+        _headerOffset = 0;
+        _tabsEl.style.transition = 'none';
+        _tabsEl.style.transform = 'translateY(0px)';
+      }
+      
       
       const mediaMap = payload.mediaDataUris || {};
       const results = Array.isArray(payload.results) ? payload.results : [];
@@ -2172,8 +2182,7 @@
 
       if (showTabBar) {
         renderTabBar(tabs, navMode);
-        // insertBefore because textContent='' removed it
-        if (_tabsEl) container.insertBefore(_tabsEl, container.firstChild);
+        // Note: tabs-container is a separate div now, so no need to insertBefore entries
       } else if (_tabsEl && _tabsEl.parentElement) {
         _tabsEl.remove();
       }
@@ -2216,7 +2225,7 @@
 
       if (results.length === 0) {
         const empty = document.createElement('div');
-        empty.className = 'hoshi-empty';
+        empty.className = 'chima-empty';
         empty.textContent = payload.placeholder || '';
         container.appendChild(empty);
       } else {
@@ -2247,16 +2256,37 @@
           const scrollKey = (navMode || 'tabs') + '-' + activeIndex;
           const savedScroll = _scrollPositions.get(scrollKey) || 0;
           debugLog('render.restoreScroll', {key: scrollKey, y: savedScroll});
-          setTimeout(() => {
-            window.scrollTo(0, savedScroll);
-            _lastY = savedScroll; // Sync the hide/show tracker to the new position
-            if (_tabsEl) _tabsEl.classList.remove('tabs-hidden'); // Always show bar when switching tabs
-          }, 40);
+          
+          if (savedScroll > 0) {
+            _isJumping = true;
+            setTimeout(() => {
+              window.scrollTo(0, savedScroll);
+              _lastY = savedScroll;
+              if (_tabsEl) {
+                _headerOffset = 0;
+                _tabsEl.style.transition = 'none';
+                _tabsEl.style.transform = 'translateY(0px)';
+              }
+              setTimeout(() => { _isJumping = false; }, 200);
+            }, 100);
+          } else {
+            window.scrollTo(0, 0);
+            _lastY = 0;
+            if (_tabsEl) {
+              _headerOffset = 0;
+              _tabsEl.style.transition = 'none';
+              _tabsEl.style.transform = 'translateY(0px)';
+            }
+          }
         } else {
           // Fresh lookup — jump to top
           window.scrollTo(0, 0);
           _lastY = 0;
-          if (_tabsEl) _tabsEl.classList.remove('tabs-hidden');
+          if (_tabsEl) {
+            _headerOffset = 0;
+            _tabsEl.style.transition = 'none';
+            _tabsEl.style.transform = 'translateY(0px)';
+          }
         }
 
         if (payload.wordAudioAutoplay) {
@@ -2439,8 +2469,10 @@
 
     setTabHidden(hidden) {
       if (_tabsEl) {
-        if (hidden) _tabsEl.classList.add('tabs-hidden');
-        else _tabsEl.classList.remove('tabs-hidden');
+        _maxOffsetCache = _maxOffsetCache || _tabsEl.offsetHeight || 50;
+        _headerOffset = hidden ? _maxOffsetCache : 0;
+        _tabsEl.style.transition = 'transform 0.3s ease';
+        _tabsEl.style.transform = `translateY(-${_headerOffset}px)`;
       }
     },
 
@@ -2450,21 +2482,56 @@
   // ── Scroll Listener for Hiding Tabs ────────────────────────────────────────
   let _lastY = 0;
   let _isJumping = false;
-  const SCROLL_THRESHOLD = 4;
+  let _headerOffset = 0;
+  let _snapTimeout = null;
+  let _maxOffsetCache = 0;
+  let _lastScrollDirection = 0; // 1 for down, -1 for up
+
   window.addEventListener('scroll', () => {
     const y = Math.max(window.pageYOffset, document.documentElement.scrollTop, document.body.scrollTop, 0);
     const delta = y - _lastY;
     _lastY = y;
 
-    if (_isJumping) return;
+    if (_isJumping || !_tabsEl) return;
 
-    // 1. Hide/Show Tab Bar
-    if (_tabsEl && Math.abs(delta) >= SCROLL_THRESHOLD) {
-      if (delta > 0 && y > 60) {
-        _tabsEl.classList.add('tabs-hidden');
-      } else if (delta < 0 || y <= 10) {
-        _tabsEl.classList.remove('tabs-hidden');
-      }
+    if (_maxOffsetCache === 0) {
+      _maxOffsetCache = _tabsEl.offsetHeight || 50;
+      if (_maxOffsetCache <= 0 || _maxOffsetCache > 100) _maxOffsetCache = 50; // Safety bounds
     }
+
+    // Always show perfectly at top
+    if (y <= 0) {
+      _headerOffset = 0;
+      _tabsEl.style.transition = 'transform 0.2s ease';
+      _tabsEl.style.transform = `translateY(0px)`;
+      return;
+    }
+
+    if (delta !== 0) {
+      _lastScrollDirection = delta > 0 ? 1 : -1;
+    }
+
+    // Accumulate the 1:1 scroll delta
+    _headerOffset += delta;
+    if (_headerOffset < 0) _headerOffset = 0;
+    if (_headerOffset > _maxOffsetCache) _headerOffset = _maxOffsetCache;
+
+    // Apply exact translation matching finger movement
+    _tabsEl.style.transition = 'none';
+    _tabsEl.style.transform = `translateY(-${_headerOffset}px)`;
+
+    // Snap to top or bottom when scrolling stops based on direction
+    clearTimeout(_snapTimeout);
+    _snapTimeout = setTimeout(() => {
+      if (_headerOffset > 0 && _headerOffset < _maxOffsetCache) {
+        _tabsEl.style.transition = 'transform 0.2s ease';
+        if (_lastScrollDirection === 1) {
+          _headerOffset = _maxOffsetCache; // Snap hidden if scrolling down
+        } else {
+          _headerOffset = 0; // Snap visible if scrolling up
+        }
+        _tabsEl.style.transform = `translateY(-${_headerOffset}px)`;
+      }
+    }, 150);
   }, { passive: true });
 })();
