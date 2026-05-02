@@ -36,6 +36,7 @@ fun ReaderScreen(
     book: BookMetadata,
     onBack: () -> Unit,
     onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
+    onDismissPopup: () -> Unit = {},
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
     additionalSettings: @Composable ColumnScope.() -> Unit = {}
@@ -194,6 +195,7 @@ fun ReaderScreen(
                         swipeThreshold = chapterSwipeDistance,
                         tapZonePx = tapZonePx,
                         isPopupActive = isPopupActive,
+                        onDismissPopup = onDismissPopup,
                         onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
                     )

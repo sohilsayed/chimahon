@@ -157,6 +157,7 @@ import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 import java.io.ByteArrayOutputStream
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -283,6 +284,16 @@ class ReaderActivity : BaseActivity() {
         windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         super.onCreate(savedInstanceState)
+
+        if (viewModel.isOcrEnabled()) {
+            ensureOcrResources()
+            lifecycleScope.launchIO {
+                val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+                val activeProfile = prefs.profileStore.getActiveProfile()
+                val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+                dictionaryRepository.warmUp(termPaths)
+            }
+        }
 
         binding = ReaderActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -617,6 +628,7 @@ class ReaderActivity : BaseActivity() {
                     launchImageCropper()
                 },
                 initialLookupDeferred = popupState.deferredLookup,
+                usePopup = false,
             )
         }
 
@@ -625,16 +637,11 @@ class ReaderActivity : BaseActivity() {
             is PagerViewer -> {
                 if (viewer.onShowOcrPopup == null) {
                     viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, _ ->
-                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                        val activeProfile = prefs.profileStore.getActiveProfile()
-                        
-                        // PRE-DISPATCH LOOKUP
-                        val deferredLookup = lifecycleScope.async(kotlinx.coroutines.Dispatchers.IO) {
-                             val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
-                             dictionaryRepository!!.lookup(lookupString.trim(), termPaths)
-                        }
+                        // Start lookup immediately on IO thread (no Main thread transition first)
+                        val deferredLookup = preDeferLookup(lookupString)
 
-                        runOnUiThread {
+                        // Transition to Main to update Compose state and show popup
+                        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
                                 chimahon.MediaInfo(
@@ -645,8 +652,10 @@ class ReaderActivity : BaseActivity() {
                                 null
                             }
                             ensureOcrResources()
-                            ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository!!, anchorX, anchorY, mediaInfo, deferredLookup)
+                            ocrPopupState = OcrPopupState(
+                                lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository, 
+                                anchorX, anchorY, mediaInfo, deferredLookup
+                            )
                         }
                     }
                 }
@@ -659,16 +668,11 @@ class ReaderActivity : BaseActivity() {
             is WebtoonViewer -> {
                 if (viewer.onShowOcrPopup == null) {
                     viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, _ ->
-                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                        val activeProfile = prefs.profileStore.getActiveProfile()
-                        
-                        // PRE-DISPATCH LOOKUP
-                        val deferredLookup = lifecycleScope.async(kotlinx.coroutines.Dispatchers.IO) {
-                             val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
-                             dictionaryRepository!!.lookup(lookupString.trim(), termPaths)
-                        }
+                        // Start lookup immediately on IO thread (no Main thread transition first)
+                        val deferredLookup = preDeferLookup(lookupString)
 
-                        runOnUiThread {
+                        // Transition to Main to update Compose state and show popup
+                        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
                                 chimahon.MediaInfo(
@@ -679,8 +683,10 @@ class ReaderActivity : BaseActivity() {
                                 null
                             }
                             ensureOcrResources()
-                            ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository!!, anchorX, anchorY, mediaInfo, deferredLookup)
+                            ocrPopupState = OcrPopupState(
+                                lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository, 
+                                anchorX, anchorY, mediaInfo, deferredLookup
+                            )
                         }
                     }
                 }
@@ -921,6 +927,15 @@ class ReaderActivity : BaseActivity() {
             ocrEnabled = ocrEnabled,
             onToggleOcr = {
                 val enabled = viewModel.toggleOcrEnabled()
+                if (enabled) {
+                    ensureOcrResources()
+                    lifecycleScope.launchIO {
+                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+                        val activeProfile = prefs.profileStore.getActiveProfile()
+                        val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+                        dictionaryRepository.warmUp(termPaths)
+                    }
+                }
                 when (val viewer = state.viewer) {
                     is PagerViewer -> viewer.setOcrEnabled(enabled)
                     is WebtoonViewer -> viewer.setOcrEnabled(enabled)
@@ -1207,7 +1222,6 @@ class ReaderActivity : BaseActivity() {
         )
         binding.readerContainer.addView(loadingIndicator)
 
-        ensureOcrResources()
         startPostponedEnterTransition()
     }
 
@@ -1897,22 +1911,29 @@ class ReaderActivity : BaseActivity() {
 
     // ==================== Dictionary Popup State ====================
     private var ocrWebView: android.webkit.WebView? = null
-    private var dictionaryRepository: chimahon.DictionaryRepository? = null
+    private val dictionaryRepository: chimahon.DictionaryRepository by injectLazy()
 
     private fun ensureOcrResources() {
         if (ocrWebView == null) {
             ocrWebView = createOcrWebView(this)
-        }
-        if (dictionaryRepository == null) {
-            dictionaryRepository = chimahon.DictionaryRepository(getExternalFilesDir(null))
         }
     }
 
     private fun releaseOcrResources() {
         ocrWebView?.destroy()
         ocrWebView = null
-        dictionaryRepository?.close()
-        dictionaryRepository = null
+    }
+
+    /**
+     * Start lookup work immediately. Session is warm, lookup is fast (~10-20ms),
+     * so we can run it synchronously to avoid coroutine overhead.
+     */
+    private fun preDeferLookup(lookupString: String): kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2> {
+        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+        val activeProfile = prefs.profileStore.getActiveProfile()
+        val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
+        val result = dictionaryRepository.lookup(lookupString.trim(), termPaths)
+        return kotlinx.coroutines.CompletableDeferred(result)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -1925,7 +1946,7 @@ class ReaderActivity : BaseActivity() {
             setBackgroundColor(0x00000000)
             // Pre-load bootstrap HTML to avoid startup delay on first lookup
             loadDataWithBaseURL(
-                "https://dictionary.local/",
+                "https://hoshi.local/popup/",
                 eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(ctx),
                 "text/html",
                 "utf-8",

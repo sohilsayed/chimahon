@@ -45,6 +45,7 @@ fun ReaderWebView(
     swipeThreshold: Int = 96,
     tapZonePx: Int = 100,
     isPopupActive: Boolean = false,
+    onDismissPopup: () -> Unit = {},
     onTextSelected: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
     onInternalLinkClicked: (url: String) -> Unit = {},
 ) {
@@ -97,6 +98,7 @@ fun ReaderWebView(
                 onTapTop = { if (!isPopupActive) onTapTop() },
                 onTapBottom = { if (!isPopupActive) onTapBottom() },
                 isPopupActive = isPopupActive,
+                onDismissPopup = onDismissPopup,
                 swipeThreshold = swipeThreshold,
                 tapZonePx = tapZonePx,
                 onTextSelectedCallback = onTextSelected,
@@ -205,6 +207,7 @@ fun ReaderWebView(
             v.continuousMode = continuousMode
             v.readerSettings = readerSettings
             v.focusMode = focusMode
+            v.isPopupActive = isPopupActive
             v.setBackgroundColor(readerSettings.backgroundColor)
 
             if (pendingCommands.isEmpty()) return@AndroidView
@@ -286,6 +289,7 @@ private class ReaderAndroidWebView(
     private val swipeThreshold: Int = 96,
     private val tapZonePx: Int = 100,
     var isPopupActive: Boolean = false,
+    private val onDismissPopup: () -> Unit = {},
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
 ) : WebView(context) {
@@ -384,7 +388,9 @@ private class ReaderAndroidWebView(
             }
         },
         onBackgroundTap = { x, y ->
-            if (!isPopupActive) {
+            if (isPopupActive) {
+                post { onDismissPopup() }
+            } else {
                 post {
                     val density = context.resources.displayMetrics.density
                     val eventX = x * density

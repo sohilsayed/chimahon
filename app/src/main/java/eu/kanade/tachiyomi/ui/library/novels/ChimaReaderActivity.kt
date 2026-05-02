@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.ui.Modifier
 import chimahon.DictionaryRepository
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
@@ -26,6 +27,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlin.concurrent.thread
 
 /**
  * App-side subclass of [NovelReaderActivity] that wires text-selection events
@@ -40,6 +48,37 @@ class ChimaReaderActivity : NovelReaderActivity() {
     
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
     private var popupWebView: WebView? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        ensurePopupWebView()
+        thread(name = "DictionaryWarmup", start = true) {
+            val prefs = Injekt.get<DictionaryPreferences>()
+            val activeProfile = prefs.profileStore.getActiveProfile()
+            val termPaths = getDictionaryPaths(this@ChimaReaderActivity, activeProfile)
+            Injekt.get<DictionaryRepository>().warmUp(termPaths)
+        }
+    }
+
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private fun ensurePopupWebView(): WebView {
+        return popupWebView ?: WebView(this).also {
+            popupWebView = it
+            it.settings.javaScriptEnabled = true
+            it.settings.domStorageEnabled = true
+            it.settings.blockNetworkLoads = true
+            it.settings.loadsImagesAutomatically = true
+            it.setBackgroundColor(0x00000000)
+            // Pre-load bootstrap HTML to avoid startup delay on first lookup
+            it.loadDataWithBaseURL(
+                "https://hoshi.local/popup/",
+                eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(this),
+                "text/html",
+                "utf-8",
+                null,
+            )
+        }
+    }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (isPopupActive) {
@@ -139,10 +178,27 @@ class ChimaReaderActivity : NovelReaderActivity() {
         val anchorY: Float,
     )
 
+    private var lookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null
+
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) {
+        val prefs = Injekt.get<DictionaryPreferences>()
+        val activeProfile = prefs.profileStore.getActiveProfile()
+        val termPaths = getDictionaryPaths(this, activeProfile)
+
+        lookupDeferred = lifecycleScope.async(Dispatchers.IO) {
+            Injekt.get<DictionaryRepository>().lookup(word, termPaths)
+        }
+        
         lookupState = LookupState(word, sentence, x, y)
         isPopupActive = true
+    }
+
+    override fun onDismissPopup() {
+        super.onDismissPopup()
+        lookupState = null
+        lookupDeferred?.cancel()
+        lookupDeferred = null
     }
 
     /**
@@ -156,9 +212,8 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
         // Retain a single WebView + repository across re-compositions so the
         // current lookup result isn't destroyed on every keystroke / recompose.
-        val externalFilesDir = getExternalFilesDir(null)
-        val repo = remember { DictionaryRepository(externalFilesDir) }
-        val webView = remember { WebView(this).also { popupWebView = it } }
+        val repo = remember { Injekt.get<DictionaryRepository>() }
+        val webView = remember { ensurePopupWebView() }
 
         BackHandler {
             lookupState = null
@@ -203,6 +258,8 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 mediaInfo = mediaInfo,
                 onRequestScreenshot = null,
                 onCropTriggered = null,
+                initialLookupDeferred = lookupDeferred,
+                usePopup = false,
                 modifier = Modifier,
             )
         }
@@ -210,6 +267,8 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        popupWebView?.destroy()
+        popupWebView = null
         // The retained WebView must be destroyed with the Activity to avoid leaks
         lookupState = null
     }

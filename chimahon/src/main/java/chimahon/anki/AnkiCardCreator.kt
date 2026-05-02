@@ -209,7 +209,7 @@ object AnkiCardCreator {
         popupSelection: String? = null,
         forceOpen: Boolean = false,
     ): AnkiResult {
-        android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, fieldMapJson=$fieldMapJson, glossaryIndex=$glossaryIndex, popupSelection=$popupSelection")
+        android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, forceOpen=$forceOpen, glossaryIndex=$glossaryIndex")
 
         if (deck.isBlank() || model.isBlank()) {
             android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
@@ -280,7 +280,7 @@ object AnkiCardCreator {
             android.util.Log.d(TAG, "addToAnki: built fields=$fields")
             val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
-            if (dupCheck) {
+            if (dupCheck || forceOpen) {
                 val targetDeckId = if (dupScope == "deck" && deck.isNotBlank()) {
                     try {
                         bridge.getDeckId(deck)

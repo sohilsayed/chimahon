@@ -11,6 +11,7 @@ import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
 import chimahon.audio.WordAudioService
 import chimahon.audio.WordAudioPreferences
+import chimahon.DictionaryRepository
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
@@ -159,6 +160,7 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { ChapterCache(app, get(), get()) }
         addSingletonFactory { CoverCache(app) }
+        addSingletonFactory { DictionaryRepository(app.getExternalFilesDir(null)) }
 
         addSingletonFactory { NetworkHelper(app, get(), isDebugBuildType) }
         addSingletonFactory { JavaScriptEngine(app) }

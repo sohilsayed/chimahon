@@ -77,6 +77,10 @@ open class NovelReaderActivity : ComponentActivity() {
     /** Override in subclass to receive text selection events from the reader. */
     protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) = Unit
 
+    protected open fun onDismissPopup() {
+        isPopupActive = false
+    }
+
     @Composable
     protected open fun PopupOverlay() {}
 
@@ -112,6 +116,7 @@ open class NovelReaderActivity : ComponentActivity() {
                 book = metadata,
                 onBack = { finish() },
                 onLookupRequested = ::onLookupRequested,
+                onDismissPopup = ::onDismissPopup,
                 isPopupActive = isPopupActive,
                 onViewModelReady = { readerViewModel = it },
                 additionalSettings = { AdditionalAppearanceSettings() },

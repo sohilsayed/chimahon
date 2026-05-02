@@ -5,10 +5,15 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
-import android.util.JsonWriter
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -20,7 +25,9 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -32,8 +39,6 @@ import chimahon.LookupResult
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
-import java.io.StringWriter
-import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
@@ -80,11 +85,12 @@ fun DictionaryEntryWebView(
     customCss: String = "",
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
-    onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = null,
+    onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null,
     onRecursiveLookup: ((String) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     forceDefaultTheme: Boolean = false,
+    isLoading: Boolean = false,
 ) {
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
     val amoled by dictionaryPreferences.themeDarkAmoled().collectAsState()
@@ -95,8 +101,8 @@ fun DictionaryEntryWebView(
     val seedColor = if (customColor == 0 || forceDefaultTheme) uiPreferences.colorTheme().get() else customColor
 
     val systemIsDark = isSystemInDarkTheme()
-    val isDark = remember(seedColor, customColor, systemIsDark) {
-        if (customColor != 0) Color(seedColor).luminance() < 0.5f else systemIsDark
+    val isDark = remember(seedColor, customColor, systemIsDark, forceDefaultTheme) {
+        if (customColor != 0 && !forceDefaultTheme) Color(seedColor).luminance() < 0.5f else systemIsDark
     }
     val colorScheme = remember(isDark, amoled, seedColor) {
         getDictionaryColorScheme(isDark, amoled, seedColor)
@@ -105,16 +111,13 @@ fun DictionaryEntryWebView(
         if (amoled && isDark) Color.Black else colorScheme.surface
     }
 
-    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode, wordAudioEnabled) {
+    val payloadObject = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode, wordAudioEnabled) {
         val buildStart = SystemClock.elapsedRealtime()
         val prefs = Injekt.get<DictionaryPreferences>()
         val result = buildRenderPayload(
             context, results, styles, mediaDataUris, placeholder, isDark,
             showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
             prefs.wordAudioAutoplay().get(), activeProfile, existingExpressions, tabs, recursiveNavMode,
-            onAnkiLookup = { index, glossary, selectedDict, popupSelection, forceOpen ->
-                state.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, forceOpen)
-            },
             wordAudioEnabled = wordAudioEnabled,
         )
         Log.i(
@@ -123,6 +126,20 @@ fun DictionaryEntryWebView(
         )
         result
     }
+    val bootstrapHtml = remember(context, isDark, amoled, seedColor, colorScheme) {
+        getDictionaryBootstrapHtml(
+            context = context,
+            colorScheme = colorScheme,
+            isDark = isDark,
+            isAmoled = amoled,
+            seedColor = seedColor
+        )
+    }
+    
+    val payloadString = remember(payloadObject) { payloadObject.toString() }
+    
+    var isPageReady by remember { mutableStateOf(false) }
+    var loadedHtml by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = modifier.background(BgColor)) {
         AndroidView<WebView>(
@@ -130,10 +147,14 @@ fun DictionaryEntryWebView(
             factory = { ctx: Context ->
             val webView = webViewProvider?.invoke(ctx) ?: WebView(ctx)
 
+            val isAlreadyWarm = webView.url == "https://hoshi.local/popup/"
+            
             if (webView.tag == null) {
                 val state = DictionaryWebViewState(ctx, webViewProvider = { webView })
                 webView.apply {
-                    alpha = 0f
+                    // Only hide if we actually need to load something
+                    alpha = if (isAlreadyWarm) 1f else 0f
+                    
                     setBackgroundColor(BgColor.toArgb())
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
@@ -161,6 +182,18 @@ fun DictionaryEntryWebView(
                     addJavascriptInterface(state.wordAudioBridge, "WordAudioBridge")
 
                     webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            val s = view?.tag as? DictionaryWebViewState ?: return
+                            s.pageReady = true
+                            isPageReady = true
+                            val enableRecursive = s.onRecursiveLookup != null
+                            view.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
+                            s.injectCustomCss(view)
+                            s.flush(view)
+                            view.alpha = 1f
+                        }
+
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?,
@@ -190,82 +223,54 @@ fun DictionaryEntryWebView(
                             }
 
                             // ── anki://add or anki://open ──
-                            if (url.scheme == ANKI_SCHEME && (url.host == ANKI_PATH_ADD || url.host == ANKI_PATH_OPEN)) {
-                                val forceOpen = url.host == ANKI_PATH_OPEN
-                                val index = url.getQueryParameter("index")?.toIntOrNull()
-                                val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
-                                val selectedDict = url.getQueryParameter("selected_dict")
-                                val popupSelection = url.getQueryParameter("popup_selection")
-                                if (index != null && index >= 0) {
-                                    android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: index=$index, forceOpen=$forceOpen, glossary=$glossary, selectedDict=$selectedDict, popupSelection=$popupSelection")
-                                    s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, forceOpen)
+                            if (url.scheme == ANKI_SCHEME) {
+                                val host = url.host ?: ""
+                                val isAdd = host.equals(ANKI_PATH_ADD, ignoreCase = true)
+                                val isOpen = host.equals(ANKI_PATH_OPEN, ignoreCase = true)
+
+                                if (isAdd || isOpen) {
+                                    val index = url.getQueryParameter("index")?.toIntOrNull()
+                                    val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
+                                    val selectedDict = url.getQueryParameter("selected_dict")
+                                    val popupSelection = url.getQueryParameter("popup_selection")
+                                    
+                                    android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: host=$host, index=$index, isOpen=$isOpen")
+                                    
+                                    if (index != null && index >= 0) {
+                                        s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, isOpen)
+                                    }
+                                    return true // Consumed
                                 }
-                                return true // Consumed
                             }
                             return false
-                        }
-
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            val s = view?.tag as? DictionaryWebViewState ?: return
-                            s.pageReady = true
-                            // Inject Anki bridge function that accepts two parameters
-                            view.evaluateJavascript(
-                                """
-                                window.AnkiBridge = {
-                                    addToAnki: function(index, glossary, selectedDict, popupSelection) {
-                                        var url = "anki://add?index=" + index;
-                                        if (glossary !== undefined && glossary !== null) {
-                                            url += "&glossary=" + glossary;
-                                        }
-                                        if (selectedDict) {
-                                            url += "&selected_dict=" + encodeURIComponent(selectedDict);
-                                        }
-                                        if (popupSelection) {
-                                            url += "&popup_selection=" + encodeURIComponent(popupSelection);
-                                        }
-                                        window.location.href = url;
-                                    },
-                                    openInAnki: function(index, glossary, selectedDict, popupSelection) {
-                                        var url = "anki://open?index=" + index;
-                                        if (glossary !== undefined && glossary !== null) {
-                                            url += "&glossary=" + glossary;
-                                        }
-                                        if (selectedDict) {
-                                            url += "&selected_dict=" + encodeURIComponent(selectedDict);
-                                        }
-                                        if (popupSelection) {
-                                            url += "&popup_selection=" + encodeURIComponent(popupSelection);
-                                        }
-                                        window.location.href = url;
-                                    }
-                                };
-                                window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled(true);
-                                (function(v) {
-                                    v = v + 'px';
-                                    document.documentElement.style.fontSize = v;
-                                    document.body.style.fontSize = v;
-                                    document.documentElement.style.transform = 'none';
-                                    document.documentElement.style.transformOrigin = 'top left';
-                                })('${s.fontSize}');
-                                """.trimIndent(),
-                                null,
-                            )
-                            view.alpha = 1f
-                            s.flush(view)
-                            s.injectCustomCss(view)
                         }
                     }
 
                     tag = state
 
-                    loadDataWithBaseURL(
-                        "https://dictionary.local/",
-                        getDictionaryBootstrapHtml(ctx, colorScheme, isDark, seedColor, amoled),
-                        "text/html",
-                        "utf-8",
-                        null,
-                    )
+                    // Only load if not already at the correct shell URL
+                    if (!isAlreadyWarm) {
+                        loadDataWithBaseURL(
+                            "https://hoshi.local/popup/",
+                            bootstrapHtml,
+                            "text/html",
+                            "UTF-8",
+                            null,
+                        )
+                    } else {
+                        // Already warm, manually trigger readiness
+                        state.pageReady = true
+                        isPageReady = true
+                    }
+                }
+            } else if (isAlreadyWarm) {
+                webView.alpha = 1f
+                val s = (webView.tag as? DictionaryWebViewState)
+                if (s != null) {
+                    s.pageReady = true
+                    isPageReady = true
+                    // If we have a pending payload, push it now that we're tagging it
+                    s.flush(webView)
                 }
             }
 
@@ -300,39 +305,29 @@ fun DictionaryEntryWebView(
             state.onRecursiveLookup = onRecursiveLookup
             state.onTabSelect = onTabSelect
             state.onBack = onBack
-            state.fontSize = fontSize
-            state.pendingPayload = payload
-
-            // Theme is completely static to the WebView based on data-theme attribute.
-            
-            webView.setBackgroundColor(BgColor.toArgb())
-
-            // Set base font size
-            webView.evaluateJavascript(
-                "(function(v) {" +
-                    "v = v + 'px';" +
-                    "document.documentElement.style.fontSize = v;" +
-                    "document.body.style.fontSize = v;" +
-                    "document.documentElement.style.transform = 'none';" +
-                    "document.documentElement.style.transformOrigin = 'top left';" +
-                    "document.documentElement.dataset.pageType = 'popup';" +
-                    "document.documentElement.dataset.theme = '${if (isDark) "dark" else "light"}';" +
-                    "})('$fontSize');",
-                null,
-            )
-
             state.customCss = customCss
+            state.fontSize = fontSize
+
+            webView.setBackgroundColor(BgColor.toArgb())
+            
+            // Efficiently push new data to existing page
             if (state.pageReady) {
+                val enableRecursive = onRecursiveLookup != null
+                webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
                 state.injectCustomCss(webView)
-                state.flush(webView)
+                if (isLoading) {
+                    state.clear(webView)
+                } else {
+                    state.flush(webView, results, existingExpressions, payloadString)
+                }
+            } else {
+                state.pendingPayload = payloadString
             }
         },
         onRelease = { webView ->
             val state = webView.tag as? DictionaryWebViewState
-            state?.pendingPayload = null
+            state?.clear(webView)
             state?.lastPayload = null
-
-            webView.evaluateJavascript("window.DictionaryRenderer?.clear();", null)
         },
     )
     }
@@ -440,6 +435,8 @@ private class DictionaryWebViewState(
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
     var lastPayload: String? = null
+    var lastResults: List<LookupResult>? = null
+    var lastExistingExpressions: Set<String>? = null
     var pendingPayload: String? = null
     var customCss: String = ""
 
@@ -460,21 +457,37 @@ private class DictionaryWebViewState(
         )
     }
 
-    fun flush(webView: WebView) {
-        val payload = pendingPayload ?: return
+    fun clear(webView: WebView) {
+        webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.clear();", null)
+    }
 
-        if (payload == lastPayload) {
+    fun flush(webView: WebView, results: List<LookupResult>? = null, existingExpressions: Set<String>? = null, payload: String? = null) {
+        val p = payload ?: pendingPayload ?: return
+
+        if (p == lastPayload) {
             pendingPayload = null
             return
         }
 
-        lastPayload = payload
+        if (lastResults == results && lastExistingExpressions != existingExpressions && existingExpressions != null) {
+            // Optimized path: Only Anki status changed
+            val json = org.json.JSONArray(existingExpressions).toString()
+            webView.evaluateJavascript("DictionaryRenderer.updateAnkiStatus('$json')", null)
+            lastPayload = p
+            lastExistingExpressions = existingExpressions
+            pendingPayload = null
+            return
+        }
+
+        lastPayload = p
+        lastResults = results
+        lastExistingExpressions = existingExpressions
         pendingPayload = null
 
         val renderStart = SystemClock.elapsedRealtime()
 
         // Update bridge payload and trigger JS render
-        bridge.setJson(payload)
+        bridge.setJson(p)
         webView.evaluateJavascript(
             "window.DictionaryRenderer && window.DictionaryRenderer.renderFromBridge();",
             null,
@@ -505,137 +518,135 @@ private fun buildRenderPayload(
     tabs: List<TabInfo> = emptyList(),
     recursiveNavMode: String = "tabs",
     wordAudioEnabled: Boolean = true,
-): String {
-    val buffer = StringWriter(4096)
-    JsonWriter(buffer).use { w ->
-        w.beginObject()
+): JsonObject = buildJsonObject {
+    // Dictionary Priority Order (Titles)
+    val orderedTitles = activeProfile.dictionaryOrder
+        .map { getDictionaryTitle(context, it) }
 
-        // Dictionary Priority Order (Titles)
-        val orderedTitles = activeProfile.dictionaryOrder
-            .map { getDictionaryTitle(context, it) }
-
-        w.name("dictionaryOrder").beginArray()
+    putJsonArray("dictionaryOrder") {
         for (title in orderedTitles) {
-            w.value(title)
+            add(JsonPrimitive(title))
         }
-        w.endArray()
-
-        w.name("ankiEnabled").value(activeProfile.ankiEnabled)
-        w.name("ankiDupAction").value(activeProfile.ankiDupAction)
-
-        w.name("placeholder").value(placeholder)
-        w.name("isDark").value(isDark)
-        w.name("showFrequencyHarmonic").value(showFrequencyHarmonic)
-        w.name("groupTerms").value(groupTerms)
-        w.name("showPitchDiagram").value(showPitchDiagram)
-        w.name("showPitchNumber").value(showPitchNumber)
-        w.name("showPitchText").value(showPitchText)
-        w.name("wordAudioAutoplay").value(wordAudioAutoplay)
-        w.name("wordAudioEnabled").value(wordAudioEnabled)
-        w.name("recursiveNavMode").value(recursiveNavMode)
-
-        // Tabs for recursive lookup navigation
-        w.name("tabs").beginArray()
-        for (tab in tabs) {
-            w.beginObject()
-            w.name("label").value(tab.label)
-            w.name("active").value(tab.active)
-            w.endObject()
-        }
-        w.endArray()
-
-        w.name("existingExpressions").beginArray()
-        for (expr in existingExpressions) {
-            w.value(expr)
-        }
-        w.endArray()
-
-        // Styles array
-        w.name("styles").beginArray()
-        for (style in styles) {
-            w.beginObject()
-            w.name("dictName").value(style.dictName)
-            w.name("styles").value(style.styles)
-            w.endObject()
-        }
-        w.endArray()
-
-        // Media data URIs
-        w.name("mediaDataUris").beginObject()
-        for ((key, value) in mediaDataUris) {
-            w.name(key).value(value)
-        }
-        w.endObject()
-
-        // Results array
-        w.name("results").beginArray()
-        for ((index, result) in results.withIndex()) {
-            w.beginObject()
-            w.name("index").value(index)
-            w.name("matched").value(result.matched)
-            w.name("deinflected").value(result.deinflected)
-
-            // Process array
-            w.name("process").beginArray()
-            for (p in result.process) w.value(p)
-            w.endArray()
-
-            // Term object
-            w.name("term").beginObject()
-            w.name("expression").value(result.term.expression)
-            w.name("reading").value(result.term.reading)
-            w.name("rules").value(result.term.rules)
-
-            // Glossaries
-            w.name("glossaries").beginArray()
-            for (g in result.term.glossaries) {
-                w.beginObject()
-                w.name("dictName").value(g.dictName)
-                w.name("glossary").value(g.glossary)
-                w.name("definitionTags").value(g.definitionTags)
-                w.name("termTags").value(g.termTags)
-                w.endObject()
-            }
-            w.endArray()
-
-            // Frequencies
-            w.name("frequencies").beginArray()
-            for (group in result.term.frequencies) {
-                w.beginObject()
-                w.name("dictName").value(group.dictName)
-                w.name("frequencies").beginArray()
-                for (item in group.frequencies) {
-                    w.beginObject()
-                    w.name("value").value(item.value)
-                    w.name("displayValue").value(item.displayValue)
-                    w.endObject()
-                }
-                w.endArray()
-                w.endObject()
-            }
-            w.endArray()
-
-            // Pitches
-            w.name("pitches").beginArray()
-            for (group in result.term.pitches) {
-                w.beginObject()
-                w.name("dictName").value(group.dictName)
-                w.name("pitchPositions").beginArray()
-                for (pos in group.pitchPositions) w.value(pos)
-                w.endArray()
-                w.endObject()
-            }
-            w.endArray()
-
-            w.endObject() // term
-            w.endObject() // result
-        }
-        w.endArray()
-
-        w.endObject()
     }
-    return buffer.toString()
+
+    put("ankiEnabled", activeProfile.ankiEnabled)
+    put("ankiDupAction", activeProfile.ankiDupAction)
+
+    put("placeholder", placeholder)
+    put("isDark", isDark)
+    put("showFrequencyHarmonic", showFrequencyHarmonic)
+    put("groupTerms", groupTerms)
+    put("showPitchDiagram", showPitchDiagram)
+    put("showPitchNumber", showPitchNumber)
+    put("showPitchText", showPitchText)
+    put("wordAudioAutoplay", wordAudioAutoplay)
+    put("wordAudioEnabled", wordAudioEnabled)
+    put("recursiveNavMode", recursiveNavMode)
+
+    // Tabs for recursive lookup navigation
+    putJsonArray("tabs") {
+        for (tab in tabs) {
+            add(buildJsonObject {
+                put("label", tab.label)
+                put("active", tab.active)
+            })
+        }
+    }
+
+    putJsonArray("existingExpressions") {
+        for (expr in existingExpressions) {
+            add(JsonPrimitive(expr))
+        }
+    }
+
+    // Styles array
+    putJsonArray("styles") {
+        for (style in styles) {
+            add(buildJsonObject {
+                put("dictName", style.dictName)
+                put("styles", style.styles)
+            })
+        }
+    }
+
+    // Media data URIs
+    val mediaObj = buildJsonObject {
+        for ((key, value) in mediaDataUris) {
+            put(key, value)
+        }
+    }
+    put("mediaDataUris", mediaObj)
+
+    // Results array
+    putJsonArray("results") {
+        for ((index, result) in results.withIndex()) {
+            add(buildJsonObject {
+                put("index", index)
+                put("matched", result.matched)
+                put("deinflected", result.deinflected)
+
+                // Process array
+                putJsonArray("process") {
+                    for (p in result.process) {
+                        add(JsonPrimitive(p))
+                    }
+                }
+
+                // Term object
+                put("term", buildJsonObject {
+                    put("expression", result.term.expression)
+                    put("reading", result.term.reading)
+                    put("rules", result.term.rules)
+
+                    // Glossaries
+                    putJsonArray("glossaries") {
+                        for (g in result.term.glossaries) {
+                            add(buildJsonObject {
+                                put("dictName", g.dictName)
+                                put("glossary", g.glossary)
+                                put("definitionTags", g.definitionTags)
+                                put("termTags", g.termTags)
+                            })
+                        }
+                    }
+
+                    // Frequencies
+                    putJsonArray("frequencies") {
+                        for (group in result.term.frequencies) {
+                            add(buildJsonObject {
+                                put("dictName", group.dictName)
+                                putJsonArray("frequencies") {
+                                    for (item in group.frequencies) {
+                                        add(buildJsonObject {
+                                            put("value", item.value)
+                                            put("displayValue", item.displayValue)
+                                        })
+                                    }
+                                }
+                            })
+                        }
+                    }
+
+                    // Pitches
+                    putJsonArray("pitches") {
+                        for (group in result.term.pitches) {
+                            add(buildJsonObject {
+                                put("dictName", group.dictName)
+                                putJsonArray("pitchPositions") {
+                                    for (pos in group.pitchPositions) {
+                                        add(JsonPrimitive(pos))
+                                    }
+                                }
+                            })
+                        }
+                    }
+                })
+            })
+        }
+    }
 }
+
+
 
 private fun disableSafeBrowsingForDictionary(webView: WebView) {
     val settings = webView.settings
@@ -662,11 +673,6 @@ private fun disableSafeBrowsingForDictionary(webView: WebView) {
     }
 }
 
-@Volatile
-private var dictionaryCssCache: String? = null
-@Volatile
-private var dictionaryJsCache: String? = null
-private val dictionaryAssetLock = Any()
 
 internal fun getDictionaryBootstrapHtml(
     context: Context,
@@ -678,19 +684,8 @@ internal fun getDictionaryBootstrapHtml(
     var css = ""
     var js = ""
     
-    if (!BuildConfig.DEBUG) {
-        synchronized(dictionaryAssetLock) {
-            if (dictionaryCssCache == null) {
-                dictionaryCssCache = readDictionaryAsset(context, "base.css")
-                dictionaryJsCache = readDictionaryAsset(context, "renderer.js").replace("</script", "<\\/script")
-            }
-            css = dictionaryCssCache!!
-            js = dictionaryJsCache!!
-        }
-    } else {
-        css = readDictionaryAsset(context, "base.css")
-        js = readDictionaryAsset(context, "renderer.js").replace("</script", "<\\/script")
-    }
+    css = readTextAsset(context, "dictionary/base.css")
+    js = readTextAsset(context, "dictionary/renderer.js").replace("</script", "<\\/script")
 
     val dynamicThemeCss = if (colorScheme != null) {
         val accentHex = "#%06X".format(0xFFFFFF and colorScheme.primary.toArgb())
@@ -728,38 +723,40 @@ internal fun getDictionaryBootstrapHtml(
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width,initial-scale=1.0">
-          <style>${"$css"}</style>${"$dynamicThemeCss"}
+          <style>$css</style>$dynamicThemeCss
           <style id="dictionary-styles"></style>
           <style id="hoshi-custom-css"></style>
+          <script>
+            window.AnkiBridge = {
+              addToAnki: function(index, glossary, selectedDict, popupSelection) {
+                var url = "anki://add?index=" + index;
+                if (glossary !== undefined && glossary !== null) url += "&glossary=" + glossary;
+                if (selectedDict) url += "&selected_dict=" + encodeURIComponent(selectedDict);
+                if (popupSelection) url += "&popup_selection=" + encodeURIComponent(popupSelection);
+                window.location.href = url;
+              },
+              openInAnki: function(index, glossary, selectedDict, popupSelection) {
+                var url = "anki://open?index=" + index;
+                if (glossary !== undefined && glossary !== null) url += "&glossary=" + glossary;
+                if (selectedDict) url += "&selected_dict=" + encodeURIComponent(selectedDict);
+                if (popupSelection) url += "&popup_selection=" + encodeURIComponent(popupSelection);
+                window.location.href = url;
+              }
+            };
+          </script>
         </head>
         <body>
           <main id="entries" class="entries"></main>
-          <script>${"$js"}</script>
+          <script>$js</script>
         </body>
         </html>
     """.trimIndent()
 }
 
-private fun readDictionaryAsset(context: Context, filename: String): String {
-    // In debug mode, try loading from external debug directory first
-    if (BuildConfig.DEBUG) {
-        val debugDir = File(context.getExternalFilesDir(null), "debug/dictionary")
-        val debugFile = File(debugDir, filename)
-        if (debugFile.exists()) {
-            try {
-                Log.i("DictionaryRender", "Loaded $filename from debug directory")
-                return debugFile.readText(StandardCharsets.UTF_8)
-            } catch (e: Exception) {
-                Log.e("DictionaryRender", "Failed to read debug $filename", e)
-            }
-        }
-    }
-    return readTextAsset(context, "dictionary/$filename")
-}
 
 private fun readTextAsset(context: Context, assetPath: String): String {
     return context.assets.open(assetPath).use { input ->
-        input.readBytes().toString(StandardCharsets.UTF_8)
+        input.readBytes().toString(Charsets.UTF_8)
     }
 }
 

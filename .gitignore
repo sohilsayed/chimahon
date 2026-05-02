@@ -34,3 +34,5 @@ app/standard/preview/*
 AGENTS.md
 /app/src/main/assets/ocr-test
 /app/src/main/assets/client_secrets.json
+/temp_hoshi
+/AnkiconnectAndroid

@@ -17,10 +17,7 @@ class DictionaryRepository(
     private var configuredTermPaths: List<String> = emptyList()
     private var cachedStyles: List<DictionaryStyle> = emptyList()
 
-    fun lookup(query: String, termPaths: List<String>): LookupResult2 {
-        val t0 = SystemClock.elapsedRealtime()
-        val ramBefore = currentUsedRamMb()
-
+    fun warmUp(termPaths: List<String>) {
         val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
 
         if (termPaths != configuredTermPaths) {
@@ -33,17 +30,43 @@ class DictionaryRepository(
             cachedStyles = HoshiDicts.getStyles(activeSession).toList()
             configuredTermPaths = termPaths
         }
+    }
 
-        val results = HoshiDicts.lookup(activeSession, query, 50).toList()
-        val mediaDataUris = buildMediaDataUris(activeSession, results)
+    fun lookup(query: String, termPaths: List<String>): LookupResult2 {
+        val t0 = SystemClock.elapsedRealtime()
 
+        warmUp(termPaths)
+
+        val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
+
+        val tLookupStart = SystemClock.elapsedRealtime()
+        val results = HoshiDicts.lookup(activeSession, query, 20).toList()
+        val lookupMs = SystemClock.elapsedRealtime() - tLookupStart
+
+        // Media loading is now deferred — don't block on I/O here
         val totalMs = SystemClock.elapsedRealtime() - t0
+        Log.i(
+            "DictionaryRepo",
+            "lookup_ms=$totalMs lookup_hoshidicts_ms=$lookupMs results=${results.size}",
+        )
         return LookupResult2(
             results = results,
             styles = cachedStyles,
-            mediaDataUris = mediaDataUris,
+            mediaDataUris = emptyMap(),  // Empty on critical path
             error = null,
         )
+    }
+
+    fun loadMediaAsync(query: String, results: List<LookupResult>): Map<String, String> {
+        val t0 = SystemClock.elapsedRealtime()
+        val activeSession = session ?: return emptyMap()
+        val mediaDataUris = buildMediaDataUris(activeSession, results)
+        val mediaMs = SystemClock.elapsedRealtime() - t0
+        Log.i(
+            "DictionaryRepo",
+            "loadMediaAsync_ms=$mediaMs query='$query' media_count=${mediaDataUris.size}",
+        )
+        return mediaDataUris
     }
 
     fun close() {
@@ -78,6 +101,7 @@ class DictionaryRepository(
                 out[mediaKey(dictName, candidate)] = dataUri
             }
         }
+
         return out
     }
 
@@ -164,7 +188,7 @@ class DictionaryRepository(
     )
 
     companion object {
-        private const val MAX_PRELOADED_MEDIA_ITEMS = 4
+        private const val MAX_PRELOADED_MEDIA_ITEMS = 2
         private const val MAX_PRELOADED_MEDIA_BYTES = 64 * 1024
     }
 }

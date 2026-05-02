@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Bitmap
+import android.util.Log
 import android.webkit.WebView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -8,11 +9,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +55,7 @@ import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource
@@ -59,10 +63,12 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.UUID
 import kotlin.math.roundToInt
 
 /** One entry in the recursive-lookup history stack. */
 private data class LookupFrame(
+    val id: String = UUID.randomUUID().toString(),
     val query: String,
     val results: List<LookupResult>,
     val styles: List<chimahon.DictionaryStyle>,
@@ -86,11 +92,12 @@ fun OcrLookupPopup(
     onRequestScreenshot: (() -> Bitmap?)? = null,
     onCropTriggered: ((Long, Int?) -> Unit)? = null,
     initialLookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
+    usePopup: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(initialLookupDeferred != null && !initialLookupDeferred.isCompleted) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // ── Lookup history stack ──────────────────────────────────────────────
@@ -174,53 +181,99 @@ fun OcrLookupPopup(
 
         val finalQuery = if (isRecursive) cleanQuery else query
 
-        scope.launch {
-            isLoading = true
-            errorMessage = null
-            try {
-                val result = if (deferredResult != null) {
-                    deferredResult.await()
-                } else {
-                    withContext(Dispatchers.IO) {
-                        val termPaths = getDictionaryPaths(context, activeProfile)
-                        repository.lookup(finalQuery, termPaths)
-                    }
-                }
+        fun handleResult(result: chimahon.DictionaryRepository.LookupResult2, phaseStart: Long) {
+            if (isRecursive && result.results.isEmpty()) {
+                isLoading = false
+                return
+            }
 
-                if (isRecursive && result.results.isEmpty()) {
-                    isLoading = false
-                    return@launch
-                }
+            // Create frame and push immediately — popup shows NOW
+            val frame = LookupFrame(
+                id = UUID.randomUUID().toString(),
+                query = finalQuery,
+                results = result.results,
+                styles = result.styles,
+                mediaDataUris = result.mediaDataUris,
+                existingExpressions = emptySet(),
+            )
 
-                var existing: Set<String> = emptySet()
-                if (ankiEnabled && result.results.isNotEmpty()) {
-                    val unique = result.results.map { it.term.expression }.distinct()
-                    existing = withContext(Dispatchers.IO) {
-                        AnkiCardCreator.checkExistingCards(
-                            context = context,
-                            expressions = unique,
-                            deckName = ankiDeck,
-                            dupScope = ankiDupScope,
+            // Truncate any forward history past the current index, then push
+            while (lookupStack.size > activeTabIndex + 1) lookupStack.removeAt(lookupStack.size - 1)
+            lookupStack.add(frame)
+            activeTabIndex = lookupStack.size - 1
+            errorMessage = result.error
+
+            // Hide loading spinner — popup is visible
+            isLoading = false
+
+            // Anki duplicate check runs in background, doesn't block UI
+            if (ankiEnabled && result.results.isNotEmpty()) {
+                val uniqueExpressions = result.results.map { it.term.expression }.distinct()
+                scope.launch(Dispatchers.IO) {
+                    val existing = AnkiCardCreator.checkExistingCards(
+                        context = context,
+                        expressions = uniqueExpressions,
+                        deckName = ankiDeck,
+                        dupScope = ankiDupScope,
+                    )
+                    withContext(Dispatchers.Main) {
+                        val frameIndex = lookupStack.indexOfFirst { it.id == frame.id }
+                        if (frameIndex >= 0) {
+                            lookupStack[frameIndex] = lookupStack[frameIndex].copy(existingExpressions = existing)
+                        }
+                        Log.i(
+                            "DictionaryPopup",
+                            "anki_check_ms=${android.os.SystemClock.elapsedRealtime() - phaseStart} expressions=${uniqueExpressions.size}",
                         )
                     }
                 }
-                val frame = LookupFrame(
-                    query = finalQuery,
-                    results = result.results,
-                    styles = result.styles,
-                    mediaDataUris = result.mediaDataUris,
-                    existingExpressions = existing,
-                )
-                // Truncate any forward history past the current index, then push
-                while (lookupStack.size > activeTabIndex + 1) lookupStack.removeAt(lookupStack.size - 1)
-                lookupStack.add(frame)
-                activeTabIndex = lookupStack.size - 1
-                errorMessage = result.error
-            } catch (e: CancellationException) {
-                throw e
+            }
+
+            // Load media in background
+            scope.launch(Dispatchers.IO) {
+                val media = repository.loadMediaAsync(finalQuery, result.results)
+                if (media.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        val frameIndex = lookupStack.indexOfFirst { it.id == frame.id }
+                        if (frameIndex >= 0) {
+                            lookupStack[frameIndex] = lookupStack[frameIndex].copy(mediaDataUris = media)
+                        }
+                    }
+                }
+            }
+        }
+
+        val deferred = deferredResult ?: scope.async(Dispatchers.IO) {
+            val termPaths = getDictionaryPaths(context, activeProfile)
+            repository.lookup(finalQuery, termPaths)
+        }
+
+        if (!deferred.isCompleted) {
+            // Must await in a coroutine
+            scope.launch {
+                isLoading = true
+                errorMessage = null
+                val phaseStart = android.os.SystemClock.elapsedRealtime()
+                try {
+                    val result = deferred.await()
+                    handleResult(result, phaseStart)
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    errorMessage = e.message ?: "Lookup failed"
+                    isLoading = false
+                }
+            }
+        } else {
+            // Synchronous lookup (no nested coroutine)
+            // Session is warm, lookup is fast (~10-20ms) — no need for Dispatchers.IO hop
+            errorMessage = null
+            val phaseStart = android.os.SystemClock.elapsedRealtime()
+            try {
+                @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+                val result = deferred.getCompleted()
+                handleResult(result, phaseStart)
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Lookup failed"
-            } finally {
                 isLoading = false
             }
         }
@@ -251,7 +304,13 @@ fun OcrLookupPopup(
         }
     }
 
-    fun performAnkiLookup(index: Int, glossaryIndex: Int?, selectedDict: String? = null, popupSelection: String? = null) {
+    fun performAnkiLookup(
+        index: Int,
+        glossaryIndex: Int?,
+        selectedDict: String? = null,
+        popupSelection: String? = null,
+        forceOpen: Boolean = false,
+    ) {
         val result = results.getOrNull(index) ?: return
 
         val shouldUseCropMode = screenshotFieldMapped && cropMode == "crop" && onCropTriggered != null
@@ -275,6 +334,7 @@ fun OcrLookupPopup(
                     selection = result.matched,
                     selectedDict = selectedDict,
                     popupSelection = popupSelection,
+                    forceOpen = forceOpen,
                 )
                 if (ankiResult is AnkiResult.Success) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -317,6 +377,7 @@ fun OcrLookupPopup(
                     selection = result.matched,
                     selectedDict = selectedDict,
                     popupSelection = popupSelection,
+                    forceOpen = forceOpen,
                 )
                 when (ankiResult) {
                     is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
@@ -332,9 +393,9 @@ fun OcrLookupPopup(
         }
     }
 
-    val onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = if (ankiEnabled) {
-        { index, glossaryIndex, selectedDict, popupSelection ->
-            performAnkiLookup(index, glossaryIndex, selectedDict, popupSelection)
+    val onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = if (ankiEnabled) {
+        { index, glossaryIndex, selectedDict, popupSelection, forceOpen ->
+            performAnkiLookup(index, glossaryIndex, selectedDict, popupSelection, forceOpen)
         }
     } else {
         null
@@ -399,14 +460,8 @@ fun OcrLookupPopup(
 
     val outsideTapInteraction = remember { MutableInteractionSource() }
 
-    Popup(
-        offset = IntOffset(position.x.roundToInt(), position.y.roundToInt()),
-        onDismissRequest = { onDismiss() },
-        properties = PopupProperties(
-            focusable = false,
-            dismissOnClickOutside = false, // Handled by scrim in ChimaReaderActivity
-        ),
-    ) {
+    @Composable
+    fun PopupContent() {
         Surface(
             modifier = modifier
                 .width(maxWidthDp)
@@ -422,42 +477,70 @@ fun OcrLookupPopup(
             tonalElevation = 0.dp,
             shadowElevation = 6.dp,
         ) {
-            when {
-                isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+            Box(modifier = Modifier.fillMaxSize()) {
+                DictionaryEntryWebView(
+                    results = results,
+                    styles = styles,
+                    mediaDataUris = mediaDataUris,
+                    placeholder = if (isLoading) "" else "No results found",
+                    headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
+                    fontSize = popupFontSizePref,
+                    showFrequencyHarmonic = showFreqHarmonic,
+                    groupTerms = groupTerms,
+                    showPitchDiagram = showPitchDiagram,
+                    showPitchNumber = showPitchNumber,
+                    showPitchText = showPitchText,
+                    activeProfile = activeProfile,
+                    existingExpressions = existingExpressions,
+                    tabs = buildTabs(),
+                    recursiveNavMode = recursiveNavMode,
+                    customCss = customCss,
+                    wordAudioEnabled = wordAudioEnabled,
+                    webViewProvider = { webView },
+                    onAnkiLookup = onAnkiLookup,
+                    onRecursiveLookup = onRecursiveLookup,
+                    onTabSelect = onTabSelect,
+                    onBack = onBack,
+                    isLoading = isLoading,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                if (isLoading && results.isEmpty()) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
-                errorMessage != null -> {}
-                results.isEmpty() -> {}
-                else -> {
-                    DictionaryEntryWebView(
-                        results = results,
-                        styles = styles,
-                        mediaDataUris = mediaDataUris,
-                        placeholder = "",
-                        headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
-                        fontSize = popupFontSizePref,
-                        showFrequencyHarmonic = showFreqHarmonic,
-                        groupTerms = groupTerms,
-                        showPitchDiagram = showPitchDiagram,
-                        showPitchNumber = showPitchNumber,
-                        showPitchText = showPitchText,
-                        activeProfile = activeProfile,
-                        existingExpressions = existingExpressions,
-                        tabs = buildTabs(),
-                        recursiveNavMode = recursiveNavMode,
-                        customCss = customCss,
-                        wordAudioEnabled = wordAudioEnabled,
-                        webViewProvider = { webView },
-                        onAnkiLookup = onAnkiLookup,
-                        onRecursiveLookup = onRecursiveLookup,
-                        onTabSelect = onTabSelect,
-                        onBack = onBack,
-                        modifier = Modifier.fillMaxSize(),
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp).align(Alignment.Center)
                     )
                 }
             }
+        }
+    }
+
+    if (usePopup) {
+        Popup(
+            offset = IntOffset(position.x.roundToInt(), position.y.roundToInt()),
+            onDismissRequest = { onDismiss() },
+            properties = PopupProperties(
+                focusable = false,
+                dismissOnClickOutside = false, // Handled by scrim in ChimaReaderActivity
+            ),
+        ) {
+            PopupContent()
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(
+                    x = with(LocalDensity.current) { position.x.toDp() },
+                    y = with(LocalDensity.current) { position.y.toDp() },
+                )
+        ) {
+            PopupContent()
         }
     }
 }
