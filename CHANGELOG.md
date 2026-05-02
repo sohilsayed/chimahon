@@ -5,6 +5,28 @@ All notable changes to Chimahon are documented here.
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
 
+## [v1.6.0]
+
+### Added
+- Swipe-to-dismiss gesture for the dictionary popup.
+- CSS highlighting for selected words in dictionary lookups.
+- Support for additional audio formats in word audio databases.
+- Modernized lookup UI and navigation stack.
+
+### Changed
+- Improved popup startup and lookup performance.
+- Synchronized HUD animations with system navigation bars.
+- Enhanced Anki markers flexibility and export sorting.
+- Improved popup positioning and tap reliability.
+
+### Fixed
+- Fixed Novel Reader TOC navigation and layout shifting.
+- Resolved inline image sizing issues in the Novel Reader.
+- Fixed theme synchronization for various UI components (status/nav bars and bottom sheets).
+- Improved OCR popup dismissal behavior on repeat taps.
+- General stability improvements for the reader.
+
+
 ## [v1.5.0]
 
 ### Added
