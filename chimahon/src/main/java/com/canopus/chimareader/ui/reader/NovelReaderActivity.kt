@@ -42,6 +42,7 @@ open class NovelReaderActivity : ComponentActivity() {
 
     protected var readerViewModel by androidx.compose.runtime.mutableStateOf<ReaderViewModel?>(null)
     protected var bookMetadata: BookMetadata? = null
+    private var isHudVisible = false
 
     protected open fun handleVolumeKey(forward: Boolean): Boolean {
         val vm = readerViewModel ?: return false
@@ -120,16 +121,15 @@ open class NovelReaderActivity : ComponentActivity() {
         bookMetadata = metadata
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.setFlags(
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
 
         setContent {
             ReaderScreen(
                 book = metadata,
                 onBack = { finish() },
-                onShowHudChanged = { visible -> setSystemBarsVisibility(visible) },
+                onShowHudChanged = { visible -> 
+                    isHudVisible = visible
+                    setSystemBarsVisibility(visible) 
+                },
                 onThemeChanged = { bgColor -> updateSystemBarsTheme(bgColor) },
                 onLookupRequested = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
                 onSentenceReady = { sentence -> onSentenceReady(sentence) },
@@ -145,23 +145,25 @@ open class NovelReaderActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Re-apply fullscreen to ensure bars don't pop back in unexpectedly
-        setSystemBarsVisibility(false)
+        // Re-apply visibility state based on HUD status
+        setSystemBarsVisibility(isHudVisible)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            setSystemBarsVisibility(false)
+            setSystemBarsVisibility(isHudVisible)
         }
     }
 
     private fun setSystemBarsVisibility(visible: Boolean) {
         val windowInsetsController = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-        // Always keep system bars hidden in the novel reader for an immersive experience.
-        // Toggling the HUD should not force the system bars to show.
-        windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (visible) {
+            windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        } else {
+            windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     private fun updateSystemBarsTheme(backgroundColor: Int) {

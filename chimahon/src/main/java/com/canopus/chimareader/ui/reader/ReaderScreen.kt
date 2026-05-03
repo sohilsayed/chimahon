@@ -241,7 +241,6 @@ fun ReaderScreen(
                             contentColor = currentSettings.textColor,
                             modifier = Modifier
                                 .statusBarsPadding()
-                                .displayCutoutPadding()
                         )
                     }
 
@@ -346,7 +345,6 @@ private fun ReaderBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(backgroundColor).copy(alpha = 0.9f))
-            .navigationBarsPadding()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
