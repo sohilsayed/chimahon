@@ -5,6 +5,27 @@ All notable changes to Chimahon are documented here.
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
 
+## [v1.6.1]
+
+### Added
+- Added option to toggle visibility of dictionary navigation buttons in settings.
+
+### Changed
+- Enforced strict dictionary headword row layout (Audio -> Anki -> Open) across all render states.
+- Optimized Anki status updates to prevent scroll resets and full WebView re-renders.
+- Adjusted novel reader line height settings limit to a maximum of 1.8.
+- Enhanced dictionary header selection visibility with a high-contrast accent bar (E-ink/B&W optimized).
+
+### Fixed
+- Fixed dictionary popup scroll position leaking between different word lookups.
+- Resolved scroll state loss during recursive dictionary navigation.
+- Fixed Anki marker "Single Glossary" sub-dropdown being unable to close.
+- Improved Anki marker selection to automatically replace the empty `{}` placeholder.
+- Fixed Anki duplicate check icon indicator failing to update to green after background check.
+- Corrected Anki icon alignment and layout when the duplicate prevention policy is active.
+- Fixed novel reader line height setting not applying unless advanced layout was enabled.
+
+
 ## [v1.6.0]
 
 ### Added

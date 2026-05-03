@@ -239,4 +239,6 @@
     <string name="pref_discord_show_download_button_summary">Displays a button to download the app</string>
     <string name="pref_discord_show_discord_button">Show Discord Button</string>
     <string name="pref_discord_show_discord_button_summary">Displays a button to join the Discord server</string>
+    <string name="pref_dict_show_navigation_buttons">Show navigation buttons</string>
+    <string name="pref_dict_show_navigation_buttons_summary">Show floating up/down arrows in the dictionary popup</string>
 </resources>

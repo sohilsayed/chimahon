@@ -121,6 +121,7 @@ fun DictionaryEntryWebView(
             showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
             prefs.wordAudioAutoplay().get(), activeProfile, existingExpressions, tabs, recursiveNavMode,
             wordAudioEnabled = wordAudioEnabled,
+            showNavigationButtons = prefs.showNavigationButtons().get(),
         )
         Log.i(
             "DictionaryRender",
@@ -482,16 +483,12 @@ private class DictionaryWebViewState(
         val p = payload ?: pendingPayload ?: return
 
         if (p == lastPayload) {
-            pendingPayload = null
-            return
-        }
-
-        if (lastResults == results && lastExistingExpressions != existingExpressions && existingExpressions != null) {
-            // Optimized path: Only Anki status changed
-            val json = org.json.JSONArray(existingExpressions).toString()
-            webView.evaluateJavascript("DictionaryRenderer.updateAnkiStatus('$json')", null)
-            lastPayload = p
-            lastExistingExpressions = existingExpressions
+            if (lastExistingExpressions != existingExpressions && existingExpressions != null) {
+                // Optimized path: Only Anki status changed
+                val json = org.json.JSONArray(existingExpressions).toString()
+                webView.evaluateJavascript("DictionaryRenderer.updateAnkiStatus('$json')", null)
+                lastExistingExpressions = existingExpressions
+            }
             pendingPayload = null
             return
         }
@@ -536,6 +533,7 @@ private fun buildRenderPayload(
     tabs: List<TabInfo> = emptyList(),
     recursiveNavMode: String = "tabs",
     wordAudioEnabled: Boolean = true,
+    showNavigationButtons: Boolean = true,
 ): JsonObject = buildJsonObject {
     // Dictionary Priority Order (Titles)
     val orderedTitles = activeProfile.dictionaryOrder
@@ -560,6 +558,7 @@ private fun buildRenderPayload(
     put("wordAudioAutoplay", wordAudioAutoplay)
     put("wordAudioEnabled", wordAudioEnabled)
     put("recursiveNavMode", recursiveNavMode)
+    put("showNavigationButtons", showNavigationButtons)
 
     // Tabs for recursive lookup navigation
     putJsonArray("tabs") {

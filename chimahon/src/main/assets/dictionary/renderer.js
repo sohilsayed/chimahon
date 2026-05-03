@@ -744,7 +744,8 @@
     // Proactively save scroll position before navigating
     const activeIndex = _tabs.findIndex(t => t.active);
     if (activeIndex >= 0) {
-      const scrollKey = (_navMode || 'tabs') + '-' + activeIndex;
+      const activeTab = _tabs[activeIndex];
+      const scrollKey = (_navMode || 'tabs') + '-' + activeIndex + '-' + activeTab.label;
       _scrollPositions.set(scrollKey, window.scrollY);
       debugLog('navigateTo.saveScroll', {key: scrollKey, y: window.scrollY});
     }
@@ -1982,6 +1983,7 @@
     const termTags = result.term ? result.term.termTags : '';
     headSection.appendChild(createHeadwordNode(expression, reading, termTags));
 
+    // Ordering: Audio -> Add -> Open
     if (_wordAudioEnabled) {
       headSection.appendChild(createAudioButton(expression, reading));
     }
@@ -1989,7 +1991,6 @@
     if (ankiEnabled) {
       // Anki add button
       const ankiBtn = document.createElement('button');
-      // Check if expression is already in Anki (from payload)
       const isAlreadyAdded = existingSet.includes(expression);
       ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
       ankiBtn.innerHTML = isAlreadyAdded ? ICONS.check_circle : ICONS.add_circle;
@@ -1997,26 +1998,19 @@
       ankiBtn.setAttribute('data-index', String(result.index || 0));
       ankiBtn.setAttribute('data-expression', expression);
       ankiBtn.setAttribute('data-glossary', '-1');
+
       ankiBtn.onclick = (e) => {
         e.stopPropagation();
         if (typeof AnkiBridge !== 'undefined') {
           const entryIdx = ankiBtn.getAttribute('data-index');
           const selectedDict = _selectedDictionaries[entryIdx] || '';
-          // Fallback to live selection if stored one is empty
           const selection = _lastSelection || window.getSelection().toString();
           AnkiBridge.addToAnki(entryIdx, '-1', selectedDict, selection);
         }
       };
 
-      // Only show the add/check button if it's NOT a duplicate OR if the user wants to update/add-anyway.
-      const isPreventAction = ankiDupAction === 0 || ankiDupAction === '0' || ankiDupAction === 'prevent';
-      const shouldShowAddBtn = !isAlreadyAdded || !isPreventAction;
+      headSection.appendChild(ankiBtn);
 
-      if (shouldShowAddBtn) {
-        headSection.appendChild(ankiBtn);
-      }
-
-      // Add "Open in Anki" book icon if the card exists (Yomitan style)
       if (isAlreadyAdded) {
         const bookBtn = document.createElement('button');
         bookBtn.className = 'anki-open-btn';
@@ -2028,7 +2022,6 @@
             const entryIdx = ankiBtn.getAttribute('data-index');
             const selectedDict = _selectedDictionaries[entryIdx] || '';
             const selection = _lastSelection || window.getSelection().toString();
-            // Use openInAnki specifically to ensure we open the card regardless of dupAction
             AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
           }
         };
@@ -2110,7 +2103,7 @@
       const started = performance.now();
       const root = document.documentElement;
       _wordAudioEnabled = payload.wordAudioEnabled !== false;
-      if (typeof payload.ankiDupAction === 'number') {
+      if (payload.ankiDupAction !== undefined) {
         _lastAnkiDupAction = payload.ankiDupAction;
       }
 
@@ -2149,10 +2142,12 @@
       // Save scroll position of the previously active tab
       const oldActiveIndex = _tabs.findIndex(t => t.active);
       if (oldActiveIndex >= 0) {
+        const oldTab = _tabs[oldActiveIndex];
         const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+        const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex + '-' + oldTab.label;
+        
         // Only save if we have a non-zero scroll, or if it's the first time
-        if (currentY > 0 || !_scrollPositions.has((_navMode || 'tabs') + '-' + oldActiveIndex)) {
-          const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex;
+        if (currentY > 0 || !_scrollPositions.has(scrollKey)) {
           _scrollPositions.set(scrollKey, currentY);
           debugLog('render.saveScroll', {key: scrollKey, y: currentY});
         }
@@ -2243,8 +2238,8 @@
         }
         container.appendChild(fragment);
 
-        // Show floating nav if there are multiple entries
-        if (results.length > 1) {
+        // Show floating nav if there are multiple entries and it's enabled in settings
+        if (results.length > 1 && payload.showNavigationButtons !== false) {
           renderFloatingNav();
         } else {
           const nav = document.getElementById('floating-nav');
@@ -2253,7 +2248,8 @@
 
         // Restore scroll position for the newly active tab
         if (activeIndex >= 0) {
-          const scrollKey = (navMode || 'tabs') + '-' + activeIndex;
+          const activeTab = tabs[activeIndex];
+          const scrollKey = (navMode || 'tabs') + '-' + activeIndex + '-' + activeTab.label;
           const savedScroll = _scrollPositions.get(scrollKey) || 0;
           debugLog('render.restoreScroll', {key: scrollKey, y: savedScroll});
           
@@ -2408,30 +2404,19 @@
         const existing = JSON.parse(existingExpressionsJson);
         const existingSet = Array.isArray(existing) ? new Set(existing) : new Set();
         
-        const ankiDupAction = _lastAnkiDupAction;
         const addButtons = document.querySelectorAll('.anki-add-btn');
         addButtons.forEach(btn => {
           const expr = btn.getAttribute('data-expression');
           const isAdded = existingSet.has(expr);
           
           const wasAdded = btn.classList.contains('anki-added');
-          if (isAdded === wasAdded) {
-             // Even if no change in status, we might need to hide it based on dupAction
-             if (isAdded && ankiDupAction === 0) btn.style.display = 'none';
-             else btn.style.display = '';
-             return; 
-          }
+          if (isAdded === wasAdded) return; 
 
           if (isAdded) {
             btn.classList.add('anki-added');
             btn.innerHTML = ICONS.check_circle;
             btn.title = 'Already in Anki';
             
-            // If "Don't add", hide the button entirely
-            if (ankiDupAction === 0 || ankiDupAction === 'prevent') {
-              btn.style.display = 'none';
-            }
-
             // Add book icon if not present
             const head = btn.parentElement;
             if (head && !head.querySelector('.anki-open-btn')) {
@@ -2454,12 +2439,26 @@
             btn.classList.remove('anki-added');
             btn.innerHTML = ICONS.add_circle;
             btn.title = 'Add to Anki';
-            btn.style.display = '';
             
             // Remove book icon if present
             const head = btn.parentElement;
             const bookBtn = head ? head.querySelector('.anki-open-btn') : null;
             if (bookBtn) bookBtn.remove();
+          }
+
+          // Enforce Ordering: Headword (first) -> Audio -> Anki Add -> Open in Anki
+          const head = btn.parentElement;
+          if (head) {
+            const headword = head.querySelector('.headword');
+            const audioBtn = head.querySelector('.word-audio-btn');
+            const openBtn = head.querySelector('.anki-open-btn');
+            
+            if (headword && head.firstChild !== headword) {
+              head.insertBefore(headword, head.firstChild);
+            }
+            if (audioBtn) head.appendChild(audioBtn);
+            head.appendChild(btn);
+            if (openBtn) head.appendChild(openBtn);
           }
         });
       } catch (e) {

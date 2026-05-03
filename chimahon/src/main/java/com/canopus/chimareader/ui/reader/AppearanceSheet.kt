@@ -234,8 +234,8 @@ fun AppearanceSheet(
                     Slider(
                         value = viewModel.lineHeight.toFloat(),
                         onValueChange = { viewModel.updateLineHeight(it.toDouble()) },
-                        valueRange = 1.0f..2.5f,
-                        steps = 15
+                        valueRange = 1.0f..1.8f,
+                        steps = 7
                     )
                 }
 

@@ -333,6 +333,11 @@ object SettingsDictionaryScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_dict_group_terms),
                     subtitle = stringResource(MR.strings.pref_dict_group_terms_summary),
                 ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.showNavigationButtons(),
+                    title = stringResource(KMR.strings.pref_dict_show_navigation_buttons),
+                    subtitle = stringResource(KMR.strings.pref_dict_show_navigation_buttons_summary),
+                ),
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_custom_css),
                     content = {
@@ -1435,7 +1440,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                             },
                             onClick = {
                                 if (dictionaryNames.isNotEmpty()) {
-                                    singleGlossaryExpanded = true
+                                    singleGlossaryExpanded = !singleGlossaryExpanded
                                 }
                             },
                             trailingIcon = {
@@ -1458,7 +1463,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         val newValue = if (fieldValue.contains(markerStr)) {
                                             fieldValue.replace(markerStr, "")
                                         } else {
-                                            fieldValue + markerStr
+                                            if (fieldValue == "{}") markerStr else fieldValue + markerStr
                                         }
                                         onValueChange(newValue)
                                         singleGlossaryExpanded = false
@@ -1482,7 +1487,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     val newValue = if (fieldValue.contains(markerStr)) {
                                         fieldValue.replace(markerStr, "")
                                     } else {
-                                        fieldValue + markerStr
+                                        if (fieldValue == "{}") markerStr else fieldValue + markerStr
                                     }
                                     onValueChange(newValue)
                                     singleGlossaryExpanded = false
@@ -1511,7 +1516,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 val newValue = if (isSelected) {
                                     fieldValue.replace("{$marker}", "")
                                 } else {
-                                    fieldValue + "{$marker}"
+                                    if (fieldValue == "{}") "{$marker}" else fieldValue + "{$marker}"
                                 }
                                 onValueChange(newValue)
                                 dropdownExpanded = false

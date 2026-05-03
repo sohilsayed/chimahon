@@ -201,19 +201,24 @@ body {
   align-items: center;
   cursor: pointer;
   user-select: none;
-  padding: 3px 0;
+  padding: 4px 0 4px 8px;
+  margin-left: -8px;
   font-size: 0.9em;
   font-weight: 600;
   color: var(--secondary);
-  transition: color 0.2s;
+  border-left: 4px solid transparent;
+  transition: all 0.2s ease;
 }
 
 .dictionary-header:hover {
   color: var(--fg);
+  background-color: var(--hover-bg);
 }
 
 .dictionary-header.selected {
   color: var(--accent);
+  background-color: var(--hover-bg);
+  border-left-color: var(--accent);
 }
 
 .dictionary-header.selected .dict-name-label {

@@ -699,8 +699,8 @@ private class ReaderAndroidWebView(
                 b.style.setProperty('padding', '0', 'important');
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
-                ${if (readerSettings.layoutAdvanced) """
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
+                ${if (readerSettings.layoutAdvanced) """
                 wrapper.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
                 """ else ""}
                 wrapper.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
@@ -1024,8 +1024,8 @@ private class ReaderAndroidWebView(
                 wrapper.style.setProperty('font-size', '${settings.fontSize}px', 'important');
                 b.style.setProperty('font-size', '${settings.fontSize}px', 'important');
 
-                ${if (settings.layoutAdvanced) """
                 wrapper.style.setProperty('line-height', '${settings.lineHeight}', 'important');
+                ${if (settings.layoutAdvanced) """
                 wrapper.style.setProperty('letter-spacing', '${settings.characterSpacing}em', 'important');
                 """ else ""}
 

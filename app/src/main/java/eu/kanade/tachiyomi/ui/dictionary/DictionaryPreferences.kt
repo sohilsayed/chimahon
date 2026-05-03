@@ -23,6 +23,7 @@ class DictionaryPreferences(
     fun showPitchDiagram() = preferenceStore.getBoolean("pref_dict_show_pitch_diagram", true)
     fun showPitchNumber() = preferenceStore.getBoolean("pref_dict_show_pitch_number", true)
     fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
+    fun showNavigationButtons() = preferenceStore.getBoolean("pref_dict_show_navigation_buttons", true)
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
 
