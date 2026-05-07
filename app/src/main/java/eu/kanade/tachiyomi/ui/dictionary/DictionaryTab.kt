@@ -328,6 +328,7 @@ data object DictionaryTab : Tab {
                             glossaryIndex = glossaryIndex,
                             popupSelection = popupSelection,
                             selectedDict = selectedDict,
+                            styles = styles,
                             forceOpen = forceOpen,
                         )
                         if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {

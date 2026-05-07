@@ -109,6 +109,73 @@ private const val TAG = "DictionaryImport"
 private val _dictionaryNames = MutableStateFlow<List<String>>(emptyList())
 private val dictionaryNames = _dictionaryNames.asStateFlow()
 
+private data class MarkerSection(
+    val title: String,
+    val markers: List<String>,
+)
+
+private val markerSections = listOf(
+    MarkerSection("Core", listOf(Marker.EXPRESSION, Marker.READING, Marker.FURIGANA, Marker.FURIGANA_PLAIN)),
+    MarkerSection(
+        "Glossary",
+        listOf(
+            Marker.GLOSSARY,
+            Marker.GLOSSARY_BRIEF,
+            Marker.GLOSSARY_PLAIN,
+            Marker.GLOSSARY_PLAIN_NO_DICT,
+            Marker.GLOSSARY_NO_DICT,
+            Marker.GLOSSARY_FIRST,
+            Marker.GLOSSARY_FIRST_NO_DICT,
+            Marker.GLOSSARY_FIRST_BRIEF,
+            Marker.SELECTED_GLOSSARY,
+            Marker.SINGLE_GLOSSARY,
+        ),
+    ),
+    MarkerSection(
+        "Sentence",
+        listOf(
+            Marker.SENTENCE,
+            Marker.SENTENCE_BOLD,
+            Marker.CLOZE_PREFIX,
+            Marker.CLOZE_BODY,
+            Marker.CLOZE_BODY_KANA,
+            Marker.CLOZE_SUFFIX,
+            Marker.POPUP_SELECTION_TEXT,
+        ),
+    ),
+    MarkerSection(
+        "Pitch",
+        listOf(
+            Marker.PITCH_ACCENTS,
+            Marker.PITCH_ACCENT_POSITIONS,
+            Marker.PITCH_ACCENT_CATEGORIES,
+            Marker.PITCH_ACCENT_GRAPHS,
+            Marker.PITCH_ACCENT_GRAPHS_JJ,
+            Marker.PITCH_ACCENT_COMPOSITE,
+            Marker.MORAE,
+        ),
+    ),
+    MarkerSection("Frequency", listOf(Marker.FREQUENCIES, Marker.FREQUENCY_LOWEST, Marker.FREQUENCY_HARMONIC_RANK, Marker.FREQUENCY_AVERAGE_RANK)),
+    MarkerSection("Media", listOf(Marker.WORD_AUDIO, Marker.AUDIO, Marker.SCREENSHOT)),
+    MarkerSection(
+        "Context",
+        listOf(
+            Marker.TAGS,
+            Marker.PART_OF_SPEECH,
+            Marker.CONJUGATION,
+            Marker.DICTIONARY,
+            Marker.DICTIONARY_ALIAS,
+            Marker.SEARCH_QUERY,
+            Marker.URL,
+            Marker.BOOK,
+            Marker.CHAPTER,
+            Marker.MEDIA,
+            Marker.DOCUMENT_TITLE,
+            Marker.SENTENCE_AUDIO,
+        ),
+    ),
+)
+
 private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.associateWith { marker ->
     val isTodo = marker in Marker.TODO_MARKERS
     val prefix = if (isTodo) "" else ""
@@ -117,11 +184,14 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.READING -> "${prefix}Reading"
         Marker.FURIGANA -> "${prefix}Furigana"
         Marker.FURIGANA_PLAIN -> "${prefix}Furigana Plain"
+        Marker.AUDIO -> "${prefix}Audio"
         Marker.GLOSSARY -> "${prefix}Glossary"
         Marker.GLOSSARY_BRIEF -> "${prefix}Glossary Brief"
         Marker.GLOSSARY_PLAIN -> "${prefix}Glossary Plain"
+        Marker.GLOSSARY_PLAIN_NO_DICT -> "${prefix}Glossary Plain No Dict"
         Marker.GLOSSARY_NO_DICT -> "${prefix}Glossary No Dict"
         Marker.GLOSSARY_FIRST -> "${prefix}Glossary First"
+        Marker.GLOSSARY_FIRST_NO_DICT -> "${prefix}Glossary First No Dict"
         Marker.GLOSSARY_FIRST_BRIEF -> "${prefix}Glossary First Brief"
         Marker.SENTENCE -> "${prefix}Sentence"
         Marker.SENTENCE_BOLD -> "${prefix}Sentence Bold"
@@ -141,6 +211,7 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.PITCH_ACCENT_POSITIONS -> "${prefix}Pitch Positions"
         Marker.PITCH_ACCENT_CATEGORIES -> "${prefix}Pitch Categories"
         Marker.PITCH_ACCENT_GRAPHS -> "${prefix}Pitch Graphs"
+        Marker.PITCH_ACCENT_GRAPHS_JJ -> "${prefix}Pitch Graphs JJ"
         Marker.MORAE -> "${prefix}Morae"
         Marker.SCREENSHOT -> "${prefix}Screenshot"
         Marker.BOOK -> "${prefix}Book"
@@ -1490,9 +1561,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         onDeleteField: (() -> Unit)? = null,
         dictionaryNames: List<String> = emptyList(),
     ) {
-        var dropdownExpanded by remember { mutableStateOf(false) }
-        var singleGlossaryExpanded by remember { mutableStateOf(false) }
-        val currentMarkers = remember(fieldValue) { parseMarkersForDisplay(fieldValue) }
+        var markerPickerOpen by remember { mutableStateOf(false) }
 
         Column(
             modifier = Modifier
@@ -1539,7 +1608,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                 )
 
                 IconButton(
-                    onClick = { dropdownExpanded = true },
+                    onClick = { markerPickerOpen = true },
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(top = 8.dp)
@@ -1553,115 +1622,198 @@ object SettingsDictionaryScreen : SearchableSettings {
                 }
             }
 
-            DropdownMenu(
-                expanded = dropdownExpanded,
-                onDismissRequest = { dropdownExpanded = false },
-                modifier = Modifier.width(200.dp),
-            ) {
-                Marker.ALL.filter { it != Marker.POPUP_SELECTION_TEXT }.forEach { marker ->
-                    if (marker == Marker.SINGLE_GLOSSARY) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = markerDisplayLabels[marker] ?: marker,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            },
-                            onClick = {
-                                if (dictionaryNames.isNotEmpty()) {
-                                    singleGlossaryExpanded = !singleGlossaryExpanded
-                                }
-                            },
-                            trailingIcon = {
-                                if (dictionaryNames.isNotEmpty()) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.KeyboardArrowRight,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            },
-                        )
+            if (markerPickerOpen) {
+                MarkerPickerDialog(
+                    fieldName = fieldName,
+                    fieldValue = fieldValue,
+                    dictionaryNames = dictionaryNames,
+                    onDismiss = { markerPickerOpen = false },
+                    onToggleMarker = { markerText ->
+                        onValueChange(toggleMarkerText(fieldValue, markerText))
+                    },
+                )
+            }
+        }
+    }
 
-                        if (singleGlossaryExpanded) {
-                            dictionaryNames.forEach { dictName ->
-                                DropdownMenuItem(
-                                    text = { Text(dictName, style = MaterialTheme.typography.bodyMedium) },
-                                    onClick = {
-                                        val markerStr = "{${Marker.SINGLE_GLOSSARY}-$dictName}"
-                                        val newValue = if (fieldValue.contains(markerStr)) {
-                                            fieldValue.replace(markerStr, "")
-                                        } else {
-                                            if (fieldValue == "{}") markerStr else fieldValue + markerStr
-                                        }
-                                        onValueChange(newValue)
-                                        singleGlossaryExpanded = false
-                                        dropdownExpanded = false
-                                    },
-                                    leadingIcon = {
-                                        val markerStr = "{${Marker.SINGLE_GLOSSARY}-$dictName}"
-                                        androidx.compose.material3.Checkbox(
-                                            checked = fieldValue.contains(markerStr),
-                                            onCheckedChange = null,
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    },
-                                )
-                            }
-
-                            DropdownMenuItem(
-                                text = { Text("All dictionaries", style = MaterialTheme.typography.bodyMedium) },
-                                onClick = {
-                                    val markerStr = "{${Marker.SINGLE_GLOSSARY}-all}"
-                                    val newValue = if (fieldValue.contains(markerStr)) {
-                                        fieldValue.replace(markerStr, "")
-                                    } else {
-                                        if (fieldValue == "{}") markerStr else fieldValue + markerStr
-                                    }
-                                    onValueChange(newValue)
-                                    singleGlossaryExpanded = false
-                                    dropdownExpanded = false
-                                },
-                                leadingIcon = {
-                                    val markerStr = "{${Marker.SINGLE_GLOSSARY}-all}"
-                                    androidx.compose.material3.Checkbox(
-                                        checked = fieldValue.contains(markerStr),
-                                        onCheckedChange = null,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                },
-                            )
-                        }
-                    } else {
-                        val isSelected = marker in currentMarkers
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = markerDisplayLabels[marker] ?: marker,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            },
-                            onClick = {
-                                val newValue = if (isSelected) {
-                                    fieldValue.replace("{$marker}", "")
-                                } else {
-                                    if (fieldValue == "{}") "{$marker}" else fieldValue + "{$marker}"
-                                }
-                                onValueChange(newValue)
-                                dropdownExpanded = false
-                            },
-                            leadingIcon = {
-                                androidx.compose.material3.Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = null,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                        )
+    @Composable
+    private fun MarkerPickerDialog(
+        fieldName: String,
+        fieldValue: String,
+        dictionaryNames: List<String>,
+        onDismiss: () -> Unit,
+        onToggleMarker: (String) -> Unit,
+    ) {
+        var query by remember { mutableStateOf("") }
+        var selectedSection by remember { mutableStateOf<String?>(null) }
+        var singleGlossaryExpanded by remember { mutableStateOf(false) }
+        val currentMarkers = remember(fieldValue) { parseMarkersForDisplay(fieldValue).toSet() }
+        val normalizedQuery = query.trim().lowercase()
+        val visibleSections = remember(selectedSection, normalizedQuery) {
+            if (normalizedQuery.isBlank()) {
+                markerSections.filter { selectedSection == null || it.title == selectedSection }
+            } else {
+                markerSections.mapNotNull { section ->
+                    val markers = section.markers.filter { marker ->
+                        marker.contains(normalizedQuery, ignoreCase = true) ||
+                            (markerDisplayLabels[marker] ?: marker).contains(normalizedQuery, ignoreCase = true)
                     }
+                    if (markers.isEmpty()) null else section.copy(markers = markers)
                 }
             }
         }
+        val visibleDictionaryNames = remember(dictionaryNames, normalizedQuery) {
+            if (normalizedQuery.isBlank()) {
+                dictionaryNames
+            } else {
+                dictionaryNames.filter { it.contains(normalizedQuery, ignoreCase = true) }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Markers", style = MaterialTheme.typography.titleLarge)
+                    Text(fieldName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Search markers") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = selectedSection == null,
+                            onClick = { selectedSection = null },
+                            label = { Text("All") },
+                        )
+                        markerSections.forEach { section ->
+                            FilterChip(
+                                selected = selectedSection == section.title,
+                                onClick = { selectedSection = section.title },
+                                label = { Text(section.title) },
+                            )
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(420.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        visibleSections.forEach { section ->
+                            item("section-${section.title}") {
+                                Text(
+                                    text = section.title,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                                )
+                            }
+                            items(section.markers, key = { marker -> "marker-$marker" }) { marker ->
+                                if (marker == Marker.SINGLE_GLOSSARY) {
+                                    MarkerPickerRow(
+                                        label = markerDisplayLabels[marker] ?: marker,
+                                        markerText = "{${Marker.SINGLE_GLOSSARY}-all}",
+                                        selected = fieldValue.contains("{${Marker.SINGLE_GLOSSARY}-"),
+                                        onClick = {
+                                            singleGlossaryExpanded = !singleGlossaryExpanded
+                                        },
+                                    )
+                                    if (singleGlossaryExpanded || normalizedQuery.isNotBlank()) {
+                                        MarkerPickerRow(
+                                            label = "All dictionaries",
+                                            markerText = "{${Marker.SINGLE_GLOSSARY}-all}",
+                                            selected = fieldValue.contains("{${Marker.SINGLE_GLOSSARY}-all}"),
+                                            onClick = { onToggleMarker("{${Marker.SINGLE_GLOSSARY}-all}") },
+                                            compact = true,
+                                        )
+                                        visibleDictionaryNames.forEach { dictName ->
+                                            val markerText = "{${Marker.SINGLE_GLOSSARY}-$dictName}"
+                                            MarkerPickerRow(
+                                                label = dictName,
+                                                markerText = markerText,
+                                                selected = fieldValue.contains(markerText),
+                                                onClick = { onToggleMarker(markerText) },
+                                                compact = true,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    val markerText = "{$marker}"
+                                    MarkerPickerRow(
+                                        label = markerDisplayLabels[marker] ?: marker,
+                                        markerText = markerText,
+                                        selected = marker in currentMarkers,
+                                        onClick = { onToggleMarker(markerText) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Done")
+                }
+            },
+        )
+    }
+
+    @Composable
+    private fun MarkerPickerRow(
+        label: String,
+        markerText: String,
+        selected: Boolean,
+        onClick: () -> Unit,
+        compact: Boolean = false,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = if (compact) 18.dp else 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = null,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    markerText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    private fun toggleMarkerText(fieldValue: String, markerText: String): String {
+        val base = if (fieldValue == "{}") "" else fieldValue
+        return if (base.contains(markerText)) {
+            base.replace(markerText, "")
+        } else {
+            base + markerText
+        }.ifBlank { "{}" }
     }
 
     @Composable
