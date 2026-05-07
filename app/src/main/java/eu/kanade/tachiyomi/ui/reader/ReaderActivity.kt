@@ -260,6 +260,7 @@ class ReaderActivity : BaseActivity() {
         val anchorHeight: Float = 0f,
         val isVertical: Boolean,
         val mediaInfo: chimahon.MediaInfo? = null,
+        val sourcePage: ReaderPage? = null,
         val deferredLookup: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>,
     )
 
@@ -694,7 +695,7 @@ class ReaderActivity : BaseActivity() {
         when (val viewer = viewModel.state.value.viewer) {
             is PagerViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _ ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _, sourcePage ->
                         // Start lookup immediately on IO thread
                         val deferredLookup = preDeferLookup(lookupString)
 
@@ -711,7 +712,7 @@ class ReaderActivity : BaseActivity() {
                             ensureOcrResources()
                             ocrPopupState = OcrPopupState(
                                 lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
-                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, deferredLookup
+                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage, deferredLookup
                             )
                         }
                     }
@@ -724,7 +725,7 @@ class ReaderActivity : BaseActivity() {
             }
             is WebtoonViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _ ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _, sourcePage ->
                         // Start lookup immediately on IO thread
                         val deferredLookup = preDeferLookup(lookupString)
 
@@ -741,7 +742,7 @@ class ReaderActivity : BaseActivity() {
                             ensureOcrResources()
                             ocrPopupState = OcrPopupState(
                                 lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
-                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, deferredLookup
+                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage, deferredLookup
                             )
                         }
                     }
@@ -1845,7 +1846,7 @@ class ReaderActivity : BaseActivity() {
     // KMK <--
 
     private fun captureCurrentVisibleBitmap(): Bitmap? {
-        return viewModel.getCurrentPageBitmap()
+        return viewModel.getCurrentPageBitmap(ocrPopupState?.sourcePage)
     }
 
     private fun launchImageCropper() {

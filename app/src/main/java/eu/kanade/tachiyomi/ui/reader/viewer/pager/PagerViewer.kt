@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderItem
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
@@ -56,6 +57,7 @@ abstract class PagerViewer(
             anchorHeight: Float,
             isVertical: Boolean,
             mediaInfo: chimahon.MediaInfo?,
+            sourcePage: ReaderPage?,
         ) -> Unit
     )? = null
 

@@ -1273,10 +1273,10 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     // KMK -->
     // Get current page bitmap for crop/full screenshot (same pattern as saveImage)
-    fun getCurrentPageBitmap(): Bitmap? {
+    fun getCurrentPageBitmap(sourcePage: ReaderPage? = null): Bitmap? {
         val viewer = state.value.viewer ?: return null
 
-        val readerPage = when (viewer) {
+        val readerPage = sourcePage ?: when (viewer) {
             is PagerViewer -> viewer.currentPage as? ReaderPage
             is WebtoonViewer -> viewer.currentPage as? ReaderPage
             else -> null

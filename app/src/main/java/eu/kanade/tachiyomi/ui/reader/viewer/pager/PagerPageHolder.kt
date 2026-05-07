@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrCoordinateMapper
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
@@ -95,8 +96,9 @@ class PagerPageHolder(
         loadJob = scope.launch { loadPageAndProcessStatus(1) }
         extraLoadJob = scope.launch { loadPageAndProcessStatus(2) }
 
-        onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo ->
-            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo)
+        onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, block ->
+            val sourcePage = block?.let { getPageForBlock(it) } ?: page
+            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage)
         }
         onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()
@@ -626,5 +628,20 @@ class PagerPageHolder(
     private fun removeErrorLayout() {
         errorLayout?.root?.isVisible = false
         errorLayout = null
+    }
+
+    private fun getPageForBlock(block: OcrTextBlock): ReaderPage {
+        val ep = extraPage ?: return page
+        if (mergedPage1W <= 0) return page
+
+        val totalW = (mergedPage1W + mergedCenterMargin + mergedPage2W).toFloat()
+        val splitX = (mergedPage1W + mergedCenterMargin / 2f) / totalW
+
+        val isLeft = block.xmin < splitX
+        return if (mergedIsLTR) {
+            if (isLeft) page else ep
+        } else {
+            if (isLeft) ep else page
+        }
     }
 }
