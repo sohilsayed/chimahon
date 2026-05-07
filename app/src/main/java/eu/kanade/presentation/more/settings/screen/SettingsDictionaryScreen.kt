@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
@@ -72,6 +74,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import chimahon.HoshiDicts
+import com.canopus.chimareader.data.FontManager
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.Marker
@@ -278,7 +281,8 @@ object SettingsDictionaryScreen : SearchableSettings {
                     value = width,
                     title = stringResource(MR.strings.pref_dict_popup_width),
                     subtitle = "${width}px",
-                    valueRange = 200..1920,
+                    valueRange = 200..1920 step 10,
+                    steps = 171,
                     onValueChanged = { newValue ->
                         widthPref.set(newValue)
                     },
@@ -287,16 +291,140 @@ object SettingsDictionaryScreen : SearchableSettings {
                     value = height,
                     title = stringResource(MR.strings.pref_dict_popup_height),
                     subtitle = "${height}px",
-                    valueRange = 100..1080,
+                    valueRange = 100..1080 step 10,
+                    steps = 97,
                     onValueChanged = { newValue ->
                         heightPref.set(newValue)
                     },
+                ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Font Family",
+                    content = {
+                        val context = LocalContext.current
+                        val scope = rememberCoroutineScope()
+                        var importedFonts by remember { mutableStateOf(FontManager.getImportedFonts(context)) }
+                        val allFonts = remember(importedFonts) { FontManager.defaultFonts + importedFonts }
+
+                        val fontFamilyPref = dictionaryPreferences.fontFamily()
+                        val selectedFont by fontFamilyPref.collectAsState()
+
+                        var isImporting by remember { mutableStateOf(false) }
+                        val fontPickerLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.OpenDocument()
+                        ) { uri: Uri? ->
+                            uri?.let {
+                                isImporting = true
+                                scope.launch {
+                                    val success = FontManager.importFont(context, it)
+                                    if (success) {
+                                        importedFonts = FontManager.getImportedFonts(context)
+                                    }
+                                    isImporting = false
+                                }
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Font Family",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+
+                            var fontExpanded by remember { mutableStateOf(false) }
+                            ExposedDropdownMenuBox(
+                                expanded = fontExpanded,
+                                onExpandedChange = { fontExpanded = it }
+                            ) {
+                                OutlinedTextField(
+                                    value = selectedFont.takeIf { it.isNotBlank() } ?: "Default",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fontExpanded) },
+                                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = fontExpanded,
+                                    onDismissRequest = { fontExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Default") },
+                                        onClick = {
+                                            fontFamilyPref.set("")
+                                            fontExpanded = false
+                                        }
+                                    )
+                                    allFonts.forEach { font ->
+                                        DropdownMenuItem(
+                                            text = { Text(font) },
+                                            onClick = {
+                                                fontFamilyPref.set(font)
+                                                fontExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        fontPickerLauncher.launch(
+                                            arrayOf(
+                                                "application/font-ttf",
+                                                "application/x-font-ttf",
+                                                "font/ttf",
+                                                "application/x-font-otf",
+                                                "font/otf",
+                                                "application/octet-stream"
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !isImporting
+                                ) {
+                                    if (isImporting) {
+                                        androidx.compose.material3.CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("Import Font")
+                                    }
+                                }
+
+                                if (importedFonts.contains(selectedFont)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            FontManager.deleteFont(context, selectedFont)
+                                            importedFonts = FontManager.getImportedFonts(context)
+                                            fontFamilyPref.set("")
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text("Delete Font")
+                                    }
+                                }
+                            }
+                        }
+                    }
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = fontSize,
                     title = stringResource(MR.strings.pref_dict_popup_font_size),
                     subtitle = "${fontSize}px",
                     valueRange = 8..48,
+                    steps = 40,
                     onValueChanged = { newValue ->
                         fontSizePref.set(newValue)
                     },
@@ -305,7 +433,8 @@ object SettingsDictionaryScreen : SearchableSettings {
                     value = (ocrBoxScale * 100).toInt(),
                     title = stringResource(MR.strings.pref_dict_ocr_box_scale),
                     subtitle = String.format("%.1fx", ocrBoxScale),
-                    valueRange = 50..200,
+                    valueRange = 50..200 step 10,
+                    steps = 14,
                     onValueChanged = { newValue ->
                         ocrBoxScalePref.set(newValue / 100f)
                     },

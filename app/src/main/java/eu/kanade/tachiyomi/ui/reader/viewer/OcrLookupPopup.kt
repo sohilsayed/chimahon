@@ -369,6 +369,7 @@ fun OcrLookupPopup(
                     selection = result.matched,
                     selectedDict = selectedDict,
                     popupSelection = popupSelection,
+                    styles = styles,
                     forceOpen = forceOpen,
                 )
                 if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
@@ -413,6 +414,7 @@ fun OcrLookupPopup(
                     selection = result.matched,
                     selectedDict = selectedDict,
                     popupSelection = popupSelection,
+                    styles = styles,
                     forceOpen = forceOpen,
                 )
                 withContext(kotlinx.coroutines.Dispatchers.Main) {

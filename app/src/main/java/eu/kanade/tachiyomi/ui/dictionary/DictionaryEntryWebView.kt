@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.canopus.chimareader.data.FontManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -99,7 +100,9 @@ fun DictionaryEntryWebView(
     val customColor by dictionaryPreferences.customColor().collectAsState()
 
     val context = LocalContext.current
+    val prefs = remember { Injekt.get<DictionaryPreferences>() }
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
+    val fontFamily by prefs.fontFamily().collectAsState()
     val seedColor = if (customColor == 0 || forceDefaultTheme) uiPreferences.colorTheme().get() else customColor
 
     val systemIsDark = isSystemInDarkTheme()
@@ -115,7 +118,6 @@ fun DictionaryEntryWebView(
 
     val payloadObject = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, tabs, recursiveNavMode, wordAudioEnabled) {
         val buildStart = SystemClock.elapsedRealtime()
-        val prefs = Injekt.get<DictionaryPreferences>()
         val result = buildRenderPayload(
             context, results, styles, mediaDataUris, placeholder, isDark,
             showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
@@ -129,13 +131,14 @@ fun DictionaryEntryWebView(
         )
         result
     }
-    val bootstrapHtml = remember(context, isDark, amoled, seedColor, colorScheme) {
+    val bootstrapHtml = remember(context, isDark, amoled, seedColor, colorScheme, fontFamily) {
         getDictionaryBootstrapHtml(
             context = context,
             colorScheme = colorScheme,
             isDark = isDark,
             isAmoled = amoled,
-            seedColor = seedColor
+            seedColor = seedColor,
+            fontFamily = fontFamily
         )
     }
     
@@ -163,8 +166,10 @@ fun DictionaryEntryWebView(
                     settings.domStorageEnabled = true
                     settings.loadsImagesAutomatically = true
                     settings.blockNetworkLoads = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
+                    settings.allowFileAccess = true
+                    settings.allowContentAccess = true
+                    settings.allowFileAccessFromFileURLs = true
+                    settings.allowUniversalAccessFromFileURLs = true
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE
                     settings.setSupportZoom(true)
                     settings.displayZoomControls = false
@@ -320,6 +325,7 @@ fun DictionaryEntryWebView(
                 val enableRecursive = onRecursiveLookup != null
                 webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
                 state.injectCustomCss(webView)
+                state.injectFontSize(webView)
                 if (isLoading) {
                     state.clear(webView)
                 } else {
@@ -697,12 +703,35 @@ internal fun getDictionaryBootstrapHtml(
     isDark: Boolean? = null,
     seedColor: Int? = null,
     isAmoled: Boolean = false,
+    fontFamily: String = "",
 ): String {
     var css = ""
     var js = ""
     
     css = readTextAsset(context, "dictionary/base.css")
     js = readTextAsset(context, "dictionary/renderer.js").replace("</script", "<\\/script")
+
+    val fontUrl = FontManager.getFontUri(context, fontFamily)
+    val fontFaceCss = if (fontUrl != null) {
+        """
+          @font-face {
+            font-family: 'HoshiCustomFont';
+            src: url('$fontUrl');
+          }
+          :root, body, #entries {
+            font-family: 'HoshiCustomFont' !important;
+          }
+        """.trimIndent()
+    } else if (fontFamily.isNotBlank()) {
+        var ff = fontFamily
+        if (ff == "System Serif") ff = "serif"
+        else if (ff == "System Sans-Serif") ff = "sans-serif"
+        """
+          :root, body, #entries {
+            font-family: '$ff' !important;
+          }
+        """.trimIndent()
+    } else ""
 
     val dynamicThemeCss = if (colorScheme != null) {
         val accentHex = "#%06X".format(0xFFFFFF and colorScheme.primary.toArgb())
@@ -758,6 +787,7 @@ internal fun getDictionaryBootstrapHtml(
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
           <style>$css</style>$dynamicThemeCss
+          <style>$fontFaceCss</style>
           <style id="dictionary-styles"></style>
           <style id="chima-custom-css"></style>
           <script>

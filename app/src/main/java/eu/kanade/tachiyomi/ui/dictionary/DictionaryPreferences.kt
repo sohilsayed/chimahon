@@ -14,6 +14,7 @@ class DictionaryPreferences(
 
     fun popupHeight() = preferenceStore.getInt("pref_dictionary_popup_height", 360)
     fun fontSize() = preferenceStore.getInt("pref_dictionary_font_size", 16)
+    fun fontFamily() = preferenceStore.getString("pref_dictionary_font_family", "")
 
     fun ocrBoxScale() = preferenceStore.getFloat("pref_ocr_box_scale", 1.0f)
 
