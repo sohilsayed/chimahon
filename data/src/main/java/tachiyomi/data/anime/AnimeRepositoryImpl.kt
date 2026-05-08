@@ -1,0 +1,139 @@
+package tachiyomi.data.anime
+
+import kotlinx.coroutines.flow.Flow
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
+import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
+import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.anime.model.AnimeUpdate
+import tachiyomi.domain.anime.repository.AnimeRepository
+
+class AnimeRepositoryImpl(
+    private val handler: DatabaseHandler,
+) : AnimeRepository {
+
+    override suspend fun getAnimeById(id: Long): Anime {
+        return handler.awaitOne { animesQueries.getAnimeById(id, AnimeMapper::mapAnime) }
+    }
+
+    override suspend fun getAnimeByIdAsFlow(id: Long): Flow<Anime> {
+        return handler.subscribeToOne { animesQueries.getAnimeById(id, AnimeMapper::mapAnime) }
+    }
+
+    override suspend fun getAnimeByUrlAndSourceId(url: String, sourceId: Long): Anime? {
+        return handler.awaitOneOrNull {
+            animesQueries.getAnimeByUrlAndSource(
+                url,
+                sourceId,
+                AnimeMapper::mapAnime,
+            )
+        }
+    }
+
+    override fun getAnimeByUrlAndSourceIdAsFlow(url: String, sourceId: Long): Flow<Anime?> {
+        return handler.subscribeToOneOrNull {
+            animesQueries.getAnimeByUrlAndSource(
+                url,
+                sourceId,
+                AnimeMapper::mapAnime,
+            )
+        }
+    }
+
+    override suspend fun getFavorites(): List<Anime> {
+        return handler.awaitList { animesQueries.getFavorites(AnimeMapper::mapAnime) }
+    }
+
+    override fun getFavoritesBySourceId(sourceId: Long): Flow<List<Anime>> {
+        return handler.subscribeToList { animesQueries.getFavoriteBySourceId(sourceId, AnimeMapper::mapAnime) }
+    }
+
+    override suspend fun update(update: AnimeUpdate): Boolean {
+        return try {
+            partialUpdate(update)
+            true
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            false
+        }
+    }
+
+    override suspend fun updateAll(animeUpdates: List<AnimeUpdate>): Boolean {
+        return try {
+            partialUpdate(*animeUpdates.toTypedArray())
+            true
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            false
+        }
+    }
+
+    override suspend fun insert(anime: Anime): Long {
+        return handler.await(inTransaction = true) {
+            animesQueries.insert(
+                source = anime.source,
+                url = anime.url,
+                artist = anime.artist,
+                author = anime.author,
+                description = anime.description,
+                genre = anime.genre,
+                title = anime.title,
+                status = anime.status,
+                thumbnailUrl = anime.thumbnailUrl,
+                favorite = anime.favorite,
+                lastUpdate = anime.lastUpdate,
+                nextUpdate = anime.nextUpdate,
+                initialized = anime.initialized,
+                viewerFlags = anime.viewerFlags,
+                episodeFlags = anime.episodeFlags,
+                coverLastModified = anime.coverLastModified,
+                dateAdded = anime.dateAdded,
+                updateStrategy = anime.updateStrategy,
+                calculateInterval = anime.fetchInterval.toLong(),
+                version = anime.version,
+            )
+            animesQueries.selectLastInsertedRowId().executeAsOne()
+        }
+    }
+
+    override suspend fun deleteAnime(animeId: Long) {
+        handler.await { animesQueries.deleteById(animeId) }
+    }
+
+    override suspend fun getAll(): List<Anime> {
+        return handler.awaitList { animesQueries.getAllAnime(AnimeMapper::mapAnime) }
+    }
+
+    private suspend fun partialUpdate(vararg animeUpdates: AnimeUpdate) {
+        handler.await(inTransaction = true) {
+            animeUpdates.forEach { value ->
+                animesQueries.update(
+                    source = value.source,
+                    url = value.url,
+                    artist = value.artist,
+                    author = value.author,
+                    description = value.description,
+                    genre = value.genre?.let(StringListColumnAdapter::encode),
+                    title = value.title,
+                    status = value.status,
+                    thumbnailUrl = value.thumbnailUrl,
+                    favorite = value.favorite,
+                    lastUpdate = value.lastUpdate,
+                    nextUpdate = value.nextUpdate,
+                    calculateInterval = value.fetchInterval?.toLong(),
+                    initialized = value.initialized,
+                    viewer = value.viewerFlags,
+                    episodeFlags = value.episodeFlags,
+                    coverLastModified = value.coverLastModified,
+                    dateAdded = value.dateAdded,
+                    animeId = value.id,
+                    updateStrategy = value.updateStrategy?.let(AnimeUpdateStrategyColumnAdapter::encode),
+                    version = value.version,
+                    isSyncing = 0,
+                )
+            }
+        }
+    }
+}
