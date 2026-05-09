@@ -46,9 +46,6 @@ import chimahon.LookupResult
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiResult
-import chimahon.dictionary.arabic.ArabicDeinflector
-import chimahon.dictionary.arabic.ArabicLookupMapper
-import chimahon.dictionary.arabic.ArabicTextPreprocessors
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.TabInfo
@@ -676,17 +673,6 @@ data object DictionaryTab : Tab {
                 }
             }
             return count
-        }
-
-        private fun lookupArabic(session: Long, query: String, maxResults: Int): List<LookupResult> {
-            val preprocessed = ArabicTextPreprocessors.process(query)
-            val deinflected = preprocessed.flatMap { ArabicDeinflector.deinflect(it, "ar") }
-            val candidates = deinflected.map { it.text }.distinct()
-
-            if (candidates.isEmpty()) return emptyList()
-
-            val terms = HoshiDicts.query(session, candidates, maxResults)
-            return ArabicLookupMapper.wrapAll(query, candidates, terms.toList())
         }
 
         private fun buildMediaDataUris(activeSession: Long, results: List<LookupResult>): Map<String, String> {

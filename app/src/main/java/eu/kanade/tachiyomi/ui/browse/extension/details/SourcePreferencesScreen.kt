@@ -124,7 +124,7 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
         var expanded by remember { mutableStateOf(false) }
 
         val resolvedAutoProfile = remember(sourceId) {
-            val source = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>().getOrStub(sourceId)
+            val source = Injekt.get<SourceManager>().getOrStub(sourceId)
             prefs.profileResolver.resolve(
                 sourceId = 0L,
                 sourceLang = source.lang,

@@ -5,7 +5,7 @@ package chimahon.dictionary
  * [text] is the candidate dictionary form; [conditionsOut] are the grammar tags
  * that must be satisfied by the next rule in the chain.
  */
-data class DeinflectionResult(val text: String, val conditionsOut: Set<String>)
+data class DeinflectionResult(val text: String, val conditionsOut: Int)
 
 /**
  * A morphological transformation rule.  Three shapes are supported:
@@ -61,7 +61,7 @@ interface Deinflector {
     fun preProcess(text: String): List<String> = listOf(text)
 
     /** Generate candidate dictionary forms from the (possibly preprocessed) text. */
-    fun deinflect(text: String, languageCode: String, conditions: Set<String> = emptySet()): List<DeinflectionResult>
+    fun deinflect(text: String, languageCode: String): List<DeinflectionResult>
 
     /** Map native JNI results back to the original query context. */
     fun wrapResults(

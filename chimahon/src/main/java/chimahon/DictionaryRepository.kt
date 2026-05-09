@@ -54,13 +54,7 @@ class DictionaryRepository(
 
         val tLookupStart = SystemClock.elapsedRealtime()
 
-        // Auto-detect language if not explicitly provided
-        val effectiveLang = if (languageCode.isBlank()) {
-            val arabicRange = Regex("[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
-            if (arabicRange.containsMatchIn(query)) "ar" else "ja"
-        } else {
-            languageCode.lowercase()
-        }
+        val effectiveLang = languageCode.lowercase()
 
         val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
         

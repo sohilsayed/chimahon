@@ -2,7 +2,7 @@ package chimahon.dictionary.ru
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.DeinflectorHelpers.deinflectRecursive
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
 import chimahon.dictionary.prefixInflection
 import chimahon.dictionary.suffixInflection
@@ -14,9 +14,8 @@ object RussianDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, conditions)
+        return deinflectRecursive(text, allRules, languageCode)
     }
 
     // Russian relies primarily on text preprocessors (yo/e, diacritics)

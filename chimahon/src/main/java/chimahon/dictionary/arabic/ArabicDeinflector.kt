@@ -2,7 +2,9 @@ package chimahon.dictionary.arabic
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
+import chimahon.dictionary.arabic.ArabicTextPreprocessors
 
 object ArabicDeinflector : Deinflector {
 
@@ -385,18 +387,12 @@ object ArabicDeinflector : Deinflector {
         directObjectPronouns3rd.forEach { add(suffixInflection("ن$it", "", setOf("cv_s"), setOf("cv"))) }
     }
 
-                    rule.deinflectedPrefix +
-                        text.drop(rule.inflectedPrefix.length).dropLast(rule.inflectedSuffix.length) +
-                        rule.deinflectedSuffix
-            }
+    override fun preProcess(text: String): List<String> = ArabicTextPreprocessors.process(text)
 
-            val key = deinflected to rule.conditionsOut
-            if (seen.add(key)) {
-                results.add(DeinflectionResult(deinflected, rule.conditionsOut))
-                results.addAll(deinflect(deinflected, languageCode, rule.conditionsOut).drop(1))
-            }
-        }
-
-        return results
+    override fun deinflect(
+        text: String,
+        languageCode: String,
+    ): List<DeinflectionResult> {
+        return deinflectRecursive(text, rules, languageCode)
     }
 }

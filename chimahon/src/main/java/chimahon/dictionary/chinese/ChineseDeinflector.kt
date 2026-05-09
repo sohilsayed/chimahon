@@ -15,8 +15,7 @@ object ChineseDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return listOf(DeinflectionResult(text, emptySet()))
+        return listOf(DeinflectionResult(text, 0))
     }
 }

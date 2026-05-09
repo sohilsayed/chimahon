@@ -2,7 +2,7 @@ package chimahon.dictionary.english
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.DeinflectorHelpers.deinflectRecursive
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
 import chimahon.dictionary.prefixInflection
 import chimahon.dictionary.suffixInflection
@@ -13,9 +13,8 @@ object EnglishDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, conditions)
+        return deinflectRecursive(text, allRules, languageCode)
     }
 
     private fun doubledConsonantInflections(consonants: String, suffix: String, conditionsIn: Set<String>, conditionsOut: Set<String>): List<Rule.Suffix> {

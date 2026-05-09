@@ -2,7 +2,7 @@
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.DeinflectorHelpers.deinflectRecursive
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
 import chimahon.dictionary.suffixInflection
 
@@ -13,12 +13,19 @@ object FrenchDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, conditions)
+        return deinflectRecursive(text, allRules, languageCode)
     }
 
-    private val allRules: List<Rule> = listOf(
+    private val allRules: List<Rule> = buildFrenchRules()
+
+    private fun buildFrenchRules(): List<Rule> = buildList {
+        addAll(frenchRulesPart1())
+        addAll(frenchRulesPart2())
+        addAll(frenchRulesPart3())
+    }
+
+    private fun frenchRulesPart1(): List<Rule> = listOf(
         suffixInflection("suis", "être", setOf("aux"), setOf("v")),
         suffixInflection("es", "être", setOf("aux"), setOf("v")),
         suffixInflection("est", "être", setOf("aux"), setOf("v")),
@@ -798,6 +805,9 @@ object FrenchDeinflector : Deinflector {
         suffixInflection("uisions", "uire", setOf("v"), setOf("v")),
         suffixInflection("uisiez", "uire", setOf("v"), setOf("v")),
         suffixInflection("uisaient", "uire", setOf("v"), setOf("v")),
+    )
+
+    private fun frenchRulesPart2(): List<Rule> = listOf(
         suffixInflection("serai", "être", setOf("aux"), setOf("v")),
         suffixInflection("seras", "être", setOf("aux"), setOf("v")),
         suffixInflection("sera", "être", setOf("aux"), setOf("v")),
@@ -1607,6 +1617,9 @@ object FrenchDeinflector : Deinflector {
         suffixInflection("uis", "uire", setOf("v"), setOf("v")),
         suffixInflection("uisons", "uire", setOf("v"), setOf("v")),
         suffixInflection("uisez", "uire", setOf("v"), setOf("v")),
+    )
+
+    private fun frenchRulesPart3(): List<Rule> = listOf(
         suffixInflection("serais", "être", setOf("aux"), setOf("v")),
         suffixInflection("serais", "être", setOf("aux"), setOf("v")),
         suffixInflection("serait", "être", setOf("aux"), setOf("v")),

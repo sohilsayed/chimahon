@@ -2,7 +2,7 @@ package chimahon.dictionary.de
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.DeinflectorHelpers.deinflectRecursive
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
 import chimahon.dictionary.prefixInflection
 import chimahon.dictionary.suffixInflection
@@ -14,9 +14,8 @@ object GermanDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, conditions)
+        return deinflectRecursive(text, allRules, languageCode)
     }
 
     private val separablePrefixes = listOf(
@@ -30,9 +29,7 @@ object GermanDeinflector : Deinflector {
         "wieder", "zu", "zurecht", "zurück", "zusammen",
     )
 
-    companion object {
-        private val GERMAN_LETTERS = "a-zA-ZäöüßÄÖÜẞ"
-    }
+    private val GERMAN_LETTERS = "a-zA-ZäöüßÄÖÜẞ"
 
     private val allRules: List<Rule> = buildList {
         // nominalization: -ung -> -en

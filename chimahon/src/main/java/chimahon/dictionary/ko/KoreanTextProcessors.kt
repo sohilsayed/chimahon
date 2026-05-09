@@ -1,8 +1,5 @@
 package chimahon.dictionary.ko
 
-import chimahon.LookupResult
-import chimahon.TermResult
-
 object KoreanTextProcessors {
 
     // Hangul algorithm constants
@@ -139,45 +136,5 @@ object KoreanTextProcessors {
     fun allVariants(text: String): List<String> {
         val disassembled = disassemble(text)
         return if (disassembled != text) listOf(text, disassembled) else listOf(text)
-    }
-
-    fun wrapResults(
-        originalQuery: String,
-        candidates: List<String>,
-        terms: List<TermResult>,
-    ): List<LookupResult> {
-        // Convert jamo candidates back to Hangul before matching
-        val assembledCandidates = candidates.map { assemble(it) }
-        val termsByText = terms.groupBy { it.expression }
-        return assembledCandidates.flatMap { candidate ->
-            val termList = termsByText[candidate]
-            if (termList != null && termList.isNotEmpty()) {
-                termList.map { term ->
-                    LookupResult(
-                        matched = originalQuery,
-                        deinflected = candidate,
-                        process = emptyArray(),
-                        term = term,
-                        preprocessorSteps = 0,
-                    )
-                }
-            } else {
-                // Try original candidates too
-                val termList2 = termsByText[candidate]
-                if (termList2 != null && termList2.isNotEmpty()) {
-                    termList2.map { term ->
-                        LookupResult(
-                            matched = originalQuery,
-                            deinflected = candidate,
-                            process = emptyArray(),
-                            term = term,
-                            preprocessorSteps = 0,
-                        )
-                    }
-                } else {
-                    emptyList()
-                }
-            }
-        }
     }
 }

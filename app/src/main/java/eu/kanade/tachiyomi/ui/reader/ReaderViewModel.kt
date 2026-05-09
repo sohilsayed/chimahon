@@ -1960,6 +1960,17 @@ class ReaderViewModel @JvmOverloads constructor(
         val manga = state.value.manga ?: return emptyList()
         val source = sourceManager.getOrStub(manga.source)
 
+        val ocrLang = run {
+            val profile = dictionaryPreferences.profileResolver.resolve(
+                mangaId = manga.id,
+                sourceId = manga.source,
+                sourceLang = source.lang,
+            )
+            chimahon.ocr.OcrLanguage.entries.find {
+                it.bcp47.equals(profile.languageCode, ignoreCase = true)
+            } ?: chimahon.ocr.OcrLanguage.JAPANESE
+        }
+
         if (source.isLocal()) {
             tryLoadMokuroBlocks(manga, domainChapter, source, page.index)?.let { blocks ->
                 ocrCacheMutex.withLock {
@@ -1987,7 +1998,7 @@ class ReaderViewModel @JvmOverloads constructor(
                             },
                         )
                     },
-                    language = chimahon.ocr.OcrLanguage.JAPANESE.bcp47,
+                    language = ocrLang.bcp47,
                 )
                 val elapsedMs = SystemClock.elapsedRealtime() - startMs
                 logcat { "OCR mokuro path: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${blocks.size} time=${elapsedMs}ms" }
@@ -2066,7 +2077,7 @@ class ReaderViewModel @JvmOverloads constructor(
             val ocrResult = retryWithBackoff(times = 3) {
                 lensClient.getDebugOcrData(
                     bytes = imageBytes,
-                    language = chimahon.ocr.OcrLanguage.JAPANESE,
+                    language = ocrLang,
                 )
             }
 
@@ -2120,7 +2131,7 @@ class ReaderViewModel @JvmOverloads constructor(
                         },
                     )
                 },
-                language = chimahon.ocr.OcrLanguage.JAPANESE.bcp47,
+                language = ocrLang.bcp47,
             )
 
             ocrCacheMutex.withLock {

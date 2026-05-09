@@ -2,7 +2,7 @@ package chimahon.dictionary.es
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.DeinflectorHelpers.deinflectRecursive
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
 import chimahon.dictionary.prefixInflection
 import chimahon.dictionary.suffixInflection
@@ -13,9 +13,8 @@ object SpanishDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, conditions)
+        return deinflectRecursive(text, allRules, languageCode)
     }
 
     private val vowelAccents = mapOf('a' to 'á', 'e' to 'é', 'i' to 'í', 'o' to 'ó', 'u' to 'ú')
@@ -36,12 +35,12 @@ object SpanishDeinflector : Deinflector {
         conditionsOut = conditionsOut,
         isInflected = pattern,
         deinflectFn = { term ->
-            for ((key, value) in specialCases) {
-                if (term.startsWith(key)) {
-                    return@deinflectFn term.replace(Regex(stemVowel), value).replace(suffixReplace, verbEnding)
-                }
+            val match = specialCases.entries.firstOrNull { (key, _) -> term.startsWith(key) }
+            if (match != null) {
+                term.replace(Regex(stemVowel), match.value).replace(suffixReplace, verbEnding)
+            } else {
+                term.replace(Regex(stemVowel), replacement).replace(suffixReplace, verbEnding)
             }
-            term.replace(Regex(stemVowel), replacement).replace(suffixReplace, verbEnding)
         },
     )
 

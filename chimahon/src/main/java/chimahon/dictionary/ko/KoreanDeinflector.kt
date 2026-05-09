@@ -4,7 +4,7 @@ import chimahon.LookupResult
 import chimahon.TermResult
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.DeinflectorHelpers.deinflectRecursive
+import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
 import chimahon.dictionary.suffixInflection
 
@@ -15,9 +15,8 @@ object KoreanDeinflector : Deinflector {
     override fun deinflect(
         text: String,
         languageCode: String,
-        conditions: Set<String>,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, conditions)
+        return deinflectRecursive(text, allRules, languageCode)
     }
 
     override fun wrapResults(
@@ -46,7 +45,13 @@ object KoreanDeinflector : Deinflector {
         }
     }
 
-    private val allRules: List<Rule> = listOf(
+    private val allRules: List<Rule> = buildList {
+        addAll(koreanRulesPart1())
+        addAll(koreanRulesPart2())
+        addAll(koreanRulesPart3())
+    }
+
+    private fun koreanRulesPart1(): List<Rule> = listOf(
         suffixInflection("ㅂ", "ㅂㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅃ", "ㅃㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅈ", "ㅈㄷㅏ", emptySet(), setOf("v", "adj")),
@@ -947,6 +952,9 @@ object KoreanDeinflector : Deinflector {
         suffixInflection("ㄹㅇㅡㄹㅏㅅㅗㄴ", "ㄷㄷㅏ", emptySet(), setOf("v")),
         suffixInflection("ㅇㅏㄴㅣㄹㅏㅅㅗㄴ", "아니다", emptySet(), setOf("adj")),
         suffixInflection("ㄹㅏㅅㅗㄴ", "", emptySet(), setOf("eusi", "do")),
+    )
+
+    private fun koreanRulesPart2(): List<Rule> = listOf(
         suffixInflection("ㅇㅏㄴㅣㄹㅏㅇㅑ", "아니다", emptySet(), setOf("adj")),
         suffixInflection("ㄹㅏㅇㅑ", "다", emptySet(), setOf("ida")),
         suffixInflection("ㄹㅏㅇㅑ", "", emptySet(), setOf("eusi")),
@@ -1837,6 +1845,9 @@ object KoreanDeinflector : Deinflector {
         suffixInflection("ㅏㅇㅑㅈㅣ", "ㅏㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅓㅇㅑㅈㅣ", "ㅓㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅇㅑㅈㅣ", "ㄷㅏ", emptySet(), setOf("v", "adj")),
+    )
+
+    private fun koreanRulesPart3(): List<Rule> = listOf(
         suffixInflection("ㅕㅇㅑㅈㅣ", "ㅣㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅇㅕㅇㅑㅈㅣ", "ㅇㅣㄷㅏ", emptySet(), setOf("v", "adj", "ida")),
         suffixInflection("ㅎㅐㅇㅑㅈㅣ", "ㅎㅏㄷㅏ", emptySet(), setOf("v", "adj")),

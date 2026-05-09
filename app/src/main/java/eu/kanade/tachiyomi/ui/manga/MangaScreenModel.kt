@@ -2058,7 +2058,7 @@ class MangaScreenModel(
     }
 
     fun resolveAutoProfile(sourceId: Long): chimahon.anki.AnkiProfile {
-        val source = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>().getOrStub(sourceId)
+        val source = Injekt.get<SourceManager>().getOrStub(sourceId)
         return Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().profileResolver.resolve(
             mangaId = 0L, // 0 to avoid hitting the manga override itself
             sourceId = sourceId, // But DO check source override

@@ -4,7 +4,7 @@ object GermanTextPreprocessors {
 
     fun eszettVariants(text: String): List<String> = listOf(
         text,
-        text.replace('ß', "ss").replace('ẞ', "SS"),
+        text.replace("ß", "ss").replace("ẞ", "SS"),
         text.replace("ss", "ß").replace("SS", "ẞ"),
     )
 

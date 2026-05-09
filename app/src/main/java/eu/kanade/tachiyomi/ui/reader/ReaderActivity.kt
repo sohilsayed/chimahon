@@ -677,6 +677,7 @@ class ReaderActivity : BaseActivity() {
                 },
                 initialLookupDeferred = popupState.deferredLookup,
                 usePopup = false,
+                activeProfile = popupState.activeProfile,
                 onTermMatched = { charCount ->
                     val viewer = viewModel.state.value.viewer
                     val anchorRect: android.graphics.RectF? = if (viewer is WebtoonViewer) {
