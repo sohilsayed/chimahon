@@ -1,6 +1,9 @@
 package eu.kanade.tachiyomi.ui.player
 
+import android.app.Application
+import android.provider.OpenableColumns
 import androidx.compose.runtime.Immutable
+import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -48,6 +51,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val animeRepository: AnimeRepository = Injekt.get(),
     private val episodeRepository: EpisodeRepository = Injekt.get(),
     private val dictionaryRepository: DictionaryRepository = Injekt.get(),
+    private val application: Application = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
@@ -252,7 +256,7 @@ class PlayerViewModel @JvmOverloads constructor(
                 return@withIOContext
             }
 
-            val title = videoUrl.substringAfterLast('/').substringBeforeLast('.').ifBlank { "Video" }
+            val title = resolveVideoTitle(videoUrl)
             val anime = Anime.create().copy(
                 url = videoUrl,
                 title = title,
@@ -268,6 +272,24 @@ class PlayerViewModel @JvmOverloads constructor(
             savedState[KEY_ANIME_ID] = animeId
             savedState[KEY_EPISODE_ID] = episodeId
         }
+    }
+
+    private fun resolveVideoTitle(videoUrl: String): String {
+        if (videoUrl.startsWith("content://")) {
+            try {
+                val uri = videoUrl.toUri()
+                application.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val name = cursor.getString(0)
+                            if (!name.isNullOrBlank()) {
+                                return name.substringBeforeLast('.')
+                            }
+                        }
+                    }
+            } catch (_: Exception) {}
+        }
+        return videoUrl.substringAfterLast('/').substringBeforeLast('.').ifBlank { "Video" }
     }
 
     private suspend fun insertEpisode(animeId: Long, url: String, name: String): Episode? {

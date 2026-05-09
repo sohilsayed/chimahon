@@ -10,3 +10,12 @@ fun formatTime(seconds: Long): String {
     return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
     else String.format(Locale.US, "%d:%02d", m, s)
 }
+
+fun buildProgressString(lastSecondSeen: Long, totalSeconds: Long): String? {
+    if (lastSecondSeen <= 0 && totalSeconds <= 0) return null
+    return if (totalSeconds > 0) {
+        "${formatTime(lastSecondSeen)} / ${formatTime(totalSeconds)}"
+    } else {
+        formatTime(lastSecondSeen)
+    }
+}

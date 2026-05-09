@@ -5,14 +5,19 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -26,12 +31,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
-import eu.kanade.tachiyomi.ui.player.formatTime
+import eu.kanade.tachiyomi.ui.player.buildProgressString
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.Badge
+import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -41,6 +51,7 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 @Composable
 fun AnimeListScreen(
     screenModel: AnimeListScreenModel,
+    onAnimeClick: (Long) -> Unit,
 ) {
     val state by screenModel.state.collectAsState()
     val context = LocalContext.current
@@ -86,27 +97,24 @@ fun AnimeListScreen(
                         ) { item ->
                             AnimeListItem(
                                 title = item.anime.title,
+                                thumbnailUrl = item.anime.thumbnailUrl,
                                 episodeName = item.lastEpisode?.name,
+                                unseenCount = item.unseenCount,
                                 progress = item.lastEpisode?.let {
-                                    if (it.totalSeconds > 0) {
-                                        "${formatTime(it.lastSecondSeen)} / ${formatTime(it.totalSeconds)}"
-                                    } else if (it.lastSecondSeen > 0) {
-                                        formatTime(it.lastSecondSeen)
-                                    } else {
-                                        null
-                                    }
+                                    buildProgressString(it.lastSecondSeen, it.totalSeconds)
                                 },
-                                onClick = {
-                                    val episodeId = item.lastEpisode?.id ?: return@AnimeListItem
-                                    context.startActivity(
-                                        PlayerActivity.newIntent(context, item.anime.id, episodeId),
-                                    )
-                                },
+                                onClick = { onAnimeClick(item.anime.id) },
                             )
                             HorizontalDivider()
                         }
                     }
                 }
+            }
+            is AnimeListScreenModel.State.Error -> {
+                EmptyScreen(
+                    message = s.error.localizedMessage ?: stringResource(MR.strings.unknown_error),
+                    modifier = Modifier.padding(contentPadding),
+                )
             }
         }
     }
@@ -129,7 +137,9 @@ fun AnimeListScreen(
 @Composable
 private fun AnimeListItem(
     title: String,
+    thumbnailUrl: String?,
     episodeName: String?,
+    unseenCount: Int,
     progress: String?,
     onClick: () -> Unit,
 ) {
@@ -138,10 +148,42 @@ private fun AnimeListItem(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Box {
+            if (thumbnailUrl != null) {
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .width(48.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(4.dp)),
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.PlayCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .width(48.dp)
+                        .aspectRatio(2f / 3f),
+                )
+            }
+
+            if (unseenCount > 0) {
+                BadgeGroup(modifier = Modifier.align(Alignment.TopEnd)) {
+                    Badge(text = unseenCount.toString())
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+        ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
@@ -158,6 +200,7 @@ private fun AnimeListItem(
                 )
             }
         }
+
         if (progress != null) {
             Text(
                 text = progress,

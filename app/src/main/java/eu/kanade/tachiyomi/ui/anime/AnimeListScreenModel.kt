@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.anime
 
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -20,36 +21,41 @@ class AnimeListScreenModel(
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
 ) : StateScreenModel<AnimeListScreenModel.State>(State.Loading) {
 
+    private var loadJob: Job? = null
+
     sealed interface State {
         data object Loading : State
         data class Success(val items: List<AnimeWithEpisode>) : State
+        data class Error(val error: Exception) : State
     }
 
     data class AnimeWithEpisode(
         val anime: Anime,
         val lastEpisode: Episode?,
+        val unseenCount: Int = 0,
     )
 
-    init {
-        loadAnime()
-    }
-
     fun loadAnime() {
-        screenModelScope.launchIO {
+        loadJob?.cancel()
+        loadJob = screenModelScope.launchIO {
             try {
                 val animes = animeRepository.getAll()
                 val items = coroutineScope {
                     animes.map { anime ->
                         async {
                             val episodes = getEpisodesByAnimeId.await(anime.id)
-                            AnimeWithEpisode(anime, episodes.maxByOrNull { it.lastSecondSeen })
+                            AnimeWithEpisode(
+                                anime = anime,
+                                lastEpisode = episodes.filter { it.lastSecondSeen > 0 }.maxByOrNull { it.lastModifiedAt },
+                                unseenCount = episodes.count { !it.seen },
+                            )
                         }
                     }.awaitAll()
                 }
                 mutableState.value = State.Success(items)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to load anime list" }
-                mutableState.value = State.Success(emptyList())
+                mutableState.value = State.Error(e)
             }
         }
     }

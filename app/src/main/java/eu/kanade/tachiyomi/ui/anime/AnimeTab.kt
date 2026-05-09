@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.util.Tab
 import tachiyomi.i18n.MR
@@ -25,11 +27,15 @@ data object AnimeTab : Tab {
 
     @Composable
     override fun Content() {
+        val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { AnimeListScreenModel() }
         LifecycleResumeEffect(Unit) {
             screenModel.loadAnime()
             onPauseOrDispose { }
         }
-        AnimeListScreen(screenModel)
+        AnimeListScreen(
+            screenModel = screenModel,
+            onAnimeClick = { animeId -> navigator.push(AnimeScreen(animeId)) },
+        )
     }
 }

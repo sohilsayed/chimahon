@@ -39,6 +39,12 @@
     <string name="action_pick_local_file">Pick local file</string>
     <string name="action_open">Open</string>
     <string name="label_video_url">Video URL</string>
+    <string name="anime_continue_watching">Continue watching</string>
+    <string name="anime_no_episodes">No episodes yet</string>
+    <string name="anime_episode_count">%d episodes</string>
+    <string name="anime_delete_confirm">Delete this anime and all its episodes?</string>
+    <string name="action_mark_as_seen">Mark as seen</string>
+    <string name="action_mark_as_unseen">Mark as unseen</string>
     <string name="action_play">Play</string>
     <string name="novel_missing_file">Missing File — tap to import</string>
     <string name="backup_option_novels">Novel progress &amp; stats</string>
