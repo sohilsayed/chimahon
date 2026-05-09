@@ -16,4 +16,6 @@ class PlayerPreferences(
     fun keepScreenOn() = preferenceStore.getBoolean("player_keep_screen_on", true)
 
     fun progressSaveIntervalSec() = preferenceStore.getInt("player_progress_save_interval", 5)
+
+    fun preferredSubLanguage() = preferenceStore.getString("player_preferred_sub_language", "")
 }

@@ -8,20 +8,28 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,12 +38,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 import kotlinx.coroutines.delay
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.i18n.stringResource
 import kotlin.time.Duration.Companion.seconds
 
@@ -51,9 +63,16 @@ fun PlayerControlsOverlay(
     onSeek: (Float) -> Unit,
     onSeekRelative: (Int) -> Unit,
     onBack: () -> Unit,
+    subtitleTracks: List<MPVView.Track> = emptyList(),
+    audioTracks: List<MPVView.Track> = emptyList(),
+    selectedSubId: Int = -1,
+    selectedAudioId: Int = -1,
+    onSelectSubtitle: (Int) -> Unit = {},
+    onSelectAudio: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
+    var showTrackDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(controlsVisible, isPlaying) {
         if (controlsVisible && isPlaying) {
@@ -118,6 +137,15 @@ fun PlayerControlsOverlay(
                                 )
                             }
                         }
+                        if (subtitleTracks.isNotEmpty() || audioTracks.isNotEmpty()) {
+                            IconButton(onClick = { showTrackDialog = true }) {
+                                Icon(
+                                    Icons.Default.ClosedCaption,
+                                    contentDescription = stringResource(MR.strings.player_tracks),
+                                    tint = Color.White,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -156,5 +184,108 @@ fun PlayerControlsOverlay(
                 }
             }
         }
+    }
+
+    if (showTrackDialog) {
+        TrackSelectionDialog(
+            subtitleTracks = subtitleTracks,
+            audioTracks = audioTracks,
+            selectedSubId = selectedSubId,
+            selectedAudioId = selectedAudioId,
+            onSelectSubtitle = onSelectSubtitle,
+            onSelectAudio = onSelectAudio,
+            onDismiss = { showTrackDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun TrackSelectionDialog(
+    subtitleTracks: List<MPVView.Track>,
+    audioTracks: List<MPVView.Track>,
+    selectedSubId: Int,
+    selectedAudioId: Int,
+    onSelectSubtitle: (Int) -> Unit,
+    onSelectAudio: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+        ) {
+            ScrollbarLazyColumn(modifier = Modifier.padding(vertical = 16.dp)) {
+                if (subtitleTracks.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(MR.strings.player_subtitles),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        )
+                    }
+                    item {
+                        TrackRow(
+                            name = stringResource(MR.strings.off),
+                            selected = selectedSubId == -1,
+                            onClick = { onSelectSubtitle(-1); onDismiss() },
+                        )
+                    }
+                    items(subtitleTracks.size) { index ->
+                        val track = subtitleTracks[index]
+                        TrackRow(
+                            name = track.name,
+                            selected = track.id == selectedSubId,
+                            onClick = { onSelectSubtitle(track.id); onDismiss() },
+                        )
+                    }
+                }
+
+                if (audioTracks.size > 1) {
+                    item {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(MR.strings.player_audio),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        )
+                    }
+                    items(audioTracks.size) { index ->
+                        val track = audioTracks[index]
+                        TrackRow(
+                            name = track.name,
+                            selected = track.id == selectedAudioId,
+                            onClick = { onSelectAudio(track.id); onDismiss() },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackRow(
+    name: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .selectable(selected = selected, onClick = onClick)
+            .fillMaxWidth()
+            .minimumInteractiveComponentSize(),
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null,
+        )
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 24.dp),
+        )
     }
 }

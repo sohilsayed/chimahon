@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.util.Tab
@@ -25,6 +26,10 @@ data object AnimeTab : Tab {
     @Composable
     override fun Content() {
         val screenModel = rememberScreenModel { AnimeListScreenModel() }
+        LifecycleResumeEffect(Unit) {
+            screenModel.loadAnime()
+            onPauseOrDispose { }
+        }
         AnimeListScreen(screenModel)
     }
 }

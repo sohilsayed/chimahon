@@ -9,9 +9,15 @@ class PlayerObserver(
     private val onDurationChanged: (durationSec: Long) -> Unit = {},
     private val onPauseChanged: (paused: Boolean) -> Unit = {},
     private val onEofReached: () -> Unit = {},
+    private val onSubTextChanged: (text: String) -> Unit = {},
+    private val onTrackListChanged: () -> Unit = {},
 ) : MPVLib.EventObserver {
 
-    override fun eventProperty(property: String) {}
+    override fun eventProperty(property: String) {
+        when (property) {
+            MPVView.PROP_TRACK_LIST -> onTrackListChanged()
+        }
+    }
 
     override fun eventProperty(property: String, value: Long) {
         dispatchNumericProperty(property, value)
@@ -28,7 +34,11 @@ class PlayerObserver(
         dispatchNumericProperty(property, value.toLong())
     }
 
-    override fun eventProperty(property: String, value: String) {}
+    override fun eventProperty(property: String, value: String) {
+        when (property) {
+            MPVView.PROP_SUB_TEXT -> onSubTextChanged(value)
+        }
+    }
 
     override fun event(eventId: Int) {}
 

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControlsOverlay
+import eu.kanade.tachiyomi.ui.player.controls.SubtitleTapOverlay
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 
 @Composable
@@ -22,6 +23,10 @@ fun PlayerScreen(
     onSeek: (Float) -> Unit,
     onSeekRelative: (Int) -> Unit,
     onBack: () -> Unit,
+    onSelectSubtitle: (Int) -> Unit = {},
+    onSelectAudio: (Int) -> Unit = {},
+    onSubtitleWordTapped: (word: String, fullText: String, charOffset: Int, anchorX: Float, anchorY: Float) -> Unit = { _, _, _, _, _ -> },
+    lookupContent: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -44,17 +49,35 @@ fun PlayerScreen(
             )
         }
 
-        PlayerControlsOverlay(
-            isPlaying = state.isPlaying,
-            animeTitle = state.anime?.title,
-            episodeName = state.episode?.name,
-            currentPositionSec = state.currentPositionSec,
-            durationSec = state.durationSec,
-            doubleTapSeekSec = state.doubleTapSeekSec,
-            onPlayPause = onPlayPause,
-            onSeek = onSeek,
-            onSeekRelative = onSeekRelative,
-            onBack = onBack,
-        )
+        if (state.lookupState == null) {
+            PlayerControlsOverlay(
+                isPlaying = state.isPlaying,
+                animeTitle = state.anime?.title,
+                episodeName = state.episode?.name,
+                currentPositionSec = state.currentPositionSec,
+                durationSec = state.durationSec,
+                doubleTapSeekSec = state.doubleTapSeekSec,
+                onPlayPause = onPlayPause,
+                onSeek = onSeek,
+                onSeekRelative = onSeekRelative,
+                onBack = onBack,
+                subtitleTracks = state.subtitleTracks,
+                audioTracks = state.audioTracks,
+                selectedSubId = state.selectedSubId,
+                selectedAudioId = state.selectedAudioId,
+                onSelectSubtitle = onSelectSubtitle,
+                onSelectAudio = onSelectAudio,
+            )
+        }
+
+        lookupContent()
+
+        if (state.currentSubText.isNotBlank()) {
+            SubtitleTapOverlay(
+                subText = state.currentSubText,
+                onWordTapped = onSubtitleWordTapped,
+                highlightRange = state.highlightRange,
+            )
+        }
     }
 }

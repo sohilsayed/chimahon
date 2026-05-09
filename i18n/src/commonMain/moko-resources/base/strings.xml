@@ -1157,4 +1157,9 @@
     <string name="pref_dict_pitch_diagram">Graph</string>
     <string name="pref_dict_pitch_number">012</string>
     <string name="pref_dict_pitch_text">Text</string>
+
+    <!-- Player -->
+    <string name="player_subtitles">Subtitles</string>
+    <string name="player_audio">Audio</string>
+    <string name="player_tracks">Tracks</string>
 </resources>

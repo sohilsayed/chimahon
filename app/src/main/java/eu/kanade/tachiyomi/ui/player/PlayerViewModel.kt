@@ -4,7 +4,11 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import chimahon.DictionaryRepository
+import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -43,6 +47,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val playerPreferences: PlayerPreferences = Injekt.get(),
     private val animeRepository: AnimeRepository = Injekt.get(),
     private val episodeRepository: EpisodeRepository = Injekt.get(),
+    private val dictionaryRepository: DictionaryRepository = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
@@ -57,6 +62,9 @@ class PlayerViewModel @JvmOverloads constructor(
 
     private var animeId: Long = savedState[KEY_ANIME_ID] ?: -1L
     private var episodeId: Long = savedState[KEY_EPISODE_ID] ?: -1L
+
+    var lookupDeferred: Deferred<DictionaryRepository.LookupResult2>? = null
+        private set
 
     init {
         progressSaveFlow
@@ -120,6 +128,64 @@ class PlayerViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(durationSec = durationSec) }
     }
 
+    fun updateSubText(text: String) {
+        if (text == mutableState.value.currentSubText) return
+        mutableState.update { it.copy(currentSubText = text) }
+    }
+
+    fun updateTracks(subs: List<MPVView.Track>, audio: List<MPVView.Track>, selectedSub: Int, selectedAudio: Int) {
+        mutableState.update {
+            it.copy(
+                subtitleTracks = subs,
+                audioTracks = audio,
+                selectedSubId = selectedSub,
+                selectedAudioId = selectedAudio,
+            )
+        }
+    }
+
+    fun updateSelectedSubId(id: Int) {
+        mutableState.update { it.copy(selectedSubId = id) }
+    }
+
+    fun updateSelectedAudioId(id: Int) {
+        mutableState.update { it.copy(selectedAudioId = id) }
+    }
+
+    fun startLookup(
+        word: String,
+        fullText: String,
+        charOffset: Int,
+        anchorX: Float,
+        anchorY: Float,
+        termPaths: List<String>,
+    ) {
+        lookupDeferred?.cancel()
+        mutableState.update { it.copy(highlightRange = null) }
+
+        lookupDeferred = viewModelScope.async(Dispatchers.IO) {
+            dictionaryRepository.lookup(word, termPaths)
+        }
+
+        mutableState.update {
+            it.copy(
+                lookupState = SubtitleLookupState(word, fullText, charOffset, anchorX, anchorY),
+            )
+        }
+        viewModelScope.launchIO { eventChannel.send(Event.PauseForLookup) }
+    }
+
+    fun dismissLookup() {
+        mutableState.update { it.copy(lookupState = null, highlightRange = null) }
+        lookupDeferred?.cancel()
+        lookupDeferred = null
+        viewModelScope.launchIO { eventChannel.send(Event.ResumeFromLookup) }
+    }
+
+    fun updateHighlightRange(range: IntRange) {
+        mutableState.update { it.copy(highlightRange = range) }
+    }
+
     fun onPlaybackCompleted() {
         val state = mutableState.value
         val episode = state.episode ?: return
@@ -141,7 +207,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
     fun saveProgress() {
         val state = mutableState.value
-        if (state.currentPositionSec > 0) {
+        if (state.currentPositionSec > 0 && state.episode != null) {
             viewModelScope.launchNonCancellable {
                 persistProgress(state.currentPositionSec, state.durationSec)
             }
@@ -178,7 +244,6 @@ class PlayerViewModel @JvmOverloads constructor(
                     savedState[KEY_EPISODE_ID] = episodeId
                     return@withIOContext
                 }
-                // Stale anime with no episodes — create the missing episode
                 val newEpisode = insertEpisode(existingAnime.id, videoUrl, existingAnime.title)
                     ?: error("Failed to create episode")
                 episodeId = newEpisode.id
@@ -216,6 +281,15 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     @Immutable
+    data class SubtitleLookupState(
+        val word: String,
+        val sentence: String,
+        val charOffset: Int,
+        val anchorX: Float,
+        val anchorY: Float,
+    )
+
+    @Immutable
     data class State(
         val anime: Anime? = null,
         val episode: Episode? = null,
@@ -224,11 +298,20 @@ class PlayerViewModel @JvmOverloads constructor(
         val currentPositionSec: Long = 0,
         val durationSec: Long = 0,
         val doubleTapSeekSec: Int = 10,
+        val currentSubText: String = "",
+        val subtitleTracks: List<MPVView.Track> = emptyList(),
+        val audioTracks: List<MPVView.Track> = emptyList(),
+        val selectedSubId: Int = -1,
+        val selectedAudioId: Int = -1,
+        val lookupState: SubtitleLookupState? = null,
+        val highlightRange: IntRange? = null,
     )
 
     sealed interface Event {
         data class Error(val message: String) : Event
         data object PlaybackCompleted : Event
+        data object PauseForLookup : Event
+        data object ResumeFromLookup : Event
     }
 
     companion object {
