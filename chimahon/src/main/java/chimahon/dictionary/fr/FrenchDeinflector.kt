@@ -2,8 +2,8 @@
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
+import chimahon.dictionary.RuleDeinflector
 import chimahon.dictionary.suffixInflection
 
 object FrenchDeinflector : Deinflector {
@@ -14,10 +14,11 @@ object FrenchDeinflector : Deinflector {
         text: String,
         languageCode: String,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, languageCode)
+        return deinflector.deinflect(text)
     }
 
     private val allRules: List<Rule> = buildFrenchRules()
+    private val deinflector = RuleDeinflector(allRules)
 
     private fun buildFrenchRules(): List<Rule> = buildList {
         addAll(frenchRulesPart1())

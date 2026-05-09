@@ -26,6 +26,7 @@ class DictionaryRepository(
      *
      * @param profileId optional profile ID for dedup tracking (empty = legacy callers)
      */
+    @Synchronized
     fun warmUp(termPaths: List<String>, profileId: String = "") {
         val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
 
@@ -45,6 +46,7 @@ class DictionaryRepository(
         }
     }
 
+    @Synchronized
     fun lookup(query: String, termPaths: List<String>, languageCode: String = ""): LookupResult2 {
         val t0 = SystemClock.elapsedRealtime()
 
@@ -57,23 +59,27 @@ class DictionaryRepository(
         val effectiveLang = languageCode.lowercase()
 
         val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
-        
+
         val results = if (effectiveLang == "ja") {
             HoshiDicts.lookup(activeSession, query, 20).toList()
         } else if (genericDeinflector != null) {
-            val preprocessed = genericDeinflector.preProcess(query)
-            val deinflected = preprocessed.flatMap { genericDeinflector.deinflect(it, effectiveLang) }
-            val candidates = deinflected.map { it.text }.distinct()
+            val candidates = linkedSetOf<String>()
+            for (preprocessed in genericDeinflector.preProcess(query).distinct()) {
+                for (deinflected in genericDeinflector.deinflect(preprocessed, effectiveLang)) {
+                    candidates += deinflected.text
+                }
+            }
             if (candidates.isEmpty()) {
                 emptyList()
             } else {
-                val terms = HoshiDicts.query(activeSession, candidates, 20)
-                genericDeinflector.wrapResults(query, candidates, terms.toList())
+                val candidateList = candidates.toList()
+                val terms = HoshiDicts.query(activeSession, candidateList, 20)
+                genericDeinflector.wrapResults(query, candidateList, terms.toList())
             }
         } else {
             HoshiDicts.lookup(activeSession, query, 20).toList()
         }
-        
+
         val lookupMs = SystemClock.elapsedRealtime() - tLookupStart
 
         // Media loading is now deferred — don't block on I/O here
@@ -90,6 +96,7 @@ class DictionaryRepository(
         )
     }
 
+    @Synchronized
     fun loadMediaAsync(query: String, results: List<LookupResult>): Map<String, String> {
         val t0 = SystemClock.elapsedRealtime()
         val activeSession = session ?: return emptyMap()
@@ -102,6 +109,7 @@ class DictionaryRepository(
         return mediaDataUris
     }
 
+    @Synchronized
     fun close() {
         session?.let(HoshiDicts::destroyLookupObject)
         session = null

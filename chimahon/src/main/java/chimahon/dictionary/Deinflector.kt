@@ -8,10 +8,11 @@ package chimahon.dictionary
 data class DeinflectionResult(val text: String, val conditionsOut: Int)
 
 /**
- * A morphological transformation rule.  Three shapes are supported:
- * - [Prefix]   – strip/replace a leading segment
- * - [Suffix]   – strip/replace a trailing segment
- * - [Sandwich] – strip/replace both ends simultaneously
+ * A morphological transformation rule.
+ * - [Prefix] strips or replaces a leading segment.
+ * - [Suffix] strips or replaces a trailing segment.
+ * - [WholeWord] replaces an exact form.
+ * - [Sandwich] strips or replaces both ends simultaneously.
  */
 sealed class Rule {
     abstract val conditionsIn: Set<String>
@@ -29,6 +30,14 @@ sealed class Rule {
     data class Suffix(
         val inflectedSuffix: String,
         val deinflectedSuffix: String,
+        override val conditionsIn: Set<String>,
+        override val conditionsOut: Set<String>,
+        override val isInflected: Regex,
+    ) : Rule()
+
+    data class WholeWord(
+        val inflectedWord: String,
+        val deinflectedWord: String,
         override val conditionsIn: Set<String>,
         override val conditionsOut: Set<String>,
         override val isInflected: Regex,

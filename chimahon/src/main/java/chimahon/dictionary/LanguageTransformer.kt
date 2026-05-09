@@ -1,7 +1,5 @@
 package chimahon.dictionary
 
-import java.util.concurrent.ConcurrentHashMap
-
 data class TransformedText(
     val text: String,
     val conditions: Int,
@@ -14,17 +12,18 @@ data class TraceFrame(
     val ruleIndex: Int,
 )
 
-data class Transform(
+private data class Transform(
     val id: String,
     val name: String,
     val description: String?,
     val rules: List<CompiledRule>,
-    val heuristic: Regex,
+    val heuristic: (String) -> Boolean,
 )
 
-internal data class CompiledRule(
+private data class CompiledRule(
     val type: String,
     val isInflected: Regex,
+    val matches: (String) -> Boolean,
     val deinflect: (String) -> String,
     val conditionsIn: Int,
     val conditionsOut: Int,
@@ -59,18 +58,14 @@ class LanguageTransformer {
                 CompiledRule(
                     type = rule.type,
                     isInflected = rule.isInflected,
+                    matches = rule.matches,
                     deinflect = rule.deinflectFn,
                     conditionsIn = conditionFlagsIn,
                     conditionsOut = conditionFlagsOut,
                 )
             }
 
-            val heuristicSources = transform.rules.map { it.isInflected.pattern }
-            val heuristic = if (heuristicSources.isNotEmpty()) {
-                Regex(heuristicSources.joinToString("|"))
-            } else {
-                Regex("$^") // matches nothing
-            }
+            val heuristic: (String) -> Boolean = { text -> rules2.any { it.matches(text) } }
 
             transforms2.add(
                 Transform(
@@ -118,7 +113,7 @@ class LanguageTransformer {
             val trace = current.trace
 
             for (transform in transforms) {
-                if (!transform.heuristic.test(text)) continue
+                if (!transform.heuristic(text)) continue
 
                 val transformId = transform.id
                 val rules = transform.rules
@@ -126,7 +121,7 @@ class LanguageTransformer {
                     val rule = rules[ruleIndex]
 
                     if (!conditionsMatch(conditions, rule.conditionsIn)) continue
-                    if (!rule.isInflected.test(text)) continue
+                    if (!rule.matches(text)) continue
 
                     val isCycle = trace.any { it.transform == transformId && it.ruleIndex == ruleIndex && it.text == text }
                     if (isCycle) {
@@ -243,12 +238,11 @@ data class TransformDefinition(
 data class RuleDefinition(
     val type: String,
     val isInflected: Regex,
+    val matches: (String) -> Boolean = { text -> isInflected.containsMatchIn(text) },
     val deinflectFn: (String) -> String,
     val conditionsIn: List<String>,
     val conditionsOut: List<String>,
 )
-
-private val transformerCache = ConcurrentHashMap<String, LanguageTransformer>()
 
 fun suffixInflection(
     inflectedSuffix: String,
@@ -260,6 +254,7 @@ fun suffixInflection(
     return RuleDefinition(
         type = "suffix",
         isInflected = Regex("${Regex.escape(inflectedSuffix)}$"),
+        matches = { text -> text.endsWith(inflectedSuffix) },
         deinflectFn = { text -> text.dropLast(inflectedLen) + deinflectedSuffix },
         conditionsIn = conditionsIn,
         conditionsOut = conditionsOut,
@@ -276,6 +271,7 @@ fun prefixInflection(
     return RuleDefinition(
         type = "prefix",
         isInflected = Regex("^${Regex.escape(inflectedPrefix)}"),
+        matches = { text -> text.startsWith(inflectedPrefix) },
         deinflectFn = { text -> deinflectedPrefix + text.drop(inflectedLen) },
         conditionsIn = conditionsIn,
         conditionsOut = conditionsOut,
@@ -291,21 +287,9 @@ fun wholeWordInflection(
     return RuleDefinition(
         type = "wholeWord",
         isInflected = Regex("^${Regex.escape(inflectedWord)}$"),
+        matches = { text -> text == inflectedWord },
         deinflectFn = { deinflectedWord },
         conditionsIn = conditionsIn,
         conditionsOut = conditionsOut,
     )
-}
-
-fun deinflectRecursive(
-    text: String,
-    descriptor: TransformDescriptor,
-): List<DeinflectionResult> {
-    val transformer = transformerCache.getOrPut(descriptor.language) {
-        LanguageTransformer().also {
-            it.addDescriptor(descriptor)
-        }
-    }
-    val transformed = transformer.transform(text)
-    return transformed.map { DeinflectionResult(it.text, it.conditions) }
 }

@@ -2,11 +2,10 @@ package chimahon.dictionary.english
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
+import chimahon.dictionary.RuleDeinflector
 import chimahon.dictionary.prefixInflection
 import chimahon.dictionary.suffixInflection
-import chimahon.dictionary.wholeWordInflection
 
 object EnglishDeinflector : Deinflector {
 
@@ -14,7 +13,7 @@ object EnglishDeinflector : Deinflector {
         text: String,
         languageCode: String,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, languageCode)
+        return deinflector.deinflect(text)
     }
 
     private fun doubledConsonantInflections(consonants: String, suffix: String, conditionsIn: Set<String>, conditionsOut: Set<String>): List<Rule.Suffix> {
@@ -171,4 +170,6 @@ object EnglishDeinflector : Deinflector {
         add(suffixInflection("iable", "y", setOf("v"), setOf("adj")))
         addAll(doubledConsonantInflections("bdgklmnprstz", "able", setOf("v"), setOf("adj")))
     }
+
+    private val deinflector = RuleDeinflector(allRules)
 }

@@ -2,8 +2,8 @@ package chimahon.dictionary.de
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
+import chimahon.dictionary.RuleDeinflector
 import chimahon.dictionary.prefixInflection
 import chimahon.dictionary.suffixInflection
 
@@ -15,7 +15,7 @@ object GermanDeinflector : Deinflector {
         text: String,
         languageCode: String,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, languageCode)
+        return deinflector.deinflect(text)
     }
 
     private val separablePrefixes = listOf(
@@ -87,4 +87,6 @@ object GermanDeinflector : Deinflector {
         add(suffixInflection("heit", "", setOf("n"), setOf("adj", "n")))
         add(suffixInflection("keit", "", setOf("n"), setOf("adj", "n")))
     }
+
+    private val deinflector = RuleDeinflector(allRules)
 }

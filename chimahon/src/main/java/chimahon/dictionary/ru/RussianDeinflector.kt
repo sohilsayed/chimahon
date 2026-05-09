@@ -2,10 +2,6 @@ package chimahon.dictionary.ru
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.deinflectRecursive
-import chimahon.dictionary.Rule
-import chimahon.dictionary.prefixInflection
-import chimahon.dictionary.suffixInflection
 
 object RussianDeinflector : Deinflector {
 
@@ -15,12 +11,11 @@ object RussianDeinflector : Deinflector {
         text: String,
         languageCode: String,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, languageCode)
+        return listOf(DeinflectionResult(text, 0))
     }
 
     // Russian relies primarily on text preprocessors (yo/e, diacritics)
     // rather than morphological deinflection rules.
     // The preprocessors handle the ё->е conversion which is the main
     // source of lookup variability in Russian.
-    private val allRules: List<Rule> = emptyList()
 }

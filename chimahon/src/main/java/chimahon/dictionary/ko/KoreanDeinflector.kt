@@ -4,8 +4,8 @@ import chimahon.LookupResult
 import chimahon.TermResult
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.deinflectRecursive
 import chimahon.dictionary.Rule
+import chimahon.dictionary.RuleDeinflector
 import chimahon.dictionary.suffixInflection
 
 object KoreanDeinflector : Deinflector {
@@ -16,7 +16,7 @@ object KoreanDeinflector : Deinflector {
         text: String,
         languageCode: String,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, allRules, languageCode)
+        return deinflector.deinflect(text)
     }
 
     override fun wrapResults(
@@ -25,7 +25,7 @@ object KoreanDeinflector : Deinflector {
         terms: List<TermResult>,
     ): List<LookupResult> {
         val assembledCandidates = candidates.map { KoreanTextProcessors.assemble(it) }
-        val allLookups = assembledCandidates + candidates
+        val allLookups = (assembledCandidates + candidates).distinct()
         val termsByText = terms.groupBy { it.expression }
         return allLookups.flatMap { candidate ->
             val termList = termsByText[candidate]
@@ -50,6 +50,8 @@ object KoreanDeinflector : Deinflector {
         addAll(koreanRulesPart2())
         addAll(koreanRulesPart3())
     }
+
+    private val deinflector = RuleDeinflector(allRules)
 
     private fun koreanRulesPart1(): List<Rule> = listOf(
         suffixInflection("ㅂ", "ㅂㄷㅏ", emptySet(), setOf("v", "adj")),

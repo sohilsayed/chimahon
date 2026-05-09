@@ -2,8 +2,6 @@ package chimahon.dictionary.it
 
 import chimahon.dictionary.DeinflectionResult
 import chimahon.dictionary.Deinflector
-import chimahon.dictionary.deinflectRecursive
-import chimahon.dictionary.Rule
 
 object ItalianDeinflector : Deinflector {
 
@@ -13,6 +11,6 @@ object ItalianDeinflector : Deinflector {
         text: String,
         languageCode: String,
     ): List<DeinflectionResult> {
-        return deinflectRecursive(text, emptyList(), languageCode)
+        return listOf(DeinflectionResult(text, 0))
     }
 }
