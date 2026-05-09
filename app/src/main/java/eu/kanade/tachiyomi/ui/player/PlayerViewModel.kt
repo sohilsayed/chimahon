@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
 import tachiyomi.domain.animesource.service.AnimeSourceManager
@@ -58,6 +59,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val dictionaryRepository: DictionaryRepository = Injekt.get(),
     private val application: Application = Injekt.get(),
     private val animeSourceManager: AnimeSourceManager = Injekt.get(),
+    private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
@@ -119,7 +121,16 @@ class PlayerViewModel @JvmOverloads constructor(
 
             var resolvedVideo: Video? = null
             if (anime.source != LOCAL_ANIME_SOURCE_ID) {
-                resolvedVideo = resolveVideoFromSource(anime.source, episode)
+                val source = animeSourceManager.get(anime.source)
+                if (source != null && animeDownloadManager.isEpisodeDownloaded(
+                        episode.name, episode.scanlator, anime.title, anime.source,
+                    )
+                ) {
+                    resolvedVideo = animeDownloadManager.buildVideoForPlayer(anime, episode, source)
+                }
+                if (resolvedVideo == null) {
+                    resolvedVideo = resolveVideoFromSource(anime.source, episode)
+                }
             }
 
             mutableState.update {

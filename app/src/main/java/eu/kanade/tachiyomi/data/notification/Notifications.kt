@@ -105,6 +105,13 @@ object Notifications {
     const val CHANNEL_ANIME_EXTENSIONS_UPDATE = "anime_ext_apk_update_channel"
     const val ID_UPDATES_TO_ANIME_EXTS = -904
 
+    private const val GROUP_ANIME_DOWNLOADER = "group_anime_downloader"
+    const val CHANNEL_ANIME_DOWNLOADER_PROGRESS = "anime_downloader_progress_channel"
+    const val CHANNEL_ANIME_DOWNLOADER_ERROR = "anime_downloader_error_channel"
+    const val ID_ANIME_DOWNLOAD_PROGRESS = -901
+    const val ID_ANIME_DOWNLOAD_PAUSED = -902
+    const val ID_ANIME_DOWNLOAD_ERROR = -903
+
     private val deprecatedChannels = listOf(
         "downloader_channel",
         "downloader_complete_channel",
@@ -142,6 +149,9 @@ object Notifications {
                 },
                 buildNotificationChannelGroup(GROUP_APK_UPDATES) {
                     setName(context.stringResource(MR.strings.label_recent_updates))
+                },
+                buildNotificationChannelGroup(GROUP_ANIME_DOWNLOADER) {
+                    setName(context.stringResource(MR.strings.download_notifier_downloader_title))
                 },
             ),
         )
@@ -204,6 +214,16 @@ object Notifications {
                 buildNotificationChannel(CHANNEL_ANIME_EXTENSIONS_UPDATE, IMPORTANCE_DEFAULT) {
                     setGroup(GROUP_APK_UPDATES)
                     setName(context.stringResource(MR.strings.channel_anime_ext_updates))
+                },
+                buildNotificationChannel(CHANNEL_ANIME_DOWNLOADER_PROGRESS, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_progress))
+                    setGroup(GROUP_ANIME_DOWNLOADER)
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_ANIME_DOWNLOADER_ERROR, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_errors))
+                    setGroup(GROUP_ANIME_DOWNLOADER)
+                    setShowBadge(false)
                 },
                 // AM (DISCORD) -->
                 buildNotificationChannel(CHANNEL_DISCORD_RPC, IMPORTANCE_LOW) {

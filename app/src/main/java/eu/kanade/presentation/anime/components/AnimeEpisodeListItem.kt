@@ -1,13 +1,19 @@
 package eu.kanade.presentation.anime.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.ui.player.buildProgressString
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
@@ -24,7 +31,11 @@ import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 @Composable
 fun AnimeEpisodeListItem(
     episode: Episode,
+    downloadState: AnimeDownload.State,
+    downloadProgress: Int,
     onClick: () -> Unit,
+    onDownloadClick: () -> Unit,
+    onDeleteDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val textColor = if (episode.seen) {
@@ -69,6 +80,78 @@ fun AnimeEpisodeListItem(
                         maxLines = 1,
                     )
                 }
+            }
+        }
+
+        EpisodeDownloadIndicator(
+            state = downloadState,
+            progress = downloadProgress,
+            onDownloadClick = onDownloadClick,
+            onDeleteClick = onDeleteDownloadClick,
+        )
+    }
+}
+
+@Composable
+private fun EpisodeDownloadIndicator(
+    state: AnimeDownload.State,
+    progress: Int,
+    onDownloadClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+) {
+    when (state) {
+        AnimeDownload.State.NOT_DOWNLOADED -> {
+            IconButton(onClick = onDownloadClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Download,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        AnimeDownload.State.QUEUE -> {
+            Box(
+                modifier = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
+        AnimeDownload.State.DOWNLOADING -> {
+            Box(
+                modifier = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        AnimeDownload.State.DOWNLOADED -> {
+            IconButton(onClick = onDeleteClick) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        AnimeDownload.State.ERROR -> {
+            IconButton(onClick = onDownloadClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Download,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp),
+                )
             }
         }
     }

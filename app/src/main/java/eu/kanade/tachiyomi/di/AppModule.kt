@@ -22,6 +22,9 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.data.connections.ConnectionsManager
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadProvider
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -184,6 +187,10 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { DownloadManager(app) }
         addSingletonFactory { DownloadCache(app) }
         addSingletonFactory { MokuroSidecarCopier(get<NetworkHelper>().client) }
+
+        addSingletonFactory { AnimeDownloadProvider(app) }
+        addSingletonFactory { AnimeDownloadManager(app) }
+        addSingletonFactory { AnimeDownloadCache(app) }
 
         addSingletonFactory { OcrCacheManager(app, get(), get()) }
         addSingletonFactory { OcrStore(app) }

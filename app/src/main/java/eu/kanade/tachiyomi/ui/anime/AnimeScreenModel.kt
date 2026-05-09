@@ -5,12 +5,17 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.anime.interactor.GetAnime
 import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
@@ -40,6 +45,7 @@ class AnimeScreenModel(
     private val animeRepository: AnimeRepository = Injekt.get(),
     private val episodeRepository: EpisodeRepository = Injekt.get(),
     private val animeSourceManager: AnimeSourceManager = Injekt.get(),
+    private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
 ) : StateScreenModel<AnimeScreenModel.State>(State.Loading) {
 
     init {
@@ -51,14 +57,28 @@ class AnimeScreenModel(
             combine(
                 getAnime.subscribe(animeId),
                 getEpisodesByAnimeId.subscribe(animeId),
-            ) { anime, episodes ->
+                animeDownloadManager.queueState,
+                animeDownloadManager.stateVersion,
+            ) { anime, episodes, downloadQueue, _ ->
                 val sortedEpisodes = applySort(anime, episodes)
                 val filteredEpisodes = applyFilters(anime, sortedEpisodes)
+                val queueById = downloadQueue.associateBy { it.episode.id }
+                val episodeDownloadState = buildMap {
+                    for (ep in episodes) {
+                        val dl = queueById[ep.id]
+                        if (dl != null) {
+                            put(ep.id, EpisodeDownloadState(dl.status, dl.progress))
+                        } else if (animeDownloadManager.isEpisodeDownloaded(ep.name, ep.scanlator, anime.title, anime.source)) {
+                            put(ep.id, EpisodeDownloadState(AnimeDownload.State.DOWNLOADED, 100))
+                        }
+                    }
+                }
                 State.Success(
                     anime = anime,
                     episodes = filteredEpisodes,
                     allEpisodeCount = episodes.size,
                     nextUnseenEpisode = episodes.asSequence().filter { !it.seen }.minByOrNull { it.sourceOrder },
+                    episodeDownloadState = episodeDownloadState,
                 )
             }.collectLatest { newState ->
                 mutableState.update { old ->
@@ -199,6 +219,111 @@ class AnimeScreenModel(
         }
     }
 
+    fun startDownload(episode: Episode) {
+        screenModelScope.launchIO {
+            val successState = state.value as? State.Success ?: return@launchIO
+            val anime = successState.anime
+            val source = animeSourceManager.get(anime.source) ?: return@launchIO
+
+            val httpSource = source as? AnimeHttpSource
+            if (httpSource == null) {
+                logcat(LogPriority.ERROR) { "Source is not AnimeHttpSource, cannot download" }
+                return@launchIO
+            }
+
+            mutableState.update { s ->
+                if (s is State.Success) s.copy(dialog = Dialog.DownloadLoading(episode)) else s
+            }
+
+            try {
+                val videos = resolveVideosForEpisode(httpSource, episode)
+                if (videos.isEmpty()) {
+                    mutableState.update { s ->
+                        if (s is State.Success) s.copy(dialog = null) else s
+                    }
+                    return@launchIO
+                }
+                mutableState.update { s ->
+                    if (s is State.Success) s.copy(dialog = Dialog.QualitySelection(episode, videos)) else s
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to resolve videos for download" }
+                mutableState.update { s ->
+                    if (s is State.Success) s.copy(dialog = null) else s
+                }
+            }
+        }
+    }
+
+    fun confirmDownload(episode: Episode, video: Video) {
+        logcat(LogPriority.INFO) { "AnimeScreenModel: confirmDownload for ${episode.name}, video=${video.videoTitle}" }
+        screenModelScope.launchNonCancellable {
+            val successState = state.value as? State.Success ?: return@launchNonCancellable
+            val anime = successState.anime
+            logcat(LogPriority.INFO) { "AnimeScreenModel: calling downloadEpisodes for anime=${anime.title}" }
+            animeDownloadManager.downloadEpisodes(anime, listOf(episode), listOf(video))
+        }
+        dismissDialog()
+    }
+
+    fun deleteEpisodeDownload(episode: Episode) {
+        screenModelScope.launchNonCancellable {
+            val successState = state.value as? State.Success ?: return@launchNonCancellable
+            val anime = successState.anime
+            val source = animeSourceManager.get(anime.source) ?: return@launchNonCancellable
+            animeDownloadManager.deleteEpisodes(listOf(episode), anime, source)
+        }
+    }
+
+    private suspend fun resolveVideosForEpisode(source: AnimeHttpSource, episode: Episode): List<Video> {
+        return withIOContext {
+            val sEpisode = SEpisode.create().apply {
+                url = episode.url
+                name = episode.name
+            }
+
+            val videos = mutableListOf<Video>()
+
+            try {
+                videos.addAll(source.getVideoList(sEpisode))
+            } catch (_: Throwable) {}
+
+            if (videos.isEmpty()) {
+                try {
+                    val hosters = source.getHosterList(sEpisode)
+                    for (hoster in hosters) {
+                        val hosterVideos = hoster.videoList ?: try {
+                            source.getVideoList(hoster)
+                        } catch (_: Throwable) {
+                            emptyList()
+                        }
+                        videos.addAll(hosterVideos)
+                    }
+                } catch (_: Throwable) {}
+            }
+
+            // Resolve URLs
+            videos.mapNotNull { video ->
+                var resolved = video
+                try {
+                    resolved = source.resolveVideo(video) ?: return@mapNotNull null
+                } catch (_: Throwable) {}
+
+                if (resolved.videoUrl.isBlank() && resolved.videoPageUrl.isNotBlank()) {
+                    val url = try { source.getVideoUrl(resolved) } catch (_: Throwable) { null }
+                    if (!url.isNullOrBlank()) {
+                        resolved = resolved.copy(videoUrl = url)
+                    }
+                }
+
+                val headers = resolved.headers ?: source.headers
+                resolved = resolved.copy(headers = headers)
+
+                if (resolved.videoUrl.isNotBlank()) resolved else null
+            }
+        }
+    }
+
     fun showDialog(dialog: Dialog) {
         mutableState.update { state ->
             when (state) {
@@ -217,6 +342,12 @@ class AnimeScreenModel(
         }
     }
 
+    @Immutable
+    data class EpisodeDownloadState(
+        val status: AnimeDownload.State,
+        val progress: Int,
+    )
+
     sealed interface State {
         @Immutable
         data object Loading : State
@@ -227,11 +358,14 @@ class AnimeScreenModel(
             val episodes: List<Episode>,
             val allEpisodeCount: Int = 0,
             val nextUnseenEpisode: Episode? = null,
+            val episodeDownloadState: Map<Long, EpisodeDownloadState> = emptyMap(),
             val dialog: Dialog? = null,
         ) : State
     }
 
     sealed interface Dialog {
         data object ConfirmDelete : Dialog
+        data class DownloadLoading(val episode: Episode) : Dialog
+        data class QualitySelection(val episode: Episode, val videos: List<Video>) : Dialog
     }
 }

@@ -51,6 +51,9 @@ class AnimeScreen(
                         screenModel.deleteAnime()
                         navigator.pop()
                     },
+                    onDownloadEpisode = screenModel::startDownload,
+                    onDeleteEpisodeDownload = screenModel::deleteEpisodeDownload,
+                    onConfirmDownloadQuality = screenModel::confirmDownload,
                 )
             }
         }

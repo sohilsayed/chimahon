@@ -1,5 +1,6 @@
 package eu.kanade.presentation.anime
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,10 +10,12 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.Text
@@ -26,6 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.anime.components.AnimeEpisodeListItem
 import eu.kanade.presentation.anime.components.AnimeInfoHeader
+import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.ui.anime.AnimeScreenModel
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.i18n.MR
@@ -43,6 +48,9 @@ fun AnimeScreenContent(
     onDeleteClicked: () -> Unit,
     onDismissDialog: () -> Unit,
     onConfirmDelete: () -> Unit,
+    onDownloadEpisode: (Episode) -> Unit = {},
+    onDeleteEpisodeDownload: (Episode) -> Unit = {},
+    onConfirmDownloadQuality: (Episode, Video) -> Unit = { _, _ -> },
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -119,16 +127,21 @@ fun AnimeScreenContent(
                 items = state.episodes,
                 key = { it.id },
             ) { episode ->
+                val dlState = state.episodeDownloadState[episode.id]
                 AnimeEpisodeListItem(
                     episode = episode,
+                    downloadState = dlState?.status ?: AnimeDownload.State.NOT_DOWNLOADED,
+                    downloadProgress = dlState?.progress ?: 0,
                     onClick = { onEpisodeClicked(episode) },
+                    onDownloadClick = { onDownloadEpisode(episode) },
+                    onDeleteDownloadClick = { onDeleteEpisodeDownload(episode) },
                 )
                 HorizontalDivider()
             }
         }
     }
 
-    when (state.dialog) {
+    when (val dialog = state.dialog) {
         is AnimeScreenModel.Dialog.ConfirmDelete -> {
             AlertDialog(
                 onDismissRequest = onDismissDialog,
@@ -140,6 +153,50 @@ fun AnimeScreenContent(
                     }
                 },
                 dismissButton = {
+                    TextButton(onClick = onDismissDialog) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+        is AnimeScreenModel.Dialog.DownloadLoading -> {
+            AlertDialog(
+                onDismissRequest = onDismissDialog,
+                title = { Text("Resolving videos...") },
+                text = { CircularProgressIndicator() },
+                confirmButton = {
+                    TextButton(onClick = onDismissDialog) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+        is AnimeScreenModel.Dialog.QualitySelection -> {
+            AlertDialog(
+                onDismissRequest = onDismissDialog,
+                title = { Text("Select quality") },
+                text = {
+                    LazyColumn {
+                        items(
+                            items = dialog.videos,
+                            key = { it.videoUrl },
+                        ) { video ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = video.videoTitle.ifBlank {
+                                            video.resolution?.let { "${it}p" } ?: "Unknown"
+                                        },
+                                    )
+                                },
+                                modifier = Modifier.clickable {
+                                    onConfirmDownloadQuality(dialog.episode, video)
+                                },
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
                     TextButton(onClick = onDismissDialog) {
                         Text(stringResource(MR.strings.action_cancel))
                     }
