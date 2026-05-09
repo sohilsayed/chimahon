@@ -213,6 +213,7 @@ fun MangaScreen(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onClickDictionaryProfile: (() -> Unit)?,
     // KMK <--
 ) {
     val context = LocalContext.current
@@ -282,6 +283,7 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onClickDictionaryProfile = onClickDictionaryProfile,
             // KMK <--
         )
     } else {
@@ -344,6 +346,7 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onClickDictionaryProfile = onClickDictionaryProfile,
             // KMK <--
         )
     }
@@ -423,6 +426,7 @@ private fun MangaScreenSmallImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onClickDictionaryProfile: (() -> Unit)?,
     // KMK <--
 ) {
     val chapterListState = rememberLazyListState()
@@ -516,6 +520,7 @@ private fun MangaScreenSmallImpl(
                 backgroundAlphaProvider = { backgroundAlpha },
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
+                onClickDictionaryProfile = onClickDictionaryProfile,
                 // KMK <--
             )
         },
@@ -887,6 +892,7 @@ private fun MangaScreenLargeImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onClickDictionaryProfile: (() -> Unit)?,
     // KMK <--
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -971,6 +977,7 @@ private fun MangaScreenLargeImpl(
                 backgroundAlphaProvider = { 1f },
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
+                onClickDictionaryProfile = onClickDictionaryProfile,
                 // KMK <--
             )
         },

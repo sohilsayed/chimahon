@@ -263,6 +263,7 @@ class ReaderActivity : BaseActivity() {
         val anchorWidth: Float = 0f,
         val anchorHeight: Float = 0f,
         val isVertical: Boolean,
+        val activeProfile: chimahon.anki.AnkiProfile,
         val mediaInfo: chimahon.MediaInfo? = null,
         val sourcePage: ReaderPage? = null,
         val deferredLookup: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>,
@@ -300,16 +301,30 @@ class ReaderActivity : BaseActivity() {
             val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
 
             lifecycleScope.launchIO {
-                val profile = prefs.profileStore.getActiveProfile()
+                val manga = viewModel.manga
+                // Use manga.source (the raw Long ID) so local/stub sources don't return null.
+                // getSource() casts to HttpSource? and would give 0 for non-HTTP sources.
+                val sourceId = manga?.source ?: 0L
+                val sourceLang = if (sourceId != 0L) {
+                    sourceManager.getOrStub(sourceId).lang
+                } else {
+                    ""
+                }
+                val profile = prefs.profileResolver.resolve(
+                    mangaId = manga?.id ?: 0L,
+                    sourceId = sourceId,
+                    sourceLang = sourceLang,
+                )
                 val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
                 cachedActiveProfile = profile
                 cachedTermPaths = termPaths
-                dictionaryRepository.warmUp(termPaths)
+                dictionaryRepository.warmUp(termPaths, profile.id)
             }
 
             lifecycleScope.launch {
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     prefs.rawActiveProfileId().changes().collect {
+                        // Global profile changed — invalidate cache so next access re-resolves
                         cachedActiveProfile = null
                         cachedTermPaths = null
                     }
@@ -721,8 +736,7 @@ class ReaderActivity : BaseActivity() {
                             ensureOcrResources(attachForWarmup = false)
                             ocrPopupState = OcrPopupState(
                                 lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
-                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage, deferredLookup
-                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, activeProfile, mediaInfo, sourcePage, deferredLookup
+                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, getOrRefreshLookupPaths().first, mediaInfo, sourcePage, deferredLookup
                             )
                         }
                     }
@@ -752,8 +766,7 @@ class ReaderActivity : BaseActivity() {
                             ensureOcrResources(attachForWarmup = false)
                             ocrPopupState = OcrPopupState(
                                 lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
-                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage, deferredLookup
-                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, activeProfile, mediaInfo, sourcePage, deferredLookup
+                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, getOrRefreshLookupPaths().first, mediaInfo, sourcePage, deferredLookup
                             )
                         }
                     }
@@ -999,9 +1012,18 @@ class ReaderActivity : BaseActivity() {
                     ensureOcrResources()
                     lifecycleScope.launchIO {
                         val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                        val activeProfile = prefs.profileStore.getActiveProfile()
-                        val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, activeProfile)
-                        dictionaryRepository.warmUp(termPaths)
+                        val manga = viewModel.manga
+                        val sourceId = manga?.source ?: 0L
+                        val sourceLang = if (sourceId != 0L) sourceManager.getOrStub(sourceId).lang else ""
+                        val profile = prefs.profileResolver.resolve(
+                            mangaId = manga?.id ?: 0L,
+                            sourceId = sourceId,
+                            sourceLang = sourceLang,
+                        )
+                        val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                        cachedActiveProfile = profile
+                        cachedTermPaths = termPaths
+                        dictionaryRepository.warmUp(termPaths, profile.id)
                     }
                 }
                 when (val viewer = state.viewer) {
@@ -1950,7 +1972,8 @@ class ReaderActivity : BaseActivity() {
             logcat(LogPriority.DEBUG) { "Media stored, filename returned: $filename" }
 
             val prefs = Injekt.get<DictionaryPreferences>()
-            val activeProfile = prefs.profileStore.getActiveProfile()
+            // Use the already-resolved profile for this manga/source, not the raw global one.
+            val activeProfile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile()
             val fieldMapJson = activeProfile.ankiFieldMap
             logcat(LogPriority.DEBUG) { "Field map JSON (Profile: ${activeProfile.name}): $fieldMapJson" }
 
@@ -2025,8 +2048,19 @@ class ReaderActivity : BaseActivity() {
 
     private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
         val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-        val profile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile().also { cachedActiveProfile = it }
-        val paths = cachedTermPaths ?: eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this, profile).also { cachedTermPaths = it }
+        val profile = cachedActiveProfile ?: run {
+            val manga = viewModel.manga
+            val sourceId = manga?.source ?: 0L
+            val sourceLang = if (sourceId != 0L) sourceManager.getOrStub(sourceId).lang else ""
+            prefs.profileResolver.resolve(
+                mangaId = manga?.id ?: 0L,
+                sourceId = sourceId,
+                sourceLang = sourceLang,
+            ).also { cachedActiveProfile = it }
+        }
+        val paths = cachedTermPaths
+            ?: eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this, profile)
+                .also { cachedTermPaths = it }
         return profile to paths
     }
 
@@ -2035,8 +2069,8 @@ class ReaderActivity : BaseActivity() {
      * so we can run it synchronously to avoid coroutine overhead.
      */
     private fun preDeferLookup(lookupString: String): kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2> {
-        val (_, termPaths) = getOrRefreshLookupPaths()
-        val result = dictionaryRepository.lookup(lookupString.trim(), termPaths)
+        val (profile, termPaths) = getOrRefreshLookupPaths()
+        val result = dictionaryRepository.lookup(lookupString.trim(), termPaths, profile.languageCode)
         return kotlinx.coroutines.CompletableDeferred(result)
     private fun preDeferLookup(
         lookupString: String,

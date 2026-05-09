@@ -461,6 +461,8 @@ class MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = { navigator.push(PaletteScreen(successState.seedColor?.toArgb())) },
             hazeState = hazeState,
+            onClickDictionaryProfile = { screenModel.showSetDictionaryProfileDialog() }
+                .takeIf { successState.manga.favorite },
             // KMK <--
         )
 
@@ -642,6 +644,23 @@ class MangaScreen(
                 )
             }
             // KMK <--
+
+            is MangaScreenModel.Dialog.SetDictionaryProfile -> {
+                val prefs = remember { Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>() }
+                val profiles = remember { prefs.profileStore.getProfiles() }
+                val overrideId = remember {
+                    prefs.rawProfileOverride(
+                        chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey(dialog.manga.id),
+                    ).get()
+                }
+                eu.kanade.presentation.manga.components.DictionaryProfileDialog(
+                    profiles = profiles,
+                    currentOverrideId = overrideId,
+                    resolvedAutoProfile = screenModel.resolveAutoProfile(dialog.manga.source),
+                    onDismissRequest = screenModel::dismissDialog,
+                    onConfirm = screenModel::setMangaDictionaryProfile,
+                )
+            }
         }
 
         if (showScanlatorsDialog) {

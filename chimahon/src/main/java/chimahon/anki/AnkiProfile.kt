@@ -32,6 +32,7 @@ data class AnkiProfile(
     val enabledDictionaries: Set<String> = emptySet(), // empty = all enabled
     val dictionaryCollapseMode: String = DICTIONARY_COLLAPSE_EXPAND_ALL,
     val dictionaryDisplayModes: Map<String, String> = emptyMap(),
+
     /**
      * BCP-47-style language code for this profile, e.g. "ja", "ko", "ar", "en".
      * Used by [chimahon.dictionary.DictionaryProfileResolver] to auto-select a
@@ -55,7 +56,6 @@ data class AnkiProfile(
         put("ankiCropMode", ankiCropMode)
         put("dictionaryOrder", JSONArray(dictionaryOrder))
         put("enabledDictionaries", JSONArray(enabledDictionaries.toList()))
-
         put("dictionaryCollapseMode", dictionaryCollapseMode)
         put("dictionaryDisplayModes", JSONObject(dictionaryDisplayModes))
         put("languageCode", languageCode)
@@ -89,7 +89,6 @@ data class AnkiProfile(
             enabledDictionaries = json.optJSONArray("enabledDictionaries")
                 ?.let { arr -> (0 until arr.length()).map { arr.getString(it) }.toSet() }
                 ?: emptySet(),
-
             dictionaryCollapseMode = json.optString("dictionaryCollapseMode", DICTIONARY_COLLAPSE_EXPAND_ALL),
             dictionaryDisplayModes = json.optJSONObject("dictionaryDisplayModes")
                 ?.let { obj ->

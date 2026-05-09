@@ -99,6 +99,7 @@ fun OcrLookupPopup(
     anchorWidth: Float = 0f,
     anchorHeight: Float = 0f,
     isVertical: Boolean,
+    activeProfile: chimahon.anki.AnkiProfile,
     mediaInfo: MediaInfo? = null,
     screenshot: Bitmap? = null,
     onRequestScreenshot: (() -> Bitmap?)? = null,
@@ -144,10 +145,6 @@ fun OcrLookupPopup(
     val popupWidthPref by dictionaryPreferences.popupWidth().collectAsState()
     val popupHeightPref by dictionaryPreferences.popupHeight().collectAsState()
     val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
-    val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
-    val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
-    val profileStore = dictionaryPreferences.profileStore
-    val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
 
     val ankiEnabled = activeProfile.ankiEnabled
     val ankiDeck = activeProfile.ankiDeck
@@ -276,7 +273,7 @@ fun OcrLookupPopup(
 
         val deferred = deferredResult ?: scope.async(Dispatchers.IO) {
             val termPaths = getDictionaryPaths(context, activeProfile)
-            repository.lookup(finalQuery, termPaths)
+            repository.lookup(finalQuery, termPaths, activeProfile.languageCode)
         }
 
         if (!deferred.isCompleted) {

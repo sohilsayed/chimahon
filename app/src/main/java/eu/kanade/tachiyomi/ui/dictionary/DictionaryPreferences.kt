@@ -77,6 +77,58 @@ class DictionaryPreferences(
     }
 
     // -------------------------------------------------------------------------
+    // Per-manga / per-source profile overrides
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns a raw [tachiyomi.core.common.preference.Preference] for the given
+     * dynamic override key.  Callers use [chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey]
+     * or [chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey] to build the key.
+     */
+    fun rawProfileOverride(key: String) = preferenceStore.getString(key, "")
+
+    /**
+     * The single [chimahon.dictionary.DictionaryProfileResolver] instance.
+     * Reads override keys directly from [preferenceStore].
+     */
+    val profileResolver: chimahon.dictionary.DictionaryProfileResolver by lazy {
+        chimahon.dictionary.DictionaryProfileResolver(
+            profileStore = profileStore,
+            readMangaOverride = { mangaId ->
+                preferenceStore.getString(
+                    chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey(mangaId), "",
+                ).get()
+            },
+            readSourceOverride = { sourceId ->
+                preferenceStore.getString(
+                    chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey(sourceId), "",
+                ).get()
+            },
+        )
+    }
+
+    /**
+     * Delete a profile by ID and clean up any manga/source override keys that
+     * pointed to it, so orphaned overrides can never resolve to a ghost profile.
+     * Returns false (and does nothing) if it is the last profile.
+     */
+    fun deleteProfileWithOverrides(profileId: String): Boolean {
+        val deleted = profileStore.deleteProfile(profileId)
+        if (!deleted) return false
+
+        // Sweep all pref keys — any override that matched the deleted ID becomes ""
+        val mangaPrefix = "pref_dict_profile_manga_"
+        val sourcePrefix = "pref_dict_profile_source_"
+        preferenceStore.getAll().keys
+            .filter { it.startsWith(mangaPrefix) || it.startsWith(sourcePrefix) }
+            .forEach { key ->
+                val pref = preferenceStore.getString(key, "")
+                if (pref.get() == profileId) pref.delete()
+            }
+        return true
+    }
+
+    // -------------------------------------------------------------------------
     // Legacy flat-key READERS — only used for one-time migration.
     // -------------------------------------------------------------------------
 

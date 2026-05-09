@@ -869,6 +869,47 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     )
                                 }
                             }
+
+                            // Language selector
+                            var langExpanded by remember { mutableStateOf(false) }
+                            val languages = listOf(
+                                "" to "Any (All)",
+                                "ja" to "Japanese",
+                                "ko" to "Korean",
+                                "ar" to "Arabic",
+                                "zh" to "Chinese",
+                                "en" to "English",
+                                "de" to "German",
+                                "fr" to "French",
+                                "ru" to "Russian",
+                                "es" to "Spanish",
+                                "it" to "Italian",
+                            )
+                            val currentLangName = languages.find { it.first == activeProfile.languageCode }?.second ?: activeProfile.languageCode
+
+                            Box(modifier = Modifier.padding(top = 8.dp)) {
+                                OutlinedButton(
+                                    onClick = { langExpanded = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Language: $currentLangName")
+                                    Icon(Icons.Outlined.KeyboardArrowDown, null)
+                                }
+                                DropdownMenu(
+                                    expanded = langExpanded,
+                                    onDismissRequest = { langExpanded = false }
+                                ) {
+                                    languages.forEach { (code, name) ->
+                                        DropdownMenuItem(
+                                            text = { Text(name) },
+                                            onClick = {
+                                                profileStore.updateProfile(activeProfile.copy(languageCode = code))
+                                                langExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 )

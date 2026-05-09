@@ -1,12 +1,17 @@
 package eu.kanade.presentation.manga.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -223,6 +228,86 @@ fun SetIntervalDialog(
         confirmButton = {
             TextButton(onClick = {
                 onValueChanged?.invoke(selectedInterval)
+                onDismissRequest()
+            }) {
+                Text(text = stringResource(MR.strings.action_ok))
+            }
+        },
+    )
+}
+
+/**
+ * Dialog that lets the user pin a specific dictionary profile to a manga,
+ * or clear the override to fall back to the cascading resolver.
+ *
+ * [profiles] is the ordered list of all profiles.  [currentOverrideId] is the
+ * profile ID currently pinned for this manga (empty string = no override).
+ * [onConfirm] is called with the selected profile ID, or null to clear.
+ */
+@Composable
+fun DictionaryProfileDialog(
+    profiles: List<chimahon.anki.AnkiProfile>,
+    currentOverrideId: String,
+    resolvedAutoProfile: chimahon.anki.AnkiProfile,
+    onDismissRequest: () -> Unit,
+    onConfirm: (profileId: String?) -> Unit,
+    titleRes: StringResource = MR.strings.pref_dict_profile_override_manga,
+) {
+    // Empty string = "Auto" sentinel (no override)
+    var selectedId by remember { mutableStateOf(currentOverrideId) }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(text = stringResource(titleRes)) },
+        text = {
+            LazyColumn {
+                // "Auto (no override)" row
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedId = "" },
+                    ) {
+                        RadioButton(
+                            selected = selectedId.isEmpty(),
+                            onClick = { selectedId = "" },
+                        )
+                        Text(
+                            text = "Auto (${resolvedAutoProfile.name})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                items(profiles) { profile ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedId = profile.id },
+                    ) {
+                        RadioButton(
+                            selected = selectedId == profile.id,
+                            onClick = { selectedId = profile.id },
+                        )
+                        Text(
+                            text = profile.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onConfirm(if (selectedId.isEmpty()) null else selectedId)
                 onDismissRequest()
             }) {
                 Text(text = stringResource(MR.strings.action_ok))

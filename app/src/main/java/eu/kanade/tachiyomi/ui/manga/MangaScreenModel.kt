@@ -1969,6 +1969,8 @@ class MangaScreenModel(
         data object ClearManga : Dialog
         // KMK <--
 
+        data class SetDictionaryProfile(val manga: Manga) : Dialog
+
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
         data object FullCover : Dialog
@@ -2035,6 +2037,34 @@ class MangaScreenModel(
         updateSuccessState { it.copy(dialog = Dialog.ClearManga) }
     }
     // KMK <--
+
+    fun showSetDictionaryProfileDialog() {
+        updateSuccessState { it.copy(dialog = Dialog.SetDictionaryProfile(it.manga)) }
+    }
+
+    /**
+     * Persist (or clear) a manga-level dictionary profile override.
+     * [profileId] == null clears the override, falling back to source/language/global resolution.
+     */
+    fun setMangaDictionaryProfile(profileId: String?) {
+        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+        val key = chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey(mangaId)
+        if (profileId == null) {
+            prefs.rawProfileOverride(key).delete()
+        } else {
+            prefs.rawProfileOverride(key).set(profileId)
+        }
+        dismissDialog()
+    }
+
+    fun resolveAutoProfile(sourceId: Long): chimahon.anki.AnkiProfile {
+        val source = Injekt.get<eu.kanade.tachiyomi.source.SourceManager>().getOrStub(sourceId)
+        return Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().profileResolver.resolve(
+            mangaId = 0L, // 0 to avoid hitting the manga override itself
+            sourceId = sourceId, // But DO check source override
+            sourceLang = source.lang,
+        )
+    }
 
     sealed interface State {
         @Immutable

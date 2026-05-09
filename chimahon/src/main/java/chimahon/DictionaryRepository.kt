@@ -16,11 +16,23 @@ class DictionaryRepository(
     private var session: Long? = null
     private var configuredTermPaths: List<String> = emptyList()
     private var cachedStyles: List<DictionaryStyle> = emptyList()
+    /** ID of the profile that was last used to call [warmUp].  Prevents redundant engine rebuilds. */
+    private var lastWarmedProfileId: String = ""
 
-    fun warmUp(termPaths: List<String>) {
+    /**
+     * Warm up the query engine for [termPaths].
+     * An engine rebuild is only triggered when [termPaths] or [profileId] differ
+     * from the last warmed state, so calling this at every reader-open is safe.
+     *
+     * @param profileId optional profile ID for dedup tracking (empty = legacy callers)
+     */
+    fun warmUp(termPaths: List<String>, profileId: String = "") {
         val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
 
-        if (termPaths != configuredTermPaths) {
+        val pathsChanged = termPaths != configuredTermPaths
+        val profileChanged = profileId.isNotEmpty() && profileId != lastWarmedProfileId
+
+        if (pathsChanged || profileChanged) {
             HoshiDicts.rebuildQuery(
                 session = activeSession,
                 termPaths = termPaths.toTypedArray(),
@@ -29,10 +41,11 @@ class DictionaryRepository(
             )
             cachedStyles = HoshiDicts.getStyles(activeSession).toList()
             configuredTermPaths = termPaths
+            if (profileId.isNotEmpty()) lastWarmedProfileId = profileId
         }
     }
 
-    fun lookup(query: String, termPaths: List<String>): LookupResult2 {
+    fun lookup(query: String, termPaths: List<String>, languageCode: String = ""): LookupResult2 {
         val t0 = SystemClock.elapsedRealtime()
 
         warmUp(termPaths)
@@ -40,7 +53,33 @@ class DictionaryRepository(
         val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
 
         val tLookupStart = SystemClock.elapsedRealtime()
-        val results = HoshiDicts.lookup(activeSession, query, 20).toList()
+
+        // Auto-detect language if not explicitly provided
+        val effectiveLang = if (languageCode.isBlank()) {
+            val arabicRange = Regex("[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
+            if (arabicRange.containsMatchIn(query)) "ar" else "ja"
+        } else {
+            languageCode.lowercase()
+        }
+
+        val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
+        
+        val results = if (effectiveLang == "ja") {
+            HoshiDicts.lookup(activeSession, query, 20).toList()
+        } else if (genericDeinflector != null) {
+            val preprocessed = genericDeinflector.preProcess(query)
+            val deinflected = preprocessed.flatMap { genericDeinflector.deinflect(it, effectiveLang) }
+            val candidates = deinflected.map { it.text }.distinct()
+            if (candidates.isEmpty()) {
+                emptyList()
+            } else {
+                val terms = HoshiDicts.query(activeSession, candidates, 20)
+                genericDeinflector.wrapResults(query, candidates, terms.toList())
+            }
+        } else {
+            HoshiDicts.lookup(activeSession, query, 20).toList()
+        }
+        
         val lookupMs = SystemClock.elapsedRealtime() - tLookupStart
 
         // Media loading is now deferred — don't block on I/O here
@@ -74,6 +113,7 @@ class DictionaryRepository(
         session = null
         configuredTermPaths = emptyList()
         cachedStyles = emptyList()
+        lastWarmedProfileId = ""
     }
 
     private fun buildMediaDataUris(
