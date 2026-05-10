@@ -116,6 +116,7 @@ import tachiyomi.domain.manga.interactor.GetMergedReferencesById
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.io.Archive
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -1678,10 +1679,10 @@ class ReaderViewModel @JvmOverloads constructor(
             val chapterFile = baseDir.findFile(chapterName)
                 ?: return@withLock null
 
-            val isArchive = chapterName.endsWith(".cbz", ignoreCase = true) ||
-                chapterName.endsWith(".zip", ignoreCase = true) ||
-                chapterName.endsWith(".cbr", ignoreCase = true)
-
+            val isArchive = !chapterFile.isDirectory && (
+                chapterName.endsWith(".epub", ignoreCase = true) ||
+                    Archive.isSupported(chapterFile)
+            )
             val mokuroFile = findMokuroFile(chapterFile, chapterName, baseDir, isArchive)
                 ?: return@withLock null
 
@@ -1892,13 +1893,20 @@ class ReaderViewModel @JvmOverloads constructor(
                 .orEmpty()
         }
 
-        return listOf(
-            chimahon.ocr.ImageFileInfo(
-                name = chapterName,
-                relativePath = chapterName,
-                basename = chapterName.substringBeforeLast('.'),
-            ),
-        )
+        val isArchive = chapterName.endsWith(".epub", ignoreCase = true) ||
+            Archive.isSupported(chapterFile)
+
+        if (isArchive) {
+            return listOf(
+                chimahon.ocr.ImageFileInfo(
+                    name = chapterName,
+                    relativePath = chapterName,
+                    basename = chapterName.substringBeforeLast('.'),
+                ),
+            )
+        }
+
+        return emptyList()
     }
 
     private suspend fun tryLoadMokuroBlocks(

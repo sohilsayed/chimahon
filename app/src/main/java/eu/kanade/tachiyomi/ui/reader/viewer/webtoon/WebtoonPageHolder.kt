@@ -90,6 +90,12 @@ class WebtoonPageHolder(
 
     private var ocrLoadJob: Job? = null
 
+    /**
+     * Detected crop rect for the image currently displayed.
+     * Calculated during `setImage` if `imageCropBorders` is enabled.
+     */
+    private var pageCropRect: android.graphics.RectF? = null
+
     init {
         refreshLayoutParams()
 
@@ -209,12 +215,20 @@ class WebtoonPageHolder(
         val streamFn = page?.stream ?: return
 
         try {
-            val (source, isAnimated) = withIOContext {
+            val (source, isAnimated, cropRect) = withIOContext {
                 val source = streamFn().use { process(Buffer().readFrom(it)) }
                 val isAnimated = ImageUtil.isAnimatedAndSupported(source)
-                Pair(source, isAnimated)
+
+                val cropBorders = (viewer.config.imageCropBorders && viewer.isContinuous) ||
+                    (viewer.config.continuousCropBorders && !viewer.isContinuous)
+                val cropRect = if (!isAnimated && cropBorders) {
+                    OcrCoordinateMapper.detectCropRect(source)
+                } else null
+
+                Triple(source, isAnimated, cropRect)
             }
             withUIContext {
+                pageCropRect = cropRect
                 frame.setImage(
                     source,
                     isAnimated,
@@ -338,21 +352,10 @@ class WebtoonPageHolder(
         }
 
         // ── Case 2: Crop borders ────────────────────────────────────────────────────
-        if (cropBordersEnabled && blocks.isNotEmpty()) {
-            val streamFn = targetPage.stream
-            if (streamFn != null) {
-                blocks = withIOContext {
-                    try {
-                        streamFn().use { stream ->
-                            OcrCoordinateMapper.mapToCropped(blocks, okio.Buffer().readFrom(stream))
-                        }
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "OCR crop detection failed (webtoon), using raw blocks" }
-                        blocks
-                    }
-                }
-                logcat { "OCR crop-remap done (webtoon): ${blocks.size} blocks" }
-            }
+        val cropRect = pageCropRect
+        if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
+            blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
+            logcat { "OCR crop-remap done (webtoon): ${blocks.size} blocks" }
         }
 
         frame.setOcrBlocks(blocks)

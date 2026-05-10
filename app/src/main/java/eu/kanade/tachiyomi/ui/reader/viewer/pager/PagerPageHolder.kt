@@ -91,6 +91,12 @@ class PagerPageHolder(
      */
     private var extraLoadJob: Job? = null
 
+    /**
+     * Detected crop rect for the image currently displayed.
+     * Calculated during `setImage` if `imageCropBorders` is enabled.
+     */
+    private var pageCropRect: android.graphics.RectF? = null
+
     init {
         // KMK: Dual page loading
         loadJob = scope.launch { loadPageAndProcessStatus(1) }
@@ -228,7 +234,12 @@ class PagerPageHolder(
                         } else {
                             null
                         }
-                        Triple(itemSource, isAnimated, background)
+
+                        val cropRect = if (!isAnimated && viewer.config.imageCropBorders) {
+                            OcrCoordinateMapper.detectCropRect(itemSource)
+                        } else null
+
+                        Triple(itemSource, isAnimated, background).also { pageCropRect = cropRect }
                     }
                 }
             }
@@ -524,7 +535,7 @@ class PagerPageHolder(
             logcat { "OCR merge-mode: page=${page.index} extra=${ep.index}" }
             val rawBlocks1 = viewModel.getOcrBlocks(page)
             val rawBlocks2 = viewModel.getOcrBlocks(ep)
-            val merged = OcrCoordinateMapper.mapToMerged(
+            var merged = OcrCoordinateMapper.mapToMerged(
                 blocks1 = rawBlocks1,
                 page1W = mergedPage1W,
                 page1H = mergedPage1H,
@@ -534,6 +545,14 @@ class PagerPageHolder(
                 isLTR = mergedIsLTR,
                 centerMarginPx = mergedCenterMargin,
             )
+
+            // Apply crop remap if needed
+            val cropRect = pageCropRect
+            if (cropBordersEnabled && merged.isNotEmpty() && cropRect != null) {
+                merged = OcrCoordinateMapper.remapToCrop(merged, cropRect)
+                logcat { "OCR merge crop-remap done: ${merged.size} blocks" }
+            }
+
             setOcrBlocks(merged)
             return
         }
@@ -556,21 +575,10 @@ class PagerPageHolder(
         }
 
         // ── Case 3: Crop borders ────────────────────────────────────────────────────
-        if (cropBordersEnabled && blocks.isNotEmpty()) {
-            val streamFn = page.stream
-            if (streamFn != null) {
-                blocks = withIOContext {
-                    try {
-                        streamFn().use { stream ->
-                            OcrCoordinateMapper.mapToCropped(blocks, okio.Buffer().readFrom(stream))
-                        }
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "OCR crop detection failed, using raw blocks" }
-                        blocks
-                    }
-                }
-                logcat { "OCR crop-remap done: ${blocks.size} blocks" }
-            }
+        val cropRect = pageCropRect
+        if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
+            blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
+            logcat { "OCR crop-remap done: ${blocks.size} blocks" }
         }
 
         setOcrBlocks(blocks)

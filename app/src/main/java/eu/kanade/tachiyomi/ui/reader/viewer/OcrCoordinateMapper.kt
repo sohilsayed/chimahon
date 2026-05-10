@@ -287,7 +287,7 @@ object OcrCoordinateMapper {
     }
 
     /** Remap blocks so they align with a cropped sub-region of the original image. */
-    private fun remapToCrop(
+    fun remapToCrop(
         blocks: List<OcrTextBlock>,
         cropRect: RectF,
     ): List<OcrTextBlock> {

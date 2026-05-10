@@ -468,6 +468,17 @@ class OcrManager(
                             val ymin = bbox.y.toFloat().coerceIn(0f, 1f)
                             val xmax = (bbox.x + bbox.width).toFloat().coerceIn(0f, 1f)
                             val ymax = (bbox.y + bbox.height).toFloat().coerceIn(0f, 1f)
+
+                            val lineGeometries = r.constituentBoxes?.map { lineBox ->
+                                OcrLineGeometry(
+                                    xmin = lineBox.x.toFloat().coerceIn(0f, 1f),
+                                    ymin = lineBox.y.toFloat().coerceIn(0f, 1f),
+                                    xmax = (lineBox.x + lineBox.width).toFloat().coerceIn(0f, 1f),
+                                    ymax = (lineBox.y + lineBox.height).toFloat().coerceIn(0f, 1f),
+                                    rotation = (lineBox.rotation ?: 0.0).toFloat(),
+                                )
+                            }
+
                             if (xmax <= xmin || ymax <= ymin) {
                                 null
                             } else {
@@ -478,6 +489,7 @@ class OcrManager(
                                     ymax = ymax,
                                     lines = r.text.split("\n").filter { it.isNotBlank() },
                                     vertical = r.forcedOrientation == "vertical",
+                                    lineGeometries = lineGeometries,
                                 )
                             }
                         }
@@ -503,7 +515,17 @@ class OcrManager(
                             source = source,
                             pageIndex = pageIndex,
                             blocks = blocks.map {
-                                ChimahonOcrTextBlock(it.xmin, it.ymin, it.xmax, it.ymax, it.lines, it.vertical)
+                                ChimahonOcrTextBlock(
+                                    xmin = it.xmin,
+                                    ymin = it.ymin,
+                                    xmax = it.xmax,
+                                    ymax = it.ymax,
+                                    lines = it.lines,
+                                    vertical = it.vertical,
+                                    lineGeometries = it.lineGeometries?.map { lg ->
+                                        chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+                                    }
+                                )
                             },
                             language = OcrLanguage.JAPANESE.bcp47,
                         )
@@ -579,6 +601,14 @@ class OcrManager(
         }
     }
 
+    data class OcrLineGeometry(
+        val xmin: Float,
+        val ymin: Float,
+        val xmax: Float,
+        val ymax: Float,
+        val rotation: Float = 0f,
+    )
+
     data class OcrTextBlock(
         val xmin: Float,
         val ymin: Float,
@@ -586,6 +616,7 @@ class OcrManager(
         val ymax: Float,
         val lines: List<String>,
         val vertical: Boolean = false,
+        val lineGeometries: List<OcrLineGeometry>? = null,
     )
 }
 

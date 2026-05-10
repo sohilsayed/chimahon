@@ -441,7 +441,7 @@ internal object OwOCRMerger {
                     val charSize = maxOf(a.characterSize, b.characterSize)
                     if (isVertical) {
                         verticalDistance(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) <=
-                            2 * charSize &&
+                            charSize * 1.5 &&
                             horizontalOverlap(
                                 a.paragraphObj.tightBoundingBox,
                                 b.paragraphObj.tightBoundingBox,
@@ -453,9 +453,9 @@ internal object OwOCRMerger {
                                 a.paragraphObj.tightBoundingBox,
                                 b.paragraphObj.tightBoundingBox,
                             ) <=
-                            3 * charSize &&
+                            charSize * 1.5 &&
                             verticalOverlap(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) >
-                            0.9
+                            0.95
                     }
                 },
                 getStartCoord = if (isVertical) {
@@ -543,7 +543,7 @@ internal object OwOCRMerger {
                 } else {
                     val overlapHeight = overlapBottom - overlapTop
                     val smallerHeight = minOf(a.tightBoundingBox.height, b.tightBoundingBox.height)
-                    (overlapHeight / smallerHeight.coerceAtLeast(0.001)) > 0.2
+                    (overlapHeight / smallerHeight.coerceAtLeast(0.001)) > 0.5
                 }
             },
             getStartCoord = { it.tightBoundingBox.y },
