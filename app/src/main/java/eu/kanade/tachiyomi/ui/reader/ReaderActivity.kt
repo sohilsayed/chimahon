@@ -2069,10 +2069,6 @@ class ReaderActivity : BaseActivity() {
      * Start lookup work immediately. Session is warm, lookup is fast (~10-20ms),
      * so we can run it synchronously to avoid coroutine overhead.
      */
-    private fun preDeferLookup(lookupString: String): kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2> {
-        val (profile, termPaths) = getOrRefreshLookupPaths()
-        val result = dictionaryRepository.lookup(lookupString.trim(), termPaths, profile.languageCode)
-        return kotlinx.coroutines.CompletableDeferred(result)
     private fun preDeferLookup(
         lookupString: String,
     ): Pair<chimahon.anki.AnkiProfile, kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>> {

@@ -226,13 +226,13 @@ fun AppearanceSheet(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Font Size", style = MaterialTheme.typography.bodyMedium)
-                        Text("${viewModel.fontSize}px", style = MaterialTheme.typography.bodyMedium)
+                        Text("${if (viewModel.fontSize % 1.0 == 0.0) viewModel.fontSize.toInt() else viewModel.fontSize}px", style = MaterialTheme.typography.bodyMedium)
                     }
                     Slider(
                         value = viewModel.fontSize.toFloat(),
-                        onValueChange = { viewModel.updateFontSize(it.roundToInt()) },
+                        onValueChange = { viewModel.updateFontSize((it * 2f).roundToInt() / 2.0) },
                         valueRange = 12f..72f,
-                        steps = 59
+                        steps = 119
                     )
                 }
 
@@ -243,13 +243,13 @@ fun AppearanceSheet(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Line Height", style = MaterialTheme.typography.bodyMedium)
-                        Text("%.1f".format(viewModel.lineHeight), style = MaterialTheme.typography.bodyMedium)
+                        Text("%.2f".format(viewModel.lineHeight), style = MaterialTheme.typography.bodyMedium)
                     }
                     Slider(
                         value = viewModel.lineHeight.toFloat(),
-                        onValueChange = { viewModel.updateLineHeight(it.toDouble()) },
+                        onValueChange = { viewModel.updateLineHeight((it * 20f).roundToInt() / 20.0) },
                         valueRange = 1.0f..2.5f,
-                        steps = 14
+                        steps = 29
                     )
                 }
 
@@ -290,13 +290,13 @@ fun AppearanceSheet(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Horizontal Padding", style = MaterialTheme.typography.bodyMedium)
-                        Text("${viewModel.horizontalPadding}%", style = MaterialTheme.typography.bodyMedium)
+                        Text("${if (viewModel.horizontalPadding % 1.0 == 0.0) viewModel.horizontalPadding.toInt() else viewModel.horizontalPadding}%", style = MaterialTheme.typography.bodyMedium)
                     }
                     Slider(
                         value = viewModel.horizontalPadding.toFloat(),
-                        onValueChange = { viewModel.updateHorizontalPadding(it.roundToInt()) },
+                        onValueChange = { viewModel.updateHorizontalPadding((it * 2f).roundToInt() / 2.0) },
                         valueRange = 0f..50f,
-                        steps = 49
+                        steps = 99
                     )
                 }
 
@@ -306,13 +306,13 @@ fun AppearanceSheet(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Vertical Padding", style = MaterialTheme.typography.bodyMedium)
-                        Text("${viewModel.verticalPadding}%", style = MaterialTheme.typography.bodyMedium)
+                        Text("${if (viewModel.verticalPadding % 1.0 == 0.0) viewModel.verticalPadding.toInt() else viewModel.verticalPadding}%", style = MaterialTheme.typography.bodyMedium)
                     }
                     Slider(
                         value = viewModel.verticalPadding.toFloat(),
-                        onValueChange = { viewModel.updateVerticalPadding(it.roundToInt()) },
+                        onValueChange = { viewModel.updateVerticalPadding((it * 2f).roundToInt() / 2.0) },
                         valueRange = 0f..50f,
-                        steps = 49
+                        steps = 99
                     )
                 }
             }
@@ -423,9 +423,9 @@ fun AppearanceSheet(
                             }
                             Slider(
                                 value = viewModel.characterSpacing.toFloat(),
-                                onValueChange = { viewModel.updateCharacterSpacing(it.toDouble()) },
+                                onValueChange = { viewModel.updateCharacterSpacing((it * 20f).roundToInt() / 20.0) },
                                 valueRange = 0f..0.5f,
-                                steps = 10
+                                steps = 9
                             )
                         }
 
@@ -440,9 +440,9 @@ fun AppearanceSheet(
                             }
                             Slider(
                                 value = viewModel.paragraphSpacing.toFloat(),
-                                onValueChange = { viewModel.updateParagraphSpacing(it.toDouble()) },
+                                onValueChange = { viewModel.updateParagraphSpacing((it * 20f).roundToInt() / 20.0) },
                                 valueRange = 0f..2f,
-                                steps = 19
+                                steps = 39
                             )
                         }
                     }

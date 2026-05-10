@@ -52,12 +52,12 @@ sealed interface WebViewCommand {
 }
 
 data class ReaderSettings(
-    val fontSize: Int = 18,
+    val fontSize: Double = 18.0,
     val lineHeight: Double = 1.6,
     val characterSpacing: Double = 0.0,
     val paragraphSpacing: Double = 0.0,
-    val horizontalPadding: Int = 10,
-    val verticalPadding: Int = 10,
+    val horizontalPadding: Double = 10.0,
+    val verticalPadding: Double = 10.0,
     val selectedFont: String = "System Serif",
     val fontUrl: String? = null, // Custom font file URL for @font-face
     val theme: String = "system", // "light", "dark", "sepia", "system"
@@ -148,10 +148,10 @@ class ReaderViewModel(
 
     // Settings state
     var theme by mutableStateOf(Theme.SYSTEM)
-    var fontSize by mutableIntStateOf(18)
+    var fontSize by mutableDoubleStateOf(18.0)
     var lineHeight by mutableDoubleStateOf(1.6)
-    var horizontalPadding by mutableIntStateOf(10)
-    var verticalPadding by mutableIntStateOf(10)
+    var horizontalPadding by mutableDoubleStateOf(10.0)
+    var verticalPadding by mutableDoubleStateOf(10.0)
     var selectedFont by mutableStateOf("System")
     var continuousMode by mutableStateOf(false)
     var customBackgroundColor by mutableIntStateOf(0xFFF2E2C9.toInt())
@@ -363,10 +363,10 @@ class ReaderViewModel(
     }
 
     fun updateTheme(value: Theme) = scope.launch { settings.setTheme(value) }
-    fun updateFontSize(value: Int) = scope.launch { settings.setFontSize(value) }
+    fun updateFontSize(value: Double) = scope.launch { settings.setFontSize(value) }
     fun updateLineHeight(value: Double) = scope.launch { settings.setLineHeight(value) }
-    fun updateHorizontalPadding(value: Int) = scope.launch { settings.setHorizontalPadding(value) }
-    fun updateVerticalPadding(value: Int) = scope.launch { settings.setVerticalPadding(value) }
+    fun updateHorizontalPadding(value: Double) = scope.launch { settings.setHorizontalPadding(value) }
+    fun updateVerticalPadding(value: Double) = scope.launch { settings.setVerticalPadding(value) }
     fun updateSelectedFont(value: String) = scope.launch { settings.setSelectedFont(value) }
     fun updateContinuousMode(value: Boolean) = scope.launch { settings.setContinuousMode(value) }
     fun updateCustomBackgroundColor(value: Int) = scope.launch { settings.setCustomBackgroundColor(value) }

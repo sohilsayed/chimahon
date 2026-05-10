@@ -50,7 +50,7 @@ fun ReaderScreen(
     var focusMode by remember { mutableStateOf(false) }
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
     val scope = rememberCoroutineScope()
-    val settings = remember { com.canopus.chimareader.data.NovelReaderSettings(context) }
+    val settings = remember(book.lang) { com.canopus.chimareader.data.NovelReaderSettings(context, book.lang) }
 
     // Collect swipe and tap settings
     val chapterSwipeDistance by settings.chapterSwipeDistance.collectAsState(initial = 96)

@@ -41,6 +41,7 @@ open class NovelReaderActivity : ComponentActivity() {
     protected var isPopupActive by androidx.compose.runtime.mutableStateOf(false)
 
     protected var readerViewModel by androidx.compose.runtime.mutableStateOf<ReaderViewModel?>(null)
+    protected var bookMetadata: BookMetadata? = null
 
     protected open fun handleVolumeKey(forward: Boolean): Boolean {
         val vm = readerViewModel ?: return false
@@ -112,9 +113,8 @@ open class NovelReaderActivity : ComponentActivity() {
             return
         }
 
-        val settings = NovelReaderSettings(this)
-
         val metadata = BookStorage.loadMetadata(root) ?: BookMetadata(folder = root.name)
+        bookMetadata = metadata
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setFlags(

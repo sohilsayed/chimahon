@@ -25,6 +25,7 @@ class DictionaryProfileResolver(
     private val profileStore: AnkiProfileStore,
     private val readMangaOverride: (mangaId: Long) -> String,
     private val readSourceOverride: (sourceId: Long) -> String,
+    private val readNovelOverride: (novelId: String) -> String = { "" },
 ) {
 
     /**
@@ -33,12 +34,14 @@ class DictionaryProfileResolver(
      * @param mangaId   ID of the manga being read (0 if unknown / novel context)
      * @param sourceId  ID of the source (0 if unknown)
      * @param sourceLang BCP-47 language code from the source, e.g. "ja", "all", "" (unknown)
+     * @param novelId   ID of the novel being read ("" if unknown)
      * @return the resolved [AnkiProfile]; never null (falls back to first available)
      */
     fun resolve(
         mangaId: Long = 0L,
         sourceId: Long = 0L,
         sourceLang: String = "",
+        novelId: String = "",
     ): AnkiProfile {
         val profiles = profileStore.getProfiles()
         if (profiles.isEmpty()) return profileStore.getActiveProfile()
@@ -53,6 +56,13 @@ class DictionaryProfileResolver(
         // 2. Source-level override
         if (sourceId != 0L) {
             val overrideId = readSourceOverride(sourceId)
+            val found = profiles.firstOrNull { it.id == overrideId }
+            if (found != null) return found
+        }
+
+        // 2.5. Novel-level override
+        if (novelId.isNotBlank()) {
+            val overrideId = readNovelOverride(novelId)
             val found = profiles.firstOrNull { it.id == overrideId }
             if (found != null) return found
         }
@@ -75,5 +85,8 @@ class DictionaryProfileResolver(
 
         /** SharedPreferences key for a source-level profile override. */
         fun sourceOverrideKey(sourceId: Long) = "pref_dict_profile_source_$sourceId"
+
+        /** SharedPreferences key for a novel-level profile override. */
+        fun novelOverrideKey(novelId: String) = "pref_dict_profile_novel_$novelId"
     }
 }

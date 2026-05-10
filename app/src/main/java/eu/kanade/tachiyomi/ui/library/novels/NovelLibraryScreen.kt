@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -43,13 +45,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -82,7 +92,10 @@ import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.presentation.core.util.plus
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextField
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Screen.NovelLibraryScreen() {
     val navigator = LocalNavigator.currentOrThrow
@@ -149,6 +162,8 @@ fun Screen.NovelLibraryScreen() {
         bottomBar = {
             NovelSelectionBar(
                 visible = state.selectionMode,
+                onEditClicked = screenModel::showEditDialog,
+                canEdit = state.selection.size == 1,
                 onChangeCategoryClicked = screenModel::showChangeCategoryDialog,
                 onDeleteClicked = screenModel::showDeleteConfirmDialog,
                 onResetClicked = screenModel::resetStatsForSelected,
@@ -252,6 +267,161 @@ fun Screen.NovelLibraryScreen() {
                         Text(stringResource(MR.strings.action_cancel))
                     }
                 },
+            )
+        }
+
+        is NovelLibraryScreenModel.Dialog.EditBook -> {
+            val book = dialog.book
+            val dictPrefs = remember { Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>() }
+            val profiles = remember { dictPrefs.profileStore.getProfiles() }
+            val novelOverrideKey = chimahon.dictionary.DictionaryProfileResolver.novelOverrideKey(book.id)
+            val initialOverride = remember { dictPrefs.rawProfileOverride(novelOverrideKey).get() }
+
+            var editTitle by remember { mutableStateOf(book.title ?: "") }
+            var editAuthor by remember { mutableStateOf(book.author ?: "") }
+            var editLang by remember { mutableStateOf(book.lang ?: "") }
+            var selectedOverride by remember { mutableStateOf(initialOverride) }
+
+            val sourcePreferences = remember { Injekt.get<eu.kanade.domain.source.service.SourcePreferences>() }
+            val enabledLanguages = remember {
+                val langs = sourcePreferences.enabledLanguages().get()
+                langs.filter { it != "all" }.sortedWith { a, b ->
+                    eu.kanade.tachiyomi.util.system.LocaleHelper.getDisplayName(a)
+                        .compareTo(eu.kanade.tachiyomi.util.system.LocaleHelper.getDisplayName(b))
+                }
+            }
+
+            val resolvedAutoProfile = remember(editLang) {
+                dictPrefs.profileResolver.resolve(
+                    sourceId = 0L,
+                    sourceLang = editLang,
+                    novelId = ""
+                )
+            }
+            val autoLabel = "Auto (${resolvedAutoProfile.name})"
+
+            AlertDialog(
+                onDismissRequest = onDismissRequest,
+                title = { Text(stringResource(MR.strings.action_edit)) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        androidx.compose.material3.TextField(
+                            value = editTitle,
+                            onValueChange = { editTitle = it },
+                            label = { Text("Title") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        androidx.compose.material3.TextField(
+                            value = editAuthor,
+                            onValueChange = { editAuthor = it },
+                            label = { Text("Author") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        
+                        var langExpanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
+                            expanded = langExpanded,
+                            onExpandedChange = { langExpanded = it }
+                        ) {
+                            val langDisplayName = if (editLang.isEmpty()) "None" else eu.kanade.tachiyomi.util.system.LocaleHelper.getDisplayName(editLang)
+                            androidx.compose.material3.TextField(
+                                value = langDisplayName,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Language") },
+                                trailingIcon = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = langExpanded) },
+                                modifier = Modifier.menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = langExpanded,
+                                onDismissRequest = { langExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("None") },
+                                    onClick = {
+                                        editLang = ""
+                                        langExpanded = false
+                                    }
+                                )
+                                enabledLanguages.forEach { lang ->
+                                    DropdownMenuItem(
+                                        text = { Text(eu.kanade.tachiyomi.util.system.LocaleHelper.getDisplayName(lang)) },
+                                        onClick = {
+                                            editLang = lang
+                                            langExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        
+                        var profileExpanded by remember { mutableStateOf(false) }
+                        val selectedName = if (selectedOverride.isEmpty()) {
+                            autoLabel
+                        } else {
+                            profiles.firstOrNull { it.id == selectedOverride }?.name ?: autoLabel
+                        }
+                        
+                        ExposedDropdownMenuBox(
+                            expanded = profileExpanded,
+                            onExpandedChange = { profileExpanded = it }
+                        ) {
+                            androidx.compose.material3.TextField(
+                                value = selectedName,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Anki Profile Override") },
+                                trailingIcon = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = profileExpanded) },
+                                modifier = Modifier.menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = profileExpanded,
+                                onDismissRequest = { profileExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(autoLabel) },
+                                    onClick = {
+                                        selectedOverride = ""
+                                        profileExpanded = false
+                                    }
+                                )
+                                profiles.forEach { p ->
+                                    DropdownMenuItem(
+                                        text = { Text(p.name) },
+                                        onClick = {
+                                            selectedOverride = p.id
+                                            profileExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val updatedBook = book.copy(
+                                title = editTitle.ifBlank { null },
+                                author = editAuthor.ifBlank { null },
+                                lang = editLang.ifBlank { null }
+                            )
+                            screenModel.updateBookMetadata(updatedBook, selectedOverride)
+                        }
+                    ) {
+                        Text(stringResource(MR.strings.action_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismissRequest) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                }
             )
         }
 
@@ -502,6 +672,8 @@ fun NovelLibraryContent(
 @Composable
 fun NovelSelectionBar(
     visible: Boolean,
+    onEditClicked: () -> Unit,
+    canEdit: Boolean,
     onChangeCategoryClicked: () -> Unit,
     onDeleteClicked: () -> Unit,
     onResetClicked: () -> Unit,
@@ -527,6 +699,13 @@ fun NovelSelectionBar(
                     .padding(horizontal = 8.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
+                if (canEdit) {
+                    SelectionButton(
+                        title = stringResource(MR.strings.action_edit),
+                        icon = Icons.Outlined.Edit,
+                        onClick = onEditClicked,
+                    )
+                }
                 SelectionButton(
                     title = stringResource(MR.strings.action_mark_as_unread),
                     icon = Icons.Outlined.RestartAlt,

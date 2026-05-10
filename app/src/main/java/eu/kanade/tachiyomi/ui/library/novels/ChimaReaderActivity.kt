@@ -57,7 +57,12 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
         val prefs = Injekt.get<DictionaryPreferences>()
-        val profile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile().also { cachedActiveProfile = it }
+        val novelId = bookMetadata?.id ?: ""
+        val novelLang = bookMetadata?.lang ?: ""
+        val profile = cachedActiveProfile ?: prefs.profileResolver.resolve(
+            novelId = novelId,
+            sourceLang = novelLang,
+        ).also { cachedActiveProfile = it }
         val paths = cachedTermPaths ?: getDictionaryPaths(this, profile).also { cachedTermPaths = it }
         return profile to paths
     }
@@ -70,13 +75,13 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
         val prefs = Injekt.get<DictionaryPreferences>()
 
-        // Warm up and populate the cache on a background thread.
-        // Novel reader has no manga/source context → always falls through to global profile.
-        thread(name = "DictionaryWarmup", start = true) {
-        // Warm up and populate the cache off the main thread.
-        // Novel reader has no manga/source context → always falls through to global profile.
         lifecycleScope.launch(Dispatchers.Default) {
-            val profile = prefs.profileStore.getActiveProfile()
+            val novelId = bookMetadata?.id ?: ""
+            val novelLang = bookMetadata?.lang ?: ""
+            val profile = prefs.profileResolver.resolve(
+                novelId = novelId,
+                sourceLang = novelLang,
+            )
             val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
             cachedActiveProfile = profile
             cachedTermPaths = termPaths
@@ -91,8 +96,6 @@ class ChimaReaderActivity : NovelReaderActivity() {
             }
         }
 
-        // Invalidate cached profile+paths whenever the active profile changes so the
-        // next lookup picks up the new dictionaries/order without a full restart.
         lifecycleScope.launch {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 prefs.rawActiveProfileId().changes().collect {
@@ -235,13 +238,10 @@ class ChimaReaderActivity : NovelReaderActivity() {
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
         val (profile, termPaths) = getOrRefreshLookupPaths()
-
-        lookupDeferred = lifecycleScope.async(Dispatchers.IO) {
         cancelActiveLookup()
         lookupDeferred = lifecycleScope.async(Dispatchers.Default) {
             Injekt.get<DictionaryRepository>().lookup(word.trim(), termPaths, profile.languageCode)
         }
-
         lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting, profile)
         isPopupActive = true
     }

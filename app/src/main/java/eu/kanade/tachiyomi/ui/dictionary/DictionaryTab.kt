@@ -614,7 +614,7 @@ data object DictionaryTab : Tab {
             val effectiveLang = languageCode.lowercase()
             val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
             val results = if (effectiveLang == "ja") {
-                HoshiDicts.lookup(activeSession, query, 50, 16).toList()
+                HoshiDicts.lookup(activeSession, query, 50).toList()
             } else if (genericDeinflector != null) {
                 val preprocessed = genericDeinflector.preProcess(query)
                 val deinflected = preprocessed.flatMap { genericDeinflector.deinflect(it, effectiveLang) }
@@ -626,7 +626,7 @@ data object DictionaryTab : Tab {
                     genericDeinflector.wrapResults(query, candidates, terms.toList())
                 }
             } else {
-                HoshiDicts.lookup(activeSession, query, 50, 16).toList()
+                HoshiDicts.lookup(activeSession, query, 50).toList()
             }
             val lookupMs = SystemClock.elapsedRealtime() - lookupStart
 

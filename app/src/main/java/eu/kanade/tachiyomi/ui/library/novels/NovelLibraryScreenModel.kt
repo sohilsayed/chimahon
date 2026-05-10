@@ -153,6 +153,32 @@ class NovelLibraryScreenModel(
         mutableState.update { it.copy(dialog = Dialog.DeleteConfirm) }
     }
 
+    fun showEditDialog() {
+        val state = mutableState.value
+        if (state.selection.size == 1) {
+            val bookId = state.selection.first()
+            val book = state.books.find { it.id == bookId }
+            if (book != null) {
+                mutableState.update { it.copy(dialog = Dialog.EditBook(book)) }
+            }
+        }
+    }
+
+    fun updateBookMetadata(book: BookMetadata, selectedOverride: String) {
+        screenModelScope.launch {
+            val bookDir = BookStorage.getBookDirectory(app, book.id)
+            BookStorage.saveMetadata(book, bookDir)
+            
+            // Save override
+            val dictPrefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+            val novelOverrideKey = chimahon.dictionary.DictionaryProfileResolver.novelOverrideKey(book.id)
+            dictPrefs.rawProfileOverride(novelOverrideKey).set(selectedOverride)
+            
+            loadLibrary()
+            closeDialog()
+        }
+    }
+
     fun closeDialog() {
         mutableState.update { it.copy(dialog = null) }
     }
@@ -166,6 +192,7 @@ class NovelLibraryScreenModel(
         data object DeleteConfirm : Dialog
         data object SortFilter : Dialog
         data object Settings : Dialog
+        data class EditBook(val book: BookMetadata) : Dialog
     }
 
     @Immutable
@@ -200,9 +227,9 @@ class NovelLibraryScreenModel(
             }
             
             val comparator = when (sortMode) {
-                SortMode.Alphabetical -> compareBy<BookMetadata> { it.title?.lowercase() ?: "" }
-                SortMode.DateAdded -> compareBy<BookMetadata> { it.dateAdded }
-                SortMode.LastRead -> compareBy<BookMetadata> { it.lastAccess }
+                SortMode.Alphabetical -> compareBy<BookMetadata>({ it.title?.lowercase() ?: "" }, { it.id })
+                SortMode.DateAdded -> compareBy<BookMetadata>({ it.dateAdded }, { it.title?.lowercase() ?: "" }, { it.id })
+                SortMode.LastRead -> compareBy<BookMetadata>({ it.lastAccess }, { it.title?.lowercase() ?: "" }, { it.id })
             }
 
             return if (sortDescending) {
