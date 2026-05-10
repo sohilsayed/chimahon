@@ -1,6 +1,6 @@
 package eu.kanade.presentation.anime.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,13 +27,16 @@ import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.ui.player.buildProgressString
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
+import tachiyomi.presentation.core.util.selectedBackground
 
 @Composable
 fun AnimeEpisodeListItem(
     episode: Episode,
     downloadState: AnimeDownload.State,
     downloadProgress: Int,
+    selected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onDownloadClick: () -> Unit,
     onDeleteDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -47,7 +50,11 @@ fun AnimeEpisodeListItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .selectedBackground(selected)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

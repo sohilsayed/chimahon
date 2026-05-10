@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.anime
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.core.util.addOrRemove
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
@@ -30,6 +31,7 @@ import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.model.EpisodeUpdate
 import tachiyomi.domain.episode.repository.EpisodeRepository
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.manga.model.applyFilter
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -48,8 +50,12 @@ class AnimeScreenModel(
     private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
 ) : StateScreenModel<AnimeScreenModel.State>(State.Loading) {
 
+    private val selectedPositions: Array<Int> = arrayOf(-1, -1)
+    private val selectedEpisodeIds: HashSet<Long> = HashSet()
+
     init {
         screenModelScope.launchIO {
+            fetchAnimeFromSourceIfNeeded()
             fetchEpisodesFromSourceIfNeeded()
         }
 
@@ -63,29 +69,180 @@ class AnimeScreenModel(
                 val sortedEpisodes = applySort(anime, episodes)
                 val filteredEpisodes = applyFilters(anime, sortedEpisodes)
                 val queueById = downloadQueue.associateBy { it.episode.id }
-                val episodeDownloadState = buildMap {
-                    for (ep in episodes) {
-                        val dl = queueById[ep.id]
-                        if (dl != null) {
-                            put(ep.id, EpisodeDownloadState(dl.status, dl.progress))
-                        } else if (animeDownloadManager.isEpisodeDownloaded(ep.name, ep.scanlator, anime.title, anime.source)) {
-                            put(ep.id, EpisodeDownloadState(AnimeDownload.State.DOWNLOADED, 100))
-                        }
+
+                val episodeItems = filteredEpisodes.map { episode ->
+                    val dl = queueById[episode.id]
+                    val downloadState = when {
+                        dl != null -> dl.status
+                        animeDownloadManager.isEpisodeDownloaded(
+                            episode.name,
+                            episode.scanlator,
+                            anime.title,
+                            anime.source,
+                        ) -> AnimeDownload.State.DOWNLOADED
+                        else -> AnimeDownload.State.NOT_DOWNLOADED
                     }
+                    EpisodeList.Item(
+                        episode = episode,
+                        downloadState = downloadState,
+                        downloadProgress = dl?.progress ?: 0,
+                        selected = episode.id in selectedEpisodeIds,
+                    )
                 }
+
+                val allEpisodes = episodes
+                val nextUnseen = allEpisodes.asSequence()
+                    .filter { !it.seen }
+                    .minByOrNull { it.sourceOrder }
+
                 State.Success(
                     anime = anime,
-                    episodes = filteredEpisodes,
-                    allEpisodeCount = episodes.size,
-                    nextUnseenEpisode = episodes.asSequence().filter { !it.seen }.minByOrNull { it.sourceOrder },
-                    episodeDownloadState = episodeDownloadState,
+                    episodes = episodeItems,
+                    allEpisodeCount = allEpisodes.size,
+                    nextUnseenEpisode = nextUnseen,
                 )
             }.collectLatest { newState ->
                 mutableState.update { old ->
                     val dialog = (old as? State.Success)?.dialog
-                    newState.copy(dialog = dialog)
+                    val refreshing = (old as? State.Success)?.isRefreshingData ?: false
+                    newState.copy(dialog = dialog, isRefreshingData = refreshing)
                 }
             }
+        }
+    }
+
+    private inline fun updateSuccessState(func: (State.Success) -> State.Success) {
+        mutableState.update {
+            when (it) {
+                State.Loading -> it
+                is State.Success -> func(it)
+            }
+        }
+    }
+
+    // region Selection
+
+    fun toggleSelection(
+        item: EpisodeList.Item,
+        selected: Boolean,
+        userSelected: Boolean = false,
+        fromLongPress: Boolean = false,
+    ) {
+        updateSuccessState { successState ->
+            val newEpisodes = successState.episodes.toMutableList().apply {
+                val selectedIndex = indexOfFirst { it.id == item.episode.id }
+                if (selectedIndex < 0) return@apply
+
+                val selectedItem = get(selectedIndex)
+                if (selectedItem.selected == selected) return@apply
+
+                val firstSelection = none { it.selected }
+                set(selectedIndex, selectedItem.copy(selected = selected))
+                selectedEpisodeIds.addOrRemove(item.id, selected)
+
+                if (selected && userSelected && fromLongPress) {
+                    if (firstSelection) {
+                        selectedPositions[0] = selectedIndex
+                        selectedPositions[1] = selectedIndex
+                    } else {
+                        val range: IntRange
+                        if (selectedIndex < selectedPositions[0]) {
+                            range = selectedIndex + 1..<selectedPositions[0]
+                            selectedPositions[0] = selectedIndex
+                        } else if (selectedIndex > selectedPositions[1]) {
+                            range = (selectedPositions[1] + 1)..<selectedIndex
+                            selectedPositions[1] = selectedIndex
+                        } else {
+                            range = IntRange.EMPTY
+                        }
+
+                        range.forEach {
+                            val inBetweenItem = get(it)
+                            if (!inBetweenItem.selected) {
+                                selectedEpisodeIds.add(inBetweenItem.id)
+                                set(it, inBetweenItem.copy(selected = true))
+                            }
+                        }
+                    }
+                } else if (userSelected && !fromLongPress) {
+                    if (!selected) {
+                        if (selectedIndex == selectedPositions[0]) {
+                            selectedPositions[0] = indexOfFirst { it.selected }
+                        } else if (selectedIndex == selectedPositions[1]) {
+                            selectedPositions[1] = indexOfLast { it.selected }
+                        }
+                    } else {
+                        if (selectedIndex < selectedPositions[0]) {
+                            selectedPositions[0] = selectedIndex
+                        } else if (selectedIndex > selectedPositions[1]) {
+                            selectedPositions[1] = selectedIndex
+                        }
+                    }
+                }
+            }
+            successState.copy(episodes = newEpisodes)
+        }
+    }
+
+    fun toggleAllSelection(selected: Boolean) {
+        updateSuccessState { successState ->
+            val newEpisodes = successState.episodes.map {
+                selectedEpisodeIds.addOrRemove(it.id, selected)
+                it.copy(selected = selected)
+            }
+            selectedPositions[0] = -1
+            selectedPositions[1] = -1
+            successState.copy(episodes = newEpisodes)
+        }
+    }
+
+    fun invertSelection() {
+        updateSuccessState { successState ->
+            val newEpisodes = successState.episodes.map {
+                selectedEpisodeIds.addOrRemove(it.id, !it.selected)
+                it.copy(selected = !it.selected)
+            }
+            selectedPositions[0] = -1
+            selectedPositions[1] = -1
+            successState.copy(episodes = newEpisodes)
+        }
+    }
+
+    // endregion
+
+    // region Source sync
+
+    private suspend fun fetchAnimeFromSourceIfNeeded() {
+        val anime = getAnime.await(animeId) ?: return
+        if (anime.initialized && !anime.description.isNullOrBlank()) return
+        fetchAnimeFromSource()
+    }
+
+    private suspend fun fetchAnimeFromSource() {
+        val anime = getAnime.await(animeId) ?: return
+        val source = animeSourceManager.get(anime.source) ?: return
+
+        try {
+            val sAnime = SAnime.create().apply {
+                url = anime.url
+                title = anime.title
+            }
+            val networkAnime = source.getAnimeDetails(sAnime)
+            updateAnime.await(
+                AnimeUpdate(
+                    id = anime.id,
+                    title = networkAnime.title.takeIf { it.isNotBlank() } ?: anime.title,
+                    artist = networkAnime.artist,
+                    author = networkAnime.author,
+                    description = networkAnime.description,
+                    genre = networkAnime.getGenres(),
+                    status = networkAnime.status.toLong(),
+                    thumbnailUrl = networkAnime.thumbnail_url,
+                    initialized = true,
+                ),
+            )
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to fetch anime details from source" }
         }
     }
 
@@ -134,6 +291,10 @@ class AnimeScreenModel(
         )
     }
 
+    // endregion
+
+    // region Sorting & Filtering
+
     private fun applySort(anime: Anime, episodes: List<Episode>): List<Episode> {
         val comparator: Comparator<Episode> = when (anime.sorting) {
             Anime.EPISODE_SORTING_NUMBER -> compareBy { it.episodeNumber }
@@ -155,9 +316,16 @@ class AnimeScreenModel(
         }
     }
 
+    // endregion
+
+    // region Actions
+
     fun refreshEpisodes() {
         screenModelScope.launchIO {
+            updateSuccessState { it.copy(isRefreshingData = true) }
+            fetchAnimeFromSource()
             syncEpisodesFromSource()
+            updateSuccessState { it.copy(isRefreshingData = false) }
         }
     }
 
@@ -179,6 +347,25 @@ class AnimeScreenModel(
             setSeenStatus.await(
                 seen = seen,
                 episodes = episodes.toTypedArray(),
+            )
+        }
+    }
+
+    fun markPreviousAsSeen(episode: Episode) {
+        screenModelScope.launchNonCancellable {
+            val successState = state.value as? State.Success ?: return@launchNonCancellable
+            val allEpisodes = successState.episodes.map { it.episode }
+            val index = allEpisodes.indexOfFirst { it.id == episode.id }
+            if (index < 0) return@launchNonCancellable
+
+            val previousEpisodes = if (successState.anime.sortDescending()) {
+                allEpisodes.subList(index + 1, allEpisodes.size)
+            } else {
+                allEpisodes.subList(0, index)
+            }
+            setSeenStatus.await(
+                seen = true,
+                episodes = previousEpisodes.toTypedArray(),
             )
         }
     }
@@ -205,19 +392,42 @@ class AnimeScreenModel(
         }
     }
 
-    fun setUnseenFilter(flag: Long) {
+    fun setUnseenFilter(state: TriState) {
+        val flag = when (state) {
+            TriState.DISABLED -> Anime.SHOW_ALL
+            TriState.ENABLED_IS -> Anime.EPISODE_SHOW_UNSEEN
+            TriState.ENABLED_NOT -> Anime.EPISODE_SHOW_SEEN
+        }
         screenModelScope.launchNonCancellable {
-            val anime = (state.value as? State.Success)?.anime ?: return@launchNonCancellable
+            val anime = (this@AnimeScreenModel.state.value as? State.Success)?.anime
+                ?: return@launchNonCancellable
             setAnimeEpisodeFlags.awaitSetUnseenFilter(anime, flag)
         }
     }
 
-    fun setBookmarkFilter(flag: Long) {
+    fun setBookmarkFilter(state: TriState) {
+        val flag = when (state) {
+            TriState.DISABLED -> Anime.SHOW_ALL
+            TriState.ENABLED_IS -> Anime.EPISODE_SHOW_BOOKMARKED
+            TriState.ENABLED_NOT -> Anime.EPISODE_SHOW_NOT_BOOKMARKED
+        }
         screenModelScope.launchNonCancellable {
-            val anime = (state.value as? State.Success)?.anime ?: return@launchNonCancellable
+            val anime = (this@AnimeScreenModel.state.value as? State.Success)?.anime
+                ?: return@launchNonCancellable
             setAnimeEpisodeFlags.awaitSetBookmarkFilter(anime, flag)
         }
     }
+
+    fun setDisplayMode(mode: Long) {
+        screenModelScope.launchNonCancellable {
+            val anime = (state.value as? State.Success)?.anime ?: return@launchNonCancellable
+            setAnimeEpisodeFlags.awaitSetDisplayMode(anime, mode)
+        }
+    }
+
+    // endregion
+
+    // region Downloads
 
     fun startDownload(episode: Episode) {
         screenModelScope.launchIO {
@@ -275,6 +485,15 @@ class AnimeScreenModel(
         }
     }
 
+    fun deleteEpisodeDownloads(episodes: List<Episode>) {
+        screenModelScope.launchNonCancellable {
+            val successState = state.value as? State.Success ?: return@launchNonCancellable
+            val anime = successState.anime
+            val source = animeSourceManager.get(anime.source) ?: return@launchNonCancellable
+            animeDownloadManager.deleteEpisodes(episodes, anime, source)
+        }
+    }
+
     private suspend fun resolveVideosForEpisode(source: AnimeHttpSource, episode: Episode): List<Video> {
         return withIOContext {
             val sEpisode = SEpisode.create().apply {
@@ -302,7 +521,6 @@ class AnimeScreenModel(
                 } catch (_: Throwable) {}
             }
 
-            // Resolve URLs
             videos.mapNotNull { video ->
                 var resolved = video
                 try {
@@ -324,29 +542,21 @@ class AnimeScreenModel(
         }
     }
 
+    // endregion
+
+    // region Dialog
+
     fun showDialog(dialog: Dialog) {
-        mutableState.update { state ->
-            when (state) {
-                is State.Success -> state.copy(dialog = dialog)
-                else -> state
-            }
-        }
+        updateSuccessState { it.copy(dialog = dialog) }
     }
 
     fun dismissDialog() {
-        mutableState.update { state ->
-            when (state) {
-                is State.Success -> state.copy(dialog = null)
-                else -> state
-            }
-        }
+        updateSuccessState { it.copy(dialog = null) }
     }
 
-    @Immutable
-    data class EpisodeDownloadState(
-        val status: AnimeDownload.State,
-        val progress: Int,
-    )
+    // endregion
+
+    // region State definitions
 
     sealed interface State {
         @Immutable
@@ -355,17 +565,51 @@ class AnimeScreenModel(
         @Immutable
         data class Success(
             val anime: Anime,
-            val episodes: List<Episode>,
+            val episodes: List<EpisodeList.Item>,
             val allEpisodeCount: Int = 0,
             val nextUnseenEpisode: Episode? = null,
-            val episodeDownloadState: Map<Long, EpisodeDownloadState> = emptyMap(),
+            val isRefreshingData: Boolean = false,
             val dialog: Dialog? = null,
-        ) : State
+        ) : State {
+            val isAnySelected by lazy {
+                episodes.any { it.selected }
+            }
+
+            val selectedEpisodes by lazy {
+                episodes.filter { it.selected }
+            }
+
+            val filterActive: Boolean
+                get() = anime.unseenFilter != TriState.DISABLED || anime.bookmarkedFilter != TriState.DISABLED
+        }
     }
 
     sealed interface Dialog {
         data object ConfirmDelete : Dialog
+        data object SettingsSheet : Dialog
         data class DownloadLoading(val episode: Episode) : Dialog
         data class QualitySelection(val episode: Episode, val videos: List<Video>) : Dialog
+    }
+
+    // endregion
+}
+
+@Immutable
+sealed class EpisodeList {
+    @Immutable
+    data class MissingCount(
+        val id: String,
+        val count: Int,
+    ) : EpisodeList()
+
+    @Immutable
+    data class Item(
+        val episode: Episode,
+        val downloadState: AnimeDownload.State,
+        val downloadProgress: Int,
+        val selected: Boolean = false,
+    ) : EpisodeList() {
+        val id = episode.id
+        val isDownloaded = downloadState == AnimeDownload.State.DOWNLOADED
     }
 }

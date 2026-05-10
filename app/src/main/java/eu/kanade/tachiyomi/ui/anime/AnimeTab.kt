@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.anime
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,9 +34,11 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.anime.library.AnimeLibraryContent
 import eu.kanade.presentation.anime.library.AnimeLibrarySettingsDialog
+import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.anime.library.AnimeLibraryScreenModel
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
+import kotlinx.coroutines.launch
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.AnimeLibraryPreferences
 import tachiyomi.i18n.MR
@@ -60,6 +64,7 @@ data object AnimeTab : Tab {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
+        val scope = rememberCoroutineScope()
         val screenModel = rememberScreenModel { AnimeLibraryScreenModel() }
         val state by screenModel.state.collectAsState()
         val preferences: AnimeLibraryPreferences = remember { Injekt.get() }
@@ -86,37 +91,52 @@ data object AnimeTab : Tab {
             }
         }
 
+        BackHandler(enabled = state.selectionMode) {
+            screenModel.clearSelection()
+        }
+
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(MR.strings.label_anime)) },
-                    actions = {
-                        IconButton(onClick = { showSettingsDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.FilterList,
-                                contentDescription = "Filter",
-                            )
-                        }
-                        IconButton(onClick = { showOverflowMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Outlined.PlayCircle,
-                                contentDescription = "More",
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(MR.strings.action_open_video)) },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showOpenVideoDialog = true
-                                },
-                            )
-                        }
-                    },
-                )
+                if (state.selectionMode) {
+                    BulkSelectionToolbar(
+                        selectedCount = state.selection.size,
+                        isRunning = false,
+                        onClickClearSelection = screenModel::clearSelection,
+                        onChangeCategoryClick = { /* TODO: open category picker */ },
+                        onSelectAll = { screenModel.selectAll(currentPage) },
+                        onReverseSelection = { screenModel.invertSelection(currentPage) },
+                    )
+                } else {
+                    TopAppBar(
+                        title = { Text(stringResource(MR.strings.label_anime)) },
+                        actions = {
+                            IconButton(onClick = { showSettingsDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.FilterList,
+                                    contentDescription = "Filter",
+                                )
+                            }
+                            IconButton(onClick = { showOverflowMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.PlayCircle,
+                                    contentDescription = "More",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(MR.strings.action_open_video)) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        showOpenVideoDialog = true
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { contentPadding ->
@@ -136,7 +156,12 @@ data object AnimeTab : Tab {
                     onAnimeClicked = { animeId -> navigator.push(AnimeScreen(animeId)) },
                     onContinueWatchingClicked = null,
                     onToggleSelection = { anime -> screenModel.toggleSelection(anime) },
-                    onRefresh = { false },
+                    onRefresh = {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Refreshing anime library...")
+                        }
+                        false
+                    },
                     getItemsForCategory = { category ->
                         state.library[category].orEmpty()
                     },

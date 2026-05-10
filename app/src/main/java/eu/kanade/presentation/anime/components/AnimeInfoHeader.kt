@@ -43,6 +43,8 @@ import tachiyomi.domain.anime.model.Anime
 fun AnimeInfoHeader(
     anime: Anime,
     onFavoriteToggle: () -> Unit,
+    onTagSearch: (String) -> Unit = {},
+    onCoverClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -62,7 +64,8 @@ fun AnimeInfoHeader(
                     modifier = Modifier
                         .width(100.dp)
                         .aspectRatio(2f / 3f)
-                        .clip(RoundedCornerShape(4.dp)),
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(onClick = onCoverClick),
                 )
             } else {
                 Icon(
@@ -127,7 +130,7 @@ fun AnimeInfoHeader(
             ) {
                 genres.forEach { genre ->
                     AssistChip(
-                        onClick = {},
+                        onClick = { onTagSearch(genre) },
                         label = { Text(genre, style = MaterialTheme.typography.labelSmall) },
                     )
                 }
