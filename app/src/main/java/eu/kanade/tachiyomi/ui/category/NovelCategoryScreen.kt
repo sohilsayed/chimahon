@@ -109,10 +109,16 @@ class NovelCategoryScreen : Screen() {
                         key = { category -> "novel-category-${category.id}" },
                     ) { category ->
                         ReorderableItem(reorderableState, "novel-category-${category.id}") {
+                            val categoryName = if (category.isSystemCategory) {
+                                stringResource(MR.strings.label_default)
+                            } else {
+                                category.name
+                            }
+
                             // Map NovelCategory to Category for UI reuse
                             val mappedCategory = Category(
-                                id = category.id.hashCode().toLong(),
-                                name = category.name,
+                                id = if (category.isSystemCategory) 0L else category.id.hashCode().toLong(),
+                                name = categoryName,
                                 order = category.order.toLong(),
                                 flags = category.flags,
                                 hidden = false

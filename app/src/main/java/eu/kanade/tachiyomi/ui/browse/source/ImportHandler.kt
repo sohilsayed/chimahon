@@ -20,52 +20,78 @@ import uy.kohesive.injekt.api.get
 
 object ImportHandler {
 
-    suspend fun importManga(context: Context, uris: List<Uri>) = withContext(Dispatchers.IO) {
+    suspend fun importMangaFiles(context: Context, uris: List<Uri>, folderName: String) = withContext(Dispatchers.IO) {
         val mangaRepository: MangaRepository = Injekt.get()
         val storageManager: StorageManager = Injekt.get()
         val libraryPreferences: LibraryPreferences = Injekt.get()
         
         val localSourceDir = storageManager.getLocalSourceDirectory() ?: return@withContext
+        val safeFolderName = MangaImportUtil.getSafeFolderName(folderName)
+        val mangaDir = localSourceDir.createDirectory(safeFolderName) ?: return@withContext
         
-        // Group by base title for smart volume detection
-        val grouped = uris.groupBy { uri ->
-            val fileName = getFileName(context, uri) ?: "Unknown"
-            MangaImportUtil.getBaseTitle(fileName)
+        uris.forEach { uri ->
+            val fileName = getFileName(context, uri) ?: return@forEach
+            val file = mangaDir.createFile(fileName) ?: return@forEach
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                file.openOutputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
         }
         
-        grouped.forEach { (baseTitle, files) ->
-            val safeFolderName = MangaImportUtil.getSafeFolderName(baseTitle)
-            val mangaDir = localSourceDir.createDirectory(safeFolderName) ?: return@forEach
-            
-            files.forEach { uri ->
-                val fileName = getFileName(context, uri) ?: return@forEach
-                val file = mangaDir.createFile(fileName) ?: return@forEach
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    file.openOutputStream().use { output ->
+        addMangaToLibrary(safeFolderName, mangaRepository, libraryPreferences)
+    }
+
+    suspend fun importMangaFolder(context: Context, uri: Uri, folderName: String) = withContext(Dispatchers.IO) {
+        val mangaRepository: MangaRepository = Injekt.get()
+        val storageManager: StorageManager = Injekt.get()
+        val libraryPreferences: LibraryPreferences = Injekt.get()
+        
+        val localSourceDir = storageManager.getLocalSourceDirectory() ?: return@withContext
+        val safeFolderName = MangaImportUtil.getSafeFolderName(folderName)
+        val mangaDir = localSourceDir.createDirectory(safeFolderName) ?: return@withContext
+        
+        val sourceDir = UniFile.fromUri(context, uri) ?: return@withContext
+        val destChapterDir = mangaDir.createDirectory(sourceDir.name ?: "Imported Folder") ?: return@withContext
+        
+        sourceDir.listFiles()?.forEach { file ->
+            if (!file.isDirectory) {
+                val destFile = destChapterDir.createFile(file.name) ?: return@forEach
+                file.openInputStream().use { input ->
+                    destFile.openOutputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
             }
-            
-            // Add to library
-            val existingManga = mangaRepository.getMangaByUrlAndSourceId(safeFolderName, LocalSource.ID)
-            val manga = if (existingManga == null) {
-                val newManga = Manga.create().copy(
-                    url = safeFolderName,
-                    ogTitle = baseTitle,
-                    source = LocalSource.ID,
-                    favorite = true,
-                    dateAdded = System.currentTimeMillis(),
-                )
-                mangaRepository.insertNetworkManga(listOf(newManga)).first()
-            } else {
-                if (!existingManga.favorite) {
-                    mangaRepository.update(MangaUpdate(id = existingManga.id, favorite = true))
-                }
-                existingManga
+        }
+        
+        addMangaToLibrary(safeFolderName, mangaRepository, libraryPreferences)
+    }
+
+    private suspend fun addMangaToLibrary(
+        safeFolderName: String,
+        mangaRepository: MangaRepository,
+        libraryPreferences: LibraryPreferences
+    ) {
+        val existingManga = mangaRepository.getMangaByUrlAndSourceId(safeFolderName, LocalSource.ID)
+        val manga = if (existingManga == null) {
+            val newManga = Manga.create().copy(
+                url = safeFolderName,
+                ogTitle = safeFolderName,
+                source = LocalSource.ID,
+                favorite = true,
+                dateAdded = System.currentTimeMillis(),
+            )
+            val added = mangaRepository.insertNetworkManga(listOf(newManga))
+            if (added.isNotEmpty()) added.first() else newManga
+        } else {
+            if (!existingManga.favorite) {
+                mangaRepository.update(MangaUpdate(id = existingManga.id, favorite = true))
             }
-            
-            // Add to default category if set
+            existingManga
+        }
+        
+        if (existingManga == null) {
             val defaultCategoryId = libraryPreferences.defaultCategory().get()
             if (defaultCategoryId != -1) {
                 mangaRepository.setMangaCategories(manga.id, listOf(defaultCategoryId.toLong()))
@@ -82,14 +108,16 @@ object ImportHandler {
             
             // Add to default novel category
             val categories = novelCategoryStorage.loadAllCategories()
-            val defaultCategory = categories.find { it.name == "Default" || it.id == "default" } 
-                ?: novelCategoryStorage.createCategory("Default")
+            val defaultCategory = categories.find { it.isSystemCategory } 
+                ?: categories.firstOrNull() // Should always have a system category now
             
-            val updatedMetadata = bookMetadata.copy(
-                categoryIds = (bookMetadata.categoryIds + defaultCategory.id).distinct()
-            )
-            val bookDir = java.io.File(com.canopus.chimareader.data.BookStorage.getBooksDirectory(context), updatedMetadata.id)
-            com.canopus.chimareader.data.BookStorage.saveMetadata(updatedMetadata, bookDir)
+            if (defaultCategory != null) {
+                val updatedMetadata = bookMetadata.copy(
+                    categoryIds = (bookMetadata.categoryIds + defaultCategory.id).distinct()
+                )
+                val bookDir = java.io.File(com.canopus.chimareader.data.BookStorage.getBooksDirectory(context), updatedMetadata.id)
+                com.canopus.chimareader.data.BookStorage.saveMetadata(updatedMetadata, bookDir)
+            }
         }
     }
 

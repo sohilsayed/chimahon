@@ -103,6 +103,7 @@
     <string name="action_open_random_manga">Open random entry</string>
     <string name="action_add_category">Add category</string>
     <string name="action_edit_categories">Edit manga categories</string>
+    <string name="action_edit_novel_categories">Edit novel categories</string>
     <string name="action_rename_category">Rename category</string>
     <string name="action_move_category">Set categories</string>
     <string name="delete_category_confirmation">Do you wish to delete the category \"%s\"?</string>

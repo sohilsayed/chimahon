@@ -7,6 +7,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined._18UpRating
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -58,12 +59,22 @@ fun Screen.sourcesTab(
     val scope = rememberCoroutineScope()
 
     var showImportDialog by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<PendingImportData?>(null) }
 
     val mangaPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
         onResult = { uris ->
             if (uris.isNotEmpty()) {
-                scope.launch { ImportHandler.importManga(context, uris) }
+                pendingImport = PendingImportData.Files(uris)
+            }
+        },
+    )
+
+    val mangaFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri != null) {
+                pendingImport = PendingImportData.Folder(uri)
             }
         },
     )
@@ -86,30 +97,56 @@ fun Screen.sourcesTab(
                 TextButton(
                     onClick = {
                         showImportDialog = false
-                        mangaPicker.launch(
-                            arrayOf(
-                                "application/zip", "application/x-cbz",
-                                "application/x-rar", "application/x-cbr",
-                                "application/x-7z-compressed", "application/x-cb7",
-                                "application/x-tar", "application/x-cbt",
-                                "application/epub+zip", "application/json", "application/octet-stream"
-                            )
-                        )
+                        mangaFolderPicker.launch(null)
                     },
                 ) {
-                    Text(stringResource(MR.strings.manga_singular))
+                    Text("Manga Folder")
                 }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        showImportDialog = false
-                        novelPicker.launch(arrayOf("application/epub+zip"))
-                    },
-                ) {
-                    Text(stringResource(MR.strings.novel_singular))
+                Row {
+                    TextButton(
+                        onClick = {
+                            showImportDialog = false
+                            mangaPicker.launch(
+                                arrayOf(
+                                    "application/zip", "application/x-cbz",
+                                    "application/x-rar", "application/x-cbr",
+                                    "application/x-7z-compressed", "application/x-cb7",
+                                    "application/x-tar", "application/x-cbt",
+                                    "application/epub+zip", "application/json", "application/octet-stream"
+                                )
+                            )
+                        },
+                    ) {
+                        Text("Manga Files")
+                    }
+                    TextButton(
+                        onClick = {
+                            showImportDialog = false
+                            novelPicker.launch(arrayOf("application/epub+zip"))
+                        },
+                    ) {
+                        Text(stringResource(MR.strings.novel_singular))
+                    }
                 }
             },
+        )
+    }
+
+    pendingImport?.let { data ->
+        DestinationFolderDialog(
+            pendingImportData = data,
+            onDismissRequest = { pendingImport = null },
+            onImport = { folderName ->
+                pendingImport = null
+                scope.launch {
+                    when (data) {
+                        is PendingImportData.Files -> ImportHandler.importMangaFiles(context, data.uris, folderName)
+                        is PendingImportData.Folder -> ImportHandler.importMangaFolder(context, data.uri, folderName)
+                    }
+                }
+            }
         )
     }
 

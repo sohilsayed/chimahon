@@ -11,15 +11,24 @@ class NovelCategoryStorage(private val context: Context) {
         get() = File(context.filesDir, "novel_categories.json")
 
     fun loadAllCategories(): List<NovelCategory> {
-        if (!categoriesFile.exists()) return listOf(createDefaultCategory())
-        return try {
-            json.decodeFromString<List<NovelCategory>>(categoriesFile.readText())
-        } catch (e: Exception) {
-            listOf(createDefaultCategory())
+        val categories = if (!categoriesFile.exists()) {
+            emptyList()
+        } else {
+            try {
+                json.decodeFromString<List<NovelCategory>>(categoriesFile.readText())
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+        return if (categories.none { it.id == NovelCategory.UNCATEGORIZED_ID }) {
+            listOf(createDefaultCategory()) + categories
+        } else {
+            categories
         }
     }
 
-    private fun createDefaultCategory() = NovelCategory(id = "default", name = "Default", order = 0)
+    private fun createDefaultCategory() = NovelCategory(id = NovelCategory.UNCATEGORIZED_ID, name = "Default", order = -1)
 
     fun saveCategories(categories: List<NovelCategory>) {
         categoriesFile.writeText(json.encodeToString(categories))

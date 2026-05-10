@@ -46,6 +46,7 @@ class NovelCategoryScreenModel(
     }
 
     fun deleteCategory(category: NovelCategory) {
+        if (category.isSystemCategory) return
         screenModelScope.launch {
             categoryStorage.deleteCategory(category.id)
             loadCategories()
@@ -53,12 +54,13 @@ class NovelCategoryScreenModel(
     }
 
     fun renameCategory(category: NovelCategory, name: String) {
+        if (category.isSystemCategory) return
         screenModelScope.launch {
             val categories = categoryStorage.loadAllCategories()
             val updated = categories.map {
                 if (it.id == category.id) it.copy(name = name) else it
             }
-            categoryStorage.saveAllCategories(updated)
+            categoryStorage.saveCategories(updated)
             loadCategories()
         }
     }
@@ -74,7 +76,7 @@ class NovelCategoryScreenModel(
                 val reordered = categories.mapIndexed { index, cat ->
                     cat.copy(order = index)
                 }
-                categoryStorage.saveAllCategories(reordered)
+                categoryStorage.saveCategories(reordered)
                 loadCategories()
             }
         }

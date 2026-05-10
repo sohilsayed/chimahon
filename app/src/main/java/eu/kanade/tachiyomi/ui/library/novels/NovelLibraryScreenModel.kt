@@ -1,24 +1,30 @@
 package eu.kanade.tachiyomi.ui.library.novels
 
+import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import com.canopus.chimareader.data.BookImporter
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.NovelCategoryStorage
+import android.net.Uri
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class NovelLibraryScreenModel(
-    private val context: Context = Injekt.get(),
+    private val app: Application = Injekt.get(),
     private val categoryStorage: NovelCategoryStorage = Injekt.get(),
+    private val libraryPreferences: LibraryPreferences = Injekt.get(),
 ) : StateScreenModel<NovelLibraryScreenModel.State>(State()) {
 
     init {
@@ -28,7 +34,7 @@ class NovelLibraryScreenModel(
     fun loadLibrary() {
         screenModelScope.launch {
             val categories = categoryStorage.loadAllCategories()
-            val books = BookStorage.loadAllBooks(context)
+            val books = BookStorage.loadAllBooks(app)
             
             mutableState.update { 
                 it.copy(
@@ -82,7 +88,7 @@ class NovelLibraryScreenModel(
         screenModelScope.launch {
             val state = mutableState.value
             state.selection.forEach { bookId ->
-                BookStorage.deleteBook(context, bookId)
+                BookStorage.deleteBook(app, bookId)
             }
             clearSelection()
             loadLibrary()
@@ -93,7 +99,7 @@ class NovelLibraryScreenModel(
         screenModelScope.launch {
             val state = mutableState.value
             state.selection.forEach { bookId ->
-                val bookDir = BookStorage.getBookDirectory(context, bookId)
+                val bookDir = BookStorage.getBookDirectory(app, bookId)
                 val metadata = BookStorage.loadMetadata(bookDir)
                 if (metadata != null) {
                     val updatedMetadata = metadata.copy(categoryIds = listOf(categoryId))
@@ -105,11 +111,29 @@ class NovelLibraryScreenModel(
         }
     }
 
+    fun importBook(uri: Uri) {
+        screenModelScope.launch {
+            mutableState.update { it.copy(isImporting = true) }
+            val currentCategory = mutableState.value.activeCategory
+            val categoryIds = if (currentCategory != null && !currentCategory.isSystemCategory) {
+                listOf(currentCategory.id)
+            } else {
+                null
+            }
+            
+            val result = BookImporter.importEpub(app, uri, categoryIds)
+            if (result.metadata != null) {
+                loadLibrary()
+            }
+            mutableState.update { it.copy(isImporting = false) }
+        }
+    }
+
     fun resetStatsForSelected() {
         screenModelScope.launch {
             val state = mutableState.value
             state.selection.forEach { bookId ->
-                val bookDir = BookStorage.getBookDirectory(context, bookId)
+                val bookDir = BookStorage.getBookDirectory(app, bookId)
                 // Delete statistics file ΓÇö BookStorage.save will recreate it fresh on next read
                 val statsFile = java.io.File(bookDir, com.canopus.chimareader.data.FileNames.statistics)
                 if (statsFile.exists()) statsFile.delete()
@@ -141,6 +165,7 @@ class NovelLibraryScreenModel(
         data object ChangeCategory : Dialog
         data object DeleteConfirm : Dialog
         data object SortFilter : Dialog
+        data object Settings : Dialog
     }
 
     @Immutable
@@ -154,6 +179,7 @@ class NovelLibraryScreenModel(
         val dialog: Dialog? = null,
         val sortMode: SortMode = SortMode.DateAdded,
         val sortDescending: Boolean = true,
+        val isImporting: Boolean = false,
     ) {
         val hasActiveFilters: Boolean = false
         val isLibraryEmpty: Boolean = books.isEmpty()
@@ -170,7 +196,7 @@ class NovelLibraryScreenModel(
             }
             
             val categoryBooks = filteredBooks.filter { 
-                it.categoryIds.contains(category.id) || (category.id == "default" && it.categoryIds.isEmpty()) 
+                it.categoryIds.contains(category.id) || (category.id == NovelCategory.UNCATEGORIZED_ID && it.categoryIds.isEmpty()) 
             }
             
             val comparator = when (sortMode) {
@@ -198,4 +224,24 @@ class NovelLibraryScreenModel(
     fun showSortDialog() {
         mutableState.update { it.copy(dialog = Dialog.SortFilter) }
     }
+
+    fun showSettingsDialog() {
+        mutableState.update { it.copy(dialog = Dialog.Settings) }
+    }
+
+    fun getColumnsPreferenceForOrientation(isLandscape: Boolean) = if (isLandscape) {
+        libraryPreferences.novelLandscapeColumns()
+    } else {
+        libraryPreferences.novelPortraitColumns()
+    }
+
+    fun getDisplayMode() = libraryPreferences.displayMode()
+
+    fun setDisplayMode(mode: LibraryDisplayMode) {
+        libraryPreferences.displayMode().set(mode)
+    }
+
+    fun showTabs() = libraryPreferences.categoryTabs()
+
+    fun showNumberOfItems() = libraryPreferences.categoryNumberOfItems()
 }

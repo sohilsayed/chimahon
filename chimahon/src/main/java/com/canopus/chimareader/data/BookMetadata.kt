@@ -14,4 +14,5 @@ data class BookMetadata(
     val hash: String? = null,
     val isGhost: Boolean = false,
     val categoryIds: List<String> = emptyList(),
+    val lang: String? = null,
 )
