@@ -8,9 +8,11 @@ import eu.kanade.tachiyomi.torrentServer.model.TorrentRequest
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
+import java.io.InputStream
 
 object TorrentServerApi {
     private val network: NetworkHelper by injectLazy()
@@ -76,5 +78,33 @@ object TorrentServerApi {
             POST("$hostUrl/torrents", body = req.toRequestBody("application/json".toMediaTypeOrNull())),
         ).execute()
         return Json.decodeFromString<List<Torrent>>(resp.body.string())
+    }
+
+    fun uploadTorrent(
+        file: InputStream,
+        title: String,
+        poster: String = "",
+        data: String = "",
+        save: Boolean = false,
+    ): Torrent {
+        val fileBytes = file.readBytes()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("title", title)
+            .addFormDataPart("poster", poster)
+            .addFormDataPart("data", data)
+            .addFormDataPart("save", save.toString())
+            .addFormDataPart(
+                "file1",
+                "filename",
+                fileBytes.toRequestBody("application/x-bittorrent".toMediaTypeOrNull()),
+            )
+            .build()
+        val request = okhttp3.Request.Builder()
+            .url("$hostUrl/torrent/upload")
+            .post(body)
+            .build()
+        val resp = network.client.newCall(request).execute()
+        return Json.decodeFromString(Torrent.serializer(), resp.body.string())
     }
 }

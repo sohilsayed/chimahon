@@ -57,14 +57,15 @@ import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.setting.SubtitlePreferences
 import eu.kanade.tachiyomi.ui.player.utils.TrackSelect
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
+import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
+import eu.kanade.tachiyomi.torrentServer.TorrentServerApi
+import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import `is`.xyz.mpv.MPVLib
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
@@ -97,6 +98,7 @@ class PlayerActivity : ComponentActivity() {
     private var restoreAudioFocus: () -> Unit = {}
     private var hideSliderJob: Job? = null
     private var aniSkipFetched = false
+    private var pausedByBackgrounding = false
 
     private val subtitleFilePicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -245,30 +247,33 @@ class PlayerActivity : ComponentActivity() {
             )
         }
 
-        viewModel.eventFlow
-            .onEach { event ->
-                when (event) {
-                    is PlayerViewModel.Event.Error -> {
-                        logcat(LogPriority.ERROR) { "Player error: ${event.message}" }
-                        finish()
-                    }
-                    is PlayerViewModel.Event.PlaybackCompleted -> {}
-                    is PlayerViewModel.Event.PauseForLookup -> mpvView?.pause()
-                    is PlayerViewModel.Event.ResumeFromLookup -> mpvView?.resume()
-                    is PlayerViewModel.Event.EpisodeChanged -> playCurrentEpisode()
-                    is PlayerViewModel.Event.ShowToast -> {
-                        android.widget.Toast.makeText(this@PlayerActivity, event.message, android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                    is PlayerViewModel.Event.SeekTo -> {
-                        mpvView?.seekTo(event.positionSec)
-                    }
-                    is PlayerViewModel.Event.PauseForTimer -> {
-                        mpvView?.pause()
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.eventFlow.collect { event ->
+                    when (event) {
+                        is PlayerViewModel.Event.Error -> {
+                            logcat(LogPriority.ERROR) { "Player error: ${event.message}" }
+                            android.widget.Toast.makeText(this@PlayerActivity, event.message, android.widget.Toast.LENGTH_LONG).show()
+                            finish()
+                        }
+                        is PlayerViewModel.Event.PlaybackCompleted -> {}
+                        is PlayerViewModel.Event.PauseForLookup -> mpvView?.pause()
+                        is PlayerViewModel.Event.ResumeFromLookup -> mpvView?.resume()
+                        is PlayerViewModel.Event.EpisodeChanged -> playCurrentEpisode()
+                        is PlayerViewModel.Event.ShowToast -> {
+                            android.widget.Toast.makeText(this@PlayerActivity, event.message, android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        is PlayerViewModel.Event.SeekTo -> {
+                            mpvView?.seekTo(event.positionSec)
+                        }
+                        is PlayerViewModel.Event.PauseForTimer -> {
+                            mpvView?.pause()
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
                     }
                 }
             }
-            .launchIn(lifecycleScope)
+        }
     }
 
     private fun onMPVViewReady(view: MPVView) {
@@ -313,12 +318,6 @@ class PlayerActivity : ComponentActivity() {
         playerObserver = observer
         MPVLib.addObserver(observer)
 
-        val screenshotDir = android.os.Environment.getExternalStoragePublicDirectory(
-            android.os.Environment.DIRECTORY_PICTURES,
-        )
-        screenshotDir.mkdirs()
-        MPVLib.setOptionString("screenshot-directory", screenshotDir.path)
-
         val animeId = intent.getLongExtra(PlayerViewModel.KEY_ANIME_ID, -1L)
         val episodeId = intent.getLongExtra(PlayerViewModel.KEY_EPISODE_ID, -1L)
         val videoUrl = resolveVideoUrl(intent)
@@ -340,9 +339,25 @@ class PlayerActivity : ComponentActivity() {
                 logcat(LogPriority.ERROR, tag = "Player") { "No playable video URL found for episode" }
                 return@launchIO
             }
+            if (playerPreferences.alwaysUseExternalPlayer().get()) {
+                val extIntent = ExternalIntents.newIntent(
+                    this@PlayerActivity, animeId, episodeId, url, resolvedVideo,
+                )
+                if (extIntent != null) {
+                    withContext(Dispatchers.Main) {
+                        startActivity(extIntent)
+                        finish()
+                    }
+                    return@launchIO
+                }
+            }
             val resumePos = state.currentPositionSec
                 .takeIf { it > 0 } ?: episode.lastSecondSeen
-            val playUrl = resolvePlaybackUrl(url)
+            val playUrl = if (PlayerViewModel.isTorrentUrl(url)) {
+                resolveTorrentUrl(url, resolvedVideo?.videoTitle ?: episode.name)
+            } else {
+                resolvePlaybackUrl(url)
+            }
             val headers = resolvedVideo?.headers?.let { h ->
                 (0 until h.size).associate { i -> h.name(i) to h.value(i) }
             }
@@ -561,7 +576,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun handleBack() {
-        if (playerPreferences.enablePip().get() && !isInPictureInPictureMode) {
+        if (playerPreferences.pipOnExit().get() && !isInPictureInPictureMode) {
             enterPipMode()
         } else {
             finish()
@@ -693,6 +708,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun playCurrentEpisode() {
         val view = mpvView ?: return
+        aniSkipFetched = false
         val state = viewModel.state.value
         val episode = state.episode ?: return
         val resolvedVideo = state.resolvedVideo
@@ -700,15 +716,28 @@ class PlayerActivity : ComponentActivity() {
             ?: episode.url.takeIf { PlayerViewModel.isPlayableScheme(it) }
         if (url.isNullOrBlank()) return
         val resumePos = episode.lastSecondSeen
-        val playUrl = resolvePlaybackUrl(url)
         val headers = resolvedVideo?.headers?.let { h ->
             (0 until h.size).associate { i -> h.name(i) to h.value(i) }
         }
-        view.playFile(playUrl, resumePos, headers)
-        resolvedVideo?.subtitleTracks?.forEach { track ->
-            view.addSubtitleTrack(track.url, track.lang)
+        if (PlayerViewModel.isTorrentUrl(url)) {
+            lifecycleScope.launchIO {
+                val playUrl = resolveTorrentUrl(url, resolvedVideo?.videoTitle ?: episode.name)
+                withContext(Dispatchers.Main) {
+                    view.playFile(playUrl, resumePos, headers)
+                    resolvedVideo?.subtitleTracks?.forEach { track ->
+                        view.addSubtitleTrack(track.url, track.lang)
+                    }
+                    loadCustomSubtitles(view)
+                }
+            }
+        } else {
+            val playUrl = resolvePlaybackUrl(url)
+            view.playFile(playUrl, resumePos, headers)
+            resolvedVideo?.subtitleTracks?.forEach { track ->
+                view.addSubtitleTrack(track.url, track.lang)
+            }
+            loadCustomSubtitles(view)
         }
-        loadCustomSubtitles(view)
     }
 
     override fun onUserLeaveHint() {
@@ -722,11 +751,16 @@ class PlayerActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPipMode, newConfig)
         viewModel.updatePipMode(isInPipMode)
         if (!isInPipMode) {
-            setupImmersiveMode()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                setupImmersiveMode()
+            } else {
+                finish()
+            }
         }
     }
 
     private fun enterPipMode() {
+        if (!playerPreferences.enablePip().get()) return
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
         val state = viewModel.state.value
         val params = PictureInPictureParams.Builder()
@@ -753,6 +787,18 @@ class PlayerActivity : ComponentActivity() {
         super.onStop()
         if (!isInPictureInPictureMode) {
             viewModel.saveProgress()
+            if (mpvView?.paused == false) {
+                mpvView?.pause()
+                pausedByBackgrounding = true
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (pausedByBackgrounding) {
+            pausedByBackgrounding = false
+            mpvView?.resume()
         }
     }
 
@@ -782,6 +828,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun setupImmersiveMode() {
+        if (!playerPreferences.playerFullscreen().get()) return
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -809,11 +856,28 @@ class PlayerActivity : ComponentActivity() {
     private fun resolvePlaybackUrl(url: String): String {
         if (url.startsWith("content://")) {
             val uri = Uri.parse(url)
-            val fd = contentResolver.openFileDescriptor(uri, "r")?.detachFd()
-                ?: return url
+            val pfd = contentResolver.openFileDescriptor(uri, "r") ?: return url
+            val fd = pfd.detachFd()
             return "fdclose://$fd"
         }
         return url
+    }
+
+    private fun resolveTorrentUrl(videoUrl: String, title: String): String {
+        TorrentServerService.start()
+        TorrentServerService.wait(10)
+
+        var index = 0
+        if (videoUrl.startsWith("magnet") && videoUrl.contains("index=")) {
+            index = try {
+                videoUrl.substringAfter("index=").substringBefore("&").toInt()
+            } catch (_: NumberFormatException) {
+                0
+            }
+        }
+
+        val torrent = TorrentServerApi.addTorrent(videoUrl, title, "", "", false)
+        return TorrentServerUtils.getTorrentPlayLink(torrent, index)
     }
 
     private fun resolveVideoUrl(intent: Intent): String? {

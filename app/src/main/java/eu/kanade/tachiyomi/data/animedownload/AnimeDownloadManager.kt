@@ -6,8 +6,14 @@ import eu.kanade.tachiyomi.animesource.model.SerializableVideo.Companion.toVideo
 import eu.kanade.tachiyomi.animesource.model.Track
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
+import logcat.LogPriority
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.animesource.service.AnimeSourceManager
 import tachiyomi.domain.episode.model.Episode
@@ -21,11 +27,15 @@ class AnimeDownloadManager(
     private val animeSourceManager: AnimeSourceManager = Injekt.get(),
 ) {
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloader = AnimeDownloader(context, provider, cache)
     private val pendingDeleter = AnimeDownloadPendingDeleter(context)
 
     val isRunning: Boolean
         get() = downloader.isRunning
+
+    val isDownloaderRunning
+        get() = AnimeDownloadJob.isRunningFlow(context)
 
     val queueState
         get() = downloader.queueState
@@ -33,13 +43,13 @@ class AnimeDownloadManager(
     val stateVersion
         get() = downloader.stateVersion
 
-    fun downloaderStart() = downloader.start()
+    suspend fun downloaderStart() = downloader.start()
     fun downloaderStop(reason: String? = null) = downloader.stop(reason)
 
     fun startDownloads() {
         if (downloader.isRunning) return
         if (AnimeDownloadJob.isRunning(context)) {
-            downloader.start()
+            scope.launch { downloader.start() }
         } else {
             AnimeDownloadJob.start(context)
         }
@@ -53,6 +63,10 @@ class AnimeDownloadManager(
     fun clearQueue() {
         downloader.clearQueue()
         AnimeDownloadJob.stop(context)
+    }
+
+    fun cancelEpisodeDownload(download: AnimeDownload) {
+        downloader.removeFromQueue(listOf(download.episode))
     }
 
     fun downloadEpisodes(anime: Anime, episodes: List<Episode>, videos: List<Video?>, autoStart: Boolean = true) {
@@ -119,7 +133,9 @@ class AnimeDownloadManager(
                         )
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Failed to parse metadata for downloaded episode" }
+            }
         }
 
         return Video(

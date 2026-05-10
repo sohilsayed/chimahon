@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.tachiyomi.ui.player.controls.components.DoubleTapSeekTriangles
 import eu.kanade.tachiyomi.ui.player.setting.GesturePreferences
+import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
 import kotlinx.coroutines.delay
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -53,7 +54,8 @@ fun GestureHandler(
     modifier: Modifier = Modifier,
 ) {
     val gesturePreferences = remember { Injekt.get<GesturePreferences>() }
-    val skipLength = remember { gesturePreferences.skipLengthPreference().get() }
+    val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
+    val skipLength = remember { playerPreferences.doubleTapSeekLength().get() }
     val gestureVolumeBrightness = remember { gesturePreferences.gestureVolumeBrightness().get() }
     val seekGesture = remember { gesturePreferences.gestureHorizontalSeek().get() }
     val swapVolumeBrightness = remember { gesturePreferences.swapVolumeBrightness().get() }

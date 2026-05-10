@@ -105,6 +105,7 @@ fun PlayerControlsOverlay(
     val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
     val controlsTimeout = remember { playerPreferences.playerTimeToDisappear().get().toLong() }
     val reduceMotion = remember { playerPreferences.reduceMotion().get() }
+    val showCurrentChapter = remember { playerPreferences.showCurrentChapter().get() }
     val enterAnim = if (reduceMotion) EnterTransition.None else fadeIn()
     val exitAnim = if (reduceMotion) ExitTransition.None else fadeOut()
     LaunchedEffect(state.controlsVisible, state.isPlaying, state.isLocked) {
@@ -291,7 +292,7 @@ fun PlayerControlsOverlay(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (state.currentChapter != null && state.currentChapter.name.isNotEmpty()) {
+                    if (showCurrentChapter && state.currentChapter != null && state.currentChapter.name.isNotEmpty()) {
                         CurrentChapter(
                             chapter = state.currentChapter,
                             onClick = { showChaptersSheet = true },

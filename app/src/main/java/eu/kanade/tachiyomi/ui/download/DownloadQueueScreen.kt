@@ -60,6 +60,7 @@ import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.components.NestedMenuItem
 import eu.kanade.presentation.theme.colorscheme.AndroidViewColorScheme
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.data.ocr.OcrQueueItem
 import eu.kanade.tachiyomi.data.ocr.OcrQueueStatus
 import eu.kanade.tachiyomi.databinding.DownloadListBinding
@@ -89,8 +90,9 @@ object DownloadQueueScreen : Screen() {
         }
         val downloadList by screenModel.state.collectAsState()
         val ocrQueue by screenModel.ocrQueueState.collectAsState()
+        val animeQueue by screenModel.animeQueueState.collectAsState()
         val downloadCount by remember {
-            derivedStateOf { downloadList.sumOf { it.subItems.size } }
+            derivedStateOf { downloadList.sumOf { it.subItems.size } + animeQueue.size }
         }
 
         val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -252,7 +254,7 @@ object DownloadQueueScreen : Screen() {
                 )
             },
         ) { contentPadding ->
-            if (downloadList.isEmpty() && ocrQueue.isEmpty()) {
+            if (downloadList.isEmpty() && animeQueue.isEmpty() && ocrQueue.isEmpty()) {
                 EmptyScreen(
                     stringRes = MR.strings.information_no_downloads,
                     modifier = Modifier.padding(contentPadding),
@@ -311,6 +313,17 @@ object DownloadQueueScreen : Screen() {
                         screenModel.adapter?.updateDataSet(downloadList)
                     },
                 )
+
+                if (animeQueue.isNotEmpty()) {
+                    AnimeQueueSection(
+                        animeQueue = animeQueue,
+                        onCancelClick = { screenModel.cancelAnimeDownload(it) },
+                        modifier = Modifier.padding(
+                            start = with(density) { left.toDp() },
+                            end = with(density) { right.toDp() },
+                        ),
+                    )
+                }
 
                 if (ocrQueue.isNotEmpty()) {
                     OcrQueueSection(
@@ -464,6 +477,138 @@ private fun OcrQueueItemRow(
                 OcrQueueStatus.ERROR,
             )
         ) {
+            IconButton(onClick = onCancelClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = stringResource(MR.strings.action_cancel),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnimeQueueSection(
+    animeQueue: List<AnimeDownload>,
+    onCancelClick: (AnimeDownload) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(MR.strings.label_anime),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Pill(
+                text = "${animeQueue.size}",
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                fontSize = 12.sp,
+            )
+        }
+
+        animeQueue.forEach { download ->
+            AnimeDownloadItemRow(
+                download = download,
+                onCancelClick = { onCancelClick(download) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnimeDownloadItemRow(
+    download: AnimeDownload,
+    onCancelClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val progress by download.progressFlow.collectAsState()
+    val status by download.statusFlow.collectAsState()
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = download.episode.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = download.anime.title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            val statusText = when (status) {
+                AnimeDownload.State.QUEUE -> stringResource(MR.strings.paused)
+                AnimeDownload.State.DOWNLOADING -> "$progress%"
+                AnimeDownload.State.DOWNLOADED -> stringResource(MR.strings.completed)
+                AnimeDownload.State.ERROR -> stringResource(MR.strings.download_notifier_title_error)
+                AnimeDownload.State.NOT_DOWNLOADED -> ""
+            }
+
+            if (statusText.isNotEmpty()) {
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (status) {
+                        AnimeDownload.State.ERROR -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier.size(48.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (status) {
+                AnimeDownload.State.QUEUE -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                AnimeDownload.State.DOWNLOADING -> {
+                    CircularProgressIndicator(
+                        progress = { progress / 100f },
+                        modifier = Modifier.size(32.dp),
+                        strokeWidth = 3.dp,
+                    )
+                }
+                AnimeDownload.State.DOWNLOADED -> {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                AnimeDownload.State.ERROR -> {
+                    Icon(
+                        imageVector = Icons.Outlined.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+                else -> {}
+            }
+        }
+
+        if (status != AnimeDownload.State.DOWNLOADED) {
             IconButton(onClick = onCancelClick) {
                 Icon(
                     imageVector = Icons.Outlined.Close,

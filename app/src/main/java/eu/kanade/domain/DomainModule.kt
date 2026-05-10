@@ -52,6 +52,7 @@ import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.data.animesource.StubAnimeSourceRepositoryImpl
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
+import tachiyomi.data.history.AnimeHistoryRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.release.ReleaseServiceImpl
@@ -79,11 +80,15 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.history.interactor.GetAnimeHistory
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.GetTotalReadDuration
+import tachiyomi.domain.history.interactor.RemoveAnimeHistory
 import tachiyomi.domain.history.interactor.RemoveHistory
+import tachiyomi.domain.history.interactor.UpsertAnimeHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
+import tachiyomi.domain.history.repository.AnimeHistoryRepository
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
@@ -188,6 +193,11 @@ class DomainModule : InjektModule {
         addFactory { UpsertHistory(get()) }
         addFactory { RemoveHistory(get()) }
         addFactory { GetTotalReadDuration(get()) }
+
+        addSingletonFactory<AnimeHistoryRepository> { AnimeHistoryRepositoryImpl(get()) }
+        addFactory { GetAnimeHistory(get()) }
+        addFactory { UpsertAnimeHistory(get()) }
+        addFactory { RemoveAnimeHistory(get()) }
 
         addFactory { DeleteDownload(get(), get()) }
         addFactory { DeleteAnimeDownload(get(), get()) }

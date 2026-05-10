@@ -34,7 +34,7 @@ class PlayerPreferences(
     // PiP
 
     fun enablePip() = preferenceStore.getBoolean("pref_enable_pip", true)
-    fun pipOnExit() = preferenceStore.getBoolean("pref_pip_on_exit", true)
+    fun pipOnExit() = preferenceStore.getBoolean("pref_pip_on_exit", false)
 
     // External player
 

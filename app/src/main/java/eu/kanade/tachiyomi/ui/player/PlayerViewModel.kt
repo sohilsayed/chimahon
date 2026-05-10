@@ -55,11 +55,12 @@ import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.model.EpisodeUpdate
 import tachiyomi.domain.episode.repository.EpisodeRepository
+import tachiyomi.domain.history.interactor.UpsertAnimeHistory
+import tachiyomi.domain.history.model.AnimeHistoryUpdate
 import tachiyomi.domain.track.interactor.GetTracks
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.File
-import java.io.InputStream
+import java.util.Date
 import kotlin.time.Duration.Companion.seconds
 
 class PlayerViewModel @JvmOverloads constructor(
@@ -76,6 +77,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val animeSourceManager: AnimeSourceManager = Injekt.get(),
     private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
+    private val upsertAnimeHistory: UpsertAnimeHistory = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
@@ -105,6 +107,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val autoSkip = playerPreferences.autoSkipIntro().get()
     private val netflixStyle = playerPreferences.enableNetflixStyleIntroSkip().get()
     private val defaultWaitingTime = playerPreferences.waitingTimeIntroSkip().get()
+    @Volatile
     private var waitingSkipIntro = defaultWaitingTime
 
     init {
@@ -157,15 +160,17 @@ class PlayerViewModel @JvmOverloads constructor(
             var resolvedVideo: Video? = null
             if (anime.source != LOCAL_ANIME_SOURCE_ID) {
                 val source = animeSourceManager.get(anime.source)
-                if (source != null && animeDownloadManager.isEpisodeDownloaded(
-                        episode.name, episode.scanlator, anime.title, anime.source,
-                    )
-                ) {
+                if (source != null) {
                     resolvedVideo = animeDownloadManager.buildVideoForPlayer(anime, episode, source)
                 }
                 if (resolvedVideo == null) {
                     resolvedVideo = resolveVideoFromSource(anime.source, episode)
                 }
+            }
+
+            if (resolvedVideo == null && anime.source != LOCAL_ANIME_SOURCE_ID) {
+                eventChannel.send(Event.Error("Could not find a playable video for ${episode.name}"))
+                return
             }
 
             aniSkipStamps = emptyList()
@@ -198,11 +203,15 @@ class PlayerViewModel @JvmOverloads constructor(
                 val sEpisode = SEpisode.create().apply {
                     url = episode.url
                     name = episode.name
+                    date_upload = episode.dateUpload
+                    episode_number = episode.episodeNumber.toFloat()
+                    scanlator = episode.scanlator
                 }
 
                 val videos = try {
                     source.getVideoList(sEpisode)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "Failed to get video list for ${episode.name}" }
                     emptyList()
                 }
 
@@ -215,7 +224,8 @@ class PlayerViewModel @JvmOverloads constructor(
                     for (hoster in hosters) {
                         val hosterVideos = hoster.videoList ?: try {
                             source.getVideoList(hoster)
-                        } catch (_: Throwable) {
+                        } catch (e: Throwable) {
+                            logcat(LogPriority.WARN, e) { "Failed to get videos from hoster" }
                             emptyList()
                         }
                         resolveFirstPlayableVideo(source, hosterVideos)?.let {
@@ -226,6 +236,7 @@ class PlayerViewModel @JvmOverloads constructor(
                     logcat(LogPriority.WARN, e) { "Hoster list resolution failed" }
                 }
 
+                logcat(LogPriority.ERROR) { "No playable video found for ${episode.name}" }
                 null
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to resolve video URL from source" }
@@ -250,7 +261,8 @@ class PlayerViewModel @JvmOverloads constructor(
             if (httpSource != null) {
                 resolved = try {
                     httpSource.resolveVideo(video) ?: continue
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "Failed to resolve video: ${video.videoTitle}" }
                     video
                 }
             }
@@ -258,7 +270,8 @@ class PlayerViewModel @JvmOverloads constructor(
             if (resolved.videoUrl.isBlank() && resolved.videoPageUrl.isNotBlank() && httpSource != null) {
                 val url = try {
                     httpSource.getVideoUrl(resolved)
-                } catch (_: Throwable) {
+                } catch (e: Throwable) {
+                    logcat(LogPriority.WARN, e) { "Failed to get video URL: ${resolved.videoTitle}" }
                     null
                 }
                 if (!url.isNullOrBlank()) {
@@ -471,13 +484,26 @@ class PlayerViewModel @JvmOverloads constructor(
         val ep = mutableState.value.episode ?: return
         try {
             withIOContext {
-                updateEpisode.await(
-                    EpisodeUpdate(
-                        id = ep.id,
-                        lastSecondSeen = positionSec,
-                        totalSeconds = durationSec,
-                    ),
-                )
+                coroutineScope {
+                    launch {
+                        updateEpisode.await(
+                            EpisodeUpdate(
+                                id = ep.id,
+                                lastSecondSeen = positionSec,
+                                totalSeconds = durationSec,
+                            ),
+                        )
+                    }
+                    launch {
+                        upsertAnimeHistory.await(
+                            AnimeHistoryUpdate(
+                                episodeId = ep.id,
+                                watchedAt = Date(),
+                                sessionWatchDuration = positionSec,
+                            ),
+                        )
+                    }
+                }
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to save playback progress" }
@@ -650,16 +676,6 @@ class PlayerViewModel @JvmOverloads constructor(
         return chapters.withIndex().lastOrNull { it.value.start <= pos }
     }
 
-    // Screenshot
-
-    fun takeScreenshot(cachePath: String, showSubtitles: Boolean): InputStream? {
-        val filename = "$cachePath/${System.currentTimeMillis()}_mpv_screenshot_tmp.png"
-        val subtitleFlag = if (showSubtitles) "subtitles" else "video"
-        MPVLib.command(arrayOf("screenshot-to-file", filename, subtitleFlag))
-        val newFile = File("$cachePath/mpv_screenshot.png")
-        File(filename).renameTo(newFile)
-        return newFile.takeIf { it.exists() }?.inputStream()
-    }
 
     // Sleep timer
 
@@ -815,7 +831,11 @@ class PlayerViewModel @JvmOverloads constructor(
         const val KEY_ANIME_ID = "anime_id"
         const val KEY_EPISODE_ID = "episode_id"
         const val LOCAL_ANIME_SOURCE_ID = 0L
-        private val STREAMABLE_SCHEMES = setOf("http", "https", "rtmp", "rtsp", "file", "content")
+        private val STREAMABLE_SCHEMES = setOf("http", "https", "rtmp", "rtsp", "file", "content", "magnet")
+
+        fun isTorrentUrl(url: String): Boolean {
+            return url.startsWith("magnet") || url.endsWith(".torrent")
+        }
 
         fun isPlayableScheme(url: String): Boolean {
             val scheme = url.substringBefore("://").lowercase()

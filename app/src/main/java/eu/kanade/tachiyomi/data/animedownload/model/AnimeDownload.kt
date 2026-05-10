@@ -11,9 +11,12 @@ data class AnimeDownload(
     val source: AnimeHttpSource,
     val anime: Anime,
     val episode: Episode,
-    val video: Video? = null,
+    @Volatile var video: Video? = null,
 ) {
+    @Volatile
     var totalBytes: Long = -1L
+
+    @Volatile
     var downloadedBytes: Long = 0L
 
     @Transient

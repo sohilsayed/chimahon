@@ -19,6 +19,7 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.anime.interactor.GetAnime
+import tachiyomi.domain.anime.interactor.GetDuplicateLibraryAnime
 import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
 import tachiyomi.domain.anime.interactor.UpdateAnime
 import tachiyomi.domain.anime.model.Anime
@@ -48,6 +49,7 @@ class AnimeScreenModel(
     private val episodeRepository: EpisodeRepository = Injekt.get(),
     private val animeSourceManager: AnimeSourceManager = Injekt.get(),
     private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
+    private val getDuplicateLibraryAnime: GetDuplicateLibraryAnime = Injekt.get(),
 ) : StateScreenModel<AnimeScreenModel.State>(State.Loading) {
 
     private val selectedPositions: Array<Int> = arrayOf(-1, -1)
@@ -329,9 +331,18 @@ class AnimeScreenModel(
         }
     }
 
-    fun toggleFavorite() {
+    fun toggleFavorite(checkDuplicate: Boolean = true) {
         screenModelScope.launchNonCancellable {
             val anime = (state.value as? State.Success)?.anime ?: return@launchNonCancellable
+
+            if (!anime.favorite && checkDuplicate) {
+                val duplicates = getDuplicateLibraryAnime(anime)
+                if (duplicates.isNotEmpty()) {
+                    updateSuccessState { it.copy(dialog = Dialog.DuplicateAnime(duplicates)) }
+                    return@launchNonCancellable
+                }
+            }
+
             updateAnime.await(
                 AnimeUpdate(
                     id = anime.id,
@@ -370,10 +381,10 @@ class AnimeScreenModel(
         }
     }
 
-    fun toggleBookmark(episodes: List<Episode>) {
+    fun toggleBookmark(episodes: List<Episode>, bookmarked: Boolean) {
         screenModelScope.launchNonCancellable {
             val updates = episodes.map {
-                EpisodeUpdate(id = it.id, bookmark = !it.bookmark)
+                EpisodeUpdate(id = it.id, bookmark = bookmarked)
             }
             updateEpisode.awaitAll(updates)
         }
@@ -485,6 +496,15 @@ class AnimeScreenModel(
         }
     }
 
+    fun downloadEpisodes(episodes: List<Episode>) {
+        screenModelScope.launchNonCancellable {
+            val successState = state.value as? State.Success ?: return@launchNonCancellable
+            val anime = successState.anime
+            val videos = episodes.map { null as Video? }
+            animeDownloadManager.downloadEpisodes(anime, episodes, videos)
+        }
+    }
+
     fun deleteEpisodeDownloads(episodes: List<Episode>) {
         screenModelScope.launchNonCancellable {
             val successState = state.value as? State.Success ?: return@launchNonCancellable
@@ -499,6 +519,9 @@ class AnimeScreenModel(
             val sEpisode = SEpisode.create().apply {
                 url = episode.url
                 name = episode.name
+                date_upload = episode.dateUpload
+                episode_number = episode.episodeNumber.toFloat()
+                scanlator = episode.scanlator
             }
 
             val videos = mutableListOf<Video>()
@@ -589,6 +612,7 @@ class AnimeScreenModel(
         data object SettingsSheet : Dialog
         data class DownloadLoading(val episode: Episode) : Dialog
         data class QualitySelection(val episode: Episode, val videos: List<Video>) : Dialog
+        data class DuplicateAnime(val duplicates: List<Anime>) : Dialog
     }
 
     // endregion

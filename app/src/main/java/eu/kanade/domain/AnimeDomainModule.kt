@@ -4,6 +4,7 @@ import tachiyomi.data.anime.AnimeRepositoryImpl
 import tachiyomi.data.category.AnimeCategoryRepositoryImpl
 import tachiyomi.data.episode.EpisodeRepositoryImpl
 import tachiyomi.domain.anime.interactor.GetAnime
+import tachiyomi.domain.anime.interactor.GetDuplicateLibraryAnime
 import tachiyomi.domain.anime.interactor.GetFavoriteAnime
 import tachiyomi.domain.anime.interactor.GetLibraryAnime
 import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
@@ -17,6 +18,7 @@ import tachiyomi.domain.category.repository.AnimeCategoryRepository
 import tachiyomi.domain.episode.interactor.GetEpisode
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.interactor.SetSeenStatus
+import tachiyomi.domain.episode.interactor.ShouldUpdateDbEpisode
 import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.repository.EpisodeRepository
 import tachiyomi.domain.library.service.AnimeLibraryPreferences
@@ -35,12 +37,14 @@ class AnimeDomainModule : InjektModule {
         addFactory { GetFavoriteAnime(get()) }
         addFactory { GetLibraryAnime(get()) }
         addFactory { SetAnimeEpisodeFlags(get()) }
+        addFactory { GetDuplicateLibraryAnime(get()) }
 
         addSingletonFactory<EpisodeRepository> { EpisodeRepositoryImpl(get()) }
         addFactory { GetEpisode(get()) }
         addFactory { GetEpisodesByAnimeId(get()) }
         addFactory { UpdateEpisode(get()) }
         addFactory { SetSeenStatus(get()) }
+        addFactory { ShouldUpdateDbEpisode() }
 
         addSingletonFactory<AnimeCategoryRepository> { AnimeCategoryRepositoryImpl(get()) }
         addFactory { GetAnimeCategories(get()) }

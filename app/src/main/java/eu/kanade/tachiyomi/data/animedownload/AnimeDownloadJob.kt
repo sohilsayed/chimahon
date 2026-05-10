@@ -36,8 +36,8 @@ class AnimeDownloadJob(
     workerParams: WorkerParameters,
 ) : CoroutineWorker(context, workerParams) {
 
-    private val animeDownloadManager: AnimeDownloadManager = Injekt.get()
-    private val downloadPreferences: DownloadPreferences = Injekt.get()
+    private val animeDownloadManager: AnimeDownloadManager by lazy { Injekt.get() }
+    private val downloadPreferences: DownloadPreferences by lazy { Injekt.get() }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_ANIME_DOWNLOADER_PROGRESS) {

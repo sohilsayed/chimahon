@@ -34,4 +34,6 @@ interface AnimeRepository {
     suspend fun deleteAnime(animeId: Long)
 
     suspend fun getAll(): List<Anime>
+
+    suspend fun getDuplicateLibraryAnime(id: Long, title: String): List<Anime>
 }

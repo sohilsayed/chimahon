@@ -79,6 +79,7 @@ fun AnimeScreen(
     onMultiMarkAsSeenClicked: (List<Episode>, markAsSeen: Boolean) -> Unit,
     onMarkPreviousAsSeenClicked: (Episode) -> Unit,
     onMultiDeleteClicked: (List<Episode>) -> Unit,
+    onMultiDownloadClicked: (List<Episode>) -> Unit = {},
     onEpisodeSelected: (EpisodeList.Item, Boolean, Boolean, Boolean) -> Unit,
     onAllEpisodeSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
@@ -89,6 +90,7 @@ fun AnimeScreen(
     onDismissDialog: () -> Unit,
     onDeleteClicked: () -> Unit = {},
     onConfirmDelete: () -> Unit = {},
+    onAddToLibraryAnywayClicked: () -> Unit = {},
 ) {
     if (!isTabletUi) {
         AnimeScreenSmallImpl(
@@ -110,6 +112,7 @@ fun AnimeScreen(
             onMultiMarkAsSeenClicked = onMultiMarkAsSeenClicked,
             onMarkPreviousAsSeenClicked = onMarkPreviousAsSeenClicked,
             onMultiDeleteClicked = onMultiDeleteClicked,
+            onMultiDownloadClicked = onMultiDownloadClicked,
             onEpisodeSelected = onEpisodeSelected,
             onAllEpisodeSelected = onAllEpisodeSelected,
             onInvertSelection = onInvertSelection,
@@ -134,6 +137,7 @@ fun AnimeScreen(
             onMultiMarkAsSeenClicked = onMultiMarkAsSeenClicked,
             onMarkPreviousAsSeenClicked = onMarkPreviousAsSeenClicked,
             onMultiDeleteClicked = onMultiDeleteClicked,
+            onMultiDownloadClicked = onMultiDownloadClicked,
             onEpisodeSelected = onEpisodeSelected,
             onAllEpisodeSelected = onAllEpisodeSelected,
             onInvertSelection = onInvertSelection,
@@ -213,6 +217,31 @@ fun AnimeScreen(
                 },
             )
         }
+        is AnimeScreenModel.Dialog.DuplicateAnime -> {
+            AlertDialog(
+                onDismissRequest = onDismissDialog,
+                title = { Text("Duplicate in library") },
+                text = {
+                    Text(
+                        "An anime with the same title already exists in your library: " +
+                            dialog.duplicates.joinToString { it.title },
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        onDismissDialog()
+                        onAddToLibraryAnywayClicked()
+                    }) {
+                        Text("Add anyway")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismissDialog) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
         null -> {}
     }
 }
@@ -237,6 +266,7 @@ private fun AnimeScreenSmallImpl(
     onMultiMarkAsSeenClicked: (List<Episode>, markAsSeen: Boolean) -> Unit,
     onMarkPreviousAsSeenClicked: (Episode) -> Unit,
     onMultiDeleteClicked: (List<Episode>) -> Unit,
+    onMultiDownloadClicked: (List<Episode>) -> Unit,
     onEpisodeSelected: (EpisodeList.Item, Boolean, Boolean, Boolean) -> Unit,
     onAllEpisodeSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
@@ -300,6 +330,7 @@ private fun AnimeScreenSmallImpl(
                 onMultiMarkAsSeenClicked = onMultiMarkAsSeenClicked,
                 onMarkPreviousAsSeenClicked = onMarkPreviousAsSeenClicked,
                 onMultiDeleteClicked = onMultiDeleteClicked,
+                onMultiDownloadClicked = onMultiDownloadClicked,
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -328,16 +359,18 @@ private fun AnimeScreenSmallImpl(
             )
         },
     ) { contentPadding ->
+        val topPadding = contentPadding.calculateTopPadding()
+
         PullRefresh(
             refreshing = state.isRefreshingData,
             onRefresh = onRefresh,
             enabled = !isAnySelected,
-            indicatorPadding = contentPadding,
+            indicatorPadding = PaddingValues(top = topPadding),
         ) {
             val layoutDirection = LocalLayoutDirection.current
             VerticalFastScroller(
                 listState = episodeListState,
-                topContentPadding = contentPadding.calculateTopPadding(),
+                topContentPadding = topPadding,
                 endContentPadding = contentPadding.calculateEndPadding(layoutDirection),
             ) {
                 LazyColumn(
@@ -355,6 +388,7 @@ private fun AnimeScreenSmallImpl(
                     ) {
                         AnimeInfoHeader(
                             anime = state.anime,
+                            appBarPadding = topPadding,
                             onFavoriteToggle = onAddToLibraryClicked,
                             onTagSearch = onTagSearch,
                             onCoverClick = onCoverClicked,
@@ -406,6 +440,7 @@ private fun AnimeScreenLargeImpl(
     onMultiMarkAsSeenClicked: (List<Episode>, markAsSeen: Boolean) -> Unit,
     onMarkPreviousAsSeenClicked: (Episode) -> Unit,
     onMultiDeleteClicked: (List<Episode>) -> Unit,
+    onMultiDownloadClicked: (List<Episode>) -> Unit,
     onEpisodeSelected: (EpisodeList.Item, Boolean, Boolean, Boolean) -> Unit,
     onAllEpisodeSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
@@ -455,6 +490,7 @@ private fun AnimeScreenLargeImpl(
                 onMultiMarkAsSeenClicked = onMultiMarkAsSeenClicked,
                 onMarkPreviousAsSeenClicked = onMarkPreviousAsSeenClicked,
                 onMultiDeleteClicked = onMultiDeleteClicked,
+                onMultiDownloadClicked = onMultiDownloadClicked,
                 fillFraction = 0.5f,
             )
         },
@@ -492,6 +528,7 @@ private fun AnimeScreenLargeImpl(
             startContent = {
                 AnimeInfoHeader(
                     anime = state.anime,
+                    appBarPadding = contentPadding.calculateTopPadding(),
                     onFavoriteToggle = onAddToLibraryClicked,
                     onTagSearch = onTagSearch,
                     onCoverClick = onCoverClicked,
@@ -546,6 +583,7 @@ private fun SharedAnimeBottomActionMenu(
     onMultiMarkAsSeenClicked: (List<Episode>, markAsSeen: Boolean) -> Unit,
     onMarkPreviousAsSeenClicked: (Episode) -> Unit,
     onMultiDeleteClicked: (List<Episode>) -> Unit,
+    onMultiDownloadClicked: (List<Episode>) -> Unit = {},
     fillFraction: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
@@ -567,7 +605,11 @@ private fun SharedAnimeBottomActionMenu(
         onMarkPreviousAsSeenClicked = {
             onMarkPreviousAsSeenClicked(selected[0].episode)
         }.takeIf { selected.size == 1 },
-        onDownloadClicked = null,
+        onDownloadClicked = {
+            onMultiDownloadClicked(selected.fastMap { it.episode })
+        }.takeIf {
+            selected.fastAny { it.downloadState != AnimeDownload.State.DOWNLOADED }
+        },
         onDeleteClicked = {
             onMultiDeleteClicked(selected.fastMap { it.episode })
         }.takeIf {

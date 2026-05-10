@@ -32,6 +32,7 @@ CREATE TABLE animes(
 
 CREATE INDEX library_favorite_anime_index ON animes(favorite) WHERE favorite = 1;
 CREATE INDEX animes_url_index ON animes(url);
+CREATE INDEX animes_source_index ON animes(source);
 
 CREATE TRIGGER update_last_favorited_at_animes
 AFTER UPDATE OF favorite ON animes
@@ -86,6 +87,13 @@ AND source = :sourceId;
 getAllAnime:
 SELECT *
 FROM animes;
+
+getDuplicateLibraryAnime:
+SELECT *
+FROM animes
+WHERE favorite = 1
+AND lower(title) = :title
+AND _id != :id;
 
 resetIsSyncing:
 UPDATE animes

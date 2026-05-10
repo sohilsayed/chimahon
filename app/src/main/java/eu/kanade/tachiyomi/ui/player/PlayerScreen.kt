@@ -7,6 +7,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,6 +18,9 @@ import eu.kanade.tachiyomi.ui.player.controls.SubtitleTapOverlay
 import eu.kanade.tachiyomi.ui.player.controls.components.BrightnessVolumeIndicator
 import eu.kanade.tachiyomi.ui.player.controls.components.StatsOverlay
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
+import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @Composable
 fun PlayerScreen(
@@ -43,6 +47,8 @@ fun PlayerScreen(
     lookupContent: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
+    val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
+    val showLoadingCircle = remember { playerPreferences.showLoadingCircle().get() }
 
     Box(
         modifier = Modifier
@@ -73,7 +79,7 @@ fun PlayerScreen(
             onSeekEnd = onSeekEnd,
         )
 
-        if (state.isLoading) {
+        if (state.isLoading && showLoadingCircle) {
             CircularProgressIndicator(
                 color = Color.White,
                 modifier = Modifier.align(Alignment.Center),

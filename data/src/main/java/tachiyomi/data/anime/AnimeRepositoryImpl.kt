@@ -124,6 +124,10 @@ class AnimeRepositoryImpl(
         return handler.awaitList { animesQueries.getAllAnime(AnimeMapper::mapAnime) }
     }
 
+    override suspend fun getDuplicateLibraryAnime(id: Long, title: String): List<Anime> {
+        return handler.awaitList { animesQueries.getDuplicateLibraryAnime(title, id, AnimeMapper::mapAnime) }
+    }
+
     private suspend fun partialUpdate(vararg animeUpdates: AnimeUpdate) {
         handler.await(inTransaction = true) {
             animeUpdates.forEach { value ->

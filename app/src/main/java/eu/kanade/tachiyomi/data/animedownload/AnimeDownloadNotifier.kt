@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.lang.chop
 import eu.kanade.tachiyomi.util.system.cancelNotification
@@ -58,6 +59,11 @@ internal class AnimeDownloadNotifier(private val context: Context) {
                 clearActions()
                 setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
                 isDownloading = true
+                addAction(
+                    R.drawable.ic_pause_24dp,
+                    context.stringResource(MR.strings.action_pause),
+                    NotificationReceiver.pauseDownloadsPendingBroadcast(context),
+                )
             }
 
             val title = if (preferences.hideNotificationContent().get()) {
@@ -89,6 +95,16 @@ internal class AnimeDownloadNotifier(private val context: Context) {
             setOngoing(false)
             clearActions()
             setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
+            addAction(
+                R.drawable.ic_play_arrow_24dp,
+                context.stringResource(MR.strings.action_resume),
+                NotificationReceiver.resumeDownloadsPendingBroadcast(context),
+            )
+            addAction(
+                R.drawable.ic_close_24dp,
+                context.stringResource(MR.strings.action_cancel_all),
+                NotificationReceiver.clearDownloadsPendingBroadcast(context),
+            )
 
             show(Notifications.ID_ANIME_DOWNLOAD_PAUSED)
         }
