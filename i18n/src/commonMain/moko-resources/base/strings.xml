@@ -240,6 +240,9 @@
     <string name="pref_dict_group_terms">Group dictionary definitions</string>
     <string name="pref_dict_group_terms_summary">Show multiple dictionary definitions under one headword</string>
     <string name="pref_dict_custom_css">Custom CSS</string>
+    <string name="pref_dict_profile_override_manga">Set dictionary profile</string>
+    <string name="pref_dict_profile_override_source">Dictionary profile for this source</string>
+    <string name="pref_dict_profile_auto">Auto (use cascading default)</string>
     <string name="pref_dict_custom_css_summary">Inject custom CSS into the dictionary renderer</string>
     <string name="pref_dict_invalid_width">Enter a number between 200 and 1920</string>
     <string name="pref_dict_invalid_height">Enter a number between 100 and 1080</string>
@@ -599,8 +602,8 @@
     <string name="pref_import_dictionary_summ">Import a Yomitan dictionary ZIP file</string>
     <string name="pref_import_dictionary_success">Dictionary imported (%1$d terms, %2$d metadata, %3$d media)</string>
     <string name="pref_import_dictionary_failed">Dictionary import failed</string>
-    <string name="pref_anki">Anki</string>
-    <string name="pref_anki_summary">Configure AnkiDroid card creation</string>
+    <string name="pref_anki">Dictionary Profiles</string>
+    <string name="pref_anki_summary">Configure dictionaries, language, and Anki integration</string>
     <string name="pref_anki_enable">Enable Anki integration</string>
     <string name="pref_anki_deck">Default deck</string>
     <string name="pref_anki_model">Note type</string>
@@ -617,7 +620,7 @@
     <string name="pref_anki_select_deck">Select deck</string>
     <string name="pref_anki_select_model">Select note type</string>
     <string name="pref_anki_loading">Loading…</string>
-    <string name="pref_anki_profiles">Anki profiles</string>
+    <string name="pref_anki_profiles">Dictionary profiles</string>
     <string name="pref_anki_profile_new">New profile</string>
     <string name="pref_anki_profile_rename">Rename profile</string>
     <string name="pref_anki_profile_delete">Delete profile</string>

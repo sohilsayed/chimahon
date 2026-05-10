@@ -71,6 +71,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         val prefs = Injekt.get<DictionaryPreferences>()
 
         // Warm up and populate the cache on a background thread.
+        // Novel reader has no manga/source context → always falls through to global profile.
         thread(name = "DictionaryWarmup", start = true) {
         // Warm up and populate the cache off the main thread.
         // Novel reader has no manga/source context → always falls through to global profile.
@@ -79,7 +80,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
             val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
             cachedActiveProfile = profile
             cachedTermPaths = termPaths
-            Injekt.get<DictionaryRepository>().warmUp(termPaths)
+            Injekt.get<DictionaryRepository>().warmUp(termPaths, profile.id)
         }
 
         lifecycleScope.launch {
@@ -233,10 +234,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
-        val (_, termPaths) = getOrRefreshLookupPaths()
+        val (profile, termPaths) = getOrRefreshLookupPaths()
 
         lookupDeferred = lifecycleScope.async(Dispatchers.IO) {
-            Injekt.get<DictionaryRepository>().lookup(word, termPaths)
         cancelActiveLookup()
         lookupDeferred = lifecycleScope.async(Dispatchers.Default) {
             Injekt.get<DictionaryRepository>().lookup(word.trim(), termPaths, profile.languageCode)
@@ -309,7 +309,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 anchorWidth = state.anchorWidth,
                 anchorHeight = state.anchorHeight,
                 isVertical = state.isVertical,
-                activeProfile = state.activeProfile,
+                activeProfile = getOrRefreshLookupPaths().first,
                 // No screenshot — plain text selection only
                 mediaInfo = mediaInfo,
                 onRequestScreenshot = null,

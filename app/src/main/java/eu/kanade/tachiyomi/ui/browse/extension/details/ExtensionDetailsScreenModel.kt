@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import tachiyomi.domain.source.service.SourceManager
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
@@ -136,6 +137,32 @@ class ExtensionDetailsScreenModel(
         state.value.extension?.pkgName?.let { packageName ->
             toggleIncognito.await(packageName, enable)
         }
+    }
+
+    fun getDictionaryProfiles(): List<chimahon.anki.AnkiProfile> {
+        return Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().profileStore.getProfiles()
+    }
+
+    fun getSourceProfileOverride(sourceId: Long): String {
+        val key = chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey(sourceId)
+        return Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().rawProfileOverride(key).get()
+    }
+
+    fun setSourceProfileOverride(sourceId: Long, profileId: String?) {
+        val key = chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey(sourceId)
+        if (profileId == null) {
+            Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().rawProfileOverride(key).delete()
+        } else {
+            Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().rawProfileOverride(key).set(profileId)
+        }
+    }
+
+    fun resolveAutoProfile(sourceId: Long): chimahon.anki.AnkiProfile {
+        val source = Injekt.get<SourceManager>().getOrStub(sourceId)
+        return Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().profileResolver.resolve(
+            sourceId = 0L, // 0 to avoid hitting the source override itself
+            sourceLang = source.lang,
+        )
     }
 
     @Immutable
