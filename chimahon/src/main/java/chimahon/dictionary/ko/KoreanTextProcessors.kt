@@ -112,7 +112,8 @@ object KoreanTextProcessors {
                             if (i + 2 < chars.size) {
                                 val tCode = chars[i + 2].code
                                 val t = compatToT[tCode]
-                                if (t != null) {
+                                val isNextVowel = i + 3 < chars.size && chars[i + 3].code in COMPAT_V_START..COMPAT_V_END
+                                if (t != null && !isNextVowel) {
                                     tStandard = t - TBase
                                     consumed = 3
                                 }
