@@ -14,6 +14,15 @@ data class BackupNovel(
     @ProtoNumber(7) val characterCount: Int = 0,
     @ProtoNumber(8) val lastModified: Long = 0L,
     @ProtoNumber(9) val stats: List<BackupStatEntry> = emptyList(),
+    @ProtoNumber(10) val categoryIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class BackupNovelCategory(
+    @ProtoNumber(1) val id: String,
+    @ProtoNumber(2) val name: String,
+    @ProtoNumber(3) val order: Long = 0,
+    @ProtoNumber(4) val flags: Long = 0,
 )
 
 @Serializable

@@ -24,7 +24,11 @@ object BookImporter {
     private const val MAX_DIM = 2048
     private const val MAX_PIXELS = 4_000_000L
 
-    suspend fun importEpub(context: Context, uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+    suspend fun importEpub(
+        context: Context,
+        uri: Uri,
+        categoryIds: List<String>? = null,
+    ): ImportResult = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting import from URI: $uri")
 
@@ -127,6 +131,8 @@ object BookImporter {
                 lastAccess = existingLastAccess ?: System.currentTimeMillis(),
                 hash = stableId,
                 isGhost = false,
+                lang = extractedBook.language,
+                categoryIds = categoryIds ?: emptyList(),
             )
             BookStorage.saveMetadata(metadata, bookDir)
             BookStorage.saveSpineCache(extractedBook.spine, bookDir)

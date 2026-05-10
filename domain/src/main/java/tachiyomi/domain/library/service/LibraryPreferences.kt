@@ -31,8 +31,10 @@ class LibraryPreferences(
     fun randomSortSeed() = preferenceStore.getInt("library_random_sort_seed", 0)
 
     fun portraitColumns() = preferenceStore.getInt("pref_library_columns_portrait_key", 0)
-
     fun landscapeColumns() = preferenceStore.getInt("pref_library_columns_landscape_key", 0)
+
+    fun novelPortraitColumns() = preferenceStore.getInt("pref_novel_library_columns_portrait_key", 2)
+    fun novelLandscapeColumns() = preferenceStore.getInt("pref_novel_library_columns_landscape_key", 2)
 
     fun lastUpdatedTimestamp() = preferenceStore.getLong(Preference.appStateKey("library_update_last_timestamp"), 0L)
     fun autoUpdateInterval() = preferenceStore.getInt("pref_library_update_interval_key", 0)

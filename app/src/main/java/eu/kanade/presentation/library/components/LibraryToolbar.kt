@@ -38,9 +38,9 @@ fun LibraryToolbar(
     onClickInvertSelection: () -> Unit,
     onClickFilter: () -> Unit,
     onClickRefresh: () -> Unit,
-    onClickGlobalUpdate: () -> Unit,
-    onClickOpenRandomManga: () -> Unit,
-    onClickSyncNow: () -> Unit,
+    onClickGlobalUpdate: (() -> Unit)?,
+    onClickOpenRandomManga: (() -> Unit)?,
+    onClickSyncNow: (() -> Unit)?,
     // SY -->
     onClickSyncExh: (() -> Unit)?,
     isSyncEnabled: Boolean,
@@ -48,7 +48,11 @@ fun LibraryToolbar(
     searchQuery: String?,
     onSearchQueryChange: (String?) -> Unit,
     scrollBehavior: TopAppBarScrollBehavior?,
-    onInvalidateDownloadCache: (Context) -> Unit,
+    onInvalidateDownloadCache: ((Context) -> Unit)?,
+    onClickEditCategories: (() -> Unit)? = null,
+    editCategoriesTitle: String? = null,
+    updateCategoryTitle: String? = null,
+    updateLibraryTitle: String? = null,
 ) = when {
     selectedCount > 0 -> LibrarySelectionToolbar(
         selectedCount = selectedCount,
@@ -72,6 +76,10 @@ fun LibraryToolbar(
         // SY <--
         scrollBehavior = scrollBehavior,
         onInvalidateDownloadCache = onInvalidateDownloadCache,
+        onClickEditCategories = onClickEditCategories,
+        editCategoriesTitle = editCategoriesTitle,
+        updateCategoryTitle = updateCategoryTitle,
+        updateLibraryTitle = updateLibraryTitle,
     )
 }
 
@@ -83,15 +91,19 @@ private fun LibraryRegularToolbar(
     onSearchQueryChange: (String?) -> Unit,
     onClickFilter: () -> Unit,
     onClickRefresh: () -> Unit,
-    onClickGlobalUpdate: () -> Unit,
-    onClickOpenRandomManga: () -> Unit,
-    onClickSyncNow: () -> Unit,
+    onClickGlobalUpdate: (() -> Unit)?,
+    onClickOpenRandomManga: (() -> Unit)?,
+    onClickSyncNow: (() -> Unit)?,
     // SY -->
     onClickSyncExh: (() -> Unit)?,
     isSyncEnabled: Boolean,
     // SY <--
     scrollBehavior: TopAppBarScrollBehavior?,
-    onInvalidateDownloadCache: (Context) -> Unit,
+    onInvalidateDownloadCache: ((Context) -> Unit)?,
+    onClickEditCategories: (() -> Unit)? = null,
+    editCategoriesTitle: String? = null,
+    updateCategoryTitle: String? = null,
+    updateLibraryTitle: String? = null,
 ) {
     val context = LocalContext.current
     val pillAlpha = if (isSystemInDarkTheme()) 0.12f else 0.08f
@@ -126,24 +138,44 @@ private fun LibraryRegularToolbar(
                         onClick = onClickFilter,
                     ),
                     AppBar.OverflowAction(
-                        title = stringResource(MR.strings.action_update_library),
-                        onClick = onClickGlobalUpdate,
-                    ),
-                    AppBar.OverflowAction(
-                        title = stringResource(MR.strings.action_update_category),
+                        title = updateCategoryTitle ?: stringResource(MR.strings.action_update_category),
                         onClick = onClickRefresh,
                     ),
-                    AppBar.OverflowAction(
-                        title = stringResource(MR.strings.action_open_random_manga),
-                        onClick = onClickOpenRandomManga,
-                    ),
-                    AppBar.OverflowAction(
-                        title = stringResource(MR.strings.pref_invalidate_download_cache),
-                        onClick = {
-                            onInvalidateDownloadCache(context)
-                        },
-                    ),
                 ).builder().apply {
+                    if (onClickGlobalUpdate != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = updateLibraryTitle ?: stringResource(MR.strings.action_update_library),
+                                onClick = onClickGlobalUpdate,
+                            ),
+                        )
+                    }
+                    if (onClickOpenRandomManga != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(MR.strings.action_open_random_manga),
+                                onClick = onClickOpenRandomManga,
+                            ),
+                        )
+                    }
+                    if (onInvalidateDownloadCache != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(MR.strings.pref_invalidate_download_cache),
+                                onClick = {
+                                    onInvalidateDownloadCache(context)
+                                },
+                            ),
+                        )
+                    }
+                    if (onClickEditCategories != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = editCategoriesTitle ?: stringResource(MR.strings.action_edit_categories),
+                                onClick = onClickEditCategories,
+                            ),
+                        )
+                    }
                     // SY -->
                     if (onClickSyncExh != null) {
                         add(
@@ -153,7 +185,7 @@ private fun LibraryRegularToolbar(
                             ),
                         )
                     }
-                    if (isSyncEnabled) {
+                    if (isSyncEnabled && onClickSyncNow != null) {
                         add(
                             AppBar.OverflowAction(
                                 title = stringResource(SYMR.strings.sync_library),

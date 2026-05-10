@@ -13,6 +13,7 @@ import chimahon.audio.WordAudioService
 import chimahon.audio.WordAudioPreferences
 import chimahon.DictionaryRepository
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import com.canopus.chimareader.data.NovelCategoryStorage
 import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.BackupRestoreStatus
@@ -224,5 +225,6 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory<WordAudioPreferences> { get<DictionaryPreferences>() }
 
         addSingletonFactory { GoogleDriveService(app) }
+        addSingletonFactory { NovelCategoryStorage(app) }
     }
 }
