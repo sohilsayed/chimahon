@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.anime.interactor.GetAnime
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.anime.repository.AnimeRepository
@@ -116,7 +117,7 @@ class BrowseAnimeSourceScreenModel(
         screenModelScope.launchIO {
             val existingAnime = getAnime.await(sAnime.url, sourceId)
             if (existingAnime != null) {
-                onAdded(existingAnime.id)
+                withUIContext { onAdded(existingAnime.id) }
                 return@launchIO
             }
 
@@ -133,7 +134,7 @@ class BrowseAnimeSourceScreenModel(
                 initialized = true,
             )
             val id = animeRepository.insert(anime)
-            onAdded(id)
+            withUIContext { onAdded(id) }
         }
     }
 

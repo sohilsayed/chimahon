@@ -1,10 +1,10 @@
 package eu.kanade.tachiyomi.ui.player.controls
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -14,8 +14,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.vivvvek.seeker.Seeker
+import dev.vivvvek.seeker.SeekerDefaults
+import dev.vivvvek.seeker.Segment
 import eu.kanade.tachiyomi.ui.player.formatTime
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 
 @Composable
 fun TimeBar(
@@ -23,47 +29,61 @@ fun TimeBar(
     durationSec: Long,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    chapters: ImmutableList<Segment> = persistentListOf(),
 ) {
-    var seekingProgress by remember { mutableFloatStateOf(-1f) }
-    val progress = when {
-        seekingProgress >= 0f -> seekingProgress
-        durationSec > 0 -> currentPositionSec.toFloat() / durationSec
-        else -> 0f
-    }
+    var seekingPosition by remember { mutableFloatStateOf(-1f) }
+    val position = if (seekingPosition >= 0f) seekingPosition else currentPositionSec.toFloat()
+    val duration = durationSec.toFloat().coerceAtLeast(1f)
 
     Row(
-        modifier = modifier,
+        modifier = modifier.height(48.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             text = formatTime(
-                if (seekingProgress >= 0f) (seekingProgress * durationSec).toLong() else currentPositionSec,
+                if (seekingPosition >= 0f) seekingPosition.toLong() else currentPositionSec,
             ),
-            style = MaterialTheme.typography.bodySmall,
             color = Color.White,
-            modifier = Modifier.padding(horizontal = 8.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.width(72.dp),
         )
-        Slider(
-            value = progress,
-            onValueChange = { seekingProgress = it },
+
+        Seeker(
+            value = position.coerceIn(0f, duration),
+            range = 0f..duration,
+            onValueChange = { seekingPosition = it },
             onValueChangeFinished = {
-                if (seekingProgress >= 0f) {
-                    onSeek(seekingProgress)
-                    seekingProgress = -1f
+                if (seekingPosition >= 0f) {
+                    onSeek(seekingPosition / duration)
+                    seekingPosition = -1f
                 }
             },
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-            ),
+            segments = chapters
+                .filter { it.start in 0f..duration }
+                .let {
+                    if (it.isNotEmpty() && it[0].start != 0f) {
+                        persistentListOf(Segment("", 0f)) + it
+                    } else {
+                        it
+                    }
+                },
             modifier = Modifier.weight(1f),
+            colors = SeekerDefaults.seekerColors(
+                progressColor = MaterialTheme.colorScheme.primary,
+                thumbColor = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.background,
+                readAheadColor = MaterialTheme.colorScheme.inversePrimary,
+            ),
         )
+
         Text(
             text = formatTime(durationSec),
-            style = MaterialTheme.typography.bodySmall,
             color = Color.White,
-            modifier = Modifier.padding(horizontal = 8.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.width(72.dp),
         )
     }
 }

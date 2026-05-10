@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.ui.player.controls
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -23,9 +23,15 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import eu.kanade.tachiyomi.ui.player.setting.SubtitlePreferences
+import tachiyomi.presentation.core.util.collectAsState
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 private val ASS_OVERRIDE_REGEX = Regex("""\{\\[^}]*\}""")
 
@@ -34,19 +40,6 @@ private fun stripAssOverrides(text: String): String {
 }
 
 private val HIGHLIGHT_COLOR = Color(0xFF4FC3F7)
-
-private val subtitleStyle = TextStyle(
-    color = Color.White,
-    fontSize = 24.sp,
-    textAlign = TextAlign.Center,
-    shadow = Shadow(
-        color = Color.Black,
-        offset = Offset(1f, 1f),
-        blurRadius = 8f,
-    ),
-)
-
-private val highlightStyle = subtitleStyle.copy(color = HIGHLIGHT_COLOR)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -57,15 +50,43 @@ fun SubtitleTapOverlay(
     modifier: Modifier = Modifier,
 ) {
     val cleanText = remember(subText) { stripAssOverrides(subText) }
-
     if (cleanText.isBlank()) return
+
+    val prefs = remember { Injekt.get<SubtitlePreferences>() }
+    val textColorInt by prefs.textColorSubtitles().collectAsState()
+    val borderColorInt by prefs.borderColorSubtitles().collectAsState()
+    val fontSize by prefs.subtitleFontSize().collectAsState()
+    val scale by prefs.subtitleFontScale().collectAsState()
+    val isBold by prefs.boldSubtitles().collectAsState()
+    val isItalic by prefs.italicSubtitles().collectAsState()
+    val shadowOffset by prefs.shadowOffsetSubtitles().collectAsState()
+    val textColor = Color(textColorInt)
+    val borderColor = Color(borderColorInt)
+
+    val effectiveFontSize = (fontSize * scale * 0.45f).sp
+
+    val subtitleStyle = remember(textColor, borderColor, effectiveFontSize, isBold, isItalic, shadowOffset) {
+        TextStyle(
+            color = textColor,
+            fontSize = effectiveFontSize,
+            textAlign = TextAlign.Center,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            fontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal,
+            shadow = Shadow(
+                color = borderColor,
+                offset = Offset(shadowOffset.toFloat().coerceAtLeast(1f), shadowOffset.toFloat().coerceAtLeast(1f)),
+                blurRadius = 8f,
+            ),
+        )
+    }
+    val highlightStyle = remember(subtitleStyle) { subtitleStyle.copy(color = HIGHLIGHT_COLOR) }
 
     Box(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 72.dp),
+                .padding(horizontal = 24.dp, vertical = 120.dp),
         ) {
             FlowRow(
                 horizontalArrangement = Arrangement.Center,
@@ -92,7 +113,7 @@ fun SubtitleTapOverlay(
                                 anchorY.floatValue = pos.y
                             }
                             .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
+                                interactionSource = null,
                                 indication = null,
                             ) {
                                 val lookupLen = minOf(10, cleanText.length - idx)

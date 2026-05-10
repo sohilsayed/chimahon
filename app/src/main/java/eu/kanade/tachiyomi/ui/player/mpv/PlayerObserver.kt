@@ -11,11 +11,13 @@ class PlayerObserver(
     private val onEofReached: () -> Unit = {},
     private val onSubTextChanged: (text: String) -> Unit = {},
     private val onTrackListChanged: () -> Unit = {},
+    private val onChapterListChanged: () -> Unit = {},
 ) : MPVLib.EventObserver {
 
     override fun eventProperty(property: String) {
         when (property) {
             MPVView.PROP_TRACK_LIST -> onTrackListChanged()
+            PROP_CHAPTER_LIST -> onChapterListChanged()
         }
     }
 
@@ -51,5 +53,9 @@ class PlayerObserver(
             MPVView.PROP_TIME_POS -> onPositionChanged(value)
             MPVView.PROP_DURATION -> onDurationChanged(value)
         }
+    }
+
+    companion object {
+        const val PROP_CHAPTER_LIST = "chapter-list"
     }
 }

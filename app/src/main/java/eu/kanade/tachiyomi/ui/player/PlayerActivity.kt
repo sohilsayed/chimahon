@@ -1,11 +1,23 @@
 package eu.kanade.tachiyomi.ui.player
 
 import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.media.AudioManager
+import android.media.session.MediaSession
+import androidx.media.AudioFocusRequestCompat
+import androidx.media.AudioManagerCompat
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import android.view.KeyEvent
 import android.view.WindowManager
 import android.webkit.WebView
@@ -13,6 +25,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,12 +50,20 @@ import eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 import eu.kanade.tachiyomi.ui.player.mpv.PlayerObserver
+import eu.kanade.tachiyomi.ui.player.setting.AudioPreferences
+import eu.kanade.tachiyomi.ui.player.setting.DecoderPreferences
 import eu.kanade.tachiyomi.ui.player.setting.PlayerOrientation
 import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
+import eu.kanade.tachiyomi.ui.player.setting.SubtitlePreferences
+import eu.kanade.tachiyomi.ui.player.utils.TrackSelect
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import `is`.xyz.mpv.MPVLib
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,10 +81,57 @@ class PlayerActivity : ComponentActivity() {
     private var mpvView: MPVView? = null
     private var playerObserver: PlayerObserver? = null
 
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
     private var popupWebView: WebView? = null
 
     private val dictionaryPreferences: DictionaryPreferences by lazy { Injekt.get() }
     private val dictionaryRepository: chimahon.DictionaryRepository by lazy { Injekt.get() }
+
+    private val subtitlePreferences: SubtitlePreferences by lazy { Injekt.get() }
+    private val audioPreferences: AudioPreferences by lazy { Injekt.get() }
+    private val decoderPreferences: DecoderPreferences by lazy { Injekt.get() }
+    private val trackSelect by lazy { TrackSelect() }
+    private var mediaSession: MediaSession? = null
+    private var audioFocusRequest: AudioFocusRequestCompat? = null
+    private var restoreAudioFocus: () -> Unit = {}
+    private var hideSliderJob: Job? = null
+    private var aniSkipFetched = false
+
+    private val subtitleFilePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: SecurityException) {}
+            val name = uri.lastPathSegment ?: "External"
+            val fd = contentResolver.openFileDescriptor(uri, "r")?.detachFd() ?: return@registerForActivityResult
+            val path = "fdclose://$fd"
+            mpvView?.addSubtitleTrack(path, name)
+            viewModel.saveCustomSubtitle(uri.toString(), name)
+        }
+    }
+
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.getIntExtra(PIP_INTENT_ACTION, 0)) {
+                PIP_PLAY -> mpvView?.resume()
+                PIP_PAUSE -> mpvView?.pause()
+                PIP_PREVIOUS -> viewModel.loadPreviousEpisode()
+                PIP_NEXT -> viewModel.loadNextEpisode()
+            }
+        }
+    }
+
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                mpvView?.pause()
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
 
     @Volatile private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
     @Volatile private var cachedTermPaths: List<String>? = null
@@ -92,6 +160,16 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
+        initBrightnessVolume()
+        setupPlayerAudio()
+        setupMediaSession()
+        registerReceiver(pipReceiver, IntentFilter(PIP_INTENTS_FILTER), RECEIVER_NOT_EXPORTED)
+        registerReceiver(
+            noisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+            RECEIVER_NOT_EXPORTED,
+        )
+
         setContent {
             PlayerScreen(
                 viewModel = viewModel,
@@ -99,10 +177,21 @@ class PlayerActivity : ComponentActivity() {
                 onPlayPause = ::togglePlayPause,
                 onSeek = ::seekToPercent,
                 onSeekRelative = ::seekRelative,
-                onBack = { finish() },
+                onSeekTo = ::seekToSeconds,
+                onBack = ::handleBack,
                 onSelectSubtitle = ::selectSubtitleTrack,
                 onSelectAudio = ::selectAudioTrack,
                 onSubtitleWordTapped = ::onSubtitleWordTapped,
+                onBrightnessChange = ::adjustBrightness,
+                onVolumeChange = ::adjustVolume,
+                onSeekStart = { mpvView?.pause() },
+                onSeekEnd = { mpvView?.resume() },
+                onSetSpeed = ::setSpeed,
+                onSetAspectRatio = { setAspectRatio(it) },
+                onRotateScreen = ::rotateScreen,
+                onNavigatePrevious = { viewModel.loadPreviousEpisode() },
+                onNavigateNext = { viewModel.loadNextEpisode() },
+                onAddSubtitleFile = { subtitleFilePicker.launch(arrayOf("*/*")) },
                 lookupContent = {
                     val state by viewModel.state.collectAsState()
                     val ls = state.lookupState
@@ -166,6 +255,17 @@ class PlayerActivity : ComponentActivity() {
                     is PlayerViewModel.Event.PlaybackCompleted -> {}
                     is PlayerViewModel.Event.PauseForLookup -> mpvView?.pause()
                     is PlayerViewModel.Event.ResumeFromLookup -> mpvView?.resume()
+                    is PlayerViewModel.Event.EpisodeChanged -> playCurrentEpisode()
+                    is PlayerViewModel.Event.ShowToast -> {
+                        android.widget.Toast.makeText(this@PlayerActivity, event.message, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    is PlayerViewModel.Event.SeekTo -> {
+                        mpvView?.seekTo(event.positionSec)
+                    }
+                    is PlayerViewModel.Event.PauseForTimer -> {
+                        mpvView?.pause()
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
                 }
             }
             .launchIn(lifecycleScope)
@@ -177,19 +277,47 @@ class PlayerActivity : ComponentActivity() {
         val configDir = filesDir.resolve("mpv").absolutePath
         val cacheDir = cacheDir.resolve("mpv").absolutePath
         logcat(LogPriority.DEBUG, tag = "Player") { "Initializing MPV" }
-        view.initialize(configDir, cacheDir)
+        view.initialize(configDir, cacheDir, decoderPreferences, audioPreferences, subtitlePreferences)
         logcat(LogPriority.DEBUG, tag = "Player") { "MPV initialized" }
+
+        val advancedPrefs: eu.kanade.tachiyomi.ui.player.setting.AdvancedPlayerPreferences = Injekt.get()
+        val mpvConf = advancedPrefs.mpvConf().get()
+        if (mpvConf.isNotBlank()) {
+            mpvConf.lines().filter { it.isNotBlank() && !it.startsWith("#") }.forEach { line ->
+                val parts = line.split("=", limit = 2)
+                if (parts.size == 2) {
+                    MPVLib.setOptionString(parts[0].trim(), parts[1].trim())
+                } else {
+                    MPVLib.setOptionString(parts[0].trim(), "")
+                }
+            }
+        }
 
         val observer = PlayerObserver(
             onPositionChanged = { pos -> viewModel.updatePosition(pos) },
-            onDurationChanged = { dur -> viewModel.updateDuration(dur) },
+            onDurationChanged = { dur ->
+                viewModel.updateDuration(dur)
+                if (dur > 0 && !aniSkipFetched) {
+                    aniSkipFetched = true
+                    lifecycleScope.launchIO {
+                        viewModel.fetchAniSkipTimestamps(dur.toInt())
+                    }
+                }
+            },
             onPauseChanged = { paused -> viewModel.updatePlaybackState(!paused) },
             onEofReached = { viewModel.onPlaybackCompleted() },
             onSubTextChanged = { text -> viewModel.updateSubText(text) },
             onTrackListChanged = ::onTrackListChanged,
+            onChapterListChanged = { viewModel.loadChapters() },
         )
         playerObserver = observer
         MPVLib.addObserver(observer)
+
+        val screenshotDir = android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_PICTURES,
+        )
+        screenshotDir.mkdirs()
+        MPVLib.setOptionString("screenshot-directory", screenshotDir.path)
 
         val animeId = intent.getLongExtra(PlayerViewModel.KEY_ANIME_ID, -1L)
         val episodeId = intent.getLongExtra(PlayerViewModel.KEY_EPISODE_ID, -1L)
@@ -224,6 +352,7 @@ class PlayerActivity : ComponentActivity() {
                 resolvedVideo?.subtitleTracks?.forEach { track ->
                     view.addSubtitleTrack(track.url, track.lang)
                 }
+                loadCustomSubtitles(view)
                 logcat(LogPriority.DEBUG, tag = "Player") { "playFile called, ${resolvedVideo?.subtitleTracks?.size ?: 0} subtitle tracks added" }
             }
         }
@@ -291,15 +420,24 @@ class PlayerActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    private var userSelectedSubId: Int? = null
+    private var userSelectedAudioId: Int? = null
+
     private fun onTrackListChanged() {
         val view = mpvView ?: return
         val (subs, audio) = view.loadTracks()
 
-        val preferred = playerPreferences.preferredSubLanguage().get()
-        if (preferred.isNotBlank() && subs.isNotEmpty()) {
-            val match = subs.firstOrNull { it.language.equals(preferred, ignoreCase = true) }
-            if (match != null && view.sid != match.id) {
-                view.sid = match.id
+        if (userSelectedSubId == null) {
+            val preferredSub = trackSelect.getPreferredSubTrack(subs)
+            if (preferredSub != null && view.sid != preferredSub.id) {
+                view.sid = preferredSub.id
+            }
+        }
+
+        if (userSelectedAudioId == null) {
+            val preferredAudio = trackSelect.getPreferredAudioTrack(audio)
+            if (preferredAudio != null && view.aid != preferredAudio.id) {
+                view.aid = preferredAudio.id
             }
         }
 
@@ -308,17 +446,126 @@ class PlayerActivity : ComponentActivity() {
 
     private fun selectSubtitleTrack(id: Int) {
         val view = mpvView ?: return
+        userSelectedSubId = id
         view.sid = id
         viewModel.updateSelectedSubId(id)
 
         val track = viewModel.state.value.subtitleTracks.firstOrNull { it.id == id }
-        playerPreferences.preferredSubLanguage().set(track?.language ?: "")
+        subtitlePreferences.preferredSubLanguages().set(track?.language ?: "")
+    }
+
+    private fun loadCustomSubtitles(view: MPVView) {
+        for (sub in viewModel.getCustomSubtitles()) {
+            try {
+                val uri = Uri.parse(sub.uri)
+                val fd = contentResolver.openFileDescriptor(uri, "r")?.detachFd() ?: continue
+                view.addSubtitleTrack("fdclose://$fd", sub.name)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun selectAudioTrack(id: Int) {
         val view = mpvView ?: return
+        userSelectedAudioId = id
         view.aid = id
         viewModel.updateSelectedAudioId(id)
+    }
+
+    private fun setupPlayerAudio() {
+        audioPreferences.audioChannels().get().let { MPVLib.setPropertyString(it.property, it.value) }
+
+        val request = AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                androidx.media.AudioAttributesCompat.Builder()
+                    .setUsage(androidx.media.AudioAttributesCompat.USAGE_MEDIA)
+                    .setContentType(androidx.media.AudioAttributesCompat.CONTENT_TYPE_MUSIC)
+                    .build(),
+            )
+            .setOnAudioFocusChangeListener(audioFocusChangeListener)
+            .build()
+        AudioManagerCompat.requestAudioFocus(audioManager, request).let {
+            if (it == AudioManager.AUDIOFOCUS_REQUEST_FAILED) return@let
+            audioFocusRequest = request
+        }
+    }
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener {
+        when (it) {
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            -> {
+                val oldRestore = restoreAudioFocus
+                val wasPlayerPaused = mpvView?.paused ?: true
+                mpvView?.pause()
+                restoreAudioFocus = {
+                    oldRestore()
+                    if (!wasPlayerPaused) mpvView?.resume()
+                }
+            }
+
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                MPVLib.command(arrayOf("multiply", "volume", "0.5"))
+                restoreAudioFocus = {
+                    MPVLib.command(arrayOf("multiply", "volume", "2"))
+                }
+            }
+
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                restoreAudioFocus()
+                restoreAudioFocus = {}
+            }
+        }
+    }
+
+    private fun setupMediaSession() {
+        mediaSession = MediaSession(this, "ChimahonPlayer").apply {
+            setCallback(object : MediaSession.Callback() {
+                override fun onPlay() { mpvView?.resume() }
+                override fun onPause() { mpvView?.pause() }
+                override fun onSkipToNext() { viewModel.loadNextEpisode() }
+                override fun onSkipToPrevious() { viewModel.loadPreviousEpisode() }
+                override fun onStop() {
+                    mpvView?.pause()
+                    isActive = false
+                }
+                override fun onSeekTo(pos: Long) { mpvView?.seekTo((pos / 1000).toInt()) }
+            })
+            isActive = true
+        }
+        lifecycleScope.launch {
+            viewModel.state
+                .map { it.isPlaying }
+                .distinctUntilChanged()
+                .collect { isPlaying ->
+                    updateMediaSessionState(isPlaying, viewModel.state.value.currentPositionSec)
+                }
+        }
+    }
+
+    private fun updateMediaSessionState(isPlaying: Boolean, positionSec: Long) {
+        val session = mediaSession ?: return
+        val pbState = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
+        session.setPlaybackState(
+            PlaybackState.Builder()
+                .setState(pbState, positionSec * 1000, 1f)
+                .setActions(
+                    PlaybackState.ACTION_PLAY or
+                        PlaybackState.ACTION_PAUSE or
+                        PlaybackState.ACTION_STOP or
+                        PlaybackState.ACTION_SEEK_TO or
+                        PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackState.ACTION_SKIP_TO_NEXT,
+                )
+                .build(),
+        )
+    }
+
+    private fun handleBack() {
+        if (playerPreferences.enablePip().get() && !isInPictureInPictureMode) {
+            enterPipMode()
+        } else {
+            finish()
+        }
     }
 
     private fun togglePlayPause() {
@@ -334,12 +581,193 @@ class PlayerActivity : ComponentActivity() {
         mpvView?.seekRelative(deltaSec)
     }
 
+    private fun seekToSeconds(positionSec: Int) {
+        mpvView?.seekTo(positionSec)
+    }
+
+    private fun initBrightnessVolume() {
+        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat()
+        val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
+        var currentBrightness = window.attributes.screenBrightness.let {
+            if (it < 0) 0.5f else it
+        }
+
+        if (playerPreferences.rememberPlayerBrightness().get()) {
+            val saved = playerPreferences.playerBrightnessValue().get()
+            if (saved >= 0f) {
+                currentBrightness = saved.coerceIn(0.01f, 1f)
+                val params = window.attributes
+                params.screenBrightness = currentBrightness
+                window.attributes = params
+            }
+        }
+
+        if (playerPreferences.rememberPlayerVolume().get()) {
+            val saved = playerPreferences.playerVolumeValue().get()
+            if (saved >= 0f) {
+                val restoredVol = saved.coerceIn(0f, maxVol).toInt()
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, restoredVol, 0)
+                viewModel.updateVolumeState(restoredVol.toFloat(), maxVol, false)
+            } else {
+                viewModel.updateVolumeState(currentVol, maxVol, false)
+            }
+        } else {
+            viewModel.updateVolumeState(currentVol, maxVol, false)
+        }
+
+        viewModel.updateBrightnessState(currentBrightness, false)
+    }
+
+    private fun adjustBrightness(delta: Float) {
+        val params = window.attributes
+        val current = params.screenBrightness.let { if (it < 0) 0.5f else it }
+        val newBrightness = (current + delta * 1.5f).coerceIn(0.01f, 1f)
+        params.screenBrightness = newBrightness
+        window.attributes = params
+        viewModel.updateBrightnessState(newBrightness, true)
+        if (playerPreferences.rememberPlayerBrightness().get()) {
+            playerPreferences.playerBrightnessValue().set(newBrightness)
+        }
+        scheduleHideSliders()
+    }
+
+    private fun adjustVolume(delta: Float) {
+        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val scaledDelta = delta * maxVol * 1.5f
+        val newVol = (currentVol + scaledDelta).toInt().coerceIn(0, maxVol)
+        if (newVol != currentVol) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+        }
+        viewModel.updateVolumeState(newVol.toFloat(), maxVol.toFloat(), true)
+        if (playerPreferences.rememberPlayerVolume().get()) {
+            playerPreferences.playerVolumeValue().set(newVol.toFloat())
+        }
+        scheduleHideSliders()
+    }
+
+    private fun scheduleHideSliders() {
+        hideSliderJob?.cancel()
+        hideSliderJob = lifecycleScope.launch {
+            delay(1500)
+            viewModel.hideBrightnessVolumeSliders()
+        }
+    }
+
+    private fun setSpeed(speed: Float) {
+        mpvView?.let {
+            MPVLib.setPropertyDouble("speed", speed.toDouble())
+        }
+        viewModel.setSpeed(speed)
+    }
+
+    private fun setAspectRatio(aspect: VideoAspect) {
+        mpvView?.let {
+            when (aspect) {
+                VideoAspect.Fit -> {
+                    MPVLib.setPropertyDouble("panscan", 0.0)
+                    MPVLib.setPropertyString("video-aspect-override", "-1")
+                }
+                VideoAspect.Crop -> {
+                    MPVLib.setPropertyDouble("panscan", 1.0)
+                    MPVLib.setPropertyString("video-aspect-override", "-1")
+                }
+                VideoAspect.Stretch -> {
+                    MPVLib.setPropertyDouble("panscan", 0.0)
+                    val w = it.width.toDouble()
+                    val h = it.height.toDouble()
+                    if (h > 0) MPVLib.setPropertyString("video-aspect-override", "${w / h}")
+                }
+            }
+        }
+    }
+
+    private fun rotateScreen() {
+        requestedOrientation = when (requestedOrientation) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+    }
+
+    private fun playCurrentEpisode() {
+        val view = mpvView ?: return
+        val state = viewModel.state.value
+        val episode = state.episode ?: return
+        val resolvedVideo = state.resolvedVideo
+        val url = resolvedVideo?.videoUrl?.takeIf { it.isNotBlank() }
+            ?: episode.url.takeIf { PlayerViewModel.isPlayableScheme(it) }
+        if (url.isNullOrBlank()) return
+        val resumePos = episode.lastSecondSeen
+        val playUrl = resolvePlaybackUrl(url)
+        val headers = resolvedVideo?.headers?.let { h ->
+            (0 until h.size).associate { i -> h.name(i) to h.value(i) }
+        }
+        view.playFile(playUrl, resumePos, headers)
+        resolvedVideo?.subtitleTracks?.forEach { track ->
+            view.addSubtitleTrack(track.url, track.lang)
+        }
+        loadCustomSubtitles(view)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (playerPreferences.pipOnExit().get() && !isInPictureInPictureMode) {
+            enterPipMode()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPipMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPipMode, newConfig)
+        viewModel.updatePipMode(isInPipMode)
+        if (!isInPipMode) {
+            setupImmersiveMode()
+        }
+    }
+
+    private fun enterPipMode() {
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        val state = viewModel.state.value
+        val params = PictureInPictureParams.Builder()
+            .setActions(
+                createPipActions(
+                    this,
+                    isPaused = !state.isPlaying,
+                    hasPrevious = state.currentEpisodeIndex > 0,
+                    hasNext = state.currentEpisodeIndex >= 0 &&
+                        state.currentEpisodeIndex < state.episodes.size - 1,
+                ),
+            )
+            .setAspectRatio(Rational(16, 9))
+            .build()
+        enterPictureInPictureMode(params)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        setupImmersiveMode()
+    }
+
     override fun onStop() {
         super.onStop()
-        viewModel.saveProgress()
+        if (!isInPictureInPictureMode) {
+            viewModel.saveProgress()
+        }
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(pipReceiver)
+        } catch (_: IllegalArgumentException) {}
+        try {
+            unregisterReceiver(noisyReceiver)
+        } catch (_: IllegalArgumentException) {}
+        audioFocusRequest?.let { AudioManagerCompat.abandonAudioFocusRequest(audioManager, it) }
+        audioFocusRequest = null
+        mediaSession?.isActive = false
+        mediaSession?.release()
+        mediaSession = null
         playerObserver?.let { MPVLib.removeObserver(it) }
         mpvView?.destroy()
         mpvView = null

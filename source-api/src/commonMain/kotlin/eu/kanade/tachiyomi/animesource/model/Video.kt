@@ -15,6 +15,7 @@ enum class ChapterType {
     Ending,
     Recap,
     MixedOp,
+    MixedEd,
     Other,
 }
 

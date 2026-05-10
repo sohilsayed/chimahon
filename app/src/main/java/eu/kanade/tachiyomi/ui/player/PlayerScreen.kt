@@ -11,8 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
+import eu.kanade.tachiyomi.ui.player.controls.GestureHandler
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControlsOverlay
 import eu.kanade.tachiyomi.ui.player.controls.SubtitleTapOverlay
+import eu.kanade.tachiyomi.ui.player.controls.components.BrightnessVolumeIndicator
+import eu.kanade.tachiyomi.ui.player.controls.components.StatsOverlay
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 
 @Composable
@@ -22,10 +25,21 @@ fun PlayerScreen(
     onPlayPause: () -> Unit,
     onSeek: (Float) -> Unit,
     onSeekRelative: (Int) -> Unit,
+    onSeekTo: (Int) -> Unit,
     onBack: () -> Unit,
     onSelectSubtitle: (Int) -> Unit = {},
     onSelectAudio: (Int) -> Unit = {},
     onSubtitleWordTapped: (word: String, fullText: String, charOffset: Int, anchorX: Float, anchorY: Float) -> Unit = { _, _, _, _, _ -> },
+    onBrightnessChange: (Float) -> Unit = {},
+    onVolumeChange: (Float) -> Unit = {},
+    onSeekStart: () -> Unit = {},
+    onSeekEnd: () -> Unit = {},
+    onSetSpeed: (Float) -> Unit = {},
+    onSetAspectRatio: (VideoAspect) -> Unit = {},
+    onRotateScreen: () -> Unit = {},
+    onNavigatePrevious: () -> Unit = {},
+    onNavigateNext: () -> Unit = {},
+    onAddSubtitleFile: () -> Unit = {},
     lookupContent: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
@@ -42,6 +56,23 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        if (state.isInPipMode) return@Box
+
+        GestureHandler(
+            isLocked = state.isLocked,
+            subtitleActive = state.currentSubText.isNotBlank(),
+            currentPositionSec = state.currentPositionSec,
+            durationSec = state.durationSec,
+            onToggleControls = { viewModel.toggleControls() },
+            onSeekRelative = onSeekRelative,
+            onPlayPause = onPlayPause,
+            onBrightnessChange = onBrightnessChange,
+            onVolumeChange = onVolumeChange,
+            onSeekTo = onSeekTo,
+            onSeekStart = onSeekStart,
+            onSeekEnd = onSeekEnd,
+        )
+
         if (state.isLoading) {
             CircularProgressIndicator(
                 color = Color.White,
@@ -49,24 +80,48 @@ fun PlayerScreen(
             )
         }
 
+        BrightnessVolumeIndicator(
+            isBrightness = true,
+            value = state.currentBrightness,
+            maxValue = 1f,
+            visible = state.showBrightnessSlider,
+        )
+        BrightnessVolumeIndicator(
+            isBrightness = false,
+            value = state.currentVolume,
+            maxValue = state.maxVolume,
+            visible = state.showVolumeSlider,
+        )
+
+        if (state.showStats) {
+            StatsOverlay()
+        }
+
         if (state.lookupState == null) {
             PlayerControlsOverlay(
-                isPlaying = state.isPlaying,
-                animeTitle = state.anime?.title,
-                episodeName = state.episode?.name,
-                currentPositionSec = state.currentPositionSec,
-                durationSec = state.durationSec,
-                doubleTapSeekSec = state.doubleTapSeekSec,
+                state = state,
                 onPlayPause = onPlayPause,
                 onSeek = onSeek,
-                onSeekRelative = onSeekRelative,
                 onBack = onBack,
-                subtitleTracks = state.subtitleTracks,
-                audioTracks = state.audioTracks,
-                selectedSubId = state.selectedSubId,
-                selectedAudioId = state.selectedAudioId,
                 onSelectSubtitle = onSelectSubtitle,
                 onSelectAudio = onSelectAudio,
+                onToggleLock = { viewModel.toggleLock() },
+                onSetSpeed = onSetSpeed,
+                onCycleAspectRatio = {
+                    viewModel.cycleAspectRatio()
+                    onSetAspectRatio(viewModel.state.value.aspectRatio)
+                },
+                onRotateScreen = onRotateScreen,
+                onNavigatePrevious = onNavigatePrevious,
+                onNavigateNext = onNavigateNext,
+                onAddSubtitleFile = onAddSubtitleFile,
+                onHideControls = { viewModel.hideControls() },
+                onToggleStats = { viewModel.toggleStats() },
+                onLoadEpisodeAt = { viewModel.loadEpisodeAt(it) },
+                onSkipIntro = { viewModel.onSkipIntro() },
+                onSelectChapter = { viewModel.selectChapter(it) },
+                onStartTimer = { viewModel.startTimer(it) },
+                onCancelTimer = { viewModel.cancelTimer() },
             )
         }
 

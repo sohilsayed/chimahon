@@ -357,8 +357,14 @@ dependencies {
 
     // MPV player
     implementation(libs.aniyomi.mpv)
+    implementation(libs.seeker)
     implementation(libs.ffmpeg.kit)
     implementation(libs.smart.exception.java)
+    implementation(libs.mediasession)
+    implementation(libs.truetypeparser)
+    implementation(libs.torrentserver)
+    implementation(libs.media.router)
+    implementation(libs.cast.play.services)
 
     // SY -->
     // Better logging (EH)

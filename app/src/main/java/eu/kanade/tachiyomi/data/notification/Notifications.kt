@@ -23,6 +23,9 @@ object Notifications {
     const val CHANNEL_COMMON = "common_channel"
     const val ID_DOWNLOAD_IMAGE = 2
 
+    const val CHANNEL_TORRENT_SERVER = "torrent_server_channel"
+    const val ID_TORRENT_SERVER = -601
+
     /**
      * Notification channel and ids used by the library updater.
      */
