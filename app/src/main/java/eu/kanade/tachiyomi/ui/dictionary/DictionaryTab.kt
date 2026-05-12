@@ -644,8 +644,9 @@ data object DictionaryTab : Tab {
                 if (candidates.isEmpty()) {
                     emptyList()
                 } else {
-                    val terms = HoshiDicts.query(activeSession, candidates, 50)
-                    genericDeinflector.wrapResults(query, candidates, terms.toList())
+                    candidates.flatMap { candidate ->
+                        HoshiDicts.lookup(activeSession, candidate, 50).toList()
+                    }.distinctBy { it.term.expression to it.term.reading }.take(50)
                 }
             } else {
                 HoshiDicts.lookup(activeSession, query, 50).toList()

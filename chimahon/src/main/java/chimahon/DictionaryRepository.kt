@@ -72,9 +72,9 @@ class DictionaryRepository(
             if (candidates.isEmpty()) {
                 emptyList()
             } else {
-                val candidateList = candidates.toList()
-                val terms = HoshiDicts.query(activeSession, candidateList, 20)
-                genericDeinflector.wrapResults(query, candidateList, terms.toList())
+                candidates.flatMap { candidate ->
+                    HoshiDicts.lookup(activeSession, candidate, 20).toList()
+                }.distinctBy { it.term.expression to it.term.reading }.take(20)
             }
         } else {
             HoshiDicts.lookup(activeSession, query, 20).toList()
