@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -283,7 +284,19 @@ data object DictionaryTab : Tab {
             }
         }
 
-        // ── Auto-search effect ────────────────────────────────────────────────
+        // ── Auto-focus effect ──────────────────────────────────────────────────
+        LaunchedEffect(Unit) {
+            // Wait for tab animation/composition to settle
+            delay(300)
+            focusRequester.requestFocus()
+        }
+
+        LaunchedEffect(query) {
+            if (query.isNotBlank()) {
+                focusRequester.requestFocus()
+            }
+        }
+
         LaunchedEffect(query) {
             val trimmed = query.trim()
             if (trimmed.isEmpty()) {
@@ -294,22 +307,12 @@ data object DictionaryTab : Tab {
                 }
                 return@LaunchedEffect
             }
-            // Debounce removed for instant search
 
-            // If we are at the root or typing in the main box, reset history to start a new search
-            // (Unless it was already the same query in the current frame)
             if (currentFrame?.query != trimmed) {
                 lookupStack.clear()
                 activeTabIndex = 0
                 stackLookup(trimmed)
             }
-        }
-
-        // ── Auto-focus effect ──────────────────────────────────────────────────
-        LaunchedEffect(Unit) {
-            // Wait for tab animation/composition to settle
-            delay(300)
-            focusRequester.requestFocus()
         }
 
         // Simple callback for Anki lookup - index maps to results array, glossaryIndex is optional
@@ -400,17 +403,17 @@ data object DictionaryTab : Tab {
                 OutlinedTextField(
                     value = textFieldValue,
                     onValueChange = { newValue ->
-                        if (autoKanaConversion && newValue.composition == null) {
+                        if (autoKanaConversion && newValue.composition == null && activeProfile.languageCode == "ja" && newValue.text.any { it in 'a'..'z' || it in 'A'..'Z' }) {
                             val (convertedText, newCursor) = KanaConverter.toKanaIME(
                                 newValue.text, newValue.selection.start
                             )
-                            textFieldValue = if (convertedText != newValue.text) {
-                                newValue.copy(
+                            if (convertedText != newValue.text) {
+                                textFieldValue = newValue.copy(
                                     text = convertedText,
                                     selection = TextRange(newCursor),
                                 )
                             } else {
-                                newValue
+                                textFieldValue = newValue
                             }
                         } else {
                             textFieldValue = newValue
@@ -475,6 +478,50 @@ data object DictionaryTab : Tab {
                         contentDescription = stringResource(MR.strings.action_search),
                         tint = MaterialTheme.colorScheme.primary,
                     )
+                }
+            }
+
+            // Profile quick-switch
+            val profiles = remember(rawProfiles) { profileStore.getProfiles() }
+            if (profiles.size > 1) {
+                var profileExpanded by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Profile: ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = activeProfile.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { profileExpanded = true },
+                    )
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = profileExpanded,
+                        onDismissRequest = { profileExpanded = false },
+                    ) {
+                        profiles.forEach { profile ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = profile.name,
+                                        fontWeight = if (profile.id == activeProfile.id) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                                    )
+                                },
+                                onClick = {
+                                    if (profile.id != activeProfile.id) {
+                                        profileStore.setActiveProfile(profile.id)
+                                    }
+                                    profileExpanded = false
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
