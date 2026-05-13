@@ -25,6 +25,20 @@ window.hoshiReader = {
         var vOver = el.scrollHeight - ph > 1;
         var hOver = el.scrollWidth - pw > 1;
 
+        if (!this.continuousMode && !this.isVertical()) {
+            var x = window.scrollX;
+            var maxX = el.scrollWidth - pw;
+            if (direction === 'forward' && x + pw <= maxX + 1) {
+                window.scrollTo(x + pw, 0);
+                return 'scrolled';
+            }
+            if (direction === 'backward' && x > 1) {
+                window.scrollTo(Math.max(0, x - pw), 0);
+                return 'scrolled';
+            }
+            return 'limit';
+        }
+
         if (!this._logged) {
             this._logged = true;
             console.log('[hoshi] scrollH=' + el.scrollHeight + ' scrollW=' + el.scrollWidth +
@@ -250,7 +264,7 @@ window.hoshiReader = {
 
         const text = node.textContent;
         const caret = range.startOffset;
-        
+
         // Try precise hit, then slight left/right offsets to handle character edges
         for (const offset of [caret, caret - 1]) {
             if (offset < 0 || offset >= text.length) continue;
@@ -385,11 +399,11 @@ window.hoshiReader = {
                 const range = document.createRange();
                 range.setStart(first.node, first.start);
                 range.setEnd(first.node, first.start + 1); // Only 1 character
-                
+
                 const rects = Array.from(range.getClientRects());
-                const rect = rects.find(r => clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) 
+                const rect = rects.find(r => clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom)
                             || range.getBoundingClientRect();
-                
+
                 minX = rect.left;
                 minY = rect.top;
                 maxX = rect.right;

@@ -158,12 +158,10 @@ open class NovelReaderActivity : ComponentActivity() {
 
     private fun setSystemBarsVisibility(visible: Boolean) {
         val windowInsetsController = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-        if (visible) {
-            windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        } else {
-            windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
+        // Always keep system bars hidden in the novel reader for an immersive experience.
+        // Toggling the HUD should not force the system bars to show.
+        windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
     private fun updateSystemBarsTheme(backgroundColor: Int) {

@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.math.min
 import logcat.LogPriority
 import logcat.logcat
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -2262,7 +2263,8 @@ class ReaderViewModel @JvmOverloads constructor(
     private fun trackMangaStats(newPage: ReaderPage?) {
         val now = SystemClock.elapsedRealtime()
         val prevPage = currentMangaStatsPage
-        val timeSpent = now - lastMangaStatsTime
+        val rawTime = now - lastMangaStatsTime
+        val timeSpent = min(rawTime, 120_000L)
 
         if (prevPage != null && !incognitoMode && timeSpent > 500) {
             viewModelScope.launchIO {

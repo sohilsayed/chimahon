@@ -91,6 +91,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import eu.kanade.tachiyomi.util.lang.toCountString
 
 @Composable
 fun StatsScreenContent(
@@ -430,16 +431,16 @@ private fun StatsGrid(state: StatsScreenState.Success) {
                     MetricCard(MetricData(state.overview.readingStreak.toString(), "Streak", "day", Icons.Outlined.LocalFireDepartment, iconColor))
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.overview.ankiCardsAdded.toString(), "Added cards", null, Icons.Outlined.Style, iconColor))
+                    MetricCard(MetricData(state.overview.ankiCardsAdded.toCountString(), "Added cards", null, Icons.Outlined.Style, iconColor))
                 }
             }
             
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.overview.charactersRead.toString(), "Characters read", null, Icons.Outlined.TextFields, iconColor))
+                    MetricCard(MetricData(state.overview.charactersRead.toCountString(), "Characters read", null, Icons.Outlined.TextFields, iconColor))
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.overview.charactersPerHour?.toString() ?: "0", "Avg speed", "ch/h", Icons.Outlined.Speed, iconColor))
+                    MetricCard(MetricData(state.overview.charactersPerHour?.toCountString() ?: "0", "Avg speed", "ch/h", Icons.Outlined.Speed, iconColor))
                 }
             }
         }
@@ -455,18 +456,18 @@ private fun StatsGrid(state: StatsScreenState.Success) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.overview.libraryMangaCount.toString(), "In library", null, Icons.Outlined.LibraryBooks, iconColor))
+                    MetricCard(MetricData(state.overview.libraryMangaCount.toCountString(), "In library", null, Icons.Outlined.LibraryBooks, iconColor))
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.titles.localMangaCount.toString(), "Local", null, Icons.Outlined.SdCard, iconColor))
+                    MetricCard(MetricData(state.titles.localMangaCount.toCountString(), "Local", null, Icons.Outlined.SdCard, iconColor))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.titles.startedMangaCount.toString(), "Started", null, Icons.Outlined.PlayArrow, iconColor))
+                    MetricCard(MetricData(state.titles.startedMangaCount.toCountString(), "Started", null, Icons.Outlined.PlayArrow, iconColor))
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.overview.completedMangaCount.toString(), "Completed", null, Icons.Outlined.DoneAll, iconColor))
+                    MetricCard(MetricData(state.overview.completedMangaCount.toCountString(), "Completed", null, Icons.Outlined.DoneAll, iconColor))
                 }
             }
         }
@@ -482,16 +483,16 @@ private fun StatsGrid(state: StatsScreenState.Success) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.chapters.totalChapterCount.toString(), "Total", null, Icons.Outlined.MenuBook, iconColor))
+                    MetricCard(MetricData(state.chapters.totalChapterCount.toCountString(), "Total", null, Icons.Outlined.MenuBook, iconColor))
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.chapters.readChapterCount.toString(), "Read", null, Icons.Outlined.History, iconColor))
+                    MetricCard(MetricData(state.chapters.readChapterCount.toCountString(), "Read", null, Icons.Outlined.History, iconColor))
                 }
             }
             if (state.statsType != StatsType.Novels) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(modifier = Modifier.weight(1f)) {
-                        MetricCard(MetricData(state.chapters.downloadCount.toString(), "Downloaded", null, Icons.Outlined.Download, iconColor))
+                        MetricCard(MetricData(state.chapters.downloadCount.toCountString(), "Downloaded", null, Icons.Outlined.Download, iconColor))
                     }
                     Spacer(modifier = Modifier.weight(1f))
                 }
@@ -510,7 +511,7 @@ private fun StatsGrid(state: StatsScreenState.Success) {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(modifier = Modifier.weight(1f)) {
-                        MetricCard(MetricData(state.trackers.trackedTitleCount.toString(), "Tracked titles", null, Icons.Outlined.CollectionsBookmark, iconColor))
+                        MetricCard(MetricData(state.trackers.trackedTitleCount.toCountString(), "Tracked titles", null, Icons.Outlined.CollectionsBookmark, iconColor))
                     }
                     Box(modifier = Modifier.weight(1f)) {
                         val meanScore = if (state.trackers.meanScore > 0) java.lang.String.format(java.util.Locale.getDefault(), "%.1f", state.trackers.meanScore) else "0.0"
@@ -519,7 +520,7 @@ private fun StatsGrid(state: StatsScreenState.Success) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(modifier = Modifier.weight(1f)) {
-                        MetricCard(MetricData(state.trackers.trackerCount.toString(), "Trackers", null, Icons.Outlined.Public, iconColor))
+                        MetricCard(MetricData(state.trackers.trackerCount.toCountString(), "Trackers", null, Icons.Outlined.Public, iconColor))
                     }
                     Spacer(modifier = Modifier.weight(1f))
                 }

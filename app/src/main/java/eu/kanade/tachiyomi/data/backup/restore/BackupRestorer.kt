@@ -338,19 +338,21 @@ class BackupRestorer(
         mangaStats: List<com.canopus.chimareader.data.MangaStats>,
         ankiStats: List<com.canopus.chimareader.data.AnkiStats>
     ) = launch {
-        if (mangaStats.isNotEmpty()) {
-            ensureActive()
-            com.canopus.chimareader.data.MangaStatsStorage.merge(context, mangaStats)
-            restoreProgress += 1
-            notifier.showRestoreProgress(context.stringResource(MR.strings.label_manga), restoreProgress, restoreAmount, isSync)
-                .show(Notifications.ID_RESTORE_PROGRESS)
-        }
-        if (ankiStats.isNotEmpty()) {
-            ensureActive()
-            com.canopus.chimareader.data.AnkiStatsStorage.merge(context, ankiStats)
-            restoreProgress += 1
-            notifier.showRestoreProgress("Anki", restoreProgress, restoreAmount, isSync)
-                .show(Notifications.ID_RESTORE_PROGRESS)
+        with(notifier) {
+            if (mangaStats.isNotEmpty()) {
+                ensureActive()
+                com.canopus.chimareader.data.MangaStatsStorage.merge(context, mangaStats)
+                restoreProgress += 1
+                showRestoreProgress(context.stringResource(MR.strings.manga_singular), restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
+            if (ankiStats.isNotEmpty()) {
+                ensureActive()
+                com.canopus.chimareader.data.AnkiStatsStorage.merge(context, ankiStats)
+                restoreProgress += 1
+                showRestoreProgress("Anki", restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
         }
     }
     // Chimahon <--
