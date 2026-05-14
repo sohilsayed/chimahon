@@ -226,6 +226,7 @@ class SyncManager(
                     sourceSettings = true,
                     libraryEntries = true,
                     extensionRepoSettings = true,
+                    savedSearchesFeeds = syncOptions.savedSearchesFeeds,
                     // Chimahon -->
                     novels = true,
                     // Chimahon <--
