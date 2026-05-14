@@ -23,8 +23,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import android.util.Log
+import chimahon.jiten.ChapterColorAnalyzer
+import chimahon.jiten.ColorEntry
+import chimahon.jiten.JitenApiClient
+import chimahon.jiten.ParseCache
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,6 +57,9 @@ sealed interface WebViewCommand {
     data class Paginate(val forward: Boolean) : WebViewCommand
     data object ClearSelection : WebViewCommand
     data class HighlightSelection(val charCount: Int) : WebViewCommand
+    data class ApplyWordColors(val colorsJson: String) : WebViewCommand
+    data object ClearTextColoring : WebViewCommand
+    data object RefreshColoring : WebViewCommand
 }
 
 data class ReaderSettings(
@@ -142,6 +153,8 @@ class ReaderViewModel(
     val rootUrl: File,
     val settings: NovelReaderSettings,
     private val scope: CoroutineScope,
+    val jitenApiKey: String = "",
+    val jitenApiEndpoint: String = "https://api.jiten.moe/api",
 ) {
     var index by mutableIntStateOf(0)
     var currentProgress by mutableDoubleStateOf(0.0)
@@ -167,6 +180,12 @@ class ReaderViewModel(
     var tapZonePercent by mutableIntStateOf(20)
     var keepScreenOn by mutableStateOf(false)
     var systemLightSepia by mutableStateOf(false)
+
+    // Text coloring via Jiten API
+    var textColoringEnabled by mutableStateOf(false)
+    var isColoring by mutableStateOf(false)
+
+    private var currentColoringJob: kotlinx.coroutines.Job? = null
 
     // Tracks statistics for current reading session
     var isTimerPaused by mutableStateOf(false)
@@ -360,6 +379,9 @@ class ReaderViewModel(
         scope.launch {
             settings.systemLightSepia.collect { systemLightSepia = it }
         }
+        scope.launch {
+            settings.textColoringEnabled.collect { textColoringEnabled = it }
+        }
     }
 
     fun updateTheme(value: Theme) = scope.launch { settings.setTheme(value) }
@@ -381,6 +403,17 @@ class ReaderViewModel(
     fun updateTapZonePercent(value: Int) = scope.launch { settings.setChapterTapZones(value) }
     fun updateKeepScreenOn(value: Boolean) = scope.launch { settings.setKeepScreenOn(value) }
     fun updateSystemLightSepia(value: Boolean) = scope.launch { settings.setSystemLightSepia(value) }
+    fun updateTextColoringEnabled(value: Boolean) = scope.launch {
+        android.util.Log.d("TextColoring", "toggle: $value")
+        settings.setTextColoringEnabled(value)
+        if (value) {
+            android.util.Log.d("TextColoring", "toggle ON -> calling refreshTextColoring")
+            refreshTextColoring()
+        } else {
+            android.util.Log.d("TextColoring", "toggle OFF -> clearing colors")
+            bridge.send(WebViewCommand.ClearTextColoring)
+        }
+    }
 
     fun getReaderSettings(context: Context): ReaderSettings {
         val fontUrl = if (FontManager.isCustomFont(context, selectedFont)) {
@@ -541,6 +574,65 @@ class ReaderViewModel(
             }
         }
         android.util.Log.w("ReaderViewModel", "jumpToUrl: no spine match for $url")
+    }
+
+    private val jitenClient by lazy { JitenApiClient(OkHttpClient()) }
+    private val jitenAnalyzer by lazy { ChapterColorAnalyzer(jitenClient) }
+    private val colorJson = Json { explicitNulls = false }
+
+    fun onChapterTextReady(chapterIndex: Int, text: String) {
+        android.util.Log.d("TextColoring", "onChapterTextReady: index=$chapterIndex text.length=${text.length} enabled=$textColoringEnabled key=${if (jitenApiKey.isBlank()) "EMPTY" else "SET"}")
+        if (!textColoringEnabled || jitenApiKey.isBlank() || text.isBlank()) {
+            android.util.Log.d("TextColoring", "onChapterTextReady: SKIP enabled=$textColoringEnabled keyBlank=${jitenApiKey.isBlank()} textBlank=${text.isBlank()}")
+            return
+        }
+
+        isColoring = true
+        currentColoringJob?.cancel()
+        currentColoringJob = scope.launch(Dispatchers.Default) {
+            android.util.Log.d("TextColoring", "onChapterTextReady: starting analysis")
+            try {
+                val cache = ParseCache(rootUrl)
+                val cached = cache.getColors(chapterIndex)
+                android.util.Log.d("TextColoring", "onChapterTextReady: cache hit=${cached != null}")
+                val colors = jitenAnalyzer.analyze(
+                    endpoint = jitenApiEndpoint,
+                    apiKey = jitenApiKey,
+                    chapterIndex = chapterIndex,
+                    text = text,
+                    cache = cache,
+                )
+                android.util.Log.d("TextColoring", "onChapterTextReady: analysis returned ${colors.size} entries")
+                if (colors.isEmpty()) {
+                    android.util.Log.d("TextColoring", "onChapterTextReady: empty colors, skipping")
+                    return@launch
+                }
+
+                val json = colorJson.encodeToString(
+                    ListSerializer(ColorEntry.serializer()),
+                    colors,
+                )
+                android.util.Log.d("TextColoring", "onChapterTextReady: sending ApplyWordColors (json=${json.take(200)})")
+                withContext(Dispatchers.Main) {
+                    bridge.send(WebViewCommand.ApplyWordColors(json))
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TextColoring", "onChapterTextReady: error", e)
+            } finally {
+                withContext(Dispatchers.Main) { isColoring = false }
+            }
+        }
+    }
+
+    fun refreshTextColoring() {
+        android.util.Log.d("TextColoring", "refreshTextColoring: clearing cache, sending ClearTextColoring + RefreshColoring")
+        scope.launch(Dispatchers.Default) {
+            val cache = ParseCache(rootUrl)
+            cache.clear()
+            android.util.Log.d("TextColoring", "refreshTextColoring: cache cleared")
+        }
+        bridge.send(WebViewCommand.ClearTextColoring)
+        bridge.send(WebViewCommand.RefreshColoring)
     }
 
     private fun loadChapter(newIndex: Int, progress: Double) {

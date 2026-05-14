@@ -41,6 +41,13 @@ class DictionaryPreferences(
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
     // -------------------------------------------------------------------------
+    // Jiten API (shared between novel reader and manga reader)
+    // -------------------------------------------------------------------------
+
+    fun jitenApiKey() = preferenceStore.getString("pref_jiten_api_key", "")
+    fun jitenApiEndpoint() = preferenceStore.getString("pref_jiten_api_endpoint", "https://api.jiten.moe/api")
+
+    // -------------------------------------------------------------------------
     // Profile storage (raw pref keys — consumed by AnkiProfileStore and settings UI)
     // -------------------------------------------------------------------------
 

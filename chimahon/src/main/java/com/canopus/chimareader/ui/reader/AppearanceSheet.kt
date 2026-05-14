@@ -14,11 +14,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.canopus.chimareader.data.FontManager
 import com.canopus.chimareader.data.Theme
-import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -278,6 +278,19 @@ fun AppearanceSheet(
                         onCheckedChange = { viewModel.updateKeepScreenOn(it) }
                     )
                 }
+            }
+
+            // Jiten Text Coloring Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text("Text Coloring (Jiten)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Switch(
+                    checked = viewModel.textColoringEnabled,
+                    onCheckedChange = { viewModel.updateTextColoringEnabled(it) }
+                )
             }
 
             // Margins

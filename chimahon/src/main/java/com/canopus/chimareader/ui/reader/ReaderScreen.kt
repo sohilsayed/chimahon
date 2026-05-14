@@ -45,6 +45,8 @@ fun ReaderScreen(
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
     additionalSettings: @Composable ColumnScope.() -> Unit = {},
     settingsNamespace: String? = null,
+    jitenApiKey: String = "",
+    jitenApiEndpoint: String = "https://api.jiten.moe/api",
 ) {
     val context = LocalContext.current
 
@@ -92,7 +94,9 @@ fun ReaderScreen(
                         document = document,
                         rootUrl = rootUrl,
                         settings = settings,
-                        scope = scope
+                        scope = scope,
+                        jitenApiKey = jitenApiKey,
+                        jitenApiEndpoint = jitenApiEndpoint,
                     )
                 )
             }
@@ -224,6 +228,7 @@ fun ReaderScreen(
                         onTextSelected = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
                         onSentenceReady = onSentenceReady,
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
+                        onChapterTextReady = { text -> viewModel.onChapterTextReady(viewModel.index, text) },
                     )
 
                     // Top HUD
@@ -239,6 +244,7 @@ fun ReaderScreen(
                             onToggleHud = { showHud = false },
                             backgroundColor = currentSettings.backgroundColor,
                             contentColor = currentSettings.textColor,
+                            isColoring = viewModel.isColoring,
                             modifier = Modifier
                                 .statusBarsPadding()
                         )
@@ -296,6 +302,7 @@ private fun ReaderTopBar(
     onToggleHud: () -> Unit,
     backgroundColor: Int,
     contentColor: Int,
+    isColoring: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     TopAppBar(
@@ -304,13 +311,24 @@ private fun ReaderTopBar(
             indication = null
         ) { onToggleHud() },
         title = {
-            Text(
-                title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color(contentColor)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(contentColor),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isColoring) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Coloring...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF2196F3),
+                    )
+                }
+            }
         },
         navigationIcon = {
             IconButton(onClick = onBack) {

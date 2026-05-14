@@ -204,16 +204,17 @@ window.hoshiReader = {
             document.body.style.transform = 'translateZ(0)';
             requestAnimationFrame(() => {
                 document.body.style.transform = '';
-                if (window.HoshiAndroid && window.HoshiAndroid.restoreCompleted) {
-                    window.HoshiAndroid.restoreCompleted();
-                    return;
-                }
-                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.restoreCompleted) {
-                    window.webkit.messageHandlers.restoreCompleted.postMessage(null);
-                }
-            });
+            if (window.HoshiAndroid && window.HoshiAndroid.restoreCompleted) {
+                window.HoshiAndroid.restoreCompleted();
+            }
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.restoreCompleted) {
+                window.webkit.messageHandlers.restoreCompleted.postMessage(null);
+            }
+            // Trigger coloring after layout is stable
+            this.requestColoring();
         });
-    },
+    });
+},
 
     registerCopyText: function() {
         if (window._hoshiCopy) return;
@@ -457,5 +458,88 @@ window.hoshiReader = {
 
     registerTextSelection: function() {
         // Disabled for now as per user request
-    }
+    },
+
+    // ─── Text Coloring (Jiten API) ─────────────────────────────────────────
+
+    requestColoring: function() {
+        console.log('TextColoring: requestColoring called');
+        if (!window.HoshiAndroid || !window.HoshiAndroid.requestChapterText) {
+            console.log('TextColoring: HoshiAndroid or requestChapterText not available');
+            return;
+        }
+        var wrapper = document.getElementById('hoshi-content-wrapper');
+        if (!wrapper) {
+            console.log('TextColoring: no content wrapper found');
+            return;
+        }
+        var walker = this.createWalker(wrapper);
+        var text = '';
+        var node;
+        while (node = walker.nextNode()) {
+            text += node.textContent;
+        }
+        console.log('TextColoring: extracted text length=' + text.length);
+        if (text.length > 0) {
+            console.log('TextColoring: calling HoshiAndroid.requestChapterText');
+            window.HoshiAndroid.requestChapterText(text);
+        }
+    },
+
+    applyColoring: function(colorMap) {
+        if (!CSS.highlights || !colorMap || colorMap.length === 0) return;
+        this.clearColoring();
+
+        var groups = {};
+        for (var i = 0; i < colorMap.length; i++) {
+            var e = colorMap[i];
+            var key = e.state;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push({ s: e.startOffset, e: e.startOffset + e.length });
+        }
+
+        var wrapper = document.getElementById('hoshi-content-wrapper');
+        if (!wrapper) return;
+        var walker = this.createWalker(wrapper);
+        var charOffset = 0;
+        var highlights = {};
+        var node;
+
+        while (node = walker.nextNode()) {
+            var textLen = node.textContent.length;
+            var nodeStart = charOffset;
+            var nodeEnd = charOffset + textLen;
+
+            for (var state in groups) {
+                var entries = groups[state];
+                for (var j = 0; j < entries.length; j++) {
+                    var entry = entries[j];
+                    if (entry.e > nodeStart && entry.s < nodeEnd) {
+                        var rStart = Math.max(entry.s - charOffset, 0);
+                        var rEnd = Math.min(entry.e - charOffset, textLen);
+                        if (!highlights[state]) highlights[state] = new Highlight();
+                        var range = document.createRange();
+                        range.setStart(node, rStart);
+                        range.setEnd(node, rEnd);
+                        highlights[state].add(range);
+                    }
+                }
+            }
+            charOffset += textLen;
+        }
+
+        for (var state in highlights) {
+            try {
+                CSS.highlights.set('ws-' + state, highlights[state]);
+            } catch(e) {}
+        }
+    },
+
+    clearColoring: function() {
+        if (!CSS.highlights) return;
+        var states = ['new', 'young', 'mature', 'due', 'mastered', 'blacklisted'];
+        for (var i = 0; i < states.length; i++) {
+            try { CSS.highlights.delete('ws-' + states[i]); } catch(e) {}
+        }
+    },
 };

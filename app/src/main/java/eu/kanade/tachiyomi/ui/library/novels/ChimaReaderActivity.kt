@@ -123,6 +123,14 @@ class ChimaReaderActivity : NovelReaderActivity() {
         return profile.id.takeIf { it.isNotEmpty() }
     }
 
+    override fun getJitenApiKey(): String {
+        return Injekt.get<DictionaryPreferences>().jitenApiKey().get()
+    }
+
+    override fun getJitenApiEndpoint(): String {
+        return Injekt.get<DictionaryPreferences>().jitenApiEndpoint().get()
+    }
+
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private fun ensurePopupWebView(): WebView {
         val webView = popupWebView ?: WebView(this).also {

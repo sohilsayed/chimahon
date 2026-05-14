@@ -11,6 +11,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -80,6 +81,15 @@ fun StatisticsSheet(
                 val speed = (viewModel.allTimeCharactersRead / timeReadingSeconds * 3600).toInt()
                 StatRow("Reading Speed", "$speed / h")
                 StatRow("Reading Time", formatDuration(viewModel.allTimeReadingTime.toLong()))
+            }
+
+            if (viewModel.textColoringEnabled) {
+                TextButton(
+                    onClick = { viewModel.refreshTextColoring() },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("Refresh word states")
+                }
             }
         }
     }

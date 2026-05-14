@@ -220,6 +220,10 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         prefs[keys.KEEP_SCREEN_ON] ?: false
     }
 
+    val textColoringEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[keys.TEXT_COLORING_ENABLED] ?: false
+    }
+
     suspend fun setTheme(value: Theme) {
         dataStore.edit { prefs ->
             prefs[keys.THEME] = value.name
@@ -442,6 +446,12 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         }
     }
 
+    suspend fun setTextColoringEnabled(value: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[keys.TEXT_COLORING_ENABLED] = value
+        }
+    }
+
     private inner class PreferencesKeys {
         val THEME = stringKey("theme")
         val SYSTEM_LIGHT_SEPIA = booleanKey("system_light_sepia")
@@ -480,6 +490,7 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         val MAX_RESULTS = intKey("max_results")
         val SCAN_LENGTH = intKey("scan_length")
         val KEEP_SCREEN_ON = booleanKey("keep_screen_on")
+        val TEXT_COLORING_ENABLED = booleanKey("text_coloring_enabled")
     }
 
     private val keys = PreferencesKeys()

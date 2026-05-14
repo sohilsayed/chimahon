@@ -99,6 +99,12 @@ open class NovelReaderActivity : ComponentActivity() {
     /** Subclasses can override to pass a profile ID for per-profile settings. */
     protected open fun getSettingsNamespace(): String? = null
 
+    /** Subclasses can override to provide a Jiten API key. */
+    protected open fun getJitenApiKey(): String = ""
+
+    /** Subclasses can override to provide a custom Jiten API endpoint. */
+    protected open fun getJitenApiEndpoint(): String = "https://api.jiten.moe/api"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
 
@@ -138,6 +144,8 @@ open class NovelReaderActivity : ComponentActivity() {
                 onViewModelReady = { readerViewModel = it },
                 additionalSettings = { AdditionalAppearanceSettings() },
                 settingsNamespace = getSettingsNamespace(),
+                jitenApiKey = getJitenApiKey(),
+                jitenApiEndpoint = getJitenApiEndpoint(),
             )
             PopupOverlay()
         }

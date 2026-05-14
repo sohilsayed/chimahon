@@ -30,6 +30,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.OutlinedButton
@@ -84,9 +86,13 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import chimahon.jiten.JitenApiClient
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -94,6 +100,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.toMutableStateList
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -320,6 +327,7 @@ object SettingsDictionaryScreen : SearchableSettings {
             getDictionaryListGroup(),
             getWordAudioGroup(pickDb),
             getAnkiGroup(),
+            getJitenGroup(),
         )
     }
 
@@ -2028,6 +2036,81 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 
     @Composable
+    private fun getJitenGroup(): Preference.PreferenceGroup {
+        val scope = rememberCoroutineScope()
+        val dictPrefs = remember { Injekt.get<DictionaryPreferences>() }
+        val apiKeyPref = dictPrefs.jitenApiKey()
+        val apiEndpointPref = dictPrefs.jitenApiEndpoint()
+        val apiKey by apiKeyPref.collectAsState()
+        val apiEndpoint by apiEndpointPref.collectAsState()
+
+        var inputKey by remember(apiKey) { mutableStateOf(apiKey) }
+        var isValidating by remember { mutableStateOf(false) }
+        var isValid by remember { mutableStateOf<Boolean?>(null) }
+
+        return Preference.PreferenceGroup(
+            title = "Jiten API (Text Coloring)",
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Jiten API Key",
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = inputKey,
+                                onValueChange = {
+                                    inputKey = it
+                                    isValid = null
+                                },
+                                label = { Text("API Key") },
+                                placeholder = { Text("Enter Jiten API key") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            isValidating = true
+                                            val client = JitenApiClient(OkHttpClient())
+                                            val result = withContext(Dispatchers.IO) {
+                                                client.ping(apiEndpoint, inputKey)
+                                            }
+                                            isValid = result
+                                            isValidating = false
+                                            if (result) {
+                                                apiKeyPref.set(inputKey)
+                                            }
+                                        }
+                                    }) {
+                                        if (isValidating) {
+                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                        } else {
+                                            Icon(
+                                                imageVector = if (isValid == true) Icons.Filled.Check
+                                                    else if (isValid == false) Icons.Filled.Close
+                                                    else Icons.Outlined.VisibilityOff,
+                                                contentDescription = "Validate",
+                                                tint = when (isValid) {
+                                                    true -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
+                                                    false -> androidx.compose.ui.graphics.Color(0xFFF44336)
+                                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                }
+                                            )
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                ),
+            ),
+        )
+    }
+
+    @Composable
     private fun MarkerPickerRow(
         label: String,
         markerText: String,
@@ -2075,13 +2158,13 @@ object SettingsDictionaryScreen : SearchableSettings {
         val scope = rememberCoroutineScope()
         val prefs = remember { Injekt.get<DictionaryPreferences>() }
         val json = remember { Injekt.get<kotlinx.serialization.json.Json>() }
-        
+
         val enabled by prefs.wordAudioEnabled().collectAsState()
         val autoplay by prefs.wordAudioAutoplay().collectAsState()
         val localEnabled by prefs.wordAudioLocalEnabled().collectAsState()
         val localPath by prefs.wordAudioLocalPath().collectAsState()
         val rawSources by prefs.wordAudioSources().collectAsState()
-        
+
         val sources = remember(rawSources) {
             try {
                 json.decodeFromString<List<chimahon.audio.WordAudioSource>>(rawSources)
@@ -2089,7 +2172,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                 emptyList()
             }
         }
-        
+
         val updateSources: (List<chimahon.audio.WordAudioSource>) -> Unit = { newSources ->
             prefs.wordAudioSources().set(json.encodeToString(newSources))
         }
@@ -2127,9 +2210,9 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     modifier = Modifier.padding(top = 8.dp)
                                 ) {
                                     OutlinedButton(
-                                        onClick = { 
+                                        onClick = {
                                             try {
-                                                pickDb.launch(arrayOf("*/*")) 
+                                                pickDb.launch(arrayOf("*/*"))
                                             } catch (e: Exception) {
                                                 context.toast("Error launching file picker")
                                                 Log.e(TAG, "pickDb launch error", e)
@@ -2160,7 +2243,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     content = {
                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                             Text("Online Sources", style = MaterialTheme.typography.titleMedium)
-                            
+
                             // Sources List
                             sources.forEachIndexed { index, source ->
                                 Row(
@@ -2188,11 +2271,11 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     }
                                 }
                             }
-                            
+
                             // Add Source UI
                             var newName by remember { mutableStateOf("") }
                             var newUrl by remember { mutableStateOf("") }
-                            
+
                             Column(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp)) {
                                 Text("Add Source", style = MaterialTheme.typography.labelLarge)
                                 OutlinedTextField(

@@ -49,6 +49,7 @@ fun ReaderWebView(
     onSentenceReady: (sentence: String) -> Unit = {},
     onDismissPopupRequested: () -> Unit = {},
     onInternalLinkClicked: (url: String) -> Unit = {},
+    onChapterTextReady: (text: String) -> Unit = {},
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -103,6 +104,7 @@ fun ReaderWebView(
                 onSentenceReadyCallback = onSentenceReady,
                 onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
+                onChapterTextReady = onChapterTextReady,
             ).apply {
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
@@ -217,15 +219,18 @@ fun ReaderWebView(
 
             val deduped = buildList {
                 var lastLoadChapter: WebViewCommand.LoadChapter? = null
+                var lastColoringCmd: WebViewCommand? = null
+                fun flushColoring() {
+                    lastColoringCmd?.let { add(it); lastColoringCmd = null }
+                }
                 for (cmd in commands) {
-                    if (cmd is WebViewCommand.LoadChapter) {
-                        lastLoadChapter = cmd
-                    } else {
-                        lastLoadChapter?.let { add(it) }
-                        lastLoadChapter = null
-                        add(cmd)
+                    when (cmd) {
+                        is WebViewCommand.LoadChapter -> { flushColoring(); lastLoadChapter = cmd }
+                        is WebViewCommand.ClearTextColoring, is WebViewCommand.RefreshColoring -> lastColoringCmd = cmd
+                        else -> { flushColoring(); lastLoadChapter?.let { add(it); lastLoadChapter = null }; add(cmd) }
                     }
                 }
+                flushColoring()
                 lastLoadChapter?.let { add(it) }
             }
 
@@ -271,6 +276,18 @@ fun ReaderWebView(
                     is WebViewCommand.HighlightSelection -> {
                         v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.highlightSelection) { window.hoshiReader.highlightSelection(${command.charCount}); }", null)
                     }
+                    is WebViewCommand.ApplyWordColors -> {
+                        android.util.Log.d("TextColoring", "WebView command: ApplyWordColors (len=${command.colorsJson.length})")
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.applyColoring) { window.hoshiReader.applyColoring(${command.colorsJson}); }", null)
+                    }
+                    is WebViewCommand.ClearTextColoring -> {
+                        android.util.Log.d("TextColoring", "WebView command: ClearTextColoring")
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.clearColoring) { window.hoshiReader.clearColoring(); }", null)
+                    }
+                    is WebViewCommand.RefreshColoring -> {
+                        android.util.Log.d("TextColoring", "WebView command: RefreshColoring")
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.requestColoring) { window.hoshiReader.requestColoring(); }", null)
+                    }
                     else -> {}
                 }
             }
@@ -299,6 +316,7 @@ private class ReaderAndroidWebView(
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
     private val onDismissPopupRequested: () -> Unit = {},
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
+    internal val onChapterTextReady: (text: String) -> Unit = {},
 ) : WebView(context) {
 
     private var touchStartX = 0f
@@ -420,6 +438,7 @@ private class ReaderAndroidWebView(
         onSentenceReadyCallback = { sentence ->
             post { onSentenceReadyCallback(sentence) }
         },
+        onChapterTextReady = onChapterTextReady,
     )
 
     init {
@@ -492,6 +511,12 @@ private class ReaderAndroidWebView(
         }
 
         appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
+        appendLine("::highlight(ws-new) { color: #2196F3; }")
+        appendLine("::highlight(ws-young) { color: #4CAF50; }")
+        appendLine("::highlight(ws-mature) { color: #888888; }")
+        appendLine("::highlight(ws-due) { color: #FF9800; }")
+        appendLine("::highlight(ws-mastered) { color: #BBBBBB; }")
+        appendLine("::highlight(ws-blacklisted) { color: #F44336; text-decoration: line-through; }")
         appendLine("p { margin-block-start: 0 !important; margin-block-end: ${readerSettings.paragraphSpacing}em !important; }")
         appendLine("body * { font-family: inherit !important; }")
         appendLine("img.hoshi-image-block, svg.hoshi-image-block { position: static !important; }")
@@ -1192,6 +1217,7 @@ private class ReaderJavascriptBridge(
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
+    private val onChapterTextReady: (text: String) -> Unit = {},
 ) {
     @JavascriptInterface
     fun restoreCompleted() {
@@ -1211,6 +1237,12 @@ private class ReaderJavascriptBridge(
     @JavascriptInterface
     fun onSentenceReady(sentence: String) {
         onSentenceReadyCallback.invoke(sentence)
+    }
+
+    @JavascriptInterface
+    fun requestChapterText(text: String) {
+        android.util.Log.d("TextColoring", "Bridge: requestChapterText called (text.length=${text.length})")
+        onChapterTextReady(text)
     }
 }
 
