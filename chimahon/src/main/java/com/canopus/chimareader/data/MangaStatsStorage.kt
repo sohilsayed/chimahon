@@ -20,17 +20,17 @@ object MangaStatsStorage {
         BookStorage.save(stats, context.filesDir, FileNames.mangaStats)
     }
 
-    fun addStats(context: Context, characters: Int, timeMs: Long, date: LocalDate = LocalDate.now()) {
+    fun addStats(context: Context, characters: Int, timeMs: Long, mangaId: Long = 0, date: LocalDate = LocalDate.now()) {
         if (characters <= 0 && timeMs <= 0) return
-        
+
         val dateKey = date.toString()
         val allStats = loadAll(context).toMutableList()
-        val existing = allStats.find { it.dateKey == dateKey }
+        val existing = allStats.find { it.dateKey == dateKey && it.mangaId == mangaId }
         if (existing != null) {
             existing.charactersRead += characters
             existing.readingTime += timeMs
         } else {
-            allStats.add(MangaStats(dateKey, characters, timeMs))
+            allStats.add(MangaStats(dateKey, characters, timeMs, mangaId))
         }
         saveAll(context, allStats)
     }
@@ -40,7 +40,7 @@ object MangaStatsStorage {
         val local = loadAll(context).toMutableList()
         var changed = false
         incoming.forEach { remote ->
-            val existing = local.find { it.dateKey == remote.dateKey }
+            val existing = local.find { it.dateKey == remote.dateKey && it.mangaId == remote.mangaId }
             if (existing != null) {
                 // If remote has higher values, we assume it's more complete or we should merge them?
                 // Actually, if these are daily stats, we should probably take the max or sum them depending on if they are from the same device.

@@ -100,6 +100,7 @@ fun StatsScreenContent(
     onDateScaleSelect: (StatsDateScale) -> Unit,
     onDateOffsetChange: (Int) -> Unit,
     onStatsTypeSelect: (StatsType) -> Unit,
+    allRead: Boolean = false,
 ) {
     LazyColumn(
         contentPadding = paddingValues,
@@ -131,7 +132,7 @@ fun StatsScreenContent(
         }
 
         item {
-            StatsGrid(state)
+            StatsGrid(state, allRead)
         }
     }
 }
@@ -415,7 +416,7 @@ private fun HeroSection(
 }
 
 @Composable
-private fun StatsGrid(state: StatsScreenState.Success) {
+private fun StatsGrid(state: StatsScreenState.Success, allRead: Boolean = false) {
     val iconColor = MaterialTheme.colorScheme.primary
     
     Column(
@@ -456,7 +457,7 @@ private fun StatsGrid(state: StatsScreenState.Success) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
-                    MetricCard(MetricData(state.overview.libraryMangaCount.toCountString(), "In library", null, Icons.Outlined.LibraryBooks, iconColor))
+                    MetricCard(MetricData(state.overview.libraryMangaCount.toCountString(), if (allRead) "All read" else "In library", null, Icons.Outlined.LibraryBooks, iconColor))
                 }
                 Box(modifier = Modifier.weight(1f)) {
                     MetricCard(MetricData(state.titles.localMangaCount.toCountString(), "Local", null, Icons.Outlined.SdCard, iconColor))

@@ -144,4 +144,12 @@ class HistoryRepositoryImpl(
             }
         }
     }
+
+    override suspend fun getLibrarySessions(): List<ReadingSession> {
+        return handler.awaitList {
+            reading_sessionsQueries.getLibrarySessions { id, chapterId, readAt, duration ->
+                ReadingSession(id, chapterId, readAt, duration)
+            }
+        }
+    }
 }

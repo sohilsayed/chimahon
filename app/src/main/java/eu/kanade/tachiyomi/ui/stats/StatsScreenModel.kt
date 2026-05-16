@@ -91,7 +91,11 @@ class StatsScreenModel(
             }
 
             val allMangaHistory = getAllHistory.await()
-            val allSessions = historyRepository.getAllSessions()
+            val allSessions = if (allRead) {
+                historyRepository.getAllSessions()
+            } else {
+                historyRepository.getLibrarySessions()
+            }
             val filteredSessions = filterSessionsByScale(allSessions, dateScale, dateOffset)
             
             val allNovels = if (statsType == StatsType.All || statsType == StatsType.Novels) {
@@ -119,7 +123,9 @@ class StatsScreenModel(
             }
 
             val allMangaStats = com.canopus.chimareader.data.MangaStatsStorage.loadAll(context)
-            val filteredMangaStats = filterMangaStatsByScale(allMangaStats, dateScale, dateOffset)
+            val libraryMangaIds = distinctLibraryManga.map { it.id }.toSet()
+            val libraryFilteredMangaStats = if (allRead) allMangaStats else allMangaStats.filter { it.mangaId in libraryMangaIds || it.mangaId == 0L }
+            val filteredMangaStats = filterMangaStatsByScale(libraryFilteredMangaStats, dateScale, dateOffset)
 
             val mangaChars = filteredMangaStats.sumOf { it.charactersRead }
             val mangaTimeMs = filteredMangaStats.sumOf { it.readingTime }

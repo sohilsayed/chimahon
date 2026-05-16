@@ -42,4 +42,6 @@ interface HistoryRepository {
     suspend fun insertSession(session: ReadingSession)
 
     suspend fun getAllSessions(): List<ReadingSession>
+
+    suspend fun getLibrarySessions(): List<ReadingSession>
 }

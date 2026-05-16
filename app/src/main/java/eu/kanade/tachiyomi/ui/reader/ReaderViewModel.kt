@@ -2278,7 +2278,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 if (blocks.isNotEmpty()) {
                     val chars = blocks.sumOf { block -> block.fullText.length }
                     if (chars > 0) {
-                        com.canopus.chimareader.data.MangaStatsStorage.addStats(application, chars, timeSpent)
+                        com.canopus.chimareader.data.MangaStatsStorage.addStats(application, chars, timeSpent, manga?.id ?: 0)
                     }
                 }
             }
