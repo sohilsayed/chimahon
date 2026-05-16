@@ -2,6 +2,11 @@ package eu.kanade.tachiyomi.ui.library.novels
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,11 +21,11 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
@@ -29,6 +34,10 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -43,21 +52,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -65,19 +72,23 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import com.canopus.chimareader.data.BookMetadata
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
-import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.presentation.library.components.CommonMangaItemDefaults
 import eu.kanade.presentation.library.components.LibraryTabs
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
+import eu.kanade.presentation.manga.components.Button as BottomMenuButton
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
@@ -88,14 +99,16 @@ import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.components.SortItem
+import tachiyomi.presentation.core.components.material.PullRefresh
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.presentation.core.util.plus
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.TextField
+import kotlin.time.Duration.Companion.seconds
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,7 +186,7 @@ fun Screen.NovelLibraryScreen(
             )
         },
         bottomBar = {
-            NovelSelectionBar(
+            NovelLibraryBottomActionMenu(
                 visible = state.selectionMode,
                 onEditClicked = screenModel::showEditDialog,
                 canEdit = state.selection.size == 1,
@@ -212,6 +225,8 @@ fun Screen.NovelLibraryScreen(
                 state = state,
                 screenModel = screenModel,
                 contentPadding = contentPadding,
+                context = context,
+                snackbarHostState = snackbarHostState,
                 onCategoryChange = screenModel::updateActiveCategoryIndex,
                 onClickBook = { book ->
                     if (book.isGhost) {
@@ -239,29 +254,12 @@ fun Screen.NovelLibraryScreen(
     when (val dialog = state.dialog) {
         is NovelLibraryScreenModel.Dialog.ChangeCategory -> {
             eu.kanade.presentation.category.components.ChangeCategoryDialog(
-                initialSelection = state.categories.map { cat ->
-                    val name = if (cat.isSystemCategory) stringResource(MR.strings.label_default) else cat.name
-                    tachiyomi.core.common.preference.CheckboxState.State.None(
-                        tachiyomi.domain.category.model.Category(
-                            id = if (cat.isSystemCategory) 0L else cat.id.hashCode().toLong(),
-                            name = name,
-                            order = cat.order.toLong(),
-                            flags = cat.flags,
-                            hidden = false,
-                        ),
-                    )
-                }.toImmutableList(),
+                initialSelection = dialog.initialSelection,
                 onDismissRequest = onDismissRequest,
                 onEditCategories = { navigator.push(NovelCategoryScreen()) },
-                onConfirm = { included: List<Long>, _ ->
-                    val selectedCategory = state.categories.find {
-                        (if (it.isSystemCategory) 0L else it.id.hashCode().toLong()) == included.firstOrNull()
-                    }
-                    if (selectedCategory != null) {
-                        screenModel.moveSelectedToCategory(selectedCategory.id)
-                    } else {
-                        screenModel.closeDialog()
-                    }
+                onConfirm = { include, exclude ->
+                    screenModel.clearSelection()
+                    screenModel.setBooksCategories(dialog.books, include, exclude)
                 },
             )
         }
@@ -583,11 +581,14 @@ fun NovelLibraryContent(
     state: NovelLibraryScreenModel.State,
     screenModel: NovelLibraryScreenModel,
     contentPadding: PaddingValues,
+    context: android.content.Context,
+    snackbarHostState: SnackbarHostState,
     onCategoryChange: (Int) -> Unit,
     onClickBook: (BookMetadata) -> Unit,
 ) {
     val pagerState = rememberPagerState(state.coercedActiveCategoryIndex) { state.displayedCategories.size }
     val scope = rememberCoroutineScope()
+    var isRefreshing by remember(pagerState.currentPage) { mutableStateOf(false) }
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -628,96 +629,118 @@ fun NovelLibraryContent(
             )
         }
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.Top,
-        ) { page ->
-            val category = state.displayedCategories[page]
-            val books = state.getBooksForCategory(category)
-
-            FastScrollLazyVerticalGrid(
+        PullRefresh(
+            refreshing = isRefreshing,
+            enabled = state.selection.isEmpty(),
+            onRefresh = {
+                SyncDataJob.startNow(context, manual = true)
+                scope.launch {
+                    isRefreshing = true
+                    delay(1.seconds)
+                    isRefreshing = false
+                }
+            },
+        ) {
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                columns = if (columns == 0) GridCells.Adaptive(128.dp) else GridCells.Fixed(columns),
-                contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()) + PaddingValues(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(CommonMangaItemDefaults.GridHorizontalSpacer),
-                verticalArrangement = Arrangement.spacedBy(CommonMangaItemDefaults.GridVerticalSpacer),
-            ) {
-                items(books, key = { it.id }) { book ->
-                    val isSelected = state.selection.contains(book.id)
-                    val coverData = tachiyomi.domain.manga.model.MangaCover(
-                        mangaId = book.id.hashCode().toLong(),
-                        sourceId = -1L,
-                        isMangaFavorite = true,
-                        ogUrl = book.cover,
-                        lastModified = 0L,
+                verticalAlignment = Alignment.Top,
+            ) { page ->
+                val category = state.displayedCategories[page]
+                val books = state.getBooksForCategory(category)
+
+                if (books.isEmpty() && !state.searchQuery.isNullOrBlank()) {
+                    EmptyScreen(
+                        stringRes = MR.strings.no_results_found,
+                        modifier = Modifier
+                            .padding(bottom = contentPadding.calculateBottomPadding())
+                            .padding(8.dp),
                     )
-                    val onLongClick: () -> Unit = { screenModel.toggleSelection(book.id) }
-                    val onClick: () -> Unit = {
-                        if (state.selectionMode) {
-                            screenModel.toggleSelection(book.id)
-                        } else {
-                            onClickBook(book)
-                        }
-                    }
-
-                    val bookTitle = book.title ?: ""
-                    val bookLang = book.lang
-
-                    val ghostBadge: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)? =
-                        if (book.isGhost) {
-                            {
-                                androidx.compose.material3.Surface(
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                                    color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer,
-                                ) {
-                                    androidx.compose.material3.Text(
-                                        text = "MISSING",
-                                        modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                                        color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
-                                    )
+                } else {
+                    FastScrollLazyVerticalGrid(
+                        modifier = Modifier.fillMaxSize(),
+                        columns = if (columns == 0) GridCells.Adaptive(128.dp) else GridCells.Fixed(columns),
+                        contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()) + PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(CommonMangaItemDefaults.GridHorizontalSpacer),
+                        verticalArrangement = Arrangement.spacedBy(CommonMangaItemDefaults.GridVerticalSpacer),
+                    ) {
+                        items(books, key = { it.id }) { book ->
+                            val isSelected = state.selection.contains(book.id)
+                            val coverData = tachiyomi.domain.manga.model.MangaCover(
+                                mangaId = book.id.hashCode().toLong(),
+                                sourceId = -1L,
+                                isMangaFavorite = true,
+                                ogUrl = book.cover,
+                                lastModified = 0L,
+                            )
+                            val onLongClick: () -> Unit = { screenModel.toggleSelection(book.id) }
+                            val onClick: () -> Unit = {
+                                if (state.selectionMode) {
+                                    screenModel.toggleSelection(book.id)
+                                } else {
+                                    onClickBook(book)
                                 }
                             }
-                        } else {
-                            null
-                        }
 
-                    if (displayMode == LibraryDisplayMode.ComfortableGrid) {
-                        eu.kanade.presentation.library.components.MangaComfortableGridItem(
-                            isSelected = isSelected,
-                            title = bookTitle,
-                            coverData = coverData,
-                            coverBadgeStart = {
-                                if (!bookLang.isNullOrBlank()) {
-                                    eu.kanade.presentation.library.components.LanguageBadge(
-                                        isLocal = true,
-                                        sourceLanguage = bookLang,
-                                    )
+                            val bookTitle = book.title ?: ""
+                            val bookLang = book.lang
+
+                            val ghostBadge: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)? =
+                                if (book.isGhost) {
+                                    {
+                                        androidx.compose.material3.Surface(
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                            color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer,
+                                        ) {
+                                            androidx.compose.material3.Text(
+                                                text = "MISSING",
+                                                modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                                                color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    null
                                 }
-                            },
-                            coverBadgeEnd = ghostBadge,
-                            onLongClick = onLongClick,
-                            onClick = onClick,
-                            usePanoramaCover = false,
-                        )
-                    } else {
-                        eu.kanade.presentation.library.components.MangaCompactGridItem(
-                            isSelected = isSelected,
-                            title = bookTitle,
-                            coverData = coverData,
-                            coverBadgeStart = {
-                                if (!bookLang.isNullOrBlank()) {
-                                    eu.kanade.presentation.library.components.LanguageBadge(
-                                        isLocal = true,
-                                        sourceLanguage = bookLang,
-                                    )
-                                }
-                            },
-                            coverBadgeEnd = ghostBadge,
-                            onLongClick = onLongClick,
-                            onClick = onClick,
-                        )
+
+                            if (displayMode == LibraryDisplayMode.ComfortableGrid) {
+                                eu.kanade.presentation.library.components.MangaComfortableGridItem(
+                                    isSelected = isSelected,
+                                    title = bookTitle,
+                                    coverData = coverData,
+                                    coverBadgeStart = {
+                                        if (!bookLang.isNullOrBlank()) {
+                                            eu.kanade.presentation.library.components.LanguageBadge(
+                                                isLocal = true,
+                                                sourceLanguage = bookLang,
+                                            )
+                                        }
+                                    },
+                                    coverBadgeEnd = ghostBadge,
+                                    onLongClick = onLongClick,
+                                    onClick = onClick,
+                                    usePanoramaCover = false,
+                                )
+                            } else {
+                                eu.kanade.presentation.library.components.MangaCompactGridItem(
+                                    isSelected = isSelected,
+                                    title = bookTitle,
+                                    coverData = coverData,
+                                    coverBadgeStart = {
+                                        if (!bookLang.isNullOrBlank()) {
+                                            eu.kanade.presentation.library.components.LanguageBadge(
+                                                isLocal = true,
+                                                sourceLanguage = bookLang,
+                                            )
+                                        }
+                                    },
+                                    coverBadgeEnd = ghostBadge,
+                                    onLongClick = onLongClick,
+                                    onClick = onClick,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -732,7 +755,7 @@ fun NovelLibraryContent(
 // ---------------------------------------------------------------------------
 
 @Composable
-fun NovelSelectionBar(
+fun NovelLibraryBottomActionMenu(
     visible: Boolean,
     onEditClicked: () -> Unit,
     canEdit: Boolean,
@@ -740,76 +763,71 @@ fun NovelSelectionBar(
     onDeleteClicked: () -> Unit,
     onResetClicked: () -> Unit,
 ) {
-    androidx.compose.animation.AnimatedVisibility(
+    AnimatedVisibility(
         visible = visible,
-        enter = androidx.compose.animation.expandVertically(expandFrom = Alignment.Bottom),
-        exit = androidx.compose.animation.shrinkVertically(shrinkTowards = Alignment.Bottom),
+        enter = expandVertically(expandFrom = Alignment.Bottom),
+        exit = shrinkVertically(shrinkTowards = Alignment.Bottom),
     ) {
+        val scope = rememberCoroutineScope()
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large.copy(
-                bottomEnd = androidx.compose.foundation.shape.ZeroCornerSize,
-                bottomStart = androidx.compose.foundation.shape.ZeroCornerSize,
+                bottomEnd = ZeroCornerSize,
+                bottomStart = ZeroCornerSize,
             ),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
+            val haptic = LocalHapticFeedback.current
+            val confirm = remember { mutableStateListOf(false, false, false, false) }
+            var resetJob by remember { mutableStateOf<Job?>(null) }
+            val onLongClickItem: (Int) -> Unit = { toConfirmIndex ->
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                confirm.indices.forEach { i -> confirm[i] = i == toConfirmIndex }
+                resetJob?.cancel()
+                resetJob = scope.launch {
+                    delay(1.seconds)
+                    if (isActive) confirm[toConfirmIndex] = false
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .windowInsetsPadding(
                         WindowInsets.navigationBars.only(WindowInsetsSides.Bottom),
                     )
                     .padding(horizontal = 8.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
+                BottomMenuButton(
+                    title = stringResource(MR.strings.action_move_category),
+                    icon = Icons.AutoMirrored.Outlined.Label,
+                    toConfirm = confirm[0],
+                    onLongClick = { onLongClickItem(0) },
+                    onClick = onChangeCategoryClicked,
+                )
+                BottomMenuButton(
+                    title = stringResource(MR.strings.action_mark_as_unread),
+                    icon = Icons.Outlined.RestartAlt,
+                    toConfirm = confirm[1],
+                    onLongClick = { onLongClickItem(1) },
+                    onClick = onResetClicked,
+                )
                 if (canEdit) {
-                    SelectionButton(
+                    BottomMenuButton(
                         title = stringResource(MR.strings.action_edit),
                         icon = Icons.Outlined.Edit,
+                        toConfirm = confirm[2],
+                        onLongClick = { onLongClickItem(2) },
                         onClick = onEditClicked,
                     )
                 }
-                SelectionButton(
-                    title = stringResource(MR.strings.action_mark_as_unread),
-                    icon = Icons.Outlined.RestartAlt,
-                    onClick = onResetClicked,
-                )
-                SelectionButton(
-                    title = stringResource(MR.strings.action_move_category),
-                    icon = Icons.AutoMirrored.Outlined.Label,
-                    onClick = onChangeCategoryClicked,
-                )
-                SelectionButton(
+                BottomMenuButton(
                     title = stringResource(MR.strings.action_delete),
                     icon = Icons.Outlined.Delete,
+                    toConfirm = confirm[3],
+                    onLongClick = { onLongClickItem(3) },
                     onClick = onDeleteClicked,
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SelectionButton(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }

@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.library.novels
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -10,13 +11,17 @@ import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.NovelCategoryStorage
-import android.net.Uri
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tachiyomi.core.common.preference.CheckboxState
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import uy.kohesive.injekt.Injekt
@@ -28,8 +33,17 @@ class NovelLibraryScreenModel(
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
 ) : StateScreenModel<NovelLibraryScreenModel.State>(State()) {
 
+    private val _searchQuery = MutableStateFlow<String?>(null)
+
     init {
         loadLibrary()
+        screenModelScope.launch {
+            _searchQuery
+                .debounce(250)
+                .collect { query ->
+                    mutableState.update { it.copy(searchQuery = query) }
+                }
+        }
     }
 
     fun loadLibrary() {
@@ -48,7 +62,7 @@ class NovelLibraryScreenModel(
     }
 
     fun search(query: String?) {
-        mutableState.update { it.copy(searchQuery = query) }
+        _searchQuery.value = query
     }
 
     fun updateActiveCategoryIndex(index: Int) {
@@ -96,22 +110,6 @@ class NovelLibraryScreenModel(
         }
     }
 
-    fun moveSelectedToCategory(categoryId: String) {
-        screenModelScope.launch {
-            val state = mutableState.value
-            state.selection.forEach { bookId ->
-                val bookDir = BookStorage.getBookDirectory(app, bookId)
-                val metadata = BookStorage.loadMetadata(bookDir)
-                if (metadata != null) {
-                    val updatedMetadata = metadata.copy(categoryIds = listOf(categoryId))
-                    BookStorage.saveMetadata(updatedMetadata, bookDir)
-                }
-            }
-            clearSelection()
-            loadLibrary()
-        }
-    }
-
     fun importBook(uri: Uri) {
         screenModelScope.launch {
             mutableState.update { it.copy(isImporting = true) }
@@ -147,7 +145,71 @@ class NovelLibraryScreenModel(
     }
 
     fun showChangeCategoryDialog() {
-        mutableState.update { it.copy(dialog = Dialog.ChangeCategory) }
+        val s = mutableState.value
+        val selectedBooks = s.books.filter { it.id in s.selection.toSet() }
+        val userCategories = s.categories.filterNot { it.isSystemCategory }
+
+        val commonCategoryIds = if (selectedBooks.isEmpty()) {
+            emptySet()
+        } else {
+            selectedBooks.map { it.categoryIds.toSet() }
+                .reduce { set1, set2 -> set1.intersect(set2) }
+        }
+        val commonCategories = userCategories.filter { it.id in commonCategoryIds }
+
+        val mixCategoryIds = if (selectedBooks.isEmpty()) {
+            emptySet()
+        } else {
+            selectedBooks.flatMap { it.categoryIds }.distinct().toSet() - commonCategoryIds
+        }
+        val mixCategories = userCategories.filter { it.id in mixCategoryIds }
+
+        val preselected = userCategories.map { cat ->
+            val mapped = Category(
+                id = cat.id.hashCode().toLong(),
+                name = cat.name,
+                order = cat.order.toLong(),
+                flags = cat.flags,
+                hidden = false,
+            )
+            when (cat) {
+                in commonCategories -> CheckboxState.State.Checked(mapped)
+                in mixCategories -> CheckboxState.TriState.Exclude(mapped)
+                else -> CheckboxState.State.None(mapped)
+            }
+        }.toImmutableList()
+
+        mutableState.update {
+            it.copy(dialog = Dialog.ChangeCategory(selectedBooks.toImmutableList(), preselected))
+        }
+    }
+
+    fun setBooksCategories(
+        books: List<BookMetadata>,
+        addCategories: List<Long>,
+        removeCategories: List<Long>,
+    ) {
+        screenModelScope.launch {
+            val s = mutableState.value
+            books.forEach { book ->
+                val bookDir = BookStorage.getBookDirectory(app, book.id)
+                val currentIds = book.categoryIds.toSet()
+                val addIds = addCategories.mapNotNull { id ->
+                    s.categories.find { it.id.hashCode().toLong() == id }?.id
+                }.toSet()
+                val removeIds = removeCategories.mapNotNull { id ->
+                    s.categories.find { it.id.hashCode().toLong() == id }?.id
+                }.toSet()
+                var newIds = (currentIds - removeIds + addIds)
+                newIds = if (newIds.any { it != NovelCategory.UNCATEGORIZED_ID }) {
+                    newIds - setOf(NovelCategory.UNCATEGORIZED_ID)
+                } else {
+                    setOf(NovelCategory.UNCATEGORIZED_ID)
+                }
+                BookStorage.saveMetadata(book.copy(categoryIds = newIds.toList()), bookDir)
+            }
+            loadLibrary()
+        }
     }
 
     fun showDeleteConfirmDialog() {
@@ -189,7 +251,10 @@ class NovelLibraryScreenModel(
     }
 
     sealed interface Dialog {
-        data object ChangeCategory : Dialog
+        data class ChangeCategory(
+            val books: ImmutableList<BookMetadata>,
+            val initialSelection: ImmutableList<CheckboxState<Category>>,
+        ) : Dialog
         data object DeleteConfirm : Dialog
         data object SortFilter : Dialog
         data object Settings : Dialog
