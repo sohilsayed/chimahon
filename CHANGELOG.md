@@ -4,6 +4,20 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.7.5]
+
+### Added
+- popup theme setting
+- novel and manga library parity — pull-to-refresh, debounce, multi-category
+
+### Changed
+
+- Novel library UI aligned with manga library.
+- Lookup performance optimizations.
+
+### Fixed
+- popup not clearing old lookups.
+- fix manga stats
 
 ## [v1.7.6]
 
