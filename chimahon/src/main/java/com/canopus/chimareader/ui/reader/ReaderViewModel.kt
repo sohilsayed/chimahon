@@ -18,12 +18,17 @@ import com.canopus.chimareader.data.Statistics
 import com.canopus.chimareader.data.Theme
 import com.canopus.chimareader.data.epub.EpubBook
 import com.canopus.chimareader.data.epub.SpineItemType
+import com.canopus.chimareader.ttusync.TtuSyncManager
+import com.canopus.chimareader.ttusync.SyncDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import android.util.Log
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -167,6 +172,11 @@ class ReaderViewModel(
     var tapZonePercent by mutableIntStateOf(20)
     var keepScreenOn by mutableStateOf(false)
     var systemLightSepia by mutableStateOf(false)
+
+    private val ttuSyncManager: TtuSyncManager? by lazy {
+        try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
+    }
+    private var syncExportJob: kotlinx.coroutines.Job? = null
 
     // Tracks statistics for current reading session
     var totalExploredCharCount by mutableIntStateOf(0)
@@ -348,6 +358,14 @@ class ReaderViewModel(
         scope.launch {
             settings.systemLightSepia.collect { systemLightSepia = it }
         }
+
+        // Import remote progress on reader open
+        ttuSyncManager?.takeIf { it.isEnabled }?.let { sync ->
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
+                sync.syncBook(metadata, importOnly = true)
+            }
+        }
     }
 
     fun updateTheme(value: Theme) = scope.launch { settings.setTheme(value) }
@@ -492,6 +510,33 @@ class ReaderViewModel(
             statisticsTracker.update(totalExploredCharCount)
         }
         persistToDisk()
+        savePersistentStatistics()
+        scheduleSyncExport()
+    }
+
+    fun scheduleSyncExport() {
+        ttuSyncManager?.takeIf { it.isEnabled && it.autoSyncEnabled } ?: return
+        syncExportJob?.cancel()
+        syncExportJob = scope.launch {
+            delay(30000L)
+            runSyncExport()
+        }
+    }
+
+    fun flushSyncExport() {
+        syncExportJob?.cancel()
+        syncExportJob = scope.launch {
+            runSyncExport()
+        }
+    }
+
+    private fun runSyncExport() {
+        val sync = ttuSyncManager ?: return
+        if (!sync.isEnabled || !sync.autoSyncEnabled) return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
+            sync.syncBook(metadata, SyncDirection.AUTO)
+        }
     }
 
     fun nextChapter(): Boolean {
