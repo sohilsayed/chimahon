@@ -1098,6 +1098,7 @@
     <string name="channel_new_chapters">Chapter updates</string>
     <string name="channel_app_updates">App updates</string>
     <string name="channel_ext_updates">Extension updates</string>
+    <string name="channel_dictionary_update">Dictionary updates</string>
 
     <!-- S Pen actions -->
     <string name="spen_previous_page">Previous page</string>
@@ -1159,4 +1160,10 @@
     <string name="pref_dict_pitch_diagram">Graph</string>
     <string name="pref_dict_pitch_number">012</string>
     <string name="pref_dict_pitch_text">Text</string>
+
+    <!-- Dictionary auto-update -->
+    <string name="dict_update_progress_title">Updating dictionaries…</string>
+    <string name="dict_update_complete_title">Dictionary updates complete</string>
+    <string name="dict_update_complete_text">%d dictionary(ies) updated</string>
+    <string name="dict_update_error_title">Dictionary update failed</string>
 </resources>

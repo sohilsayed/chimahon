@@ -1421,11 +1421,8 @@
     const row = document.createElement('div');
     row.className = 'entry-deinflection-row';
 
-    // Clean name only (before ': ') for summary chips
-    const cleanProcess = process.map(p => {
-      const colonIdx = p.indexOf(': ');
-      return colonIdx !== -1 ? p.substring(0, colonIdx) : p;
-    });
+    // Clean name only for summary chips
+    const cleanProcess = process.map(p => p.name);
 
     const label = document.createElement('span');
     label.className = 'deinflection-label';
@@ -1458,9 +1455,8 @@
     // and the next begins. Reversed so card 1 = first transformation applied.
     const stepsToShow = [...process].reverse();
     stepsToShow.forEach((p, i) => {
-      const colonIdx = p.indexOf(': ');
-      const name = colonIdx !== -1 ? p.substring(0, colonIdx) : p;
-      const desc = colonIdx !== -1 ? p.substring(colonIdx + 2) : '';
+      const name = p.name;
+      const desc = p.description;
 
       const card = document.createElement('div');
       card.className = 'inflection-step-card';

@@ -64,9 +64,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
     private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this, getSettingsNamespace()) }
 
     private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
-    private var cachedTermPaths: List<String>? = null
+    private var cachedTermPaths: chimahon.DictionaryPaths? = null
 
-    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
+    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, chimahon.DictionaryPaths> {
         val prefs = Injekt.get<DictionaryPreferences>()
         val novelId = bookMetadata?.id ?: ""
         val novelLang = bookMetadata?.lang ?: ""

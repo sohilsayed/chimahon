@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -780,7 +781,7 @@ fun NovelLibraryContent(
                             if (displayMode == LibraryDisplayMode.ComfortableGrid) {
                                 eu.kanade.presentation.library.components.MangaComfortableGridItem(
                                     isSelected = isSelected,
-                                    title = bookTitle,
+                                    title = bookTitle ?: "",
                                     coverData = coverData,
                                     coverBadgeStart = {
                                         if (!bookLang.isNullOrBlank()) {

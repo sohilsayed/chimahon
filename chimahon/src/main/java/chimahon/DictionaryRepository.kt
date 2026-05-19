@@ -14,43 +14,45 @@ class DictionaryRepository(
     private val externalFilesDir: File?,
 ) {
     private var session: Long? = null
-    private var configuredTermPaths: List<String> = emptyList()
+    private var configuredPaths: DictionaryPaths = DictionaryPaths()
     private var cachedStyles: List<DictionaryStyle> = emptyList()
     /** ID of the profile that was last used to call [warmUp].  Prevents redundant engine rebuilds. */
     private var lastWarmedProfileId: String = ""
 
+
+
     /**
-     * Warm up the query engine for [termPaths].
-     * An engine rebuild is only triggered when [termPaths] or [profileId] differ
+     * Warm up the query engine for [paths].
+     * An engine rebuild is only triggered when [paths] or [profileId] differ
      * from the last warmed state, so calling this at every reader-open is safe.
      *
      * @param profileId optional profile ID for dedup tracking (empty = legacy callers)
      */
     @Synchronized
-    fun warmUp(termPaths: List<String>, profileId: String = "") {
+    fun warmUp(paths: DictionaryPaths, profileId: String = "") {
         val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
 
-        val pathsChanged = termPaths != configuredTermPaths
+        val pathsChanged = paths != configuredPaths
         val profileChanged = profileId.isNotEmpty() && profileId != lastWarmedProfileId
 
         if (pathsChanged || profileChanged) {
             HoshiDicts.rebuildQuery(
                 session = activeSession,
-                termPaths = termPaths.toTypedArray(),
-                freqPaths = termPaths.toTypedArray(),
-                pitchPaths = termPaths.toTypedArray(),
+                termPaths = paths.termPaths.toTypedArray(),
+                freqPaths = paths.freqPaths.toTypedArray(),
+                pitchPaths = paths.pitchPaths.toTypedArray(),
             )
             cachedStyles = HoshiDicts.getStyles(activeSession).toList()
-            configuredTermPaths = termPaths
+            configuredPaths = paths
             if (profileId.isNotEmpty()) lastWarmedProfileId = profileId
         }
     }
 
     @Synchronized
-    fun lookup(query: String, termPaths: List<String>, languageCode: String = ""): LookupResult2 {
+    fun lookup(query: String, paths: DictionaryPaths, languageCode: String = ""): LookupResult2 {
         val t0 = SystemClock.elapsedRealtime()
 
-        warmUp(termPaths)
+        warmUp(paths)
 
         val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
 
@@ -61,7 +63,7 @@ class DictionaryRepository(
         val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
 
         val results = if (effectiveLang == "ja") {
-            HoshiDicts.lookup(activeSession, query, 20).toList()
+            HoshiDicts.lookup(activeSession, query, 20, 25).toList()
         } else if (genericDeinflector != null) {
             val finalResults = mutableListOf<chimahon.LookupResult>()
             for (i in query.length downTo 1) {
@@ -91,7 +93,7 @@ class DictionaryRepository(
             }
             finalResults.distinctBy { it.term.expression to it.term.reading }.take(20)
         } else {
-            HoshiDicts.lookup(activeSession, query, 20).toList()
+            HoshiDicts.lookup(activeSession, query, 20, 25).toList()
         }
 
         val lookupMs = SystemClock.elapsedRealtime() - tLookupStart
@@ -127,7 +129,7 @@ class DictionaryRepository(
     fun close() {
         session?.let(HoshiDicts::destroyLookupObject)
         session = null
-        configuredTermPaths = emptyList()
+        configuredPaths = DictionaryPaths()
         cachedStyles = emptyList()
         lastWarmedProfileId = ""
     }
@@ -251,5 +253,52 @@ class DictionaryRepository(
     companion object {
         private const val MAX_PRELOADED_MEDIA_ITEMS = 2
         private const val MAX_PRELOADED_MEDIA_BYTES = 64 * 1024
+
+        private val TYPE_SUBDIRS = listOf("term", "frequency", "pitch")
+
+        @Synchronized
+        fun migrateFlatDictionaries(dictionariesDir: File) {
+            if (!dictionariesDir.isDirectory) return
+
+            val typeSubdirSet = TYPE_SUBDIRS.toSet()
+            val flatDirs = dictionariesDir.listFiles()
+                ?.filter { it.isDirectory && it.name !in typeSubdirSet }
+                .orEmpty()
+
+            if (flatDirs.isEmpty()) return
+
+            for (flatDir in flatDirs) {
+                migrateSingleFlatDictionary(flatDir, dictionariesDir)
+            }
+        }
+
+        private fun migrateSingleFlatDictionary(flatDir: File, dictionariesDir: File) {
+            val dictName = flatDir.name
+            if (!File(flatDir, "hash.table").isFile) {
+                Log.w("DictMigration", "Skipping '$dictName' — no hash.table")
+                return
+            }
+            try {
+                val counts = HoshiDicts.probeEntryTypes(flatDir.absolutePath)
+                val types = buildList {
+                    if (counts[0] > 0) add("term")
+                    if (counts[1] > 0) add("frequency")
+                    if (counts[2] > 0) add("pitch")
+                }.ifEmpty { TYPE_SUBDIRS }
+
+                for (type in types) {
+                    val typeDir = File(dictionariesDir, type)
+                    typeDir.mkdirs()
+                    val targetDir = File(typeDir, dictName)
+                    if (targetDir.exists()) targetDir.deleteRecursively()
+                    flatDir.copyRecursively(targetDir, overwrite = true)
+                }
+
+                flatDir.deleteRecursively()
+                Log.i("DictMigration", "Migrated '$dictName' into ${types.joinToString(", ")}")
+            } catch (e: Exception) {
+                Log.e("DictMigration", "Failed to migrate '$dictName': ${e.message}")
+            }
+        }
     }
 }

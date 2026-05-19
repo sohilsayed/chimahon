@@ -317,10 +317,10 @@ class ReaderActivity : BaseActivity() {
                     sourceId = sourceId,
                     sourceLang = sourceLang,
                 )
-                val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                val dictPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
                 cachedActiveProfile = profile
-                cachedTermPaths = termPaths
-                dictionaryRepository.warmUp(termPaths, profile.id)
+                cachedTermPaths = dictPaths
+                dictionaryRepository.warmUp(dictPaths, profile.id)
             }
 
             lifecycleScope.launch {
@@ -1055,10 +1055,10 @@ class ReaderActivity : BaseActivity() {
                             sourceId = sourceId,
                             sourceLang = sourceLang,
                         )
-                        val termPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                        val dictPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
                         cachedActiveProfile = profile
-                        cachedTermPaths = termPaths
-                        dictionaryRepository.warmUp(termPaths, profile.id)
+                        cachedTermPaths = dictPaths
+                        dictionaryRepository.warmUp(dictPaths, profile.id)
                     }
                 }
                 when (val viewer = state.viewer) {
@@ -2079,9 +2079,9 @@ class ReaderActivity : BaseActivity() {
     }
 
     private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
-    private var cachedTermPaths: List<String>? = null
+    private var cachedTermPaths: chimahon.DictionaryPaths? = null
 
-    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, List<String>> {
+    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, chimahon.DictionaryPaths> {
         val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
         val profile = cachedActiveProfile ?: run {
             val manga = viewModel.manga
