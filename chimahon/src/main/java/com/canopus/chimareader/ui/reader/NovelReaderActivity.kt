@@ -163,6 +163,16 @@ open class NovelReaderActivity : ComponentActivity() {
         setSystemBarsVisibility(isHudVisible)
     }
 
+    override fun onPause() {
+        super.onPause()
+        readerViewModel?.flushSyncExport()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        readerViewModel?.flushSyncExport()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {

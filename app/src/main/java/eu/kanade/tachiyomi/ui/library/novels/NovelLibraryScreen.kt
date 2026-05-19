@@ -70,6 +70,7 @@ import eu.kanade.presentation.library.components.CommonMangaItemDefaults
 import eu.kanade.presentation.library.components.LibraryTabs
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
+import com.canopus.chimareader.ttusync.TtuSyncManager
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
@@ -149,18 +150,28 @@ fun Screen.NovelLibraryScreen(
                 onClickSelectAll = screenModel::selectAll,
                 onClickInvertSelection = screenModel::invertSelection,
                 onClickFilter = screenModel::showSortDialog,
-                onClickRefresh = {
-                    if (!SyncDataJob.isRunning(context)) {
-                        SyncDataJob.startNow(context, manual = true)
-                    } else {
-                        context.toast(SYMR.strings.sync_in_progress)
-                    }
-                },
+                    onClickRefresh = {
+                        if (!SyncDataJob.isRunning(context)) {
+                            SyncDataJob.startNow(context, manual = true)
+                        } else {
+                            context.toast(SYMR.strings.sync_in_progress)
+                        }
+                    },
+                    onClickSyncNow = {
+                        val ttuSyncManager = try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
+                        ttuSyncManager?.takeIf { it.isEnabled }?.let { sync ->
+                            kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val books = com.canopus.chimareader.data.BookStorage.loadAllBooks(context)
+                                for (book in books) {
+                                    sync.syncBook(book)
+                                }
+                            }
+                        }
+                    },
                 onClickGlobalUpdate = null,
                 onClickOpenRandomManga = null,
-                onClickSyncNow = null,
                 onClickSyncExh = null,
-                isSyncEnabled = false,
+                isSyncEnabled = try { Injekt.get<TtuSyncManager>().isEnabled } catch (_: Exception) { false },
                 searchQuery = state.searchQuery,
                 onSearchQueryChange = screenModel::search,
                 scrollBehavior = scrollBehavior,
@@ -180,6 +191,20 @@ fun Screen.NovelLibraryScreen(
                 onChangeCategoryClicked = screenModel::showChangeCategoryDialog,
                 onDeleteClicked = screenModel::showDeleteConfirmDialog,
                 onResetClicked = screenModel::resetStatsForSelected,
+                onSyncClicked = {
+                    val ttuSyncManager = try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
+                    ttuSyncManager?.takeIf { it.isEnabled }?.let { sync ->
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            state.selection.forEach { bookId ->
+                                val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, bookId)
+                                val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
+                                if (metadata != null) {
+                                    sync.syncBook(metadata)
+                                }
+                            }
+                        }
+                    }
+                },
             )
         },
         floatingActionButton = {
@@ -739,6 +764,7 @@ fun NovelSelectionBar(
     onChangeCategoryClicked: () -> Unit,
     onDeleteClicked: () -> Unit,
     onResetClicked: () -> Unit,
+    onSyncClicked: (() -> Unit)? = null,
 ) {
     androidx.compose.animation.AnimatedVisibility(
         visible = visible,
@@ -783,6 +809,13 @@ fun NovelSelectionBar(
                     icon = Icons.Outlined.Delete,
                     onClick = onDeleteClicked,
                 )
+                if (onSyncClicked != null) {
+                    SelectionButton(
+                        title = "TTU Sync",
+                        icon = Icons.Outlined.CloudSync,
+                        onClick = onSyncClicked,
+                    )
+                }
             }
         }
     }
