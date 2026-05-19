@@ -82,36 +82,38 @@ private data class TabLookupFrame(
 )
 
 
-private var cachedDictionaryPaths: List<String>? = null
+private var cachedDictionaryPaths: chimahon.DictionaryPaths? = null
 private var lastProfileHash: Int? = null
 private var lastDictDirModified: Long = 0L
 
-fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.anki.AnkiProfile? = null): List<String> {
+fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.anki.AnkiProfile? = null): chimahon.DictionaryPaths {
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-    if (!dictionariesDir.exists()) return emptyList()
+    if (!dictionariesDir.exists()) return chimahon.DictionaryPaths()
 
-    val currentModified = dictionariesDir.lastModified()
-    val currentProfileHash = activeProfileOverride?.hashCode() ?: 0
+    val typeDirs = mapOf(
+        "term" to File(dictionariesDir, "term"),
+        "frequency" to File(dictionariesDir, "frequency"),
+        "pitch" to File(dictionariesDir, "pitch"),
+    )
 
-    if (cachedDictionaryPaths != null && lastProfileHash == currentProfileHash && lastDictDirModified == currentModified) {
-        return cachedDictionaryPaths!!
-    }
+    val allDictNames = typeDirs.values.flatMap { dir ->
+        if (!dir.isDirectory) emptyList()
+        else dir.listFiles()?.filter { it.isDirectory }?.map { it.name }.orEmpty()
+    }.distinct()
 
-    val allDicts = dictionariesDir.listFiles()
-        ?.filter { it.isDirectory }
-        ?.mapNotNull { it.name }
-        .orEmpty()
-
-    if (allDicts.isEmpty()) return emptyList()
+    if (allDictNames.isEmpty()) return chimahon.DictionaryPaths()
 
     val prefs = try {
         DictionaryPreferences(Injekt.get())
     } catch (_: Exception) {
-        return allDicts.map { File(dictionariesDir, it).absolutePath }
+        return chimahon.DictionaryPaths(
+            termPaths = allDictNames.filter { name -> File(typeDirs["term"]!!, name).isDirectory }.map { File(typeDirs["term"]!!, it).absolutePath }.sorted(),
+            freqPaths = allDictNames.filter { name -> File(typeDirs["frequency"]!!, name).isDirectory }.map { File(typeDirs["frequency"]!!, it).absolutePath }.sorted(),
+            pitchPaths = allDictNames.filter { name -> File(typeDirs["pitch"]!!, name).isDirectory }.map { File(typeDirs["pitch"]!!, it).absolutePath }.sorted(),
+        )
     }
 
     val activeProfile = activeProfileOverride ?: run {
-        // One-time migration: create "Default" profile from legacy flat keys.
         prefs.profileStore.migrateIfEmpty(
             defaultName = "Default",
             legacyValues = chimahon.anki.AnkiProfileStore.LegacyAnkiValues(
@@ -124,22 +126,33 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
                 dupAction = prefs.legacyAnkiDuplicateAction().get(),
                 cropMode = prefs.legacyAnkiCropMode().get(),
             ),
-            allDictNames = allDicts,
+            allDictNames = allDictNames,
         )
         prefs.profileStore.getActiveProfile()
     }
 
-    // Per-profile dictionary order: start with the profile's order,
-    // then append any new dicts added to disk since the profile was last saved.
-    val profileOrder = activeProfile.dictionaryOrder.filter { it in allDicts }
-    val newDicts = allDicts.filter { it !in activeProfile.dictionaryOrder }
+    val profileOrder = activeProfile.dictionaryOrder.filter { it in allDictNames }
+    val newDicts = allDictNames.filter { it !in activeProfile.dictionaryOrder }
     val orderedNames = profileOrder + newDicts
 
-    // Per-profile activation: empty set means all enabled.
     val enabled = activeProfile.enabledDictionaries
     val finalNames = if (enabled.isEmpty()) orderedNames else orderedNames.filter { it in enabled }
 
-    val result = finalNames.map { File(dictionariesDir, it).absolutePath }
+    fun pathsForType(type: String): List<String> {
+        val typeDir = typeDirs[type] ?: return emptyList()
+        return finalNames
+            .filter { name -> File(typeDir, name).isDirectory }
+            .map { name -> File(typeDir, name).absolutePath }
+    }
+
+    val result = chimahon.DictionaryPaths(
+        termPaths = pathsForType("term"),
+        freqPaths = pathsForType("frequency"),
+        pitchPaths = pathsForType("pitch"),
+    )
+    val currentProfileHash = activeProfile.hashCode()
+    val currentModified = dictionariesDir.lastModified()
+    
     cachedDictionaryPaths = result
     lastProfileHash = currentProfileHash
     lastDictDirModified = currentModified
@@ -610,7 +623,7 @@ data object DictionaryTab : Tab {
 
             val dictionaryPaths = getDictionaryPaths(context, activeProfile)
 
-            if (dictionaryPaths.isEmpty()) {
+            if (dictionaryPaths.termPaths.isEmpty() && dictionaryPaths.freqPaths.isEmpty() && dictionaryPaths.pitchPaths.isEmpty()) {
                 return@withContext LookupUiResult(
                     results = emptyList(),
                     styles = emptyList(),
@@ -624,7 +637,7 @@ data object DictionaryTab : Tab {
             try {
                 sessionManager.lookup(
                     query = query,
-                    termPaths = dictionaryPaths,
+                    paths = dictionaryPaths,
                     languageCode = activeProfile.languageCode,
                 )
             } catch (e: Throwable) {
@@ -647,26 +660,26 @@ data object DictionaryTab : Tab {
         }
 
         private var session: Long? = null
-        private var configuredTermPaths: List<String> = emptyList()
+        private var configuredPaths: chimahon.DictionaryPaths = chimahon.DictionaryPaths()
         private var cachedStyles: List<DictionaryStyle> = emptyList()
 
         @Synchronized
-        fun warmUp(termPaths: List<String>) {
+        fun warmUp(paths: chimahon.DictionaryPaths) {
             val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
-            if (termPaths != configuredTermPaths) {
+            if (paths != configuredPaths) {
                 HoshiDicts.rebuildQuery(
                     session = activeSession,
-                    termPaths = termPaths.toTypedArray(),
-                    freqPaths = termPaths.toTypedArray(),
-                    pitchPaths = termPaths.toTypedArray(),
+                    termPaths = paths.termPaths.toTypedArray(),
+                    freqPaths = paths.freqPaths.toTypedArray(),
+                    pitchPaths = paths.pitchPaths.toTypedArray(),
                 )
                 cachedStyles = HoshiDicts.getStyles(activeSession).toList()
-                configuredTermPaths = termPaths
+                configuredPaths = paths
             }
         }
 
         @Synchronized
-        fun lookup(query: String, termPaths: List<String>, languageCode: String = ""): LookupUiResult {
+        fun lookup(query: String, paths: chimahon.DictionaryPaths, languageCode: String = ""): LookupUiResult {
             val t0 = SystemClock.elapsedRealtime()
             val ramBefore = currentUsedRamMb()
             var sessionCreateMs = 0L
@@ -678,9 +691,9 @@ data object DictionaryTab : Tab {
                 sessionCreateMs = SystemClock.elapsedRealtime() - t0
             }
 
-            if (termPaths != configuredTermPaths) {
+            if (paths != configuredPaths) {
                 val rebuildStart = SystemClock.elapsedRealtime()
-                warmUp(termPaths)
+                warmUp(paths)
                 rebuildMs = SystemClock.elapsedRealtime() - rebuildStart
             }
 
@@ -688,7 +701,7 @@ data object DictionaryTab : Tab {
             val effectiveLang = languageCode.lowercase()
             val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
             val results = if (effectiveLang == "ja") {
-                HoshiDicts.lookup(activeSession, query, 50).toList()
+                HoshiDicts.lookup(activeSession, query, 50, 25).toList()
             } else if (genericDeinflector != null) {
                 val preprocessed = genericDeinflector.preProcess(query)
                 val deinflected = preprocessed.flatMap { genericDeinflector.deinflect(it, effectiveLang) }
@@ -697,11 +710,11 @@ data object DictionaryTab : Tab {
                     emptyList()
                 } else {
                     candidates.flatMap { candidate ->
-                        HoshiDicts.lookup(activeSession, candidate, 50).toList()
+                        HoshiDicts.lookup(activeSession, candidate, 50, 25).toList()
                     }.distinctBy { it.term.expression to it.term.reading }.take(50)
                 }
             } else {
-                HoshiDicts.lookup(activeSession, query, 50).toList()
+                HoshiDicts.lookup(activeSession, query, 50, 25).toList()
             }
             val lookupMs = SystemClock.elapsedRealtime() - lookupStart
 

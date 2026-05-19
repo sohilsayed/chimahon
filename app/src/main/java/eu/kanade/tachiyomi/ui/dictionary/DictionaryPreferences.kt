@@ -169,6 +169,15 @@ class DictionaryPreferences(
     fun dictionaryOrder() = preferenceStore.getString("pref_dictionary_order", "")
 
     // -------------------------------------------------------------------------
+    // Dictionary auto-update
+    // -------------------------------------------------------------------------
+
+    fun autoUpdateEnabled() = preferenceStore.getBoolean("pref_dict_auto_update", false)
+    fun autoUpdateInterval() = preferenceStore.getInt("pref_dict_auto_update_interval", 24)
+    fun lastDictUpdateCheck() = preferenceStore.getLong("pref_last_dict_update_check", 0L)
+    fun dictUpdateCheckState() = preferenceStore.getString("pref_dict_update_check_state", "idle")
+
+    // -------------------------------------------------------------------------
     // Word Audio Preferences (Implementing WordAudioPreferences interface)
     // -------------------------------------------------------------------------
 

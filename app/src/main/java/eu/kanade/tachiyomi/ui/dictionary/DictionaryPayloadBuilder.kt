@@ -48,7 +48,14 @@ internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: Ank
         put("index", index)
         put("matched", result.matched)
         put("deinflected", result.deinflected)
-        putJsonArray("process") { result.process.forEach { add(JsonPrimitive(it)) } }
+        putJsonArray("process") {
+            for (p in result.process) {
+                add(buildJsonObject {
+                    put("name", p.name)
+                    put("description", p.description)
+                })
+            }
+        }
         put("term", buildJsonObject {
             put("expression", result.term.expression)
             put("reading", result.term.reading)

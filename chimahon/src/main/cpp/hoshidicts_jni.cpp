@@ -1,6 +1,9 @@
 #include <jni.h>
 #include <pthread.h>
 
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -8,6 +11,11 @@
 #include "hoshidicts/include/hoshidicts.h"
 
 namespace {
+    struct Slot {
+        uint64_t hash;
+        uint64_t offset;
+    };
+
     struct LookupObject {
         DictionaryQuery query;
         Deinflector deinflector;
@@ -39,21 +47,35 @@ namespace {
         return env->NewStringUTF(value.c_str());
     }
 
-    jobject new_import_result(JNIEnv *env, bool success, jlong term_count, jlong meta_count,
-                              jlong media_count) {
+    jobject new_import_result(JNIEnv *env, bool success, const std::string &title,
+                              jlong term_count, jlong meta_count, jlong freq_count,
+                              jlong pitch_count, jlong media_count) {
         jclass cls = env->FindClass("chimahon/ImportResult");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(ZJJJ)V");
-        return env->NewObject(cls, ctor, static_cast<jboolean>(success), term_count, meta_count,
-                              media_count);
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(ZLjava/lang/String;JJJJJ)V");
+        jstring jtitle = new_string(env, title);
+        jobject out = env->NewObject(cls, ctor, static_cast<jboolean>(success), jtitle,
+                                     term_count, meta_count, freq_count, pitch_count, media_count);
+        env->DeleteLocalRef(jtitle);
+        return out;
+    }
+
+    jobject new_transform_group(JNIEnv *env, const TransformGroup &tg) {
+        jclass cls = env->FindClass("chimahon/TransformGroup");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(Ljava/lang/String;Ljava/lang/String;)V");
+        jstring name = new_string(env, tg.name);
+        jstring desc = new_string(env, tg.description);
+        jobject out = env->NewObject(cls, ctor, name, desc);
+        env->DeleteLocalRef(name);
+        env->DeleteLocalRef(desc);
+        return out;
     }
 
     jobjectArray
     new_process_array(JNIEnv *env, const std::vector<TransformGroup> &trace) {
-        jclass cls = env->FindClass("java/lang/String");
+        jclass cls = env->FindClass("chimahon/TransformGroup");
         jobjectArray array = env->NewObjectArray(static_cast<jsize>(trace.size()), cls, nullptr);
         for (size_t i = 0; i < trace.size(); ++i) {
-            std::string entry = trace[i].name + ": " + trace[i].description;
-            jobject item = new_string(env, entry);
+            jobject item = new_transform_group(env, trace[i]);
             env->SetObjectArrayElement(array, static_cast<jsize>(i), item);
             env->DeleteLocalRef(item);
         }
@@ -183,7 +205,7 @@ namespace {
     jobject new_lookup_result(JNIEnv *env, const LookupResult &result) {
         jclass cls = env->FindClass("chimahon/LookupResult");
         jmethodID ctor = env->GetMethodID(cls, "<init>",
-                                          "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Lchimahon/TermResult;I)V");
+                                          "(Ljava/lang/String;Ljava/lang/String;[Lchimahon/TransformGroup;Lchimahon/TermResult;I)V");
         jstring matched = new_string(env, result.matched);
         jstring deinflected = new_string(env, result.deinflected);
         jobjectArray process = new_process_array(env, result.trace);
@@ -294,18 +316,21 @@ Java_chimahon_HoshiDicts_importDictionary(JNIEnv *env, jobject, jstring zip_path
         args.result = dictionary_importer::import(args.zip_path, args.output_dir, true);
     }
 
-    return new_import_result(env, args.result.success,
+    return new_import_result(env, args.result.success, args.result.title,
                              static_cast<jlong>(args.result.term_count),
                              static_cast<jlong>(args.result.meta_count),
+                             static_cast<jlong>(args.result.freq_count),
+                             static_cast<jlong>(args.result.pitch_count),
                              static_cast<jlong>(args.result.media_count));
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_chimahon_HoshiDicts_lookup(JNIEnv *env, jobject, jlong session, jstring text,
-                                jint max_results) {
+                                jint max_results, jint scan_length) {
     LookupObject *obj = as_object(session);
     auto text_str = jstring_to_std_string(env, text);
-    auto result = obj->lookup->lookup(text_str, static_cast<int>(max_results));
+    auto result = obj->lookup->lookup(text_str, static_cast<int>(max_results),
+                                      static_cast<size_t>(scan_length));
     return new_lookup_result_array(env, result);
 }
 
@@ -345,5 +370,101 @@ Java_chimahon_HoshiDicts_getMediaFile(JNIEnv *env, jobject, jlong session,
     jbyteArray result = env->NewByteArray(static_cast<jsize>(data.size()));
     env->SetByteArrayRegion(result, 0, static_cast<jsize>(data.size()),
                             reinterpret_cast<const jbyte *>(data.data()));
+    return result;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_chimahon_HoshiDicts_probeEntryTypes(JNIEnv *env, jobject, jstring dict_path) {
+    auto dir = jstring_to_std_string(env, dict_path);
+    std::string hashPath = dir + "/hash.table";
+    std::string blobsPath = dir + "/blobs.bin";
+
+    auto make_zeros = [&]() {
+        jlongArray result = env->NewLongArray(3);
+        jlong zeros[3] = {0, 0, 0};
+        env->SetLongArrayRegion(result, 0, 3, zeros);
+        return result;
+    };
+
+    FILE* hashFile = fopen(hashPath.c_str(), "rb");
+    if (!hashFile) return make_zeros();
+
+    uint32_t capacity;
+    if (fread(&capacity, sizeof(capacity), 1, hashFile) != 1) {
+        fclose(hashFile);
+        return make_zeros();
+    }
+
+    std::vector<Slot> slots(capacity);
+    if (fread(slots.data(), sizeof(Slot), capacity, hashFile) != capacity) {
+        fclose(hashFile);
+        return make_zeros();
+    }
+    fclose(hashFile);
+
+    FILE* blobsFile = fopen(blobsPath.c_str(), "rb");
+    if (!blobsFile) return make_zeros();
+
+    fseek(blobsFile, 0, SEEK_END);
+    size_t blobsSize = static_cast<size_t>(ftell(blobsFile));
+    fseek(blobsFile, 0, SEEK_SET);
+    std::vector<uint8_t> blobs(blobsSize);
+    if (fread(blobs.data(), 1, blobsSize, blobsFile) != blobsSize) {
+        fclose(blobsFile);
+        return make_zeros();
+    }
+    fclose(blobsFile);
+
+    uint64_t termCount = 0, freqCount = 0, pitchCount = 0;
+
+    for (uint32_t i = 0; i < capacity; i++) {
+        if (slots[i].hash == 0) continue;
+
+        uint64_t blobOffset = slots[i].offset;
+        if (blobOffset + sizeof(uint32_t) > blobsSize) continue;
+
+        uint32_t entryCount;
+        std::memcpy(&entryCount, blobs.data() + blobOffset, sizeof(entryCount));
+        size_t idx = blobOffset + sizeof(entryCount);
+
+        for (uint32_t j = 0; j < entryCount; j++) {
+            if (idx + sizeof(uint64_t) > blobsSize) break;
+            uint64_t entryOffset;
+            std::memcpy(&entryOffset, blobs.data() + idx, sizeof(entryOffset));
+            idx += sizeof(entryOffset);
+
+            if (entryOffset + 1 > blobsSize) continue;
+            uint8_t type = blobs[entryOffset];
+
+            if (type == 0) {
+                termCount++;
+            } else if (type == 1) {
+                size_t pos = entryOffset + 1;
+                if (pos + 2 > blobsSize) continue;
+                uint16_t exprLen;
+                std::memcpy(&exprLen, blobs.data() + pos, sizeof(exprLen));
+                pos += 2 + exprLen;
+                if (pos + 1 > blobsSize) continue;
+                uint8_t modeLen = blobs[pos];
+                pos += 1;
+                if (pos + static_cast<size_t>(modeLen) > blobsSize) continue;
+                std::string mode(reinterpret_cast<const char*>(blobs.data() + pos), modeLen);
+
+                if (mode == "freq") {
+                    freqCount++;
+                } else if (mode == "pitch") {
+                    pitchCount++;
+                }
+            }
+        }
+    }
+
+    jlongArray result = env->NewLongArray(3);
+    jlong counts[3] = {
+        static_cast<jlong>(termCount),
+        static_cast<jlong>(freqCount),
+        static_cast<jlong>(pitchCount),
+    };
+    env->SetLongArrayRegion(result, 0, 3, counts);
     return result;
 }

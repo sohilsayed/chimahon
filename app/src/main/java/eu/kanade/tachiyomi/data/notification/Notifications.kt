@@ -102,6 +102,15 @@ object Notifications {
     const val ID_UPDATES_TO_EXTS = -401
     const val ID_EXTENSION_INSTALLER = -402
 
+    /**
+     * Notification channel and ids used for dictionary auto-updates.
+     */
+    const val CHANNEL_DICTIONARY_UPDATE = "dictionary_update_channel"
+    const val ID_DICT_UPDATE_CHECKING = -600
+    const val ID_DICT_UPDATE_PROGRESS = -601
+    const val ID_DICT_UPDATE_COMPLETE = -602
+    const val ID_DICT_UPDATE_NO_UPDATES = -603
+
     private val deprecatedChannels = listOf(
         "downloader_channel",
         "downloader_complete_channel",
@@ -210,6 +219,10 @@ object Notifications {
                     setShowBadge(false)
                 },
                 // SY <--
+                buildNotificationChannel(CHANNEL_DICTIONARY_UPDATE, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_dictionary_update))
+                    setShowBadge(false)
+                },
             ),
         )
     }

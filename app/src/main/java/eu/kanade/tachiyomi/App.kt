@@ -99,6 +99,7 @@ import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.File
 import java.security.Security
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -238,6 +239,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         
         // Chimahon -->
         com.canopus.chimareader.data.NovelMigration.migrateOldBooks(this)
+        chimahon.DictionaryRepository.migrateFlatDictionaries(File(getExternalFilesDir(null), "dictionaries"))
         // Chimahon <--
     }
 
