@@ -37,6 +37,8 @@
     <string name="label_dictionary">Dictionary</string>
     <string name="label_novels">Novels</string>
     <string name="novel_missing_file">Missing File — tap to import</string>
+    <string name="imported_n_books">Imported %1$d books</string>
+    <string name="imported_n_books_with_errors">Imported %1$d books (%2$d failed)</string>
     <string name="action_reset_reading_progress">Reset reading progress</string>
     <string name="backup_option_novels">Novel progress &amp; stats</string>
     <string name="label_stats">Statistics</string>

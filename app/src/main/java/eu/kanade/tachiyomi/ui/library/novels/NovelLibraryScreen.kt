@@ -91,6 +91,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.sy.SYMR
@@ -131,10 +132,10 @@ fun Screen.NovelLibraryScreen(
     }
 
     val epubPicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            screenModel.importBook(uri)
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents(),
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            screenModel.importBooks(uris)
         }
     }
 
@@ -253,6 +254,19 @@ fun Screen.NovelLibraryScreen(
         HomeScreen.showBottomNav(!state.selectionMode)
     }
 
+    // Show snackbar when batch import finishes
+    LaunchedEffect(state.importResult) {
+        val result = state.importResult ?: return@LaunchedEffect
+        val (imported, errors) = result
+        val msg = if (errors == 0) {
+            context.stringResource(MR.strings.imported_n_books, imported)
+        } else {
+            context.stringResource(MR.strings.imported_n_books_with_errors, imported, errors)
+        }
+        snackbarHostState.showSnackbar(msg)
+        screenModel.clearImportResult()
+    }
+
     // Reload whenever the screen is (re-)entered — catches books imported via + button
     LaunchedEffect(Unit) {
         screenModel.loadLibrary()
@@ -345,7 +359,7 @@ fun Screen.NovelLibraryScreen(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        
+
                         var langExpanded by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(
                             expanded = langExpanded,
@@ -382,14 +396,14 @@ fun Screen.NovelLibraryScreen(
                                 }
                             }
                         }
-                        
+
                         var profileExpanded by remember { mutableStateOf(false) }
                         val selectedName = if (selectedOverride.isEmpty()) {
                             autoLabel
                         } else {
                             profiles.firstOrNull { it.id == selectedOverride }?.name ?: autoLabel
                         }
-                        
+
                         ExposedDropdownMenuBox(
                             expanded = profileExpanded,
                             onExpandedChange = { profileExpanded = it }

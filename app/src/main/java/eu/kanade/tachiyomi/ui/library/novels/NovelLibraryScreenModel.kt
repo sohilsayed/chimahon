@@ -110,7 +110,7 @@ class NovelLibraryScreenModel(
         }
     }
 
-    fun importBook(uri: Uri) {
+    fun importBooks(uris: List<Uri>) {
         screenModelScope.launch {
             mutableState.update { it.copy(isImporting = true) }
             val currentCategory = mutableState.value.activeCategory
@@ -119,12 +119,14 @@ class NovelLibraryScreenModel(
             } else {
                 null
             }
-            
-            val result = BookImporter.importEpub(app, uri, categoryIds)
-            if (result.metadata != null) {
-                loadLibrary()
+            var imported = 0
+            var errors = 0
+            uris.forEach { uri ->
+                val result = BookImporter.importEpub(app, uri, categoryIds)
+                if (result.metadata != null) imported++ else errors++
             }
-            mutableState.update { it.copy(isImporting = false) }
+            loadLibrary()
+            mutableState.update { it.copy(isImporting = false, importResult = Pair(imported, errors)) }
         }
     }
 
@@ -242,6 +244,10 @@ class NovelLibraryScreenModel(
         }
     }
 
+    fun clearImportResult() {
+        mutableState.update { it.copy(importResult = null) }
+    }
+
     fun closeDialog() {
         mutableState.update { it.copy(dialog = null) }
     }
@@ -274,6 +280,7 @@ class NovelLibraryScreenModel(
         val sortMode: SortMode = SortMode.DateAdded,
         val sortDescending: Boolean = true,
         val isImporting: Boolean = false,
+        val importResult: Pair<Int, Int>? = null,
     ) {
         val hasActiveFilters: Boolean = false
         val isLibraryEmpty: Boolean = books.isEmpty()
