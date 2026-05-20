@@ -261,6 +261,8 @@ private fun loadDictionaryList(context: Context) {
 }
 
 private val _isImporting = kotlinx.coroutines.flow.MutableStateFlow(false)
+private val _isImportingDb = kotlinx.coroutines.flow.MutableStateFlow(false)
+private val _importDbProgress = kotlinx.coroutines.flow.MutableStateFlow(0f)
 
 object SettingsDictionaryScreen : SearchableSettings {
 
@@ -302,12 +304,35 @@ object SettingsDictionaryScreen : SearchableSettings {
         val pickDb = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
                 scope.launch {
+                    _isImportingDb.value = true
+                    _importDbProgress.value = 0f
                     val targetFile = File(context.getExternalFilesDir(null), "word_audio.db")
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            targetFile.outputStream().use { output ->
-                                input.copyTo(output)
+                        var totalSize = 1L
+                        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                totalSize = cursor.getLong(0).coerceAtLeast(1L)
                             }
+                        }
+                        
+                        val tempFile = File(context.getExternalFilesDir(null), "word_audio.db.tmp")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            tempFile.outputStream().use { output ->
+                                val buffer = ByteArray(2 * 1024 * 1024)
+                                var copied = 0L
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    output.write(buffer, 0, read)
+                                    copied += read
+                                    _importDbProgress.value = copied.toFloat() / totalSize
+                                }
+                                output.fd.sync()
+                            }
+                        }
+                        if (!tempFile.renameTo(targetFile)) {
+                            tempFile.copyTo(targetFile, overwrite = true)
+                            tempFile.delete()
                         }
                     }
                     val db = chimahon.audio.WordAudioDatabase(context)
@@ -320,6 +345,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                         dictionaryPreferences.wordAudioLocalPath().set("")
                     }
                     db.close()
+                    _isImportingDb.value = false
                 }
             }
         }
@@ -2348,6 +2374,8 @@ object SettingsDictionaryScreen : SearchableSettings {
             prefs.wordAudioSources().set(json.encodeToString(newSources))
         }
 
+        val isImportingDb by _isImportingDb.collectAsState()
+        val importDbProgress by _importDbProgress.collectAsState()
 
         return Preference.PreferenceGroup(
             title = "Word Audio",
@@ -2388,9 +2416,21 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                 context.toast("Error launching file picker")
                                                 Log.e(TAG, "pickDb launch error", e)
                                             }
-                                        }
+                                        },
+                                        enabled = !isImportingDb
                                     ) {
-                                        Text("Select Database")
+                                        if (isImportingDb) {
+                                            androidx.compose.material3.CircularProgressIndicator(
+                                                progress = importDbProgress,
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Copying ${(importDbProgress * 100).toInt()}%")
+                                        } else {
+                                            Text("Select Database")
+                                        }
                                     }
 
                                     if (localPath.isNotBlank()) {
@@ -2399,7 +2439,8 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                 val file = java.io.File(localPath)
                                                 if (file.exists()) file.delete()
                                                 prefs.wordAudioLocalPath().set("")
-                                            }
+                                            },
+                                            enabled = !isImportingDb
                                         ) {
                                             Text("Delete Database")
                                         }
