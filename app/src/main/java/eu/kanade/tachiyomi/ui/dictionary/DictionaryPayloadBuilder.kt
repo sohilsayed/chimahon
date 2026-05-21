@@ -87,24 +87,24 @@ internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: Ank
             }
             putJsonArray("pitches") {
                 val allPitches = result.term.pitches
-                val priorityList = profile.dictionaryOrder
+                val priorityTitles = profile.dictionaryOrder.map { getDictionaryTitle(context, it) }
                 if (groupPitches) {
                     val orderedPitches = LinkedHashSet<Int>()
-                    for (dictId in priorityList) {
-                        allPitches.filter { it.dictName == dictId }
+                    for (title in priorityTitles) {
+                        allPitches.filter { it.dictName == title }
                             .forEach { group -> orderedPitches.addAll(group.pitchPositions.toList()) }
                     }
                     for (group in allPitches) {
-                        if (group.dictName !in priorityList) {
+                        if (group.dictName !in priorityTitles) {
                             orderedPitches.addAll(group.pitchPositions.toList())
                         }
                     }
                     val allDictIds = allPitches.map { it.dictName }.distinct()
                     if (orderedPitches.isNotEmpty()) {
                         val sortedTitles = allDictIds.sortedBy {
-                            val idx = priorityList.indexOf(it)
+                            val idx = priorityTitles.indexOf(it)
                             if (idx == -1) Int.MAX_VALUE else idx
-                        }.map { getDictionaryTitle(context, it) }
+                        }
                         add(buildJsonObject {
                             put("dictName", sortedTitles.joinToString(", "))
                             putJsonArray("pitchPositions") {
@@ -114,9 +114,8 @@ internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: Ank
                     }
                 } else {
                     for (group in allPitches) {
-                        val title = getDictionaryTitle(context, group.dictName)
                         add(buildJsonObject {
-                            put("dictName", title)
+                            put("dictName", group.dictName)
                             putJsonArray("pitchPositions") {
                                 for (pos in group.pitchPositions.distinct()) add(JsonPrimitive(pos))
                             }
@@ -241,14 +240,17 @@ private val dictionaryTitleCache = java.util.concurrent.ConcurrentHashMap<String
 internal fun getDictionaryTitle(context: Context, dirName: String): String {
     return dictionaryTitleCache.getOrPut(dirName) {
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-        val dictDir = File(dictionariesDir, dirName)
-        val indexFile = File(dictDir, "index.json")
-        if (!indexFile.exists()) return@getOrPut dirName
-        try {
-            val json = indexFile.readText()
-            org.json.JSONObject(json).optString("title", dirName)
-        } catch (e: Exception) {
-            dirName
+        for (type in listOf("term", "frequency", "pitch")) {
+            val indexFile = File(File(dictionariesDir, type), "$dirName/index.json")
+            if (indexFile.exists()) {
+                try {
+                    val json = indexFile.readText()
+                    return@getOrPut org.json.JSONObject(json).optString("title", dirName)
+                } catch (_: Exception) {
+                    return@getOrPut dirName
+                }
+            }
         }
+        dirName
     }
 }

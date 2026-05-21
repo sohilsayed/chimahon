@@ -49,7 +49,7 @@ private fun checkSingleDictionary(dictDir: File): DictionaryUpdateInfo {
     }
 
     val info = DictionaryUpdateInfo(
-        dictName = index.title.ifBlank { dictDir.name },
+        dictName = dictDir.name,
         currentRevision = index.revision,
         isUpdatable = index.isUpdatable,
         indexUrl = index.indexUrl,
