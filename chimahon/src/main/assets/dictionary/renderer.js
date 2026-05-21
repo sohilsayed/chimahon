@@ -1616,7 +1616,6 @@
 
       const dictHeader = document.createElement('div');
       dictHeader.className = 'dictionary-header';
-      dictHeader.dataset.dictName = dictName;
       
       const arrow = document.createElement('span');
       arrow.className = 'dict-arrow';
@@ -1649,13 +1648,7 @@
           const prevDictName = _selectedDictionaries[entryIdx];
           if (prevDictName === dictName) {
             delete _selectedDictionaries[entryIdx];
-            dictHeader.classList.remove('selected');
           } else {
-            if (prevDictName) {
-              delete _selectedDictionaries[entryIdx];
-              const prevHeader = entryArticle.querySelector(`[data-dict-name="${prevDictName}"]`);
-              if (prevHeader) prevHeader.classList.remove('selected');
-            }
             _selectedDictionaries[entryIdx] = dictName;
             dictHeader.classList.add('selected');
           }
@@ -2722,5 +2715,45 @@
 
     if (dy > 0 && !_isJumping) _hideTabs(); else _showTabs();
     _lastScrollY = y;
+  }, { passive: true });
+
+  // ── Reduced motion scrolling (e-ink) ─────────────────────────────────────
+  const _isEink = () => document.documentElement.dataset.chimaEinkMode === 'true';
+
+  const _scrollByPopupHeight = (direction) => {
+    const popupHeight = window.innerHeight;
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - popupHeight);
+    const overlap = Math.round(popupHeight * 0.1);
+    const step = popupHeight - overlap;
+    const target = Math.min(Math.max(0, window.scrollY + step * direction), maxScroll);
+
+    _isJumping = true;
+    window.scrollTo({ top: target, behavior: 'instant' });
+    setTimeout(() => { _isJumping = false; }, 300);
+  };
+
+  window.addEventListener('wheel', (e) => {
+    if (!_isEink()) return;
+    _scrollByPopupHeight(e.deltaY > 0 ? 1 : -1);
+    e.preventDefault();
+  }, { passive: false });
+
+  window.addEventListener('touchstart', (e) => {
+    if (!_isEink() || e.touches.length !== 1) return;
+    _touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!_isEink()) return;
+    e.preventDefault();
+  }, { passive: false });
+
+  window.addEventListener('touchend', (e) => {
+    if (!_isEink() || _touchStartY === 0) return;
+    const endY = e.changedTouches[0].clientY;
+    const delta = _touchStartY - endY;
+    _touchStartY = 0;
+    if (Math.abs(delta) < 15) return;
+    _scrollByPopupHeight(delta > 0 ? 1 : -1);
   }, { passive: true });
 })();

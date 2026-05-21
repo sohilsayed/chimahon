@@ -664,6 +664,10 @@ html[data-chima-eink-mode="true"] body {
   color-scheme: light;
 }
 
+html[data-chima-eink-mode="true"] body {
+  border: 1px solid #000 !important;
+}
+
 html[data-chima-eink-mode="true"] *,
 html[data-chima-eink-mode="true"] *::before,
 html[data-chima-eink-mode="true"] *::after {
@@ -696,7 +700,6 @@ html[data-chima-eink-mode="true"] .tag-body {
 html[data-chima-eink-mode="true"] .dictionary-header {
   border-radius: 0 !important;
   transition: none !important;
-  will-change: background-color, color;
 }
 
 html[data-chima-eink-mode="true"] .dictionary-header.selected {
@@ -757,6 +760,12 @@ html[data-chima-eink-mode="true"] .dictionary-header:hover {
   opacity: 1 !important;
 }
 
+html[data-chima-eink-mode="true"] .dictionary-header.selected:hover {
+  background: #000 !important;
+  color: #fff !important;
+  border-left-color: #000 !important;
+}
+
 html[data-chima-eink-mode="true"] .lookup-tabs {
   border-bottom-color: #000 !important;
 }
@@ -790,6 +799,10 @@ html[data-theme="dark"][data-chima-eink-mode="true"] body {
   color-scheme: dark;
 }
 
+html[data-theme="dark"][data-chima-eink-mode="true"] body {
+  border: 1px solid #fff !important;
+}
+
 html[data-theme="dark"][data-chima-eink-mode="true"] .tag-label,
 html[data-theme="dark"][data-chima-eink-mode="true"] .tag-body {
   border-color: #fff !important;
@@ -812,6 +825,12 @@ html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab.active {
 }
 
 html[data-theme="dark"][data-chima-eink-mode="true"] .dictionary-header.selected {
+  background: #fff !important;
+  color: #000 !important;
+  border-left-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .dictionary-header.selected:hover {
   background: #fff !important;
   color: #000 !important;
   border-left-color: #fff !important;
