@@ -13,17 +13,29 @@
 
 Chimahon is a specialized Android reader designed for language learners and immersion enthusiasts. It extends the powerful core of **Mihon/Komikku** with integrated tools for dictionary lookup, OCR-assisted text capture, and seamless flashcard creation for vocabulary mining.
 
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="./.github/readme-images/novel.png" width="32%" />
+  <img src="./.github/readme-images/popup-manga.png" width="32%" />
+  <img src="./.github/readme-images/dict-tab.png" width="32%" />
+</p>
+
 ## 🚀 Key Immersion Features
 
 ### 📖 Novel & Manga Support
 - **Novel Reader**: Dedicated reader for e-books with integrated dictionary lookup. Based on [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader).
 - **Manga Reader**: Native reading experience with support for all major online and local sources.
+- **Local OCR**: High-performance, on-device text recognition — no internet connection required.
 - **.mokuro Support**: Native integration for reading `.mokuro` formatted manga files with pre-rendered OCR overlays.
 
 ### 🔍 Native Dictionary Lookup
 - **Dictionary Tab**: Import and manage multiple dictionary files directly in-app.
-- **Recursive Lookups**: Search within definitions to clarify complex terms.
-- **Pitch Accent**: Native support for visualizing pitch accent patterns.
+- **Multi-Language Support**: Full support for Japanese, Chinese, Korean, and more.
+- **Recursive Lookups**: Effortlessly search within definitions to clarify complex terms.
+- **Slick Dictionary Popup**: A modern, customizable lookup interface with support for custom fonts, themes, and recursive searches.
+- **E-Ink Optimized**: High-contrast mode designed specifically for e-paper devices.
+- **Pitch Accent**: Native support for visualizing Japanese pitch accent patterns.
 
 ### 🎴 Anki Integration
 - **Direct Mining**: Create Anki cards instantly from lookup results while reading.
@@ -36,6 +48,10 @@ Chimahon is a specialized Android reader designed for language learners and imme
 ## 🛠️ Core Features (Inherited from Upstream)
 
 Chimahon retains all the features of **Komikku** and **Mihon**:
+
+<p align="center">
+  <img src="./.github/readme-images/screens.png" alt="komikku Screenshots" width="100%"/>
+</p>
 
 - **Massive Source Support**: Access thousands of manga via community-made extensions.
 - **Suggestions**: Discover related titles directly within the app.

@@ -4,6 +4,27 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.8.0]
+
+### Added
+- Dictionary auto-update 
+- Dictionary type categorization.
+- Paginated scrolling and improved E‑Ink border for the popup.
+- Local OCR engine integration.
+- Multi-file EPUB import support for novels.
+- Arrow-key navigation and HUD/system-bar parity in the novel reader.
+- Refactor and improve novel stats.
+
+### Changed
+- Novel categories aligned with manga categories.
+- Faster word-audio database import.
+- Pass OCR language locale to the manga text box for correct CJK rendering.
+
+### Fixed
+- Defer viewer visibility to avoid NPE crashes.
+- Prevent the WebView from closing the keyboard on the Dictionary tab.
+- Fix {selected-glossary} CSS for E‑Ink.
+
 ## [v1.7.7]
 
 ### Added
