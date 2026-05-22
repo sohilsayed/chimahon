@@ -837,23 +837,16 @@ object AnkiCardCreator {
 
         val sb = StringBuilder()
         sb.append("""<div style="text-align: left;" class="yomitan-glossary">""")
-
-        if (entries.size == 1) {
-            val dictAttr = attrEscape(entries[0].dictName)
-            sb.append("""<div data-dictionary="$dictAttr">""")
-            sb.append(renderGlossarySingle(entries[0], brief, noDictTag))
-            sb.append("</div>")
-        } else {
-            sb.append("<ol>")
-            for (entry in entries) {
-                val dictAttr = attrEscape(entry.dictName)
-                sb.append("""<li data-dictionary="$dictAttr">""")
-                sb.append(renderGlossarySingle(entry, brief, noDictTag))
-                sb.append("</li>")
-            }
-            sb.append("</ol>")
+        sb.append("<ol>")
+        var previousDictName = ""
+        for (entry in entries) {
+            val dictAttr = attrEscape(entry.dictName)
+            sb.append("""<li data-dictionary="$dictAttr">""")
+            sb.append(renderGlossarySingle(entry, brief, noDictTag, previousDictName))
+            sb.append("</li>")
+            previousDictName = entry.dictName
         }
-
+        sb.append("</ol>")
         sb.append("</div>")
         if (scopedStyles.isNotEmpty()) {
             sb.append("<style>")
@@ -987,6 +980,7 @@ object AnkiCardCreator {
         entry: GlossaryEntry,
         brief: Boolean,
         noDictTag: Boolean,
+        previousDictName: String = "",
     ): String {
         val sb = StringBuilder()
 
@@ -995,7 +989,7 @@ object AnkiCardCreator {
             if (entry.definitionTags.isNotBlank()) {
                 tagParts += entry.definitionTags.split(" ").filter { it.isNotBlank() }
             }
-            if (!noDictTag && entry.dictName.isNotBlank()) {
+            if (!noDictTag && entry.dictName.isNotBlank() && entry.dictName != previousDictName) {
                 tagParts += entry.dictName
             }
             if (tagParts.isNotEmpty()) {
