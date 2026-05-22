@@ -4,20 +4,24 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.8.2]
+
+### Fixed
+- Dictionary Reorder
+
 ## [v1.8.1]
 
 ### Added
 - Mangabaka tracker integration
-- Dictionary display names
+- Dictionary display name update
 - Per-dictionary update notifications
 
 ### Changed
 - Dictionary now uses directory names as stable keys
 
 ### Fixed
-- Dictionary import/rename UI
-- Yomitan glossary HTML structure: always `<ol><li>`, deduplicate dict tags
-
+- Dictionary import UI
+- Yomitan glossary HTML structure: always `<ol><li>`
 ## [v1.8.0]
 
 ### Added
