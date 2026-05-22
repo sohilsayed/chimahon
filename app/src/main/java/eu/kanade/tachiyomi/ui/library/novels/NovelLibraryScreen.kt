@@ -31,13 +31,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -216,21 +217,6 @@ fun Screen.NovelLibraryScreen(
                 onChangeCategoryClicked = screenModel::showChangeCategoryDialog,
                 onDeleteClicked = screenModel::showDeleteConfirmDialog,
                 onResetClicked = screenModel::resetStatsForSelected,
-                onSyncClicked = if (ttuSyncManager?.isEnabled == true) {
-                    {
-                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                            state.selection.forEach { bookId ->
-                                val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, bookId)
-                                val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
-                                if (metadata != null) {
-                                    ttuSyncManager.syncBook(metadata)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    null
-                },
                 onSyncImport = if (ttuSyncManager?.isEnabled == true && singleBookId != null) {
                     {
                         kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -886,67 +872,6 @@ fun NovelLibraryContent(
                         }
                     }
                 }
-                    }
-
-                    val bookTitle = book.title ?: ""
-                    val bookLang = book.lang
-
-                    val ghostBadge: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)? =
-                        if (book.isGhost) {
-                            {
-                                androidx.compose.material3.Surface(
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                                    color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer,
-                                ) {
-                                    androidx.compose.material3.Text(
-                                        text = "MISSING",
-                                        modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                                        color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
-                                    )
-                                }
-                            }
-                        } else {
-                            null
-                        }
-
-                    if (displayMode == LibraryDisplayMode.ComfortableGrid) {
-                        eu.kanade.presentation.library.components.MangaComfortableGridItem(
-                            isSelected = isSelected,
-                            title = bookTitle,
-                            coverData = coverData,
-                            coverBadgeStart = {
-                                if (!bookLang.isNullOrBlank()) {
-                                    eu.kanade.presentation.library.components.LanguageBadge(
-                                        isLocal = true,
-                                        sourceLanguage = bookLang,
-                                    )
-                                }
-                            },
-                            coverBadgeEnd = ghostBadge,
-                            onLongClick = onLongClick,
-                            onClick = onClick,
-                            usePanoramaCover = false,
-                        )
-                    } else {
-                        eu.kanade.presentation.library.components.MangaCompactGridItem(
-                            isSelected = isSelected,
-                            title = bookTitle,
-                            coverData = coverData,
-                            coverBadgeStart = {
-                                if (!bookLang.isNullOrBlank()) {
-                                    eu.kanade.presentation.library.components.LanguageBadge(
-                                        isLocal = true,
-                                        sourceLanguage = bookLang,
-                                    )
-                                }
-                            },
-                            coverBadgeEnd = ghostBadge,
-                            onLongClick = onLongClick,
-                            onClick = onClick,
-                        )
-                    }
-                }
             }
         }
     }
@@ -966,7 +891,6 @@ fun NovelLibraryBottomActionMenu(
     onChangeCategoryClicked: () -> Unit,
     onDeleteClicked: () -> Unit,
     onResetClicked: () -> Unit,
-    onSyncClicked: (() -> Unit)? = null,
     onSyncImport: (() -> Unit)? = null,
     onSyncExport: (() -> Unit)? = null,
 ) {
@@ -1034,24 +958,36 @@ fun NovelLibraryBottomActionMenu(
                     onLongClick = { onLongClickItem(3) },
                     onClick = onDeleteClicked,
                 )
-                if (onSyncClicked != null) {
-                    SelectionButton(
-                        title = "TTU Sync",
-                        icon = Icons.Outlined.CloudSync,
-                        onClick = onSyncClicked,
-                    )
-                }
                 if (onSyncImport != null && onSyncExport != null) {
-                    SelectionButton(
-                        title = "Import",
-                        icon = Icons.Outlined.FileDownload,
-                        onClick = onSyncImport,
+                    var expanded by remember { mutableStateOf(false) }
+                    BottomMenuButton(
+                        title = "Sync",
+                        icon = Icons.Outlined.Sync,
+                        toConfirm = false,
+                        onLongClick = {},
+                        onClick = { expanded = true },
                     )
-                    SelectionButton(
-                        title = "Export",
-                        icon = Icons.Outlined.FileUpload,
-                        onClick = onSyncExport,
-                    )
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Import from Drive") },
+                            onClick = {
+                                expanded = false
+                                onSyncImport()
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export to Drive") },
+                            onClick = {
+                                expanded = false
+                                onSyncExport()
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.FileUpload, null) },
+                        )
+                    }
                 }
             }
         }

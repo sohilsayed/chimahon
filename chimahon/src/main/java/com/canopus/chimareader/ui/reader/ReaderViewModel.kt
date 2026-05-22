@@ -18,16 +18,15 @@ import com.canopus.chimareader.data.Statistics
 import com.canopus.chimareader.data.Theme
 import com.canopus.chimareader.data.epub.EpubBook
 import com.canopus.chimareader.data.epub.SpineItemType
-import com.canopus.chimareader.ttusync.TtuSyncManager
 import com.canopus.chimareader.ttusync.SyncDirection
 import com.canopus.chimareader.ttusync.SyncResult
+import com.canopus.chimareader.ttusync.TtuSyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import android.util.Log
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -507,7 +506,6 @@ class ReaderViewModel(
             statisticsTracker.update(totalExploredCharCount)
         }
         persistToDisk()
-        savePersistentStatistics()
         scheduleSyncExport()
     }
 
@@ -715,7 +713,5 @@ class ReaderViewModel(
         val stats = statisticsTracker.statisticsForPersistence()
         BookStorage.saveStatistics(stats, rootUrl)
         scheduleSyncExport()
-        lastSavedExploredCharCount = totalExploredCharCount
-        lastSavedSessionReadingTime = sessionReadingTime
     }
 }
