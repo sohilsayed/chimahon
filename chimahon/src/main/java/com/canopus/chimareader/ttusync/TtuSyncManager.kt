@@ -12,21 +12,41 @@ import java.io.File
 class TtuSyncManager(
     private val context: Context,
     private val authManager: TtuOAuthManager,
-    private val driveClient: TtuDriveClient = TtuDriveClient(authManager),
+    private val settingsRepository: SyncSettingsRepository,
+    private val driveClient: TtuDriveClient = TtuDriveClient(context, authManager),
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
 ) {
 
-    private var enabled: Boolean = false
-    var autoSyncEnabled: Boolean = false
-    var statisticsSyncEnabled: Boolean = false
-    var statisticsSyncMode: String = "Merge"
-    var audioBookSyncEnabled: Boolean = false
+    val settingsFlow: kotlinx.coroutines.flow.Flow<SyncSettings>
+        get() = settingsRepository.settings
 
-    fun setEnabled(value: Boolean) {
-        enabled = value
+    val autoSyncEnabled: Boolean
+        get() = settingsRepository.currentSettings().autoSyncEnabled
+
+    val statisticsSyncEnabled: Boolean
+        get() = settingsRepository.currentSettings().statisticsSyncEnabled
+
+    val audioBookSyncEnabled: Boolean
+        get() = settingsRepository.currentSettings().audioBookSyncEnabled
+
+    val statisticsSyncMode: StatisticsSyncMode
+        get() = settingsRepository.currentSettings().statisticsSyncMode
+
+    fun loadSettings(): SyncSettings = settingsRepository.currentSettings()
+
+    fun saveSettings(settings: SyncSettings) {
+        settingsRepository.update { settings }
     }
 
-    val isEnabled: Boolean get() = enabled && authManager.isConnected
+    fun updateSettings(transform: (SyncSettings) -> SyncSettings) {
+        settingsRepository.update(transform)
+    }
+
+    val isEnabled: Boolean get() = settingsRepository.currentSettings().enabled && authManager.isConnected
+
+    fun clearCache() {
+        driveClient.clearCache()
+    }
 
     suspend fun syncBook(
         bookMetadata: BookMetadata,
@@ -39,18 +59,19 @@ class TtuSyncManager(
         if (!bookDir.exists()) return SyncResult.Skipped
 
         if (bookMetadata.title.isNullOrBlank()) return SyncResult.Skipped
+        val displayTitle = bookMetadata.title
 
         return try {
-            performSync(bookMetadata, bookDir, direction, importOnly)
+            performSync(bookMetadata, bookDir, direction, importOnly, displayTitle)
         } catch (e: DriveFileNotFoundException) {
             driveClient.clearCache()
             try {
-                performSync(bookMetadata, bookDir, direction, importOnly)
+                performSync(bookMetadata, bookDir, direction, importOnly, displayTitle)
             } catch (e2: Exception) {
-                SyncResult.Failed(bookMetadata.title ?: "Unknown", e2.message ?: "Unknown error")
+                SyncResult.Failed(displayTitle, e2.message ?: "Unknown error")
             }
         } catch (e: Exception) {
-            SyncResult.Failed(bookMetadata.title ?: "Unknown", e.message ?: "Unknown error")
+            SyncResult.Failed(displayTitle, e.message ?: "Unknown error")
         }
     }
 
@@ -59,11 +80,28 @@ class TtuSyncManager(
         bookDir: File,
         direction: SyncDirection,
         importOnly: Boolean,
+        displayTitle: String,
     ): SyncResult {
         val rootId = driveClient.findOrCreateRootFolder()
-        val folderName = bookMetadata.ttuFolderName
-            ?: TtuSyncRules.sanitizeTtuFilename(bookMetadata.title ?: "")
-        val bookFolderId = driveClient.findOrCreateBookFolder(rootId, folderName)
+        val sanitizedTitle = TtuSyncRules.sanitizeTtuFilename(bookMetadata.title ?: "")
+        val folderName = bookMetadata.ttuFolderName ?: sanitizedTitle
+
+        val bookFolderId = driveClient.findOrCreateBookFolder(
+            rootId = rootId,
+            folderName = folderName,
+            coverDataProvider = bookMetadata.cover?.let { coverPath ->
+                val coverFile = if (File(coverPath).isAbsolute) {
+                    File(coverPath)
+                } else {
+                    File(bookDir, coverPath)
+                }
+                if (coverFile.isFile) {
+                    { coverFile.readBytes() }
+                } else {
+                    null
+                }
+            },
+        )
 
         if (bookMetadata.ttuFolderName == null) {
             saveTtuFolderName(bookMetadata, folderName, bookDir)
@@ -72,43 +110,22 @@ class TtuSyncManager(
         val remoteFiles = driveClient.listSyncFiles(bookFolderId)
         val localBookmark = BookStorage.loadBookmark(bookDir)
 
-        val resolvedDirection = resolveDirection(direction, localBookmark, remoteFiles)
+        val resolvedDirection = if (direction != SyncDirection.AUTO) {
+            direction
+        } else {
+            val localTs = localBookmark?.lastModified
+            TtuSyncRules.determineDirection(localTs, remoteFiles.progress)
+        }
 
         if (importOnly && resolvedDirection != SyncDirection.IMPORT) {
-            return SyncResult.Synced(bookMetadata.title ?: "")
+            return SyncResult.Synced(displayTitle)
         }
 
         return when (resolvedDirection) {
-            SyncDirection.IMPORT -> importFromTtu(bookMetadata, bookDir, localBookmark, remoteFiles)
-            SyncDirection.EXPORT -> exportToTtu(bookMetadata, bookDir, localBookmark, remoteFiles, bookFolderId)
-            SyncDirection.SYNCED -> SyncResult.Synced(bookMetadata.title ?: "")
+            SyncDirection.IMPORT -> importFromTtu(bookMetadata, bookDir, localBookmark, remoteFiles, displayTitle)
+            SyncDirection.EXPORT -> exportToTtu(bookMetadata, bookDir, localBookmark, remoteFiles, bookFolderId, displayTitle)
+            SyncDirection.SYNCED -> SyncResult.Synced(displayTitle)
             SyncDirection.AUTO -> SyncResult.Skipped
-        }
-    }
-
-    private fun resolveDirection(
-        direction: SyncDirection,
-        local: Bookmark?,
-        remote: DriveSyncFiles,
-    ): SyncDirection {
-        if (direction != SyncDirection.AUTO) return direction
-
-        val localTs = local?.lastModified
-        val remoteTs = remote.progress?.name?.let { TtuSyncRules.parseProgressTimestamp(it) }
-
-        return when {
-            local == null && remote.progress == null -> SyncDirection.SYNCED
-            local == null -> SyncDirection.IMPORT
-            remote.progress == null -> SyncDirection.EXPORT
-            localTs != null && remoteTs != null -> {
-                when {
-                    localTs > remoteTs -> SyncDirection.EXPORT
-                    remoteTs > localTs -> SyncDirection.IMPORT
-                    else -> SyncDirection.SYNCED
-                }
-            }
-            localTs != null -> SyncDirection.EXPORT
-            else -> SyncDirection.IMPORT
         }
     }
 
@@ -117,6 +134,7 @@ class TtuSyncManager(
         bookDir: File,
         localBookmark: Bookmark?,
         remoteFiles: DriveSyncFiles,
+        displayTitle: String,
     ): SyncResult {
         var imported = false
 
@@ -138,7 +156,7 @@ class TtuSyncManager(
             }
         }
 
-        if (statisticsSyncEnabled && remoteFiles.statistics != null) {
+        if (settingsRepository.currentSettings().statisticsSyncEnabled && remoteFiles.statistics != null) {
             try {
                 val content = driveClient.downloadFile(remoteFiles.statistics.id)
                 importStatistics(bookDir, content)
@@ -146,7 +164,7 @@ class TtuSyncManager(
             }
         }
 
-        if (audioBookSyncEnabled && remoteFiles.audioBook != null) {
+        if (settingsRepository.currentSettings().audioBookSyncEnabled && remoteFiles.audioBook != null) {
             try {
                 val content = driveClient.downloadFile(remoteFiles.audioBook.id)
                 val ttuAudio = json.decodeFromString<TtuAudioBook>(content)
@@ -158,7 +176,7 @@ class TtuSyncManager(
             }
         }
 
-        val title = bookMetadata.title ?: "Unknown"
+        val title = displayTitle
         val count = localBookmark?.characterCount ?: 0
         return if (imported) SyncResult.Imported(title, count) else SyncResult.Synced(title)
     }
@@ -169,21 +187,32 @@ class TtuSyncManager(
         localBookmark: Bookmark?,
         remoteFiles: DriveSyncFiles,
         bookFolderId: String,
+        displayTitle: String,
     ): SyncResult {
-        val title = bookMetadata.title ?: "Unknown"
+        val title = displayTitle
         val bookInfo = BookStorage.loadBookInfo(bookDir)
 
         if (localBookmark != null && bookInfo != null) {
-            // iOS: progress = totalChars / totalBookChars
+            val lastModified = localBookmark.lastModified ?: System.currentTimeMillis()
+            // Round to millisecond precision (matching iOS behavior)
+            val unixTimestamp = lastModified
             val charBasedProgress = if (bookInfo.characterCount > 0) {
                 localBookmark.characterCount.toDouble() / bookInfo.characterCount
             } else 0.0
 
+            // Fetch remote progress to preserve dataId
+            val remoteProgress = try {
+                remoteFiles.progress?.let { driveClient.downloadFile(it.id) }
+                    ?.let { json.decodeFromString<TtuProgress>(it) }
+            } catch (_: Exception) {
+                null
+            }
+
             val ttuProgress = TtuProgress(
-                dataId = 0,
+                dataId = remoteProgress?.dataId ?: 0,
                 exploredCharCount = localBookmark.characterCount,
                 progress = charBasedProgress,
-                lastBookmarkModified = localBookmark.lastModified ?: System.currentTimeMillis(),
+                lastBookmarkModified = unixTimestamp,
             )
             val content = json.encodeToString(TtuProgress.serializer(), ttuProgress)
             val fileName = TtuSyncRules.progressFileName(ttuProgress)
@@ -193,14 +222,19 @@ class TtuSyncManager(
             } else {
                 driveClient.uploadFile(bookFolderId, fileName, content)
             }
+
+            // Save rounded timestamp back to local bookmark (matching iOS behavior)
+            BookStorage.saveBookmark(
+                localBookmark.copy(lastModified = unixTimestamp),
+                bookDir,
+            )
         }
 
-        if (statisticsSyncEnabled) {
+        if (settingsRepository.currentSettings().statisticsSyncEnabled) {
             val localStats = BookStorage.loadStatistics(bookDir)
             if (localStats != null) {
                 val mergedStats = if (remoteFiles.statistics != null) {
                     try {
-                        // iOS export: start with remote, overlay with local (newer wins)
                         val remoteContent = driveClient.downloadFile(remoteFiles.statistics.id)
                         val remoteStats = json.decodeFromString<List<Statistics>>(remoteContent)
                         mergeStatisticsForExport(remoteStats, localStats)
@@ -220,7 +254,7 @@ class TtuSyncManager(
             }
         }
 
-        if (audioBookSyncEnabled) {
+        if (settingsRepository.currentSettings().audioBookSyncEnabled) {
             val playback = BookStorage.loadSasayakiPlaybackData(bookDir)
             if (playback != null) {
                 val ttuAudio = TtuAudioBook(
@@ -241,10 +275,10 @@ class TtuSyncManager(
         return SyncResult.Exported(title, localBookmark?.characterCount ?: 0)
     }
 
-    // iOS merge(localStatistics, externalStatistics): start with local, overlay with external (newer wins)
+    // iOS export: start with remote, overlay with local (newer wins)
     private fun mergeStatisticsForExport(base: List<Statistics>, overlay: List<Statistics>): List<Statistics> {
-        if (statisticsSyncMode == "Replace") return overlay
-        val grouped = mutableMapOf<String, Statistics>()
+        if (settingsRepository.currentSettings().statisticsSyncMode == StatisticsSyncMode.Replace) return overlay
+        val grouped = linkedMapOf<String, Statistics>()
         for (stat in base) grouped[stat.dateKey] = stat
         for (stat in overlay) {
             val existing = grouped[stat.dateKey]
@@ -263,10 +297,10 @@ class TtuSyncManager(
             return
         }
         val localStats = BookStorage.loadStatistics(bookDir) ?: emptyList()
-        val merged = if (statisticsSyncMode == "Replace") {
+        val merged = if (settingsRepository.currentSettings().statisticsSyncMode == StatisticsSyncMode.Replace) {
             remoteStats
         } else {
-            val grouped = mutableMapOf<String, Statistics>()
+            val grouped = linkedMapOf<String, Statistics>()
             for (stat in localStats) grouped[stat.dateKey] = stat
             for (stat in remoteStats) {
                 val existing = grouped[stat.dateKey]

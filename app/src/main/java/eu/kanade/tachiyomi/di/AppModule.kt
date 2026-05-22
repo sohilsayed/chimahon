@@ -236,6 +236,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { NovelCategoryStorage(app) }
 
         addSingletonFactory { com.canopus.chimareader.ttusync.TtuOAuthManager(app) }
-        addSingletonFactory { com.canopus.chimareader.ttusync.TtuSyncManager(app, get()) }
+        addSingletonFactory { com.canopus.chimareader.ttusync.SyncSettingsRepository(app) }
+        addSingletonFactory { com.canopus.chimareader.ttusync.TtuSyncManager(app, get(), get()) }
     }
 }

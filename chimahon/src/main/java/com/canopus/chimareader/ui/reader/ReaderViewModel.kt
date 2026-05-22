@@ -20,6 +20,7 @@ import com.canopus.chimareader.data.epub.EpubBook
 import com.canopus.chimareader.data.epub.SpineItemType
 import com.canopus.chimareader.ttusync.TtuSyncManager
 import com.canopus.chimareader.ttusync.SyncDirection
+import com.canopus.chimareader.ttusync.SyncResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -177,6 +178,8 @@ class ReaderViewModel(
         try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
     }
     private var syncExportJob: kotlinx.coroutines.Job? = null
+    var isSyncing: Boolean = false
+    var inactiveSinceMillis: Long? = null
 
     // Tracks statistics for current reading session
     var totalExploredCharCount by mutableIntStateOf(0)
@@ -359,13 +362,7 @@ class ReaderViewModel(
             settings.systemLightSepia.collect { systemLightSepia = it }
         }
 
-        // Import remote progress on reader open
-        ttuSyncManager?.takeIf { it.isEnabled }?.let { sync ->
-            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
-                sync.syncBook(metadata, importOnly = true)
-            }
-        }
+        syncOnOpen()
     }
 
     fun updateTheme(value: Theme) = scope.launch { settings.setTheme(value) }
@@ -514,6 +511,46 @@ class ReaderViewModel(
         scheduleSyncExport()
     }
 
+    fun syncOnOpen() {
+        val sync = ttuSyncManager?.takeIf { it.isEnabled && it.autoSyncEnabled } ?: return
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
+            val result = sync.syncBook(metadata, importOnly = true)
+            if (result is SyncResult.Imported) {
+                reloadAfterImport()
+            }
+            getCurrentChapter()?.let { file ->
+                val fileUrl = "file://${file.absolutePath.replace("\\", "/")}"
+                val chapterTitle = getCurrentChapterTitle()
+                bridge.updateState(fileUrl, currentProgress, chapterTitle)
+                bridge.send(WebViewCommand.LoadChapter(fileUrl, currentProgress))
+            }
+        }
+    }
+
+    fun syncAfterForeground() {
+        if (isSyncing) return
+        val sync = ttuSyncManager?.takeIf { it.isEnabled && it.autoSyncEnabled } ?: return
+        isSyncing = true
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
+                val result = sync.syncBook(metadata, importOnly = true)
+                if (result is SyncResult.Imported) {
+                    reloadAfterImport()
+                    getCurrentChapter()?.let { file ->
+                        val fileUrl = "file://${file.absolutePath.replace("\\", "/")}"
+                        val chapterTitle = getCurrentChapterTitle()
+                        bridge.updateState(fileUrl, currentProgress, chapterTitle)
+                        bridge.send(WebViewCommand.LoadChapter(fileUrl, currentProgress))
+                    }
+                }
+            } finally {
+                isSyncing = false
+            }
+        }
+    }
+
     fun scheduleSyncExport() {
         ttuSyncManager?.takeIf { it.isEnabled && it.autoSyncEnabled } ?: return
         syncExportJob?.cancel()
@@ -536,6 +573,19 @@ class ReaderViewModel(
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
             sync.syncBook(metadata, SyncDirection.AUTO)
+        }
+    }
+
+    private fun reloadAfterImport() {
+        val bookmark = BookStorage.loadBookmark(rootUrl)
+        if (bookmark != null) {
+            index = bookmark.chapterIndex
+            currentProgress = bookmark.progress
+        }
+        fullStatistics.clear()
+        val stats = BookStorage.loadStatistics(rootUrl)
+        if (stats != null) {
+            fullStatistics.addAll(stats)
         }
     }
 
@@ -632,6 +682,8 @@ class ReaderViewModel(
             rootUrl,
             FileNames.bookmark,
         )
+
+        scheduleSyncExport()
     }
 
     fun setTrackingLocked(locked: Boolean) {
@@ -662,5 +714,8 @@ class ReaderViewModel(
     private fun persistToDisk() {
         val stats = statisticsTracker.statisticsForPersistence()
         BookStorage.saveStatistics(stats, rootUrl)
+        scheduleSyncExport()
+        lastSavedExploredCharCount = totalExploredCharCount
+        lastSavedSessionReadingTime = sessionReadingTime
     }
 }

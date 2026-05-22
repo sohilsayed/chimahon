@@ -2,11 +2,10 @@ package com.canopus.chimareader.ttusync
 
 import android.content.Context
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.long
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -51,43 +50,71 @@ class TtuOAuthManager(private val context: Context) {
     private val expiresAt: Long
         get() = prefs.getLong(KEY_EXPIRES_AT, 0L)
 
-    fun requestDeviceCode(): DriveAuthorizationResult {
-        val body = "client_id=${java.net.URLEncoder.encode(clientId, "UTF-8")}" +
+    fun configuredClient(): Pair<String, String>? {
+        val cid = clientId.trim()
+        val secret = clientSecret.trim()
+        return if (cid.isBlank() || secret.isBlank()) null else cid to secret
+    }
+
+    fun saveClient(clientId: String, clientSecret: String) {
+        this.clientId = clientId.trim()
+        this.clientSecret = clientSecret.trim()
+    }
+
+    fun requestDeviceCode(): DeviceCodePrompt {
+        val (cid) = configuredClient() ?: throw DriveAuthException.Unknown("OAuth client not configured")
+        val body = "client_id=${java.net.URLEncoder.encode(cid, "UTF-8")}" +
             "&scope=${java.net.URLEncoder.encode(SCOPE, "UTF-8")}"
         val response = postForm(DEVICE_CODE_URL, body)
         val obj = json.parseToJsonElement(response).jsonObject
-        return DriveAuthorizationResult(
-            userCode = obj["user_code"]?.jsonPrimitive?.content ?: throw Exception("Missing user_code"),
-            verificationUrl = obj["verification_url"]?.jsonPrimitive?.content ?: obj["verification_url"]?.jsonPrimitive?.content ?: "https://www.google.com/device",
-            deviceCode = obj["device_code"]?.jsonPrimitive?.content ?: throw Exception("Missing device_code"),
-            interval = obj["interval"]?.jsonPrimitive?.long?.toInt() ?: 5,
+        return DeviceCodePrompt(
+            deviceCode = obj["device_code"]?.jsonPrimitive?.content ?: throw DriveAuthException.Unknown("Missing device_code"),
+            userCode = obj["user_code"]?.jsonPrimitive?.content ?: throw DriveAuthException.Unknown("Missing user_code"),
+            verificationUrl = obj["verification_url"]?.jsonPrimitive?.content
+                ?: obj["verification_uri"]?.jsonPrimitive?.content
+                ?: "https://www.google.com/device",
+            expiresInSeconds = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 1800L,
+            intervalSeconds = obj["interval"]?.jsonPrimitive?.content?.toLongOrNull() ?: 5L,
         )
     }
 
-    fun pollAuthorization(deviceCode: String, interval: Int): Boolean {
-        val body = "client_id=${java.net.URLEncoder.encode(clientId, "UTF-8")}" +
-            "&client_secret=${java.net.URLEncoder.encode(clientSecret, "UTF-8")}" +
-            "&code=$deviceCode&grant_type=urn:ietf:params:oauth:grant-type:device_code"
-        val response = postForm(TOKEN_URL, body)
+    fun pollAuthorization(prompt: DeviceCodePrompt): DriveAuthorizationPollResult {
+        val client = configuredClient() ?: return DriveAuthorizationPollResult.Failed("OAuth client not configured")
+        val response = try {
+            val body = "client_id=${java.net.URLEncoder.encode(client.first, "UTF-8")}" +
+                "&client_secret=${java.net.URLEncoder.encode(client.second, "UTF-8")}" +
+                "&device_code=${java.net.URLEncoder.encode(prompt.deviceCode, "UTF-8")}" +
+                "&grant_type=urn:ietf:params:oauth:grant-type:device_code"
+            postForm(TOKEN_URL, body)
+        } catch (e: IOException) {
+            return if (e.isTransientDeviceCodePollingFailure()) {
+                DriveAuthorizationPollResult.TransientNetworkFailure
+            } else {
+                DriveAuthorizationPollResult.Failed(e.message ?: "Authorization failed")
+            }
+        }
         val obj = json.parseToJsonElement(response).jsonObject
         val error = obj["error"]?.jsonPrimitive?.content
-        when (error) {
+        return when (error) {
             null -> {
-                val access = obj["access_token"]?.jsonPrimitive?.content ?: return false
+                val access = obj["access_token"]?.jsonPrimitive?.content ?: return DriveAuthorizationPollResult.Failed("No access token")
                 val refresh = obj["refresh_token"]?.jsonPrimitive?.content ?: ""
-                val expiresIn = obj["expires_in"]?.jsonPrimitive?.long ?: 3600L
+                val expiresIn = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
                 prefs.edit()
                     .putString(KEY_ACCESS_TOKEN, access)
                     .putString(KEY_REFRESH_TOKEN, refresh)
                     .putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000)
                     .apply()
-                return true
+                DriveAuthorizationPollResult.Authorized(access)
             }
-            "authorization_pending" -> return false
-            "slow_down" -> return false
-            "access_denied" -> throw DriveAuthException.AccessDenied
-            "expired_token" -> throw DriveAuthException.ExpiredToken
-            else -> throw DriveAuthException.Unknown(error)
+            "authorization_pending" -> DriveAuthorizationPollResult.Pending
+            "slow_down" -> DriveAuthorizationPollResult.SlowDown
+            "access_denied" -> DriveAuthorizationPollResult.Failed("Access denied by user")
+            "expired_token" -> DriveAuthorizationPollResult.Failed("Device code expired")
+            "invalid_client" -> DriveAuthorizationPollResult.Failed(
+                "Google OAuth client is invalid. Use a TVs and Limited Input devices client."
+            )
+            else -> DriveAuthorizationPollResult.Failed(error)
         }
     }
 
@@ -100,16 +127,17 @@ class TtuOAuthManager(private val context: Context) {
     }
 
     private fun refreshAccessToken(): String {
+        val client = configuredClient() ?: throw Exception("OAuth client not configured")
         if (refreshToken.isBlank()) throw Exception("No refresh token available")
-        val body = "client_id=${java.net.URLEncoder.encode(clientId, "UTF-8")}" +
-            "&client_secret=${java.net.URLEncoder.encode(clientSecret, "UTF-8")}" +
+        val body = "client_id=${java.net.URLEncoder.encode(client.first, "UTF-8")}" +
+            "&client_secret=${java.net.URLEncoder.encode(client.second, "UTF-8")}" +
             "&refresh_token=${java.net.URLEncoder.encode(refreshToken, "UTF-8")}" +
             "&grant_type=refresh_token"
         val response = postForm(TOKEN_URL, body)
         val obj = json.parseToJsonElement(response).jsonObject
         val newAccess = obj["access_token"]?.jsonPrimitive?.content
             ?: throw DriveAuthException.Unknown("Failed to refresh token")
-        val expiresIn = obj["expires_in"]?.jsonPrimitive?.long ?: 3600L
+        val expiresIn = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, newAccess)
             .putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000)
@@ -132,11 +160,19 @@ class TtuOAuthManager(private val context: Context) {
             }
         } catch (_: Exception) {
         }
-        prefs.edit().clear().apply()
+        clearTokens()
     }
 
     fun clearAuth() {
-        prefs.edit().clear().apply()
+        clearTokens()
+    }
+
+    private fun clearTokens() {
+        prefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_EXPIRES_AT)
+            .apply()
     }
 
     private fun postForm(urlString: String, body: String): String {
@@ -161,4 +197,16 @@ class TtuOAuthManager(private val context: Context) {
             conn.disconnect()
         }
     }
+}
+
+private fun Throwable.isTransientDeviceCodePollingFailure(): Boolean = this is IOException
+
+fun nextDeviceCodePollIntervalSeconds(
+    currentIntervalSeconds: Long,
+    result: DriveAuthorizationPollResult,
+): Long = when (result) {
+    is DriveAuthorizationPollResult.SlowDown -> currentIntervalSeconds + 5L
+    DriveAuthorizationPollResult.TransientNetworkFailure ->
+        (currentIntervalSeconds * 2).coerceAtMost(60L)
+    else -> currentIntervalSeconds
 }

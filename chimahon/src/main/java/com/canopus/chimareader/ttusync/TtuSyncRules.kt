@@ -2,6 +2,8 @@ package com.canopus.chimareader.ttusync
 
 import com.canopus.chimareader.data.Statistics
 import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.min
 
 object TtuSyncRules {
 
@@ -24,10 +26,38 @@ object TtuSyncRules {
             result = result.dropLast(1) + "~ttu-dend~"
         }
         result = result.replace("*", "~ttu-star~")
-        result = result.replace(Regex("[/?<>\\\\:|%\"]")) { match ->
-            java.net.URLEncoder.encode(match.value, "UTF-8")
+        return buildString(result.length) {
+            result.forEach { character ->
+                when (character) {
+                    '/', '?', '<', '>', '\\', ':', '*', '|', '%', '"' -> {
+                        append("%")
+                        append(character.code.toString(16).uppercase().padStart(2, '0'))
+                    }
+                    else -> append(character)
+                }
+            }
         }
-        return result
+    }
+
+    fun parseProgressTimestampMillis(file: DriveFile?): Long? {
+        val name = file?.name ?: return null
+        if (!name.startsWith("progress_")) return null
+        val parts = name.split("_")
+        if (parts.size <= 4) return null
+        return parts[3].toLongOrNull()
+    }
+
+    fun determineDirection(localLastModified: Long?, remoteProgressFile: DriveFile?): SyncDirection {
+        val localMillis = localLastModified
+        val remoteMillis = parseProgressTimestampMillis(remoteProgressFile)
+        return when {
+            localMillis == null && remoteMillis == null -> SyncDirection.SYNCED
+            localMillis == null -> SyncDirection.IMPORT
+            remoteMillis == null -> SyncDirection.EXPORT
+            localMillis > remoteMillis -> SyncDirection.EXPORT
+            remoteMillis > localMillis -> SyncDirection.IMPORT
+            else -> SyncDirection.SYNCED
+        }
     }
 
     fun progressFileName(progress: TtuProgress): String {
@@ -51,7 +81,7 @@ object TtuSyncRules {
             minReadingSpeed = if (minReadingSpeed > 0) minOf(minReadingSpeed, stat.minReadingSpeed) else stat.minReadingSpeed
             altMinReadingSpeed = if (altMinReadingSpeed > 0) minOf(altMinReadingSpeed, stat.altMinReadingSpeed) else stat.altMinReadingSpeed
             maxReadingSpeed = maxOf(maxReadingSpeed, stat.lastReadingSpeed)
-            weightedSum += (stat.readingTime * stat.charactersRead).toLong()
+            weightedSum += (stat.readingTime.toInt().toLong() * stat.charactersRead.toLong())
             lastStatisticModified = maxOf(lastStatisticModified, stat.lastStatisticModified)
             if (stat.readingTime > 0) validReadingDays++
         }
@@ -64,15 +94,11 @@ object TtuSyncRules {
         val averageReadingSpeed = if (averageReadingTime > 0) ceil((3600.0 * averageCharactersRead) / averageReadingTime) else 0.0
         val averageWeightedReadingSpeed = if (averageWeightedReadingTime > 0) ceil((3600.0 * averageWeightedCharactersRead) / averageWeightedReadingTime) else 0.0
 
-        return listOf(
-            "statistics_1_6",
-            lastStatisticModified, charactersRead, formatDouble(readingTime),
-            minReadingSpeed, altMinReadingSpeed, formatDouble(lastReadingSpeed), maxReadingSpeed,
-            formatDouble(averageReadingTime), formatDouble(averageWeightedReadingTime),
-            formatDouble(averageCharactersRead), formatDouble(averageWeightedCharactersRead),
-            formatDouble(averageReadingSpeed), formatDouble(averageWeightedReadingSpeed),
-            "na",
-        ).joinToString("_") + ".json"
+        return "statistics_1_6_" +
+            "${formatStatValue(lastStatisticModified)}_${formatStatValue(charactersRead)}_${formatStatValue(readingTime)}_" +
+            "${formatStatValue(minReadingSpeed)}_${formatStatValue(altMinReadingSpeed)}_${formatStatValue(lastReadingSpeed)}_${formatStatValue(maxReadingSpeed)}_" +
+            "${formatStatValue(averageReadingTime)}_${formatStatValue(averageWeightedReadingTime)}_${formatStatValue(averageCharactersRead)}_" +
+            "${formatStatValue(averageWeightedCharactersRead)}_${formatStatValue(averageReadingSpeed)}_${formatStatValue(averageWeightedReadingSpeed)}_na.json"
     }
 
     fun audioBookFileName(audioBook: TtuAudioBook): String {
@@ -80,18 +106,30 @@ object TtuSyncRules {
     }
 
     fun coverFileName(title: String): String {
-        return "cover_1_6${coverExtension(title)}"
+        return "cover_1_6.jpeg"
     }
 
-    private fun coverExtension(title: String): String {
-        return ".jpeg"
+    fun coverMetadata(coverData: ByteArray): CoverMetadata {
+        val magic = coverData.take(4)
+        return when {
+            magic.size >= 4 && magic[0] == 0x89.toByte() && magic[1] == 0x50.toByte() &&
+                magic[2] == 0x4E.toByte() && magic[3] == 0x47.toByte() -> CoverMetadata("image/png", "png")
+            magic.size >= 4 && magic[0] == 0x47.toByte() && magic[1] == 0x49.toByte() &&
+                magic[2] == 0x46.toByte() && magic[3] == 0x38.toByte() -> CoverMetadata("image/gif", "gif")
+            magic.size >= 2 && magic[0] == 0x42.toByte() && magic[1] == 0x4D.toByte() ->
+                CoverMetadata("image/bmp", "bmp")
+            magic.size >= 4 && magic[0] == 0x52.toByte() && magic[1] == 0x49.toByte() &&
+                magic[2] == 0x46.toByte() && magic[3] == 0x46.toByte() -> CoverMetadata("image/webp", "webp")
+            else -> CoverMetadata("image/jpeg", "jpeg")
+        }
     }
 
-    private fun formatDouble(value: Double): String {
-        return if (value == value.toLong().toDouble()) {
-            value.toLong().toString()
+    private fun formatStatValue(value: Number): String {
+        val d = value.toDouble()
+        return if (d == d.toLong().toDouble()) {
+            d.toLong().toString()
         } else {
-            String.format("%.1f", value)
+            String.format("%.1f", d)
         }
     }
 

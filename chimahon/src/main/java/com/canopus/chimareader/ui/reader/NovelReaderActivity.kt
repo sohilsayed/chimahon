@@ -198,12 +198,26 @@ open class NovelReaderActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        val vm = readerViewModel
+        if (vm != null) {
+            val plan = readerLifecycleAutoSyncPlan(
+                event = ReaderLifecycleAutoSyncEvent.Resume,
+                inactiveElapsedMillis = vm.inactiveSinceMillis?.let { System.currentTimeMillis() - it },
+            )
+            vm.inactiveSinceMillis = null
+            if (plan.importOnForeground) {
+                vm.syncAfterForeground()
+            }
+        }
         setSystemBarsVisibility(showHud)
     }
 
     override fun onPause() {
         super.onPause()
-        readerViewModel?.flushSyncExport()
+        readerViewModel?.let { vm ->
+            vm.inactiveSinceMillis = System.currentTimeMillis()
+            vm.flushSyncExport()
+        }
     }
 
     override fun onStop() {

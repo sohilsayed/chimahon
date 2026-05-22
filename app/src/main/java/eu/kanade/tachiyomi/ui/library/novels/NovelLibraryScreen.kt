@@ -31,8 +31,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -202,6 +205,10 @@ fun Screen.NovelLibraryScreen(
             )
         },
         bottomBar = {
+            val ttuSyncManager = remember {
+                try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
+            }
+            val singleBookId = if (state.selection.size == 1) state.selection.first() else null
             NovelLibraryBottomActionMenu(
                 visible = state.selectionMode,
                 onEditClicked = screenModel::showEditDialog,
@@ -209,19 +216,46 @@ fun Screen.NovelLibraryScreen(
                 onChangeCategoryClicked = screenModel::showChangeCategoryDialog,
                 onDeleteClicked = screenModel::showDeleteConfirmDialog,
                 onResetClicked = screenModel::resetStatsForSelected,
-                onSyncClicked = {
-                    val ttuSyncManager = try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
-                    ttuSyncManager?.takeIf { it.isEnabled }?.let { sync ->
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                onSyncClicked = if (ttuSyncManager?.isEnabled == true) {
+                    {
+                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                             state.selection.forEach { bookId ->
                                 val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, bookId)
                                 val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
                                 if (metadata != null) {
-                                    sync.syncBook(metadata)
+                                    ttuSyncManager.syncBook(metadata)
                                 }
                             }
                         }
                     }
+                } else {
+                    null
+                },
+                onSyncImport = if (ttuSyncManager?.isEnabled == true && singleBookId != null) {
+                    {
+                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
+                            val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
+                            if (metadata != null) {
+                                ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.IMPORT)
+                            }
+                        }
+                    }
+                } else {
+                    null
+                },
+                onSyncExport = if (ttuSyncManager?.isEnabled == true && singleBookId != null) {
+                    {
+                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
+                            val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
+                            if (metadata != null) {
+                                ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.EXPORT)
+                            }
+                        }
+                    }
+                } else {
+                    null
                 },
             )
         },
@@ -852,6 +886,67 @@ fun NovelLibraryContent(
                         }
                     }
                 }
+                    }
+
+                    val bookTitle = book.title ?: ""
+                    val bookLang = book.lang
+
+                    val ghostBadge: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)? =
+                        if (book.isGhost) {
+                            {
+                                androidx.compose.material3.Surface(
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer,
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = "MISSING",
+                                        modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                                        color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        }
+
+                    if (displayMode == LibraryDisplayMode.ComfortableGrid) {
+                        eu.kanade.presentation.library.components.MangaComfortableGridItem(
+                            isSelected = isSelected,
+                            title = bookTitle,
+                            coverData = coverData,
+                            coverBadgeStart = {
+                                if (!bookLang.isNullOrBlank()) {
+                                    eu.kanade.presentation.library.components.LanguageBadge(
+                                        isLocal = true,
+                                        sourceLanguage = bookLang,
+                                    )
+                                }
+                            },
+                            coverBadgeEnd = ghostBadge,
+                            onLongClick = onLongClick,
+                            onClick = onClick,
+                            usePanoramaCover = false,
+                        )
+                    } else {
+                        eu.kanade.presentation.library.components.MangaCompactGridItem(
+                            isSelected = isSelected,
+                            title = bookTitle,
+                            coverData = coverData,
+                            coverBadgeStart = {
+                                if (!bookLang.isNullOrBlank()) {
+                                    eu.kanade.presentation.library.components.LanguageBadge(
+                                        isLocal = true,
+                                        sourceLanguage = bookLang,
+                                    )
+                                }
+                            },
+                            coverBadgeEnd = ghostBadge,
+                            onLongClick = onLongClick,
+                            onClick = onClick,
+                        )
+                    }
+                }
             }
         }
     }
@@ -872,6 +967,8 @@ fun NovelLibraryBottomActionMenu(
     onDeleteClicked: () -> Unit,
     onResetClicked: () -> Unit,
     onSyncClicked: (() -> Unit)? = null,
+    onSyncImport: (() -> Unit)? = null,
+    onSyncExport: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -942,6 +1039,18 @@ fun NovelLibraryBottomActionMenu(
                         title = "TTU Sync",
                         icon = Icons.Outlined.CloudSync,
                         onClick = onSyncClicked,
+                    )
+                }
+                if (onSyncImport != null && onSyncExport != null) {
+                    SelectionButton(
+                        title = "Import",
+                        icon = Icons.Outlined.FileDownload,
+                        onClick = onSyncImport,
+                    )
+                    SelectionButton(
+                        title = "Export",
+                        icon = Icons.Outlined.FileUpload,
+                        onClick = onSyncExport,
                     )
                 }
             }
