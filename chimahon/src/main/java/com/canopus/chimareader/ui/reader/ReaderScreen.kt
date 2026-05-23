@@ -229,6 +229,9 @@ fun ReaderScreen(
                         onSentenceReady = onSentenceReady,
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
                         onChapterTextReady = { text -> viewModel.onChapterTextReady(viewModel.index, text) },
+                        onColoredWordTap = { word, wordId, readingIndex, state, x, y, w, h ->
+                            viewModel.onColoredWordTapped(word, wordId, readingIndex, state, x, y, w, h)
+                        },
                     )
 
                     // Top HUD
@@ -287,6 +290,16 @@ fun ReaderScreen(
                         ActiveSheet.Statistics -> StatisticsSheet(viewModel) { activeSheet = null }
                         ActiveSheet.Sasayaki -> SasayakiSheet(viewModel) { activeSheet = null }
                     }
+                }
+            }
+            viewModel.tappedWordInfo?.let { wordInfo ->
+                ReaderThemedArea(viewModel.getReaderSettings(context)) {
+                    chimahon.ui.wordstate.WordStatePopup(
+                        wordInfo = wordInfo,
+                        onDismiss = { viewModel.dismissWordStateSheet() },
+                        onReview = { viewModel.reviewWord(it) },
+                        onSetState = { viewModel.setWordStateDirect(it) },
+                    )
                 }
             }
         }

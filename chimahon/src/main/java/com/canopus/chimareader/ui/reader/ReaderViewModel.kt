@@ -60,6 +60,7 @@ sealed interface WebViewCommand {
     data class ApplyWordColors(val colorsJson: String) : WebViewCommand
     data object ClearTextColoring : WebViewCommand
     data object RefreshColoring : WebViewCommand
+    data class UpdateWordState(val wordId: Int, val readingIndex: Int, val newState: String) : WebViewCommand
 }
 
 data class ReaderSettings(
@@ -186,6 +187,13 @@ class ReaderViewModel(
     var isColoring by mutableStateOf(false)
 
     private var currentColoringJob: kotlinx.coroutines.Job? = null
+
+    // Word state tap handling
+    var tappedWordInfo by mutableStateOf<chimahon.jiten.WordTapInfo?>(null)
+    var onWordStateUpdated: ((String) -> Unit)? = null
+
+    // Cached card data for current chapter (populated during coloring analysis)
+    private var currentChapterCards: Map<Pair<Int, Int>, chimahon.jiten.JitenWordCard> = emptyMap()
 
     // Tracks statistics for current reading session
     var isTimerPaused by mutableStateOf(false)
@@ -593,24 +601,26 @@ class ReaderViewModel(
             android.util.Log.d("TextColoring", "onChapterTextReady: starting analysis")
             try {
                 val cache = ParseCache(rootUrl)
-                val cached = cache.getColors(chapterIndex)
-                android.util.Log.d("TextColoring", "onChapterTextReady: cache hit=${cached != null}")
-                val colors = jitenAnalyzer.analyze(
+                android.util.Log.d("TextColoring", "onChapterTextReady: checking cache")
+                val result = jitenAnalyzer.analyze(
                     endpoint = jitenApiEndpoint,
                     apiKey = jitenApiKey,
                     chapterIndex = chapterIndex,
                     text = text,
                     cache = cache,
                 )
-                android.util.Log.d("TextColoring", "onChapterTextReady: analysis returned ${colors.size} entries")
-                if (colors.isEmpty()) {
+                android.util.Log.d("TextColoring", "onChapterTextReady: analysis returned ${result.colors.size} entries, ${result.cards.size} cards")
+                if (result.colors.isEmpty()) {
                     android.util.Log.d("TextColoring", "onChapterTextReady: empty colors, skipping")
                     return@launch
                 }
 
+                // Cache card data for popup lookup
+                currentChapterCards = result.cards
+
                 val json = colorJson.encodeToString(
                     ListSerializer(ColorEntry.serializer()),
-                    colors,
+                    result.colors,
                 )
                 android.util.Log.d("TextColoring", "onChapterTextReady: sending ApplyWordColors (json=${json.take(200)})")
                 withContext(Dispatchers.Main) {
@@ -626,6 +636,7 @@ class ReaderViewModel(
 
     fun refreshTextColoring() {
         android.util.Log.d("TextColoring", "refreshTextColoring: clearing cache, sending ClearTextColoring + RefreshColoring")
+        currentChapterCards = emptyMap()
         scope.launch(Dispatchers.Default) {
             val cache = ParseCache(rootUrl)
             cache.clear()
@@ -633,6 +644,59 @@ class ReaderViewModel(
         }
         bridge.send(WebViewCommand.ClearTextColoring)
         bridge.send(WebViewCommand.RefreshColoring)
+    }
+
+    fun onColoredWordTapped(word: String, wordId: Int, readingIndex: Int, state: String, x: Float, y: Float, w: Float, h: Float) {
+        android.util.Log.d("TextColoring", "onColoredWordTapped: word=$word wordId=$wordId state=$state")
+        val card = currentChapterCards[wordId to readingIndex]
+        tappedWordInfo = chimahon.jiten.WordTapInfo(
+            word = word,
+            wordId = wordId,
+            readingIndex = readingIndex,
+            currentState = state,
+            card = card,
+        )
+    }
+
+    fun dismissWordStateSheet() {
+        tappedWordInfo = null
+    }
+
+    fun reviewWord(rating: Int) {
+        val info = tappedWordInfo ?: return
+        android.util.Log.d("TextColoring", "reviewWord: wordId=${info.wordId} rating=$rating")
+        scope.launch(Dispatchers.IO) {
+            try {
+                jitenClient.review(jitenApiEndpoint, jitenApiKey, info.wordId, info.readingIndex, rating)
+                val response = jitenClient.lookupVocabulary(jitenApiEndpoint, jitenApiKey, listOf(info.wordId to info.readingIndex))
+                val newState = response?.result?.firstOrNull()?.firstOrNull()?.let { chimahon.jiten.knownStateToString(it) } ?: info.currentState
+                android.util.Log.d("TextColoring", "reviewWord: new state=$newState")
+                withContext(Dispatchers.Main) {
+                    bridge.send(WebViewCommand.UpdateWordState(info.wordId, info.readingIndex, newState))
+                    onWordStateUpdated?.invoke(newState)
+                    tappedWordInfo = null
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TextColoring", "reviewWord: error", e)
+            }
+        }
+    }
+
+    fun setWordStateDirect(state: String) {
+        val info = tappedWordInfo ?: return
+        android.util.Log.d("TextColoring", "setWordStateDirect: wordId=${info.wordId} state=$state")
+        scope.launch(Dispatchers.IO) {
+            try {
+                jitenClient.setVocabularyState(jitenApiEndpoint, jitenApiKey, info.wordId, info.readingIndex, state)
+                withContext(Dispatchers.Main) {
+                    bridge.send(WebViewCommand.UpdateWordState(info.wordId, info.readingIndex, state))
+                    onWordStateUpdated?.invoke(state)
+                    tappedWordInfo = null
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TextColoring", "setWordStateDirect: error", e)
+            }
+        }
     }
 
     private fun loadChapter(newIndex: Int, progress: Double) {

@@ -350,6 +350,20 @@ window.hoshiReader = {
             return false;
         }
 
+        // Check if tapped inside a colored word span
+        var wordSpan = this.findColoredWordSpan(hit.node);
+        if (wordSpan) {
+            var wId = wordSpan.getAttribute('wordId');
+            var rIdx = wordSpan.getAttribute('readingIndex');
+            var wState = this.getWordSpanState(wordSpan);
+            var wText = wordSpan.textContent || '';
+            var rect = wordSpan.getBoundingClientRect();
+            if (window.HoshiAndroid && window.HoshiAndroid.onColoredWordTap) {
+                window.HoshiAndroid.onColoredWordTap(wText, parseInt(wId), parseInt(rIdx), wState, rect.left, rect.top, rect.width, rect.height);
+            }
+            return true;
+        }
+
         if (this.selectionStartNode === hit.node && this.selectionStartOffset === hit.offset) {
             this.clearSelection();
             if (window.HoshiAndroid && window.HoshiAndroid.onBackgroundTap) {
@@ -394,14 +408,12 @@ window.hoshiReader = {
             this.selectionRanges = ranges;
             const sentence = this.getSentence(hit.node, hit.offset);
 
-            // Use Hoshi's approach: calculate bounding box based ONLY on the first character
-            // This prevents the popup from jumping far away when a long phrase is selected.
             let minX = clientX, minY = clientY, maxX = clientX, maxY = clientY;
             if (ranges.length > 0) {
                 const first = ranges[0];
                 const range = document.createRange();
                 range.setStart(first.node, first.start);
-                range.setEnd(first.node, first.start + 1); // Only 1 character
+                range.setEnd(first.node, first.start + 1);
 
                 const rects = Array.from(range.getClientRects());
                 const rect = rects.find(r => clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom)
@@ -424,6 +436,25 @@ window.hoshiReader = {
             window.HoshiAndroid.onBackgroundTap(clientX, clientY);
         }
         return false;
+    },
+
+    findColoredWordSpan: function(node) {
+        var el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        while (el) {
+            if (el.classList && el.classList.contains('jiten-word') && el.hasAttribute('wordId')) {
+                return el;
+            }
+            el = el.parentElement;
+        }
+        return null;
+    },
+
+    getWordSpanState: function(span) {
+        var states = ['new', 'young', 'mature', 'due', 'mastered', 'blacklisted'];
+        for (var i = 0; i < states.length; i++) {
+            if (span.classList.contains('ws-' + states[i])) return states[i];
+        }
+        return 'new';
     },
 
     highlightSelection: function(charCount) {
@@ -473,6 +504,8 @@ window.hoshiReader = {
             console.log('TextColoring: no content wrapper found');
             return;
         }
+        // Clear existing coloring before extracting text (spans would interfere with text offsets)
+        this.clearColoring();
         var walker = this.createWalker(wrapper);
         var text = '';
         var node;
@@ -487,59 +520,133 @@ window.hoshiReader = {
     },
 
     applyColoring: function(colorMap) {
-        if (!CSS.highlights || !colorMap || colorMap.length === 0) return;
+        if (!colorMap || colorMap.length === 0) return;
         this.clearColoring();
-
-        var groups = {};
-        for (var i = 0; i < colorMap.length; i++) {
-            var e = colorMap[i];
-            var key = e.state;
-            if (!groups[key]) groups[key] = [];
-            groups[key].push({ s: e.startOffset, e: e.startOffset + e.length });
-        }
 
         var wrapper = document.getElementById('hoshi-content-wrapper');
         if (!wrapper) return;
+
+        // Sort entries by startOffset descending so we can split from end to start
+        // (avoids offset shifts when modifying the DOM)
+        var sorted = colorMap.slice().sort(function(a, b) { return b.startOffset - a.startOffset; });
+
+        // Build a map of charOffset -> text node for efficient lookup
         var walker = this.createWalker(wrapper);
+        var nodes = [];
         var charOffset = 0;
-        var highlights = {};
         var node;
-
         while (node = walker.nextNode()) {
-            var textLen = node.textContent.length;
-            var nodeStart = charOffset;
-            var nodeEnd = charOffset + textLen;
+            var len = node.textContent.length;
+            nodes.push({ node: node, start: charOffset, end: charOffset + len });
+            charOffset += len;
+        }
 
-            for (var state in groups) {
-                var entries = groups[state];
-                for (var j = 0; j < entries.length; j++) {
-                    var entry = entries[j];
-                    if (entry.e > nodeStart && entry.s < nodeEnd) {
-                        var rStart = Math.max(entry.s - charOffset, 0);
-                        var rEnd = Math.min(entry.e - charOffset, textLen);
-                        if (!highlights[state]) highlights[state] = new Highlight();
-                        var range = document.createRange();
-                        range.setStart(node, rStart);
-                        range.setEnd(node, rEnd);
-                        highlights[state].add(range);
-                    }
+        var fragment = document.createDocumentFragment();
+        var applied = 0;
+
+        for (var i = 0; i < sorted.length; i++) {
+            var entry = sorted[i];
+            var eStart = entry.startOffset;
+            var eEnd = entry.startOffset + entry.length;
+            if (eStart >= charOffset) continue; // past end of text
+
+            for (var j = nodes.length - 1; j >= 0; j--) {
+                var n = nodes[j];
+                if (eEnd <= n.start || eStart >= n.end) continue;
+
+                var rStart = Math.max(eStart - n.start, 0);
+                var rEnd = Math.min(eEnd - n.start, n.node.textContent.length);
+                if (rStart >= rEnd) continue;
+
+                var text = n.node.textContent;
+                var before = text.substring(0, rStart);
+                var match = text.substring(rStart, rEnd);
+                var after = text.substring(rEnd);
+
+                var span = document.createElement('span');
+                span.className = 'jiten-word ws-' + entry.state;
+                span.setAttribute('ajb', 'true');
+                span.setAttribute('wordId', entry.wordId.toString());
+                span.setAttribute('readingIndex', entry.readingIndex.toString());
+                span.textContent = match;
+
+                var parent = n.node.parentElement;
+                if (!parent) continue;
+
+                if (before.length > 0 && after.length > 0) {
+                    var beforeNode = document.createTextNode(before);
+                    var afterNode = document.createTextNode(after);
+                    parent.insertBefore(beforeNode, n.node);
+                    parent.insertBefore(span, n.node);
+                    parent.insertBefore(afterNode, n.node);
+                    parent.removeChild(n.node);
+                    // Update node map for remaining entries
+                    n.node = afterNode;
+                    n.start = n.start + rEnd;
+                    n.end = n.start + after.length;
+                } else if (before.length > 0) {
+                    var beforeNode2 = document.createTextNode(before);
+                    parent.insertBefore(beforeNode2, n.node);
+                    parent.insertBefore(span, n.node);
+                    parent.removeChild(n.node);
+                    n.node = span;
+                    n.start = n.start + rStart;
+                    n.end = n.start + match.length;
+                } else if (after.length > 0) {
+                    var afterNode2 = document.createTextNode(after);
+                    parent.insertBefore(span, n.node);
+                    parent.insertBefore(afterNode2, n.node);
+                    parent.removeChild(n.node);
+                    n.node = afterNode2;
+                    n.start = n.start + rEnd;
+                    n.end = n.start + after.length;
+                } else {
+                    parent.insertBefore(span, n.node);
+                    parent.removeChild(n.node);
+                    n.node = span;
+                    n.start = n.start + rStart;
+                    n.end = n.start + match.length;
                 }
+
+                applied++;
+                break;
             }
-            charOffset += textLen;
         }
 
-        for (var state in highlights) {
-            try {
-                CSS.highlights.set('ws-' + state, highlights[state]);
-            } catch(e) {}
-        }
+        console.log('TextColoring: applied ' + applied + ' word spans');
     },
 
     clearColoring: function() {
-        if (!CSS.highlights) return;
-        var states = ['new', 'young', 'mature', 'due', 'mastered', 'blacklisted'];
-        for (var i = 0; i < states.length; i++) {
-            try { CSS.highlights.delete('ws-' + states[i]); } catch(e) {}
+        var wrapper = document.getElementById('hoshi-content-wrapper');
+        if (!wrapper) return;
+
+        var spans = wrapper.querySelectorAll('span[ajb="true"]');
+        for (var i = spans.length - 1; i >= 0; i--) {
+            var span = spans[i];
+            var parent = span.parentElement;
+            if (!parent) continue;
+            // Move all child nodes before the span
+            while (span.firstChild) {
+                parent.insertBefore(span.firstChild, span);
+            }
+            parent.removeChild(span);
+        }
+        // Normalize to merge adjacent text nodes
+        wrapper.normalize();
+    },
+
+    updateWordState: function(wordId, readingIndex, newState) {
+        var wrapper = document.getElementById('hoshi-content-wrapper');
+        if (!wrapper) return;
+        var selector = 'span[ajb="true"][wordId="' + wordId + '"][readingIndex="' + readingIndex + '"]';
+        var spans = wrapper.querySelectorAll(selector);
+        var oldStates = ['new', 'young', 'mature', 'due', 'mastered', 'blacklisted'];
+        for (var i = 0; i < spans.length; i++) {
+            var span = spans[i];
+            for (var j = 0; j < oldStates.length; j++) {
+                span.classList.remove('ws-' + oldStates[j]);
+            }
+            span.classList.add('ws-' + newState);
         }
     },
 };

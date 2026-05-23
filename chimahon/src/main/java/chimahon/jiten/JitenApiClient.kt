@@ -70,6 +70,30 @@ class JitenApiClient(
         return result != null
     }
 
+    suspend fun review(
+        endpoint: String,
+        apiKey: String,
+        wordId: Int,
+        readingIndex: Int,
+        rating: Int,
+    ): JitenReviewResponse? {
+        val requestBody = JitenReviewRequest(wordId = wordId, readingIndex = readingIndex, rating = rating)
+        val bodyJson = json.encodeToString(requestBody)
+        return requestReview(endpoint, apiKey, "srs/review", bodyJson)
+    }
+
+    suspend fun setVocabularyState(
+        endpoint: String,
+        apiKey: String,
+        wordId: Int,
+        readingIndex: Int,
+        state: String,
+    ): JitenSetVocabularyStateResponse? {
+        val requestBody = JitenSetVocabularyStateRequest(wordId = wordId, readingIndex = readingIndex, state = state)
+        val bodyJson = json.encodeToString(requestBody)
+        return requestSetVocabularyState(endpoint, apiKey, "srs/set-vocabulary-state", bodyJson)
+    }
+
     private suspend fun requestParse(
         endpoint: String,
         apiKey: String,
@@ -106,6 +130,36 @@ class JitenApiClient(
             val responseBody = requestRaw(endpoint, apiKey, action, bodyJson) ?: return null
             json.decodeFromString(responseBody)
         } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun requestReview(
+        endpoint: String,
+        apiKey: String,
+        action: String,
+        bodyJson: String,
+    ): JitenReviewResponse? {
+        return try {
+            val responseBody = requestRaw(endpoint, apiKey, action, bodyJson) ?: return null
+            json.decodeFromString(responseBody)
+        } catch (e: Exception) {
+            android.util.Log.e("TextColoring", "requestReview: JSON deserialization failed", e)
+            null
+        }
+    }
+
+    private suspend fun requestSetVocabularyState(
+        endpoint: String,
+        apiKey: String,
+        action: String,
+        bodyJson: String,
+    ): JitenSetVocabularyStateResponse? {
+        return try {
+            val responseBody = requestRaw(endpoint, apiKey, action, bodyJson) ?: return null
+            json.decodeFromString(responseBody)
+        } catch (e: Exception) {
+            android.util.Log.e("TextColoring", "requestSetVocabularyState: JSON deserialization failed", e)
             null
         }
     }

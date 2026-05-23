@@ -4,29 +4,39 @@ class ChapterColorAnalyzer(
     private val apiClient: JitenApiClient,
 ) {
 
+    data class AnalyzeResult(
+        val colors: List<ColorEntry>,
+        val cards: Map<Pair<Int, Int>, JitenWordCard>,
+    )
+
     suspend fun analyze(
         endpoint: String,
         apiKey: String,
         chapterIndex: Int,
         text: String,
         cache: ParseCache,
-    ): List<ColorEntry> {
-        if (apiKey.isBlank() || text.isBlank()) return emptyList()
+    ): AnalyzeResult {
+        if (apiKey.isBlank() || text.isBlank()) return AnalyzeResult(emptyList(), emptyMap())
 
         // Try cache first
-        cache.getColors(chapterIndex)?.let { return it }
+        val cachedColors = cache.getColors(chapterIndex)
+        val cachedCards = cache.getCards(chapterIndex)
+        if (cachedColors != null) {
+            return AnalyzeResult(cachedColors, cachedCards ?: emptyMap())
+        }
 
         // Parse via Jiten API
-        val response = apiClient.parse(endpoint, apiKey, text) ?: return emptyList()
+        val response = apiClient.parse(endpoint, apiKey, text) ?: return AnalyzeResult(emptyList(), emptyMap())
 
-        // Build color entries from tokens + vocabulary
+        // Build vocabulary map
         val vocabMap = response.vocabulary.associateBy {
             it.wordId to it.readingIndex
         }
 
         val colors = mutableListOf<ColorEntry>()
+        val cards = mutableMapOf<Pair<Int, Int>, JitenWordCard>()
 
-        // Return individual word entries (no merging) so WebView can set wordId/readingIndex attributes
+        // Build color entries and card data from tokens + vocabulary
         for (paraTokens in response.tokens) {
             for (token in paraTokens) {
                 val vocab = vocabMap[token.wordId to token.readingIndex]
@@ -45,12 +55,48 @@ class ChapterColorAnalyzer(
                         readingIndex = token.readingIndex,
                     ),
                 )
+
+                // Build card data for popup display (deduplicated by wordId/readingIndex)
+                if (vocab != null && cards[token.wordId to token.readingIndex] == null) {
+                    val meanings = if (vocab.meaningsChunks.isNotEmpty()) {
+                        vocab.meaningsChunks.mapIndexed { i, glosses ->
+                            val pos = vocab.meaningsPartOfSpeech.getOrNull(i) ?: ""
+                            JitenMeaning(
+                                glosses = glosses,
+                                partsOfSpeech = if (pos.isNotBlank()) listOf(pos) else emptyList(),
+                            )
+                        }
+                    } else {
+                        emptyList()
+                    }
+
+                    val cardState = if (vocab.knownState.isNotEmpty()) {
+                        listOf(knownStateToString(vocab.knownState[0]))
+                    } else {
+                        listOf("new")
+                    }
+
+                    cards[token.wordId to token.readingIndex] = JitenWordCard(
+                        wordId = token.wordId,
+                        readingIndex = token.readingIndex,
+                        spelling = vocab.spelling,
+                        reading = vocab.reading,
+                        frequencyRank = vocab.frequencyRank,
+                        partsOfSpeech = vocab.partsOfSpeech,
+                        meanings = meanings,
+                        cardState = cardState,
+                        pitchAccents = vocab.pitchAccents,
+                        pitchClass = token.pitchClass,
+                        conjugations = token.conjugations ?: emptyList(),
+                    )
+                }
             }
         }
 
         // Cache the result
         cache.setColors(chapterIndex, colors)
+        cache.setCards(chapterIndex, cards)
 
-        return colors
+        return AnalyzeResult(colors, cards)
     }
 }

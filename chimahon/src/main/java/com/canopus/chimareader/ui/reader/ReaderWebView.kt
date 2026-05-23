@@ -50,6 +50,7 @@ fun ReaderWebView(
     onDismissPopupRequested: () -> Unit = {},
     onInternalLinkClicked: (url: String) -> Unit = {},
     onChapterTextReady: (text: String) -> Unit = {},
+    onColoredWordTap: (word: String, wordId: Int, readingIndex: Int, state: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _, _, _ -> },
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -105,6 +106,7 @@ fun ReaderWebView(
                 onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
                 onChapterTextReady = onChapterTextReady,
+                onColoredWordTapCallback = onColoredWordTap,
             ).apply {
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
@@ -288,6 +290,10 @@ fun ReaderWebView(
                         android.util.Log.d("TextColoring", "WebView command: RefreshColoring")
                         v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.requestColoring) { window.hoshiReader.requestColoring(); }", null)
                     }
+                    is WebViewCommand.UpdateWordState -> {
+                        android.util.Log.d("TextColoring", "WebView command: UpdateWordState wordId=${command.wordId} state=${command.newState}")
+                        v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.updateWordState) { window.hoshiReader.updateWordState(${command.wordId}, ${command.readingIndex}, '${command.newState}'); }", null)
+                    }
                     else -> {}
                 }
             }
@@ -317,6 +323,7 @@ private class ReaderAndroidWebView(
     private val onDismissPopupRequested: () -> Unit = {},
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
     internal val onChapterTextReady: (text: String) -> Unit = {},
+    private val onColoredWordTapCallback: (word: String, wordId: Int, readingIndex: Int, state: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _, _, _ -> },
 ) : WebView(context) {
 
     private var touchStartX = 0f
@@ -439,6 +446,12 @@ private class ReaderAndroidWebView(
             post { onSentenceReadyCallback(sentence) }
         },
         onChapterTextReady = onChapterTextReady,
+        onColoredWordTapCallback = { word, wordId, readingIndex, state, x, y, w, h ->
+            post {
+                val density = context.resources.displayMetrics.density
+                onColoredWordTapCallback(word, wordId, readingIndex, state, x * density, y * density, w * density, h * density)
+            }
+        },
     )
 
     init {
@@ -511,12 +524,13 @@ private class ReaderAndroidWebView(
         }
 
         appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
-        appendLine("::highlight(ws-new) { color: #2196F3; }")
-        appendLine("::highlight(ws-young) { color: #4CAF50; }")
-        appendLine("::highlight(ws-mature) { color: #888888; }")
-        appendLine("::highlight(ws-due) { color: #FF9800; }")
-        appendLine("::highlight(ws-mastered) { color: #BBBBBB; }")
-        appendLine("::highlight(ws-blacklisted) { color: #F44336; text-decoration: line-through; }")
+        appendLine("span.jiten-word { cursor: pointer; }")
+        appendLine("span.jiten-word.ws-new { color: #2196F3; }")
+        appendLine("span.jiten-word.ws-young { color: #4CAF50; }")
+        appendLine("span.jiten-word.ws-mature { color: #888888; }")
+        appendLine("span.jiten-word.ws-due { color: #FF9800; }")
+        appendLine("span.jiten-word.ws-mastered { color: #BBBBBB; }")
+        appendLine("span.jiten-word.ws-blacklisted { color: #F44336; text-decoration: line-through; }")
         appendLine("p { margin-block-start: 0 !important; margin-block-end: ${readerSettings.paragraphSpacing}em !important; }")
         appendLine("body * { font-family: inherit !important; }")
         appendLine("img.hoshi-image-block, svg.hoshi-image-block { position: static !important; }")
@@ -1218,6 +1232,7 @@ private class ReaderJavascriptBridge(
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
     private val onChapterTextReady: (text: String) -> Unit = {},
+    private val onColoredWordTapCallback: (word: String, wordId: Int, readingIndex: Int, state: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _, _, _ -> },
 ) {
     @JavascriptInterface
     fun restoreCompleted() {
@@ -1243,6 +1258,12 @@ private class ReaderJavascriptBridge(
     fun requestChapterText(text: String) {
         android.util.Log.d("TextColoring", "Bridge: requestChapterText called (text.length=${text.length})")
         onChapterTextReady(text)
+    }
+
+    @JavascriptInterface
+    fun onColoredWordTap(word: String, wordId: Int, readingIndex: Int, state: String, x: Float, y: Float, w: Float, h: Float) {
+        android.util.Log.d("TextColoring", "Bridge: onColoredWordTap word=$word wordId=$wordId state=$state")
+        onColoredWordTapCallback.invoke(word, wordId, readingIndex, state, x, y, w, h)
     }
 }
 
