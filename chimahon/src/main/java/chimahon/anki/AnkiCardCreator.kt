@@ -1142,8 +1142,6 @@ object AnkiCardCreator {
             when (tag) {
                 "ul", "ol" -> sb.append(""" style="margin: 0.2em 0; padding-left: 1.2em;"""")
                 "p", "div" -> sb.append(""" style="margin: 0.1em 0;"""")
-                "table" -> sb.append(""" style="border-collapse: collapse; margin: 0.2em 0; width: auto; border: 1px solid #888;"""")
-                "th", "td" -> sb.append(""" style="border: 1px solid #888; padding: 2px 4px; vertical-align: top;"""" )
             }
         }
 
