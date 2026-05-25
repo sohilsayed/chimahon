@@ -4,6 +4,21 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.8.3]
+
+### Added
+- Per-manga stats sheet with session/today/all-time tracking
+- Lower sensitivity swipe setting for E-ink
+
+### Changed
+- Separate paginated scrolling from e-ink mode in dictionary popup
+
+### Fixed
+- Prevent NPE on reader startup (Android 16 dispatchAttachedToWindow)
+- Correct manga sentence export offset in Anki export
+- Fix furigana spacing in Anki export
+- Remove inline style overrides on table elements in Anki export
+
 ## [v1.8.2]
 
 ### Fixed
