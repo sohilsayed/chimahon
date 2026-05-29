@@ -228,6 +228,7 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private var lastMangaStatsTime: Long = SystemClock.elapsedRealtime()
     private var currentMangaStatsPage: ReaderPage? = null
+    private val consumedMangaStatsPages = mutableSetOf<Int>()
 
     var mangaStatsSessionCharacters: Int = 0
         private set
@@ -2299,12 +2300,15 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     private fun trackMangaStats(newPage: ReaderPage?) {
+        if (newPage == null) consumedMangaStatsPages.clear()
+
         val now = SystemClock.elapsedRealtime()
         val prevPage = currentMangaStatsPage
         val rawTime = now - lastMangaStatsTime
         val timeSpent = min(rawTime, 120_000L)
 
-        if (prevPage != null && !incognitoMode && timeSpent > 500) {
+        if (prevPage != null && !incognitoMode && timeSpent > 500 && prevPage.index !in consumedMangaStatsPages) {
+            consumedMangaStatsPages.add(prevPage.index)
             viewModelScope.launchIO {
                 val blocks = getOcrBlocks(prevPage)
                 if (blocks.isNotEmpty()) {
