@@ -575,10 +575,11 @@ abstract class SyncService(
                         }
                     }
 
+                    val mergedCategoryIds = (local.categoryIds + remote.categoryIds).distinct()
                     if (local.lastModified >= remote.lastModified) {
-                        local.copy(stats = mergedStats)
+                        local.copy(stats = mergedStats, categoryIds = mergedCategoryIds)
                     } else {
-                        remote.copy(stats = mergedStats)
+                        remote.copy(stats = mergedStats, categoryIds = mergedCategoryIds)
                     }
                 }
                 else -> null

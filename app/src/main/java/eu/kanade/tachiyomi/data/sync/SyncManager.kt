@@ -210,6 +210,7 @@ class SyncManager(
             // KMK <--
             // Chimahon -->
             backupNovels = remoteBackup.backupNovels,
+            backupNovelCategories = remoteBackup.backupNovelCategories,
             // Chimahon <--
         )
 
