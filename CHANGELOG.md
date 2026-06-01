@@ -4,6 +4,22 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.8.5]
+
+### Added
+- E-Ink swipe: instant page transitions
+
+### Changed
+- Replaced async OCR prefetch with structured scan and page-ready guard
+- Updated hoshidicts (normalization processors, freq sorting)
+
+### Fixed
+- Reader crash and startup workaround
+- Deduplicate manga page stats to prevent recount on back-navigation
+- Preserve novel category assignments during sync merge
+- Revert problematic NPE reader fixes
+- General reader bug fixes (page viewer, Webtoon viewer)
+
 ## [v1.8.3]
 
 ### Added
