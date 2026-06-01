@@ -70,10 +70,12 @@ import exh.source.isEhBasedManga
 import exh.util.defaultReaderType
 import exh.util.mangaType
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -186,8 +188,8 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private val ocrCacheMutex = Mutex()
     private val ocrCache = LinkedHashMap<OcrCacheKey, List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock>>()
-    private val ocrInFlight =
-        mutableMapOf<OcrCacheKey, Deferred<List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock>>>()
+    private var ocrScanJob: Job? = null
+    private var ocrScanChapterId: Long? = null
     private val maxOcrCacheEntries = 120
 
     private val mokuroChapterCache = mutableMapOf<Long, MokuroChapterData>()
@@ -448,6 +450,18 @@ class ReaderViewModel @JvmOverloads constructor(
                 } else {
                     readerPreferences.autoscrollInterval().set(parsed.toFloat())
                     mutableState.update { it.copy(isAutoScrollEnabled = true) }
+                }
+            }
+            .launchIn(viewModelScope)
+
+        readerPreferences.ocrOverlayEnabled().changes()
+            .onEach { enabled ->
+                if (!enabled) {
+                    ocrScanJob?.cancel()
+                    ocrScanJob = null
+                    ocrScanChapterId = null
+                } else {
+                    getCurrentChapter()?.let { scanOcrPages(it) }
                 }
             }
             .launchIn(viewModelScope)
@@ -779,10 +793,7 @@ class ReaderViewModel @JvmOverloads constructor(
             downloadNextChapters()
         }
 
-        // Chimahon: Pre-fetch OCR for next pages
-        if (isOcrEnabled()) {
-            prefetchOcrBlocks(page)
-        }
+        if (isOcrEnabled()) scanOcrPages(page.chapter)
 
         eventChannel.trySend(Event.PageChanged)
     }
@@ -1633,7 +1644,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * then converts the result from OcrResult format (normalized 0..1 coords, single text string)
      * to OcrTextBlock format (normalized coords, lines list, orientation flag).
      *
-     * Blocks on network I/O — call from background thread or wrap in async.
+     * Blocks on network I/O — call via withContext(Dispatchers.IO).
      * Errors are logged and handled gracefully (returns empty list).
      *
      * @param page The page to get OCR blocks for
@@ -1652,41 +1663,28 @@ class ReaderViewModel @JvmOverloads constructor(
             }
         }
 
-        val deferred = ocrCacheMutex.withLock {
-            ocrInFlight[cacheKey] ?: viewModelScope.async(Dispatchers.IO) {
-                fetchOcrBlocks(page)
-            }.also { created ->
-                ocrInFlight[cacheKey] = created
-            }
+        withTimeoutOrNull(10_000) {
+            page.statusFlow.first { it == Page.State.Ready }
+        } ?: run {
+            logcat(LogPriority.WARN) { "OCR skipped for page ${page.index}: not Ready within 10s" }
+            return emptyList()
         }
 
-        return try {
-            deferred.await()
-        } finally {
-            ocrCacheMutex.withLock {
-                if (ocrInFlight[cacheKey] === deferred) {
-                    ocrInFlight.remove(cacheKey)
-                }
-            }
+        return withContext(Dispatchers.IO.limitedParallelism(2)) {
+            fetchOcrBlocks(page)
         }
     }
 
-    /**
-     * Pre-fetch OCR blocks for pages ahead to avoid latency when turning pages.
-     */
-    private fun prefetchOcrBlocks(currentPage: ReaderPage) {
-        val chapter = currentPage.chapter
-        val pages = chapter.pages ?: return
-        val currentIndex = currentPage.index
-
-        // Pre-fetch next 2 pages
-        for (i in 1..2) {
-            val nextIndex = currentIndex + i
-            if (nextIndex < pages.size) {
-                val nextPage = pages[nextIndex]
-                viewModelScope.launchIO {
-                    getOcrBlocks(nextPage)
-                }
+    private fun scanOcrPages(chapter: ReaderChapter) {
+        if (!isOcrEnabled()) return
+        val chapterId = chapter.chapter.id ?: return
+        if (ocrScanJob?.isActive == true && ocrScanChapterId == chapterId) return
+        ocrScanJob?.cancel()
+        ocrScanChapterId = chapterId
+        ocrScanJob = viewModelScope.launch {
+            val pages = chapter.pages ?: return@launch
+            supervisorScope {
+                pages.forEach { page -> launch { getOcrBlocks(page) } }
             }
         }
     }
@@ -2001,6 +1999,7 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     private suspend fun fetchOcrBlocks(page: ReaderPage): List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock> {
+        if (!isOcrEnabled()) return emptyList()
         val startMs = SystemClock.elapsedRealtime()
         val dbChapter = page.chapter.chapter
         val domainChapter = dbChapter.toDomainChapter() ?: return emptyList()
