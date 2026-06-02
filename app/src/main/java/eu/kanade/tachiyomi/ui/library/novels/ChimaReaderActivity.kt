@@ -4,9 +4,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
 import com.canopus.chimareader.data.BookStorage
-import android.view.ViewGroup
 import android.webkit.WebView
-import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -36,9 +34,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import chimahon.DictionaryRepository
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
-import eu.kanade.tachiyomi.ui.dictionary.prepareDictionaryWebViewShell
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -97,14 +95,12 @@ class ChimaReaderActivity : NovelReaderActivity() {
         }
 
         super.onCreate(savedInstanceState)
-        window.decorView.post {
-            if (!isDestroyed) ensurePopupWebView()
-        }
 
         val activeProfile = cachedActiveProfile ?: getOrRefreshLookupPaths().first
         val warmPaths = cachedTermPaths ?: getDictionaryPaths(this, activeProfile)
         cachedActiveProfile = activeProfile
         cachedTermPaths = warmPaths
+        DictionaryPopupWebViewWarmup.warm(this, activeProfile.languageCode)
 
         lifecycleScope.launch(Dispatchers.Default) {
             Injekt.get<DictionaryRepository>().warmUp(warmPaths, activeProfile.id)
@@ -182,27 +178,10 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private fun ensurePopupWebView(): WebView {
-        val webView = popupWebView ?: WebView(this).also {
-            popupWebView = it
-            val profileLang = getOrRefreshLookupPaths().first.languageCode
-            prepareDictionaryWebViewShell(this, it, languageCode = profileLang)
-        }
-        if (!isPopupActive) {
-            attachPopupWebViewForWarmup(webView)
-        }
-        return webView
-    }
-
-    private fun attachPopupWebViewForWarmup(webView: WebView) {
-        if (webView.parent != null) return
-        val root = window.decorView as? ViewGroup ?: return
-        webView.alpha = 0f
-        webView.isClickable = false
-        webView.isFocusable = false
-        root.addView(
-            webView,
-            FrameLayout.LayoutParams(1, 1),
-        )
+        return popupWebView ?: DictionaryPopupWebViewWarmup.acquire(
+            this,
+            getOrRefreshLookupPaths().first.languageCode,
+        ).also { popupWebView = it }
     }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
@@ -391,17 +370,12 @@ class ChimaReaderActivity : NovelReaderActivity() {
      * Renders the lookup popup over the reader content when text is selected.
      * No screenshot / crop — those are OCR-only features.
      *
-     * The popup stays in composition permanently (warm shell) — it is hidden
-     * via alpha + offscreen offset when not active, never unmounted.  This
-     * keeps the WebView shell loaded and pageReady=true between lookups.
+     * The popup mounts only after the first lookup. The WebView shell itself is
+     * warmed outside the reader hierarchy by [DictionaryPopupWebViewWarmup].
      */
     @Composable
     override fun PopupOverlay() {
-        // Always composed — use a default empty state when no lookup has happened yet
-        val state = lookupState ?: LookupState("", "", 0f, 0f, 0f, 0f, isVerticalWriting, chimahon.anki.AnkiProfile.EMPTY)
-
         val repo = remember { Injekt.get<DictionaryRepository>() }
-        val webView = remember { ensurePopupWebView() }
 
         BackHandler(enabled = popupVisible) {
             popupVisible = false
@@ -419,47 +393,50 @@ class ChimaReaderActivity : NovelReaderActivity() {
         }
         eu.kanade.presentation.theme.TachiyomiTheme {
             SelectionHighlightOverlay()
-            OcrLookupPopup(
-                visible = popupVisible,
-                lookupString = if (popupVisible) state.word else "",
-                fullText = state.sentence,
-                charOffset = state.sentence.indexOf(state.word).coerceAtLeast(0),
-                onDismiss = {
-                    popupVisible = false
-                    selectionRects.clear()
-                    pendingLookupRects.clear()
-                    cancelActiveLookup()
-                    isPopupActive = false
-                },
-                webView = webView,
-                repository = repo,
-                anchorX = state.anchorX,
-                anchorY = state.anchorY,
-                anchorWidth = state.anchorWidth,
-                anchorHeight = state.anchorHeight,
-                isVertical = state.isVertical,
-                activeProfile = if (popupVisible) getOrRefreshLookupPaths().first else chimahon.anki.AnkiProfile.EMPTY,
-                type = "novel",
-                mediaInfo = mediaInfo,
-                onRequestScreenshot = null,
-                onCropTriggered = null,
-                initialLookupDeferred = if (popupVisible) lookupDeferred else null,
-                usePopup = false,
-                // Novel reader: rects already sent by onLookupRequested; no OCR block to refine
-                onTermMatched = null,
-                onContentReadyChange = ::onPopupContentReady,
-                modifier = Modifier,
-            )
+            val state = lookupState
+            if (state != null || popupVisible) {
+                val popupState = state ?: LookupState("", "", 0f, 0f, 0f, 0f, isVerticalWriting, chimahon.anki.AnkiProfile.EMPTY)
+                val webView = remember { ensurePopupWebView() }
+
+                OcrLookupPopup(
+                    visible = popupVisible,
+                    lookupString = if (popupVisible) popupState.word else "",
+                    fullText = popupState.sentence,
+                    charOffset = popupState.sentence.indexOf(popupState.word).coerceAtLeast(0),
+                    onDismiss = {
+                        popupVisible = false
+                        selectionRects.clear()
+                        pendingLookupRects.clear()
+                        cancelActiveLookup()
+                        isPopupActive = false
+                    },
+                    webView = webView,
+                    repository = repo,
+                    anchorX = popupState.anchorX,
+                    anchorY = popupState.anchorY,
+                    anchorWidth = popupState.anchorWidth,
+                    anchorHeight = popupState.anchorHeight,
+                    isVertical = popupState.isVertical,
+                    activeProfile = if (popupVisible) getOrRefreshLookupPaths().first else popupState.activeProfile,
+                    type = "novel",
+                    mediaInfo = mediaInfo,
+                    onRequestScreenshot = null,
+                    onCropTriggered = null,
+                    initialLookupDeferred = if (popupVisible) lookupDeferred else null,
+                    usePopup = false,
+                    // Novel reader: rects already sent by onLookupRequested; no OCR block to refine
+                    onTermMatched = null,
+                    onContentReadyChange = ::onPopupContentReady,
+                    modifier = Modifier,
+                )
+            }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         cancelActiveLookup()
-        popupWebView?.let { webView ->
-            (webView.parent as? ViewGroup)?.removeView(webView)
-            webView.destroy()
-        }
+        DictionaryPopupWebViewWarmup.recycle(this, popupWebView)
         popupWebView = null
         lookupState = null
         selectionRects.clear()
