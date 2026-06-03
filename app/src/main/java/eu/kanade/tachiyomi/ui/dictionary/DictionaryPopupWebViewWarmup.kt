@@ -133,11 +133,13 @@ internal object DictionaryPopupWebViewWarmup {
         state.lastMediaDataUris = null
         state.lastRenderSignature = null
         state.pendingPayload = null
-        state.pendingResultsJson = null
+        state.pendingEntryJsons = null
         state.pendingResults = null
         state.pendingExistingExpressions = null
         state.pendingMediaDataUris = null
         state.pendingRenderSignature = null
+        state.payloadBridge.rawPayloadJson = ""
+        state.payloadBridge.rawEntryJsons = emptyList()
     }
 
     private fun runOnMain(block: () -> Unit) {

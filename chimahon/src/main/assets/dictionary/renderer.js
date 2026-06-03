@@ -17,6 +17,8 @@
   let _autoplayGuard = false;
   let _listenersInstalled = false;
   let _lastAnkiDupAction = -1; // -1 = unknown/not set
+  let _dictionaryMediaObserver = null;
+  const _prewarmedFontFaces = typeof WeakSet === 'function' ? new WeakSet() : null;
   const HAS_NATIVE_SCOPE = (() => {
     try {
       if (!window.CSS || !CSS.supports) return false;
@@ -64,14 +66,6 @@
   function debugWarn(...args) {
     if (!DEBUG) return;
     console.warn('[DictionaryRenderJS][debug]', args.map(toDebugText).join(' '));
-  }
-
-  function decodeBase64Utf8(base64) {
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-    return new TextDecoder('utf-8').decode(bytes);
   }
 
   function sanitizeDictionaryStyles(cssText, dictName) {
@@ -692,6 +686,7 @@
     el.textContent = '';
     el.className = 'lookup-tabs';
     el.style.transition = 'transform 0.32s cubic-bezier(0.4,0,0.2,1)';
+    el.style.transform = 'translateY(0)';
 
     if (_navMode === 'stack') {
       if (activeIndex > 0) {
@@ -730,6 +725,7 @@
     if (!el.parentElement) {
       container.insertBefore(el, container.firstChild);
     }
+    container.style.paddingTop = (el.offsetHeight || 40) + 'px';
 
     if (activeIndex >= 0) {
       requestAnimationFrame(() => {
@@ -839,6 +835,32 @@
     return null;
   }
 
+  function observeDictionaryMedia(target, load) {
+    if (!target || typeof load !== 'function') return;
+    if (typeof IntersectionObserver !== 'function') {
+      load();
+      return;
+    }
+    if (!_dictionaryMediaObserver) {
+      _dictionaryMediaObserver = new IntersectionObserver((entries, observer) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          observer.unobserve(entry.target);
+          const fn = entry.target._loadDictionaryMedia;
+          delete entry.target._loadDictionaryMedia;
+          fn?.();
+        }
+      }, { root: null, rootMargin: '200px' });
+    }
+    target._loadDictionaryMedia = load;
+    _dictionaryMediaObserver.observe(target);
+  }
+
+  function resetDictionaryMediaObserver() {
+    _dictionaryMediaObserver?.disconnect();
+    _dictionaryMediaObserver = null;
+  }
+
   function applyMediaToImageLink(link, mediaMap) {
     if (!link || link.dataset.imageLoadState === 'loaded') return;
     const path = link.dataset.path || '';
@@ -846,13 +868,15 @@
     const src = resolveMediaSrc(mediaMap || {}, dictName, path);
     if (!src) return;
 
-    const bg = link.querySelector('.gloss-image-background');
-    if (bg) bg.style.setProperty('--image', `url("${src}")`);
+    observeDictionaryMedia(link, () => {
+      const bg = link.querySelector('.gloss-image-background');
+      if (bg) bg.style.setProperty('--image', `url("${src}")`);
 
-    const img = link.querySelector('img.gloss-image');
-    if (img) img.src = src;
+      const img = link.querySelector('img.gloss-image');
+      if (img) img.src = src;
 
-    link.dataset.imageLoadState = 'loaded';
+      link.dataset.imageLoadState = 'loaded';
+    });
   }
 
   function postContentReady() {
@@ -865,6 +889,29 @@
         console.warn('[DictionaryRenderJS] contentReady bridge failed:', e);
       }
     });
+  }
+
+  function prewarmFonts() {
+    if (!document.fonts) return;
+    const loads = [];
+    try {
+      document.fonts.forEach((face) => {
+        if (!face || face.status !== 'unloaded' || typeof face.load !== 'function') return;
+        if (_prewarmedFontFaces) {
+          if (_prewarmedFontFaces.has(face)) return;
+          _prewarmedFontFaces.add(face);
+        }
+        try {
+          loads.push(face.load().catch(() => {}));
+        } catch (e) {
+          // Ignore fonts the browser refuses to load eagerly.
+        }
+      });
+    } catch (e) {
+      return;
+    }
+    if (!loads.length) return;
+    Promise.all(loads).then(postContentReady, postContentReady);
   }
 
   const POS_TAGS = new Set(['n', 'vs', 'vi', 'vt', 'adj-i', 'adj-na', 'adv', 'v1', 'v5k', 'v5s', 'v5m', 'v5n', 'v5r', 'v5t', 'exp', 'int']);
@@ -1280,7 +1327,7 @@
     link.className = 'gloss-image-link gloss-sc-a';
     link.dataset.path = path;
     link.dataset.dictName = dictName;
-    link.dataset.imageLoadState = src && src.startsWith('data:') ? 'loaded' : 'unloaded';
+    link.dataset.imageLoadState = 'unloaded';
     link.dataset.hasAspectRatio = 'true';
     link.dataset.imageRendering = imageRendering;
     link.dataset.appearance = typeof node.appearance === 'string' ? node.appearance : 'auto';
@@ -1311,18 +1358,24 @@
 
     const bg = document.createElement('span');
     bg.className = 'gloss-image-background';
-    if (src) bg.style.setProperty('--image', `url("${src}")`);
     container.appendChild(bg);
 
     const img = document.createElement('img');
     img.className = 'gloss-image gloss-sc-img';
-    if (src) img.src = src;
     img.loading = 'lazy';
     img.style.maxWidth = '100%';
     img.decoding = 'async';
     img.style.imageRendering = imageRendering;
     if (typeof node.title === 'string') img.alt = node.title;
     container.appendChild(img);
+
+    if (src) {
+      observeDictionaryMedia(link, () => {
+        bg.style.setProperty('--image', `url("${src}")`);
+        img.src = src;
+        link.dataset.imageLoadState = 'loaded';
+      });
+    }
 
     link.appendChild(container);
     return link;
@@ -1415,7 +1468,7 @@
     return headword;
   }
 
-  function createDeinflectionRow(process, rules) {
+  function createDeinflectionRow(process, rules, ruleTags) {
     if (!process || !Array.isArray(process) || process.length === 0) return null;
 
     const row = document.createElement('div');
@@ -1436,19 +1489,17 @@
     details.style.display = 'none';
 
     // Word-class rules chips at the top (e.g. "v5" "adj-i")
-    if (rules) {
-      const ruleSet = [...new Set(rules.split(/\s+/).filter(Boolean))];
-      if (ruleSet.length > 0) {
-        const rulesEl = document.createElement('div');
-        rulesEl.className = 'inflection-rules-row';
-        ruleSet.forEach(r => {
-          const chip = document.createElement('span');
-          chip.className = 'deinflection-tag';
-          chip.textContent = r;
-          rulesEl.appendChild(chip);
-        });
-        details.appendChild(rulesEl);
-      }
+    const ruleSet = Array.isArray(ruleTags) ? ruleTags.filter(Boolean) : (rules ? [...new Set(rules.split(/\s+/).filter(Boolean))] : []);
+    if (ruleSet.length > 0) {
+      const rulesEl = document.createElement('div');
+      rulesEl.className = 'inflection-rules-row';
+      ruleSet.forEach(r => {
+        const chip = document.createElement('span');
+        chip.className = 'deinflection-tag';
+        chip.textContent = r;
+        rulesEl.appendChild(chip);
+      });
+      details.appendChild(rulesEl);
     }
 
     // Each deinflection step as its own card — makes clear where one rule ends
@@ -1671,10 +1722,13 @@
         const content = document.createElement('div');
         content.className = 'definition-item-content';
         
-        if (gloss.definitionTags) {
+        const definitionTags = Array.isArray(gloss.definitionTagList)
+          ? gloss.definitionTagList
+          : (gloss.definitionTags ? gloss.definitionTags.split(/\s+/).filter(Boolean) : []);
+        if (definitionTags.length > 0) {
           const tagList = document.createElement('div');
           tagList.className = 'definition-tag-list';
-          gloss.definitionTags.split(/\s+/).forEach(t => {
+          definitionTags.forEach(t => {
             if (t) tagList.appendChild(createTag(t));
           });
           content.appendChild(tagList);
@@ -1694,7 +1748,7 @@
     }
   }
 
-  function appendFrequenciesSection(body, frequencies, showHarmonic) {
+  function appendFrequenciesSection(body, frequencies, showHarmonic, harmonicRank) {
     if (frequencies.length === 0) return;
 
     const section = document.createElement('div');
@@ -1703,28 +1757,32 @@
 
     // If showHarmonic is true, calculate and display harmonic mean instead of full list
     if (showHarmonic) {
-      const numbers = [];
-      const seen = new Set();
-      for (const group of frequencies) {
-        if (seen.has(group.dictName)) continue;
-        seen.add(group.dictName);
-        const items = Array.isArray(group.frequencies) ? group.frequencies : [];
-        for (const item of items) {
-          if (item && item.value > 0) {
-            numbers.push(item.value);
-            break;
+      let harmonic = Number.isFinite(harmonicRank) && harmonicRank > 0 ? Math.floor(harmonicRank) : null;
+      if (harmonic === null) {
+        const numbers = [];
+        const seen = new Set();
+        for (const group of frequencies) {
+          if (seen.has(group.dictName)) continue;
+          seen.add(group.dictName);
+          const items = Array.isArray(group.frequencies) ? group.frequencies : [];
+          for (const item of items) {
+            if (item && item.value > 0) {
+              numbers.push(item.value);
+              break;
+            }
           }
         }
-      }
-      
-      if (numbers.length > 0) {
-        const n = numbers.length;
-        let harmonic = 0;
-        for (const num of numbers) {
-          harmonic += 1 / num;
+        if (numbers.length > 0) {
+          const n = numbers.length;
+          let reciprocalSum = 0;
+          for (const num of numbers) {
+            reciprocalSum += 1 / num;
+          }
+          harmonic = Math.floor(n / reciprocalSum);
         }
-        harmonic = Math.floor(n / harmonic);
+      }
 
+      if (harmonic !== null) {
         const tag = createTagWithBody('freq', `harmonic: ${harmonic}`, 'frequency');
         section.appendChild(tag);
         body.appendChild(section);
@@ -1735,20 +1793,23 @@
     // Default: show compact top-row chips like Yomitan frequency groups.
     for (const group of frequencies) {
       const dictName = String(group.dictName || '').trim();
-      const items = Array.isArray(group.frequencies) ? group.frequencies : [];
-      const values = [];
-      items.forEach((item, idx) => {
-        const value = item && item.displayValue ? item.displayValue : String(item && item.value ? item.value : '');
-        if (value) {
-          values.push(value);
-        }
-      });
+      const displayText = typeof group.displayValueText === 'string'
+        ? group.displayValueText
+        : (() => {
+          const items = Array.isArray(group.frequencies) ? group.frequencies : [];
+          const values = [];
+          items.forEach((item) => {
+            const value = item && item.displayValue ? item.displayValue : String(item && item.value ? item.value : '');
+            if (value) values.push(value);
+          });
+          return values.join(', ');
+        })();
 
-      if (!dictName || values.length === 0) {
+      if (!dictName || !displayText) {
         continue;
       }
 
-      const chip = createTagWithBody(dictName, values.join(', '), 'frequency');
+      const chip = createTagWithBody(dictName, displayText, 'frequency');
       chip.classList.add('frequency-group-item');
       section.appendChild(chip);
     }
@@ -2194,14 +2255,14 @@
     headSection.appendChild(iconGroup);
     body.appendChild(headSection);
 
-    const deinflection = createDeinflectionRow(result.process, result.term ? result.term.rules : '');
+    const deinflection = createDeinflectionRow(result.process, result.term ? result.term.rules : '', result.term ? result.term.ruleTags : null);
     if (deinflection) {
       body.appendChild(deinflection.row);
       body.appendChild(deinflection.details);
     }
 
     const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
-    appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
+    appendFrequenciesSection(body, frequencies, showFrequencyHarmonic, result.term ? result.term.frequencyHarmonicRank : null);
 
     const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
     appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
@@ -2228,11 +2289,6 @@
     });
   }
 
-  function renderHeader(text) {
-    // Disabled per user request - header will not render
-    return;
-  }
-
   function renderFloatingNav() {
     let container = document.getElementById('floating-nav');
     if (!container) {
@@ -2256,6 +2312,21 @@
     }
   }
 
+  function removeFloatingNav() {
+    const nav = document.getElementById('floating-nav');
+    if (nav) nav.remove();
+  }
+
+  function resetTabBarLayout(container = document.getElementById('entries')) {
+    if (_tabsEl && _tabsEl.parentElement) {
+      _tabsEl.remove();
+    }
+    _tabsEl = null;
+    if (container) {
+      container.style.paddingTop = '';
+    }
+  }
+
   function render(payload) {
     try {
       if (!payload || typeof payload !== 'object') {
@@ -2268,6 +2339,7 @@
       _wordAudioEnabled = payload.wordAudioEnabled !== false;
       _autoplayGuard = false;
       _selectedDictionaries = {};
+      resetDictionaryMediaObserver();
       if (payload.ankiDupAction !== undefined) {
         _lastAnkiDupAction = payload.ankiDupAction;
       }
@@ -2291,6 +2363,7 @@
           const cssText = buildScopedDictionaryCss(stylesPayload);
           styleNode.textContent = cssText;
           styleNode.dataset.cacheKey = stylesKey;
+          prewarmFonts();
           debugLog('render.stylesApplied', {styleTextLength: cssText.length});
         } else {
           debugLog('render.stylesCached', {cacheKey: stylesKey});
@@ -2303,10 +2376,14 @@
       const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
       const navMode = payload.recursiveNavMode;
       const activeIndex = tabs.findIndex(t => t.active);
+      const freshRootLookup = tabs.length <= 1 && activeIndex <= 0;
+      if (freshRootLookup) {
+        _scrollPositions.clear();
+      }
 
       // Save scroll position of the previously active tab
       const oldActiveIndex = _tabs.findIndex(t => t.active);
-      if (oldActiveIndex >= 0) {
+      if (!freshRootLookup && oldActiveIndex >= 0) {
         const oldTab = _tabs[oldActiveIndex];
         const currentY = window.scrollY || document.documentElement.scrollTop || 0;
         const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex + '-' + oldTab.label;
@@ -2337,42 +2414,10 @@
       if (showTabBar) {
         renderTabBar(tabs, navMode);
         // Note: tabs-container is a separate div now, so no need to insertBefore entries
-      } else if (_tabsEl && _tabsEl.parentElement) {
-        _tabsEl.remove();
+      } else {
+        resetTabBarLayout(container);
       }
       const dictionaryOrder = Array.isArray(payload.dictionaryOrder) ? payload.dictionaryOrder : [];
-
-      if (dictionaryOrder.length > 0) {
-        const priorityMap = new Map();
-        dictionaryOrder.forEach((name, i) => priorityMap.set(name, i));
-        const getPriority = (name) => (priorityMap.has(name) ? priorityMap.get(name) : 999);
-
-        // 1. Sort results (stable sort primarily by matched length, tie-break by dict priority)
-        results.sort((a, b) => {
-          const lenA = (a.matched || '').length;
-          const lenB = (b.matched || '').length;
-          if (lenA !== lenB) return lenB - lenA;
-
-          const prioA = getPriority(a.term?.glossaries?.[0]?.dictName);
-          const prioB = getPriority(b.term?.glossaries?.[0]?.dictName);
-          return prioA - prioB;
-        });
-
-        // 2. Sort nested arrays within each result
-        for (const result of results) {
-          if (result.term) {
-            if (Array.isArray(result.term.glossaries)) {
-              result.term.glossaries.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-            }
-            if (Array.isArray(result.term.frequencies)) {
-              result.term.frequencies.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-            }
-            if (Array.isArray(result.term.pitches)) {
-              result.term.pitches.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-            }
-          }
-        }
-      }
 
       const existingExpressions = Array.isArray(payload.existingExpressions) ? payload.existingExpressions : [];
       const groupTerms = payload.groupTerms !== false;
@@ -2387,6 +2432,10 @@
         empty.className = 'chima-empty';
         empty.textContent = payload.placeholder || '';
         container.appendChild(empty);
+        removeFloatingNav();
+        if (freshRootLookup) {
+          window.scrollTo(0, 0);
+        }
       } else {
         const fragment = document.createDocumentFragment();
         for (const result of results) {
@@ -2406,8 +2455,7 @@
         if (results.length > 1 && payload.showNavigationButtons !== false) {
           renderFloatingNav();
         } else {
-          const nav = document.getElementById('floating-nav');
-          if (nav) nav.remove();
+          removeFloatingNav();
         }
 
         // Restore scroll position for the newly active tab
@@ -2453,10 +2501,15 @@
 
   function clear() {
     _autoplayGuard = false;
+    resetDictionaryMediaObserver();
     const container = document.getElementById('entries');
-    if (container) container.textContent = '';
-    _tabsEl = null;
+    if (container) {
+      container.textContent = '';
+      container.style.paddingTop = '';
+    }
+    resetTabBarLayout(container);
     _tabs = [];
+    removeFloatingNav();
     const styleNode = document.getElementById('dictionary-styles');
     if (styleNode) {
       styleNode.textContent = '';
@@ -2466,87 +2519,9 @@
 
   window.DictionaryRenderer = {
     render,
-    renderHeader,
     clear,
+    prewarmFonts,
 
-    renderPayloadObject(payload) {
-      try {
-        if (!payload) {
-          console.error('[DictionaryRenderJS] renderPayloadObject: no payload');
-          return;
-        }
-        render(payload);
-      } catch (e) {
-        console.error('[DictionaryRenderJS] renderPayloadObject error:', e.message);
-      }
-    },
-
-    renderFromBase64(base64) {
-      const json = decodeBase64Utf8(base64);
-      const payload = JSON.parse(json);
-      render(payload);
-    },
-
-    /**
-     * Read config + entries injected as JS literals via evaluateJavascript.
-     * No JSON.parse needed — the JS engine parsed them natively during evaluation.
-     */
-    renderFromGlobals() {
-      try {
-        const payload = window._lookupConfig;
-        if (!payload || typeof payload !== 'object') {
-          console.error('[DictionaryRenderJS] renderFromGlobals: no config');
-          return;
-        }
-        const entries = window._lookupEntries || [];
-        payload.results = entries;
-        window._lookupConfig = undefined;
-        window._lookupEntries = undefined;
-        render(payload);
-      } catch (e) {
-        console.error('[DictionaryRenderJS] renderFromGlobals error:', e.message);
-      }
-    },
-
-    /**
-     * Fetch config payload from PayloadBridge, then pull results lazily via
-     * getEntry(index). Avoids JSON.parse of the entire results array — each
-     * entry is parsed individually, which is faster for large result sets.
-     */
-    renderFromBridgeWithEntries() {
-      try {
-        if (typeof PayloadBridge === 'undefined') {
-          console.error('[DictionaryRenderJS] PayloadBridge not available');
-          return;
-        }
-        const configJson = PayloadBridge.getPayloadJson();
-        if (!configJson) {
-          console.error('[DictionaryRenderJS] PayloadBridge.getPayloadJson returned empty');
-          return;
-        }
-        const payload = JSON.parse(configJson);
-
-        // Pull results lazily via getEntry(index)
-        const results = [];
-        let index = 0;
-        while (true) {
-          const entryJson = PayloadBridge.getEntry(index);
-          if (entryJson === null || entryJson === undefined) break;
-          results.push(JSON.parse(entryJson));
-          index++;
-        }
-        payload.results = results;
-
-        render(payload);
-      } catch (e) {
-        console.error('[DictionaryRenderJS] renderFromBridgeWithEntries error:', e.message);
-      }
-    },
-
-    /**
-     * Clear entries container and re-render from bridge payload.
-     * Uses lazy entry loading via getEntry(index) for warm-shell lookups.
-     */
     replacePopupResults() {
       try {
         if (typeof PayloadBridge === 'undefined') {
@@ -2559,12 +2534,11 @@
 
         // Pull results lazily
         const results = [];
-        let index = 0;
-        while (true) {
+        const count = PayloadBridge.getEntryCount();
+        for (let index = 0; index < count; index++) {
           const entryJson = PayloadBridge.getEntry(index);
           if (entryJson === null || entryJson === undefined) break;
           results.push(JSON.parse(entryJson));
-          index++;
         }
         payload.results = results;
 
@@ -2572,28 +2546,9 @@
         if (payload.ankiDupAction !== undefined) {
           _lastAnkiDupAction = payload.ankiDupAction;
         }
-        window.lookupEntries = undefined;
-        window.entryCount = results.length;
-
-        const container = document.getElementById('entries');
-        if (container) container.textContent = '';
-
         render(payload);
-
-        requestAnimationFrame(() => {
-          document.scrollingElement.scrollTop = 0;
-        });
       } catch (e) {
         console.error('[DictionaryRenderJS] replacePopupResults error:', e.message);
-      }
-    },
-
-    updateTabs(tabsJson) {
-      try {
-        const tabs = JSON.parse(tabsJson);
-        renderTabBar(tabs);
-      } catch (e) {
-        console.error('[DictionaryRenderJS] updateTabs error:', e.message);
       }
     },
 

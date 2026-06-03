@@ -152,7 +152,7 @@ internal class DictionaryWebViewState(
     var lastMediaDataUris: Map<String, String>? = null
     var lastRenderSignature: DictionaryRenderSignature? = null
     var pendingPayload: String? = null
-    var pendingResultsJson: String? = null
+    var pendingEntryJsons: List<String>? = null
     var pendingResults: List<LookupResult>? = null
     var pendingExistingExpressions: Set<String>? = null
     var pendingMediaDataUris: Map<String, String>? = null
@@ -191,6 +191,8 @@ internal class DictionaryWebViewState(
     fun clear(webView: WebView) {
         wordAudioBridge.stopAudio()
         onContentInvalidated?.invoke()
+        payloadBridge.rawPayloadJson = ""
+        payloadBridge.rawEntryJsons = emptyList()
         webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.clear();", null)
         // Reset state so that a subsequent flush() with the same data references
         // does not take the "patch existing render" early-return path (which
@@ -231,10 +233,10 @@ internal class DictionaryWebViewState(
         mediaDataUris: Map<String, String>? = null,
         renderSignature: DictionaryRenderSignature? = null,
         configPayload: String? = null,
-        resultsJson: String? = null,
+        entryJsons: List<String>? = null,
     ) {
         val p = configPayload ?: pendingPayload ?: return
-        val entriesJson = resultsJson ?: pendingResultsJson ?: return
+        val entries = entryJsons ?: pendingEntryJsons ?: return
         val renderResults = results ?: pendingResults
         val renderExistingExpressions = existingExpressions ?: pendingExistingExpressions
         val renderMediaDataUris = mediaDataUris ?: pendingMediaDataUris
@@ -291,11 +293,13 @@ internal class DictionaryWebViewState(
         onContentInvalidated?.invoke()
         injectFontSize(webView)
 
-        // Inject config + entries as JS literals — the JS engine parses them
-        // natively during evaluation, avoiding JSON.parse() entirely.
-        val js = "window._lookupConfig=$p;window._lookupEntries=$entriesJson;" +
-            "if(window.DictionaryRenderer){" +
-            "window.DictionaryRenderer.renderFromGlobals();" +
+        // Keep the JS call tiny; the renderer pulls the heavier entry payloads
+        // through PayloadBridge so evaluateJavascript does less work.
+        payloadBridge.rawPayloadJson = p
+        payloadBridge.rawEntryJsons = entries
+
+        val js = "if(window.DictionaryRenderer){" +
+            "window.DictionaryRenderer.replacePopupResults();" +
             "${renderExistingExpressions?.let { "window.DictionaryRenderer.updateAnkiStatus(${org.json.JSONArray(it).toString().toJavascriptExpression()});" }.orEmpty()}" +
             "${renderMediaDataUris?.takeIf { it.isNotEmpty() }?.let { "window.DictionaryRenderer.updateMediaDataUris(${org.json.JSONObject(it).toString().toJavascriptExpression()});" }.orEmpty()}" +
             "}"
@@ -309,7 +313,7 @@ internal class DictionaryWebViewState(
 
     private fun clearPendingPayload() {
         pendingPayload = null
-        pendingResultsJson = null
+        pendingEntryJsons = null
         pendingResults = null
         pendingExistingExpressions = null
         pendingMediaDataUris = null

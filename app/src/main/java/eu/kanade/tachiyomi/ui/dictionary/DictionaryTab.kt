@@ -634,7 +634,7 @@ data object DictionaryTab : Tab {
                 )
             }
 
-            try {
+            val lookupResult = try {
                 sessionManager.lookup(
                     query = query,
                     paths = dictionaryPaths,
@@ -650,6 +650,9 @@ data object DictionaryTab : Tab {
                     debugDumpDir = null,
                 )
             }
+            lookupResult.copy(
+                results = orderLookupResultsForDisplay(lookupResult.results, activeProfile, context),
+            )
         }
     }
 
