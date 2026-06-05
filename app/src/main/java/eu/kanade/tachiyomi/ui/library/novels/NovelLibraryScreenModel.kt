@@ -302,8 +302,14 @@ class NovelLibraryScreenModel(
                 books.filter { it.title?.contains(searchQuery, ignoreCase = true) == true }
             }
             
-            val categoryBooks = filteredBooks.filter { 
-                it.categoryIds.contains(category.id) || (category.id == NovelCategory.UNCATEGORIZED_ID && it.categoryIds.isEmpty()) 
+            val knownCategoryIds = categories.map { it.id }.toSet()
+            val categoryBooks = filteredBooks.filter {
+                val bookCategoryIds = it.normalizedCategoryIds(knownCategoryIds)
+                if (category.isSystemCategory) {
+                    bookCategoryIds.isEmpty() || bookCategoryIds.contains(NovelCategory.UNCATEGORIZED_ID)
+                } else {
+                    bookCategoryIds.contains(category.id)
+                }
             }
             
             val comparator = when (sortMode) {
@@ -316,6 +322,19 @@ class NovelLibraryScreenModel(
                 categoryBooks.sortedWith(comparator.reversed())
             } else {
                 categoryBooks.sortedWith(comparator)
+            }
+        }
+
+        private fun BookMetadata.normalizedCategoryIds(knownCategoryIds: Set<String>): List<String> {
+            val distinctIds = categoryIds
+                .filter { it.isNotBlank() }
+                .distinct()
+
+            val nonDefaultIds = distinctIds.filterNot { it == NovelCategory.UNCATEGORIZED_ID }
+            return if (nonDefaultIds.isNotEmpty()) {
+                nonDefaultIds.filter { it in knownCategoryIds }
+            } else {
+                distinctIds
             }
         }
 

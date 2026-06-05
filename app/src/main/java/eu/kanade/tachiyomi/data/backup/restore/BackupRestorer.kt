@@ -304,20 +304,22 @@ class BackupRestorer(
     ) = launch {
         ensureActive()
 
-        try {
+        val categoryIdMap = try {
             novelRestorer.restoreCategories(backupNovelCategories)
-            if (backupNovelCategories.isNotEmpty()) {
-                restoreProgress += 1
-            }
         } catch (e: Exception) {
             errors.add(Date() to "Error Restoring Novel Categories: ${e.message}")
+            emptyMap()
+        }
+
+        if (backupNovelCategories.isNotEmpty()) {
+            restoreProgress += 1
         }
 
         backupNovels.forEach { backupNovel ->
             ensureActive()
 
             try {
-                novelRestorer.restoreNovel(backupNovel)
+                novelRestorer.restoreNovel(backupNovel, categoryIdMap)
             } catch (e: Exception) {
                 errors.add(Date() to "${backupNovel.title}: ${e.message}")
             }

@@ -84,13 +84,13 @@ object BookImporter {
 
             var existingBookmark: Bookmark? = null
             var existingStats: List<Statistics>? = null
-            var existingLastAccess: Long? = null
+            var existingMetadata: BookMetadata? = null
 
             // Move from temp to final destination
             if (bookDir.exists()) {
                 existingBookmark = BookStorage.loadBookmark(bookDir)
                 existingStats = BookStorage.loadStatistics(bookDir)
-                existingLastAccess = BookStorage.loadMetadata(bookDir)?.lastAccess
+                existingMetadata = BookStorage.loadMetadata(bookDir)
                 bookDir.deleteRecursively()
             }
             tempExtractDir.renameTo(bookDir)
@@ -122,18 +122,36 @@ object BookImporter {
 
             Log.d(TAG, "Parsed EPUB: title=$title, contentDir=${extractedBook.contentDirectory}, chapters=${extractedBook.spine.items.size}")
 
-val metadata = BookMetadata(
-    id = stableId,
-    title = title,
-    author = author,
-    cover = coverAbsPath,
-    folder = stableId,
-    lastAccess = existingLastAccess ?: System.currentTimeMillis(),
-    hash = stableId,
-    isGhost = false,
-    lang = extractedBook.language,
-    categoryIds = categoryIds ?: emptyList(),
-)
+            val existingCategoryIds = existingMetadata?.categoryIds.orEmpty()
+            val resolvedCategoryIds = when {
+                categoryIds != null -> (existingCategoryIds + categoryIds).distinct()
+                existingCategoryIds.isNotEmpty() -> existingCategoryIds
+                else -> emptyList()
+            }.let { ids ->
+                val distinctIds = ids
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+                if (distinctIds.any { it != NovelCategory.UNCATEGORIZED_ID }) {
+                    distinctIds.filterNot { it == NovelCategory.UNCATEGORIZED_ID }
+                } else {
+                    distinctIds
+                }
+            }
+
+            val metadata = BookMetadata(
+                id = stableId,
+                title = title,
+                author = author,
+                cover = coverAbsPath,
+                folder = stableId,
+                lastAccess = existingMetadata?.lastAccess ?: System.currentTimeMillis(),
+                dateAdded = existingMetadata?.dateAdded ?: System.currentTimeMillis(),
+                hash = stableId,
+                isGhost = false,
+                lang = extractedBook.language,
+                categoryIds = resolvedCategoryIds,
+            )
             BookStorage.saveMetadata(metadata, bookDir)
             BookStorage.saveSpineCache(extractedBook.spine, bookDir)
 
