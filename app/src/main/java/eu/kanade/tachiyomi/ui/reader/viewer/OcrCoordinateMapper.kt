@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.RectF
+import chimahon.ocr.OcrBitmapDecoder
 import okio.BufferedSource
 import okio.Buffer
 import tachiyomi.core.common.util.system.logcat
@@ -345,21 +345,12 @@ object OcrCoordinateMapper {
         return try {
             // Peek so we don't consume the stream
             val bytes = stream.peek().readByteArray()
-            val options = BitmapFactory.Options().apply {
-                // Decode as grayscale (ALPHA_8 is grayscale when inGrayscale=true is unavailable;
-                // use RGB_565 then convert, or simply use the ARGB and read R channel)
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-                // Use a tiny sample size to keep memory manageable but still accurate
-                inSampleSize = 2
+            val bitmap = OcrBitmapDecoder.decode(bytes, sampleSize = 2)
+            try {
+                findBorders(bitmap)
+            } finally {
+                bitmap.recycle()
             }
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                ?: return null
-
-            val rect = findBorders(bitmap)
-            bitmap.recycle()
-
-            if (rect == null) return null
-            rect
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "OcrCoordinateMapper: crop detection failed" }
             null

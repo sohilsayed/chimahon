@@ -41,7 +41,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -955,7 +954,7 @@ class ReaderActivity : BaseActivity() {
 
             Box(
                 modifier = Modifier
-                    .matchParentSize()
+                    .fillMaxSize()
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -1552,7 +1551,7 @@ class ReaderActivity : BaseActivity() {
         val viewer = viewModel.state.value.viewer as? PagerViewer ?: return
         viewer.config.let { config ->
             config.shiftDoublePage = !config.shiftDoublePage
-            
+
             viewModel.manga?.id?.let { mangaId ->
                 getSharedPreferences("reader_prefs", MODE_PRIVATE)
                     .edit()
@@ -1617,7 +1616,7 @@ class ReaderActivity : BaseActivity() {
             if (readerPreferences.pageLayout().get() == PagerConfig.PageLayout.AUTOMATIC) {
                 setDoublePageMode(newViewer)
             }
-            
+
             val savedShift = viewModel.manga?.id?.let { mangaId ->
                 getSharedPreferences("reader_prefs", MODE_PRIVATE)
                     .getBoolean("shift_doublepage$mangaId", false)

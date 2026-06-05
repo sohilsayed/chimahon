@@ -1,7 +1,6 @@
 package chimahon.ocr
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -67,15 +66,21 @@ internal fun splitImageIntoChunks(
 }
 
 private fun decodeBitmap(data: ByteArray): Bitmap {
-    return BitmapFactory.decodeByteArray(data, 0, data.size)
-        ?: error("Failed to decode image from bytes")
+    return OcrBitmapDecoder.decode(data)
 }
 
 private fun processImageInternal(bitmap: Bitmap): ProcessedImage {
-    val resized = resizeIfNeeded(bitmap)
-    val pngBytes = bitmapToPng(resized)
-    if (resized !== bitmap) bitmap.recycle()
-    return ProcessedImage(bytes = pngBytes, width = resized.width, height = resized.height)
+    var resized: Bitmap? = null
+    return try {
+        val resizedBitmap = resizeIfNeeded(bitmap).also { resized = it }
+        val pngBytes = bitmapToPng(resizedBitmap)
+        ProcessedImage(bytes = pngBytes, width = resizedBitmap.width, height = resizedBitmap.height)
+    } finally {
+        if (resized != null && resized !== bitmap) {
+            resized.recycle()
+        }
+        bitmap.recycle()
+    }
 }
 
 private fun bitmapToPng(bitmap: Bitmap): ByteArray {
@@ -104,17 +109,25 @@ internal fun prepareForOcr(data: ByteArray): List<ImageChunk> {
         chunkImage(bitmap)
     } else {
         // Normal page: resize proportional to 3MP, send as single chunk
-        val resized = resizeToMaxPixels(bitmap, MAX_TOTAL_PIXELS)
-        listOf(
-            ImageChunk(
-                pngBytes = bitmapToPng(resized),
-                width = resized.width,
-                height = resized.height,
-                globalY = 0,
-                fullWidth = resized.width,
-                fullHeight = resized.height,
-            ),
-        )
+        var resized: Bitmap? = null
+        try {
+            val resizedBitmap = resizeToMaxPixels(bitmap, MAX_TOTAL_PIXELS).also { resized = it }
+            listOf(
+                ImageChunk(
+                    pngBytes = bitmapToPng(resizedBitmap),
+                    width = resizedBitmap.width,
+                    height = resizedBitmap.height,
+                    globalY = 0,
+                    fullWidth = resizedBitmap.width,
+                    fullHeight = resizedBitmap.height,
+                ),
+            )
+        } finally {
+            if (resized != null && resized !== bitmap) {
+                resized.recycle()
+            }
+            bitmap.recycle()
+        }
     }
 }
 
