@@ -107,6 +107,9 @@ class PagerPageHolder(
             val sourcePage = block?.let { getPageForBlock(it) } ?: page
             viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage)
         }
+        onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+            viewer.onShowOcrSelectionPanel?.invoke(text, anchorX, anchorY, anchorWidth, anchorHeight)
+        }
         onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()
         }
@@ -479,6 +482,7 @@ class PagerPageHolder(
         progressIndicator?.hide()
         ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
         ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         val ocrEnabled = viewer.activity.viewModel.isOcrEnabled()
         this.ocrEnabled = ocrEnabled
         if (!ocrEnabled) {
@@ -495,6 +499,7 @@ class PagerPageHolder(
     fun applyOcrEnabled(enabled: Boolean) {
         ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
         ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         ocrEnabled = enabled
         if (!enabled) {
             ocrLoadJob?.cancel()
@@ -513,6 +518,10 @@ class PagerPageHolder(
 
     fun applyOcrOutlineVisible(visible: Boolean) {
         ocrOutlineVisible = visible
+    }
+
+    fun applyOcrBoxOpacity(opacity: Float) {
+        ocrBoxOpacity = opacity
     }
 
     /**

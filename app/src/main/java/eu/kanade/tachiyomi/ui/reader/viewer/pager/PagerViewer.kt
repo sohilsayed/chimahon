@@ -63,6 +63,16 @@ abstract class PagerViewer(
 
     var onDismissOcrPopup: (() -> Unit)? = null
 
+    var onShowOcrSelectionPanel: (
+        (
+            text: String,
+            anchorX: Float,
+            anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+        ) -> Unit
+    )? = null
+
     /**
      * View pager used by this viewer. It's abstract to implement L2R, R2L and vertical pagers on
      * top of this class.
@@ -171,6 +181,21 @@ abstract class PagerViewer(
             }
         }
         pager.longTapListener = f@{
+            val rx = it.rawX
+            val ry = it.rawY
+            val isOcrLongTap = pager.children
+                .filterIsInstance<PagerPageHolder>()
+                .any { holder ->
+                    val loc = IntArray(2)
+                    holder.getLocationOnScreen(loc)
+                    val localX = rx - loc[0]
+                    val localY = ry - loc[1]
+                    localX >= 0 && localX <= holder.width &&
+                        localY >= 0 && localY <= holder.height &&
+                        holder.isPointOnOcrBlock(localX, localY)
+                }
+            if (isOcrLongTap) return@f true
+
             if (activity.viewModel.state.value.menuVisible || config.longTapEnabled) {
                 val item = adapter.joinedItems.getOrNull(pager.currentItem)
                 val firstPage = item?.first as? ReaderPage
@@ -476,6 +501,14 @@ abstract class PagerViewer(
             .filterIsInstance(PagerPageHolder::class.java)
             .forEach { holder ->
                 holder.applyOcrOutlineVisible(visible)
+            }
+    }
+
+    fun setOcrBoxOpacity(opacity: Float) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrBoxOpacity(opacity)
             }
     }
 

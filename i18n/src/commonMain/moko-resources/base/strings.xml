@@ -266,6 +266,7 @@
     <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>
     <string name="pref_ocr_auto_on_download_summary">Automatically OCR chapters when downloading</string>
     <string name="pref_dict_ocr_box_scale">OCR box scale</string>
+    <string name="pref_dict_ocr_box_opacity">OCR box opacity</string>
     <string name="pref_ocr_cache_size">OCR cache size</string>
     <string name="pref_ocr_clear_cache">Clear OCR cache</string>
     <string name="ocr_ready">OCR ready</string>

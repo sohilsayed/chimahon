@@ -23,6 +23,7 @@ import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,15 +31,23 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -58,7 +67,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import chimahon.MediaInfo
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.content.getSystemService
 import androidx.core.graphics.Insets
 import androidx.core.net.toUri
@@ -180,7 +193,7 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 class ReaderActivity : BaseActivity() {
 
     companion object {
-        private val ocrProgressHudTopPadding = 76.dp
+        private val ocrProgressHudTopPadding = 124.dp
 
         fun newIntent(context: Context, mangaId: Long?, chapterId: Long?/* SY --> */, page: Int? = null/* SY <-- */): Intent {
             return Intent(context, ReaderActivity::class.java).apply {
@@ -229,6 +242,7 @@ class ReaderActivity : BaseActivity() {
 
     private var ocrPopupState by mutableStateOf<OcrPopupState?>(null)
     private var ocrPopupVisible by mutableStateOf(false)
+    private var ocrSelectionPanelState by mutableStateOf<OcrSelectionPanelState?>(null)
 
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingGlossaryIndex by mutableStateOf<Int?>(null)
@@ -278,6 +292,14 @@ class ReaderActivity : BaseActivity() {
         val mediaInfo: chimahon.MediaInfo? = null,
         val sourcePage: ReaderPage? = null,
         val deferredLookup: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
+    )
+
+    private data class OcrSelectionPanelState(
+        val text: String,
+        val anchorX: Float,
+        val anchorY: Float,
+        val anchorWidth: Float,
+        val anchorHeight: Float,
     )
 
     var isScrollingThroughPages = false
@@ -477,12 +499,19 @@ class ReaderActivity : BaseActivity() {
 
                 ContentOverlay(state = state)
 
+                AppBars(state = state)
+
                 OcrProgressHud(
                     visible = state.menuVisible,
                     progress = state.ocrScanProgress,
                 )
 
-                AppBars(state = state)
+                ocrSelectionPanelState?.let { selectionState ->
+                    OcrSelectionPanel(
+                        state = selectionState,
+                        onDismiss = ::dismissOcrSelectionPanel,
+                    )
+                }
             }
 
             if (viewModel.showMangaStats) {
@@ -678,6 +707,10 @@ class ReaderActivity : BaseActivity() {
             }
         }
 
+        BackHandler(enabled = ocrSelectionPanelState != null) {
+            dismissOcrSelectionPanel()
+        }
+
         // The popup WebView is warmed by DictionaryPopupWebViewWarmup without being
         // attached to the reader root during startup.
         val popupState = ocrPopupState
@@ -786,8 +819,23 @@ class ReaderActivity : BaseActivity() {
                                     rect?.width() ?: anchorWidth, rect?.height() ?: anchorHeight,
                                     isVertical, getOrRefreshLookupPaths().first, mediaInfo, sourcePage, null
                                 )
+                                ocrSelectionPanelState = null
                                 ocrPopupVisible = true
                             }
+                        }
+                    }
+                }
+                if (viewer.onShowOcrSelectionPanel == null) {
+                    viewer.onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+                        runOnUiThread {
+                            ocrPopupVisible = false
+                            ocrSelectionPanelState = OcrSelectionPanelState(
+                                text = text,
+                                anchorX = anchorX,
+                                anchorY = anchorY,
+                                anchorWidth = anchorWidth,
+                                anchorHeight = anchorHeight,
+                            )
                         }
                     }
                 }
@@ -830,14 +878,161 @@ class ReaderActivity : BaseActivity() {
                                     rect?.width() ?: anchorWidth, rect?.height() ?: anchorHeight,
                                     isVertical, getOrRefreshLookupPaths().first, mediaInfo, sourcePage, null
                                 )
+                                ocrSelectionPanelState = null
                                 ocrPopupVisible = true
                             }
+                        }
+                    }
+                }
+                if (viewer.onShowOcrSelectionPanel == null) {
+                    viewer.onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+                        runOnUiThread {
+                            ocrPopupVisible = false
+                            ocrSelectionPanelState = OcrSelectionPanelState(
+                                text = text,
+                                anchorX = anchorX,
+                                anchorY = anchorY,
+                                anchorWidth = anchorWidth,
+                                anchorHeight = anchorHeight,
+                            )
                         }
                     }
                 }
                 if (viewer.onDismissOcrPopup == null) {
                     viewer.onDismissOcrPopup = {
                         runOnUiThread { ocrPopupVisible = false }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun BoxScope.OcrSelectionPanel(
+        state: OcrSelectionPanelState,
+        onDismiss: () -> Unit,
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(10f),
+        ) {
+            val density = LocalDensity.current
+            val rootView = LocalView.current
+            val rootLocation = remember { IntArray(2) }
+            rootView.getLocationOnScreen(rootLocation)
+
+            val margin = 16.dp
+            val availableWidth = (maxWidth - 32.dp).coerceAtLeast(1.dp)
+            val panelWidth = minOf(availableWidth, 360.dp)
+            val availableHeight = (maxHeight - 32.dp).coerceAtLeast(1.dp)
+            val panelMaxHeight = minOf(availableHeight, 280.dp)
+
+            val anchorCenterX = with(density) {
+                (state.anchorX + state.anchorWidth / 2f - rootLocation[0]).toDp()
+            }
+            val anchorTop = with(density) {
+                (state.anchorY - rootLocation[1]).toDp()
+            }
+            val anchorHeight = with(density) {
+                state.anchorHeight.toDp()
+            }
+
+            val xUpperBound = (maxWidth - panelWidth - margin).let {
+                if (it > margin) it else margin
+            }
+            val requestedX = anchorCenterX - panelWidth / 2
+            val panelX = requestedX.coerceIn(margin, xUpperBound)
+
+            val belowY = anchorTop + anchorHeight + 8.dp
+            val aboveY = anchorTop - panelMaxHeight - 8.dp
+            val fitsBelow = belowY + panelMaxHeight + margin <= maxHeight
+            val requestedY = if (fitsBelow) belowY else aboveY
+            val yUpperBound = (maxHeight - panelMaxHeight - margin).let {
+                if (it > margin) it else margin
+            }
+            val panelY = requestedY.coerceIn(margin, yUpperBound)
+
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
+            )
+
+            val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+            val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f).toArgb()
+            val textPaddingPx = with(density) { 14.dp.toPx().toInt() }
+
+            Surface(
+                modifier = Modifier
+                    .offset(x = panelX, y = panelY)
+                    .width(panelWidth)
+                    .heightIn(max = panelMaxHeight),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shadowElevation = 8.dp,
+            ) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = panelMaxHeight),
+                    factory = { context ->
+                        TextView(context).apply {
+                            setTextIsSelectable(true)
+                            textSize = 18f
+                            setLineSpacing(0f, 1.12f)
+                            setPadding(textPaddingPx, textPaddingPx, textPaddingPx, textPaddingPx)
+                            setBackgroundColor(Color.TRANSPARENT)
+                            isFocusable = true
+                            isFocusableInTouchMode = true
+                        }
+                    },
+                    update = { textView ->
+                        if (textView.text.toString() != state.text) {
+                            textView.text = state.text
+                        }
+                        textView.setTextColor(textColor)
+                        textView.highlightColor = highlightColor
+                        textView.post {
+                            if (!textView.hasFocus()) {
+                                textView.requestFocus()
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    private fun dismissOcrSelectionPanel() {
+        ocrSelectionPanelState = null
+        clearActiveOcrBlock()
+    }
+
+    private fun clearActiveOcrBlock() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is PagerViewer -> {
+                for (i in 0 until viewer.pager.childCount) {
+                    val holder = viewer.pager.getChildAt(i) as? PagerPageHolder
+                    if (holder?.hasActiveOcrBlock == true) {
+                        holder.dismissActiveOcrBlock()
+                        break
+                    }
+                }
+            }
+            is WebtoonViewer -> {
+                for (i in 0 until viewer.recycler.childCount) {
+                    val holder = viewer.recycler.getChildViewHolder(
+                        viewer.recycler.getChildAt(i),
+                    ) as? WebtoonPageHolder
+                    if (holder?.hasActiveOcrBlock == true) {
+                        holder.dismissActiveOcrBlock()
+                        break
                     }
                 }
             }
@@ -933,6 +1128,10 @@ class ReaderActivity : BaseActivity() {
      * Dispatches a key event. If the viewer doesn't handle it, call the default implementation.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (ocrSelectionPanelState != null) {
+            return super.dispatchKeyEvent(event)
+        }
+
         // Chimahon: Redirect volume keys to the OCR popup if it's active
         if (ocrPopupVisible) {
             ocrPopupState?.let { popup ->
@@ -960,6 +1159,10 @@ class ReaderActivity : BaseActivity() {
      * implementation.
      */
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (ocrSelectionPanelState != null) {
+            return super.dispatchGenericMotionEvent(event)
+        }
+
         val handled = viewModel.state.value.viewer?.handleGenericMotionEvent(event) ?: false
         return handled || super.dispatchGenericMotionEvent(event)
     }
@@ -974,12 +1177,20 @@ class ReaderActivity : BaseActivity() {
         val colorOverlayBlendMode = remember(colorOverlayMode) {
             ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
         }
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val ocrOutlineVisible by readerPreferences.ocrOutlineVisible().collectAsState()
+        val ocrBoxOpacity by dictionaryPreferences.ocrBoxOpacity().collectAsState()
 
-        LaunchedEffect(state.viewer, ocrOutlineVisible) {
+        LaunchedEffect(state.viewer, ocrOutlineVisible, ocrBoxOpacity) {
             when (val viewer = state.viewer) {
-                is PagerViewer -> viewer.setOcrOutlineVisible(ocrOutlineVisible)
-                is WebtoonViewer -> viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                is PagerViewer -> {
+                    viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                    viewer.setOcrBoxOpacity(ocrBoxOpacity)
+                }
+                is WebtoonViewer -> {
+                    viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                    viewer.setOcrBoxOpacity(ocrBoxOpacity)
+                }
             }
         }
 

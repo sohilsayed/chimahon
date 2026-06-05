@@ -20,6 +20,8 @@ class DictionaryPreferences(
 
     fun ocrBoxScale() = preferenceStore.getFloat("pref_ocr_box_scale", 1.0f)
 
+    fun ocrBoxOpacity() = preferenceStore.getFloat("pref_ocr_box_opacity", 0.0f)
+
     /** "cloud" (default) or "local" */
     fun ocrEngine() = preferenceStore.getString("pref_ocr_engine", "cloud")
 

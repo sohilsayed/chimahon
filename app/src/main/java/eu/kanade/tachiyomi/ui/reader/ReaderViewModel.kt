@@ -197,6 +197,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private val ocrDispatcher = Dispatchers.IO.limitedParallelism(2)
     private var ocrScanJob: Job? = null
     private var ocrScanChapterId: Long? = null
+    private val ocrScannedChapterIds = mutableSetOf<Long>()
     private val maxOcrCacheEntries = 120
 
     private val mokuroChapterCache = mutableMapOf<Long, MokuroChapterData>()
@@ -1275,6 +1276,8 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun getOcrBoxScale(): Float = dictionaryPreferences.ocrBoxScale().get()
 
+    fun getOcrBoxOpacity(): Float = dictionaryPreferences.ocrBoxOpacity().get()
+
     fun toggleOcrEnabled(): Boolean {
         val pref = readerPreferences.ocrOverlayEnabled()
         val enabled = !pref.get()
@@ -1736,8 +1739,15 @@ class ReaderViewModel @JvmOverloads constructor(
         if (!isOcrEnabled()) return
         val chapter = currentPage.chapter
         val chapterId = chapter.chapter.id ?: return
+        if (ocrScanChapterId == chapterId) {
+            if (ocrScanJob?.isActive == true || chapterId in ocrScannedChapterIds) {
+                return
+            }
+        }
+
         ocrScanJob?.cancel()
         ocrScanChapterId = chapterId
+        ocrScannedChapterIds.remove(chapterId)
         ocrScanJob = viewModelScope.launch {
             val pages = chapter.pages ?: return@launch
             val scanPages = buildOcrScanPages(pages, currentPage.index)
@@ -1777,6 +1787,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     }
                 }
             }
+            ocrScannedChapterIds.add(chapterId)
             delay(800)
             mutableState.update { it.copy(ocrScanProgress = null) }
         }
@@ -2108,7 +2119,7 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private fun isImageExtension(name: String?): Boolean {
         val ext = name?.substringAfterLast('.', "")?.lowercase() ?: return false
-        return ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+        return ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "avif", "heif", "heic", "jxl")
     }
 
     private suspend fun fetchOcrBlocks(page: ReaderPage): List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock> {

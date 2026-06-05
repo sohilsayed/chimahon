@@ -107,6 +107,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
             (pageView as? SubsamplingScaleImageView)?.invalidate()
         }
 
+    var ocrBoxOpacity: Float = 0.0f
+        set(value) {
+            field = value.coerceIn(0.0f, 1.0f)
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
     internal var ocrBlocks: List<OcrTextBlock> = emptyList()
     internal var activeOcrBlock: OcrTextBlock? = null
     val hasActiveOcrBlock: Boolean get() = activeOcrBlock != null
@@ -130,6 +136,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
             isVertical: Boolean,
             mediaInfo: chimahon.MediaInfo?,
             block: OcrTextBlock?,
+        ) -> Unit
+    )? = null
+
+    var onShowOcrSelectionPanel: (
+        (
+            text: String,
+            anchorX: Float,
+            anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
         ) -> Unit
     )? = null
 
@@ -630,6 +646,72 @@ open class ReaderPageImageView @JvmOverloads constructor(
         return ssiv.dismissHandledInThisGesture || ssiv.isPointOnActiveOrAnyOcrBlock(viewX, viewY)
     }
 
+    private fun getOcrBlockScreenBounds(
+        block: OcrTextBlock,
+        viewX: Float,
+        viewY: Float,
+        ssiv: SubsamplingScaleImageView,
+    ): RectF {
+        val centerX = (block.xmin + block.xmax) / 2f
+        val centerY = (block.ymin + block.ymax) / 2f
+        val width = block.xmax - block.xmin
+        val height = block.ymax - block.ymin
+        val boxScale = ocrBoxScale
+
+        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+
+        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
+        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
+
+        val location = IntArray(2)
+        ssiv.getLocationOnScreen(location)
+        val left = minOf(tl.x, br.x) + location[0]
+        val top = minOf(tl.y, br.y) + location[1]
+        val right = maxOf(tl.x, br.x) + location[0]
+        val bottom = maxOf(tl.y, br.y) + location[1]
+        return RectF(left, top, right, bottom)
+    }
+
+    /**
+     * Handle long press on an OCR block by opening the native selectable text panel.
+     *
+     * Called by [OcrSubsamplingImageView.OcrGestureListener.onLongPress].
+     */
+    internal fun handleOcrLongPress(
+        block: OcrTextBlock,
+        viewX: Float,
+        viewY: Float,
+    ): Boolean {
+        val selectionText = block.orderedFullText.ifBlank { block.fullText }
+        if (selectionText.isBlank()) return true
+
+        logcat {
+            "OCR long press: open selection panel vertical=${block.vertical} chars=${selectionText.length} x=$viewX y=$viewY"
+        }
+
+        activeOcrBlock = block
+        activeOcrCharOffset = 0
+        activeOcrMatchedCount = 0
+        ocrLayoutCache = null
+        ocrPopupLookupString = null
+        onDismissOcrPopup?.invoke()
+
+        val ssiv = pageView as? SubsamplingScaleImageView ?: return true
+        (pageView as? SubsamplingScaleImageView)?.invalidate()
+        val anchorBounds = getOcrBlockScreenBounds(block, viewX, viewY, ssiv)
+        onShowOcrSelectionPanel?.invoke(
+            selectionText,
+            anchorBounds.left,
+            anchorBounds.top,
+            anchorBounds.width(),
+            anchorBounds.height(),
+        )
+        return true
+    }
+
     /**
      * Handle tap on OCR block: activate and immediately trigger dictionary lookup in one tap.
      *
@@ -692,32 +774,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         ocrPopupLookupString = lookupString
 
-        // Calculate screen bounding box of the block for adaptive positioning
-        val centerX = (block.xmin + block.xmax) / 2f
-        val centerY = (block.ymin + block.ymax) / 2f
-        val width = block.xmax - block.xmin
-        val height = block.ymax - block.ymin
-        val boxScale = ocrBoxScale
-
-        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
-        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
-
-        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
-        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
-
-        // Convert view-relative to screen-relative coordinates
-        val location = IntArray(2)
-        ssiv.getLocationOnScreen(location)
-        val anchorX = tl.x + location[0]
-        val anchorY = tl.y + location[1]
-        val anchorWidth = br.x - tl.x
-        val anchorHeight = br.y - tl.y
+        val anchorBounds = getOcrBlockScreenBounds(block, viewX, viewY, ssiv)
 
         onShowOcrPopup?.invoke(
             lookupString, sentenceText, sentenceOffset,
-            anchorX, anchorY, anchorWidth, anchorHeight,
+            anchorBounds.left, anchorBounds.top, anchorBounds.width(), anchorBounds.height(),
             block.vertical, null, block
         )
         return true

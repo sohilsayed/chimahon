@@ -105,6 +105,9 @@ class WebtoonPageHolder(
         frame.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, _ ->
             viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, page)
         }
+        frame.onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+            viewer.onShowOcrSelectionPanel?.invoke(text, anchorX, anchorY, anchorWidth, anchorHeight)
+        }
         frame.onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()
         }
@@ -296,6 +299,7 @@ class WebtoonPageHolder(
     fun applyOcrEnabled(enabled: Boolean) {
         frame.ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
         frame.ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        frame.ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         frame.ocrEnabled = enabled
         if (!enabled) {
             ocrLoadJob?.cancel()
@@ -317,6 +321,10 @@ class WebtoonPageHolder(
 
     fun applyOcrOutlineVisible(visible: Boolean) {
         frame.ocrOutlineVisible = visible
+    }
+
+    fun applyOcrBoxOpacity(opacity: Float) {
+        frame.ocrBoxOpacity = opacity
     }
 
     private suspend fun loadOcrWithTransform(targetPage: ReaderPage) {

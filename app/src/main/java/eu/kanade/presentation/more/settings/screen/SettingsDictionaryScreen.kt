@@ -381,6 +381,9 @@ object SettingsDictionaryScreen : SearchableSettings {
         val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
         val ocrBoxScale by ocrBoxScalePref.collectAsState()
 
+        val ocrBoxOpacityPref = dictionaryPreferences.ocrBoxOpacity()
+        val ocrBoxOpacity by ocrBoxOpacityPref.collectAsState()
+
         val themeModePref = dictionaryPreferences.themeMode()
         val themeMode by themeModePref.collectAsState()
 
@@ -557,6 +560,16 @@ object SettingsDictionaryScreen : SearchableSettings {
                     steps = 14,
                     onValueChanged = { newValue ->
                         ocrBoxScalePref.set(newValue / 100f)
+                    },
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = (ocrBoxOpacity * 100).toInt(),
+                    title = stringResource(MR.strings.pref_dict_ocr_box_opacity),
+                    subtitle = "${(ocrBoxOpacity * 100).toInt()}%",
+                    valueRange = 0..100 step 5,
+                    steps = 19,
+                    onValueChanged = { newValue ->
+                        ocrBoxOpacityPref.set(newValue / 100f)
                     },
                 ),
                 Preference.PreferenceItem.ListPreference(
