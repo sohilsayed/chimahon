@@ -119,13 +119,12 @@ class OcrSubsamplingImageView(
         val centerY = (block.ymin + block.ymax) / 2f
         val width = block.xmax - block.xmin
         val height = block.ymax - block.ymin
-        val scale = host.ocrBoxScale
 
         // Convert normalized coords to source pixel coords with scale applied around center
-        val srcXMin = (centerX - (width * scale) / 2f) * sWidth
-        val srcYMin = (centerY - (height * scale) / 2f) * sHeight
-        val srcXMax = (centerX + (width * scale) / 2f) * sWidth
-        val srcYMax = (centerY + (height * scale) / 2f) * sHeight
+        val srcXMin = (centerX - (width * host.ocrBoxScaleX) / 2f) * sWidth
+        val srcYMin = (centerY - (height * host.ocrBoxScaleY) / 2f) * sHeight
+        val srcXMax = (centerX + (width * host.ocrBoxScaleX) / 2f) * sWidth
+        val srcYMax = (centerY + (height * host.ocrBoxScaleY) / 2f) * sHeight
 
         // Convert source coords to screen coords
         val tlScreen = sourceToViewCoord(srcXMin, srcYMin) ?: return
@@ -135,7 +134,7 @@ class OcrSubsamplingImageView(
         val screenH = brScreen.y - tlScreen.y
 
         if (block == host.activeOcrBlock) {
-            val activeBackgroundAlpha = (180 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
+            val activeBackgroundAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
             drawOcrTextBox(
                 canvas = canvas,
                 block = block,
@@ -154,7 +153,7 @@ class OcrSubsamplingImageView(
         }
 
         val textAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
-        val backgroundAlpha = (180 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
+        val backgroundAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
         if (textAlpha > 0 || backgroundAlpha > 0) {
             drawOcrTextBox(
                 canvas = canvas,
@@ -252,7 +251,7 @@ class OcrSubsamplingImageView(
     ) {
         if (text.isBlank()) return
 
-        val rect = getLineRect(geo, host.ocrBoxScale) ?: return
+        val rect = getLineRect(geo, host.ocrBoxScaleX, host.ocrBoxScaleY) ?: return
         val sW = rect.width()
         val sH = rect.height()
 
@@ -276,17 +275,17 @@ class OcrSubsamplingImageView(
         canvas.restore()
     }
 
-    fun getLineRect(geo: OcrLineGeometry, scale: Float): RectF? {
+    fun getLineRect(geo: OcrLineGeometry, scaleX: Float, scaleY: Float): RectF? {
         if (!isReady) return null
         val centerX = (geo.xmin + geo.xmax) / 2f
         val centerY = (geo.ymin + geo.ymax) / 2f
         val width = geo.xmax - geo.xmin
         val height = geo.ymax - geo.ymin
 
-        val srcXMin = (centerX - (width * scale) / 2f) * sWidth
-        val srcYMin = (centerY - (height * scale) / 2f) * sHeight
-        val srcXMax = (centerX + (width * scale) / 2f) * sWidth
-        val srcYMax = (centerY + (height * scale) / 2f) * sHeight
+        val srcXMin = (centerX - (width * scaleX) / 2f) * sWidth
+        val srcYMin = (centerY - (height * scaleY) / 2f) * sHeight
+        val srcXMax = (centerX + (width * scaleX) / 2f) * sWidth
+        val srcYMax = (centerY + (height * scaleY) / 2f) * sHeight
 
         val tl = sourceToViewCoord(srcXMin, srcYMin) ?: return null
         val br = sourceToViewCoord(srcXMax, srcYMax) ?: return null
@@ -298,10 +297,11 @@ class OcrSubsamplingImageView(
         geo: OcrLineGeometry,
         start: Int,
         end: Int,
-        scale: Float,
+        scaleX: Float,
+        scaleY: Float,
         isVertical: Boolean,
     ): RectF? {
-        val rect = getLineRect(geo, scale) ?: return null
+        val rect = getLineRect(geo, scaleX, scaleY) ?: return null
         if (start <= 0 && end >= text.length) return rect
 
         val sW = rect.width()
@@ -320,7 +320,13 @@ class OcrSubsamplingImageView(
      * Get the screen-space bounding box for a range of characters in a block.
      * Reuses the same geometry logic as [onDraw] to ensure alignment.
      */
-    fun getMatchedWordRect(block: OcrTextBlock, startOffset: Int, count: Int, scale: Float): RectF? {
+    fun getMatchedWordRect(
+        block: OcrTextBlock,
+        startOffset: Int,
+        count: Int,
+        scaleX: Float,
+        scaleY: Float,
+    ): RectF? {
         if (!isReady || count <= 0) return null
 
         val geometries = block.lineGeometries
@@ -337,7 +343,8 @@ class OcrSubsamplingImageView(
                         geometries[i],
                         maxOf(0, startOffset - currentOffset),
                         minOf(text.length, startOffset + count - currentOffset),
-                        scale,
+                        scaleX,
+                        scaleY,
                         block.vertical,
                     )
                     if (lineRect != null) rects.add(lineRect)
@@ -726,18 +733,16 @@ class OcrSubsamplingImageView(
         val nyPadding = sourcePaddingPx / sHeight
 
         // Apply the same scale to hit area as used in drawing
-        val boxScale = host.ocrBoxScale
-
         // Prioritize currently active block so overlapping OCR boxes don't steal taps.
         host.activeOcrBlock?.let { active ->
-            if (blockContainsPoint(active, nx, ny, nxPadding, nyPadding, boxScale)) {
+            if (blockContainsPoint(active, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)) {
                 return active
             }
         }
 
         // Otherwise resolve first matching block.
         return host.ocrBlocks.firstOrNull { block ->
-            blockContainsPoint(block, nx, ny, nxPadding, nyPadding, boxScale)
+            blockContainsPoint(block, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)
         }
     }
 
@@ -747,17 +752,18 @@ class OcrSubsamplingImageView(
         ny: Float,
         nxPadding: Float,
         nyPadding: Float,
-        boxScale: Float,
+        boxScaleX: Float,
+        boxScaleY: Float,
     ): Boolean {
         val centerX = (block.xmin + block.xmax) / 2f
         val centerY = (block.ymin + block.ymax) / 2f
         val width = block.xmax - block.xmin
         val height = block.ymax - block.ymin
 
-        val scaledXMin = centerX - (width * boxScale) / 2f
-        val scaledYMin = centerY - (height * boxScale) / 2f
-        val scaledXMax = centerX + (width * boxScale) / 2f
-        val scaledYMax = centerY + (height * boxScale) / 2f
+        val scaledXMin = centerX - (width * boxScaleX) / 2f
+        val scaledYMin = centerY - (height * boxScaleY) / 2f
+        val scaledXMax = centerX + (width * boxScaleX) / 2f
+        val scaledYMax = centerY + (height * boxScaleY) / 2f
 
         return nx >= (scaledXMin - nxPadding) && nx <= (scaledXMax + nxPadding) &&
             ny >= (scaledYMin - nyPadding) && ny <= (scaledYMax + nyPadding)

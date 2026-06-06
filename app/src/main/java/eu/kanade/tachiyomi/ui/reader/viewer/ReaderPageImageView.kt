@@ -101,9 +101,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
             (pageView as? SubsamplingScaleImageView)?.invalidate()
         }
 
-    var ocrBoxScale: Float = 1.0f
+    var ocrBoxScaleX: Float = 1.0f
         set(value) {
             field = value
+            ocrLayoutCache = null
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    var ocrBoxScaleY: Float = 1.0f
+        set(value) {
+            field = value
+            ocrLayoutCache = null
             (pageView as? SubsamplingScaleImageView)?.invalidate()
         }
 
@@ -613,7 +621,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private fun getTermRect(block: OcrTextBlock, startOffset: Int, count: Int): RectF? {
         val ssiv = pageView as? OcrSubsamplingImageView ?: return null
-        return ssiv.getMatchedWordRect(block, startOffset, count, ocrBoxScale)
+        return ssiv.getMatchedWordRect(block, startOffset, count, ocrBoxScaleX, ocrBoxScaleY)
     }
 
     override fun onDetachedFromWindow() {
@@ -656,12 +664,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val centerY = (block.ymin + block.ymax) / 2f
         val width = block.xmax - block.xmin
         val height = block.ymax - block.ymin
-        val boxScale = ocrBoxScale
 
-        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
-        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+        val srcXMin = (centerX - (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
 
         val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
         val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
@@ -837,10 +844,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
         }
 
-        val tl = ssiv.sourceToViewCoord(block.xmin * ssiv.sWidth, block.ymin * ssiv.sHeight)
-            ?: return null
-        val br = ssiv.sourceToViewCoord(block.xmax * ssiv.sWidth, block.ymax * ssiv.sHeight)
-            ?: return null
+        val centerX = (block.xmin + block.xmax) / 2f
+        val centerY = (block.ymin + block.ymax) / 2f
+        val width = block.xmax - block.xmin
+        val height = block.ymax - block.ymin
+        val srcXMin = (centerX - (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+
+        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: return null
+        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: return null
 
         val screenW = br.x - tl.x
         val screenH = br.y - tl.y
@@ -874,12 +888,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val centerY = (geo.ymin + geo.ymax) / 2f
         val width = geo.xmax - geo.xmin
         val height = geo.ymax - geo.ymin
-        val boxScale = ocrBoxScale
 
-        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
-        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+        val srcXMin = (centerX - (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
 
         val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: return null
         val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: return null

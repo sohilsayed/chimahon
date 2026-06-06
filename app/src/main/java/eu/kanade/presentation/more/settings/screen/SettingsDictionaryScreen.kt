@@ -56,6 +56,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -121,8 +125,14 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import tachiyomi.i18n.kmk.KMR
 import java.io.File
 import java.util.Collections.emptyList
+import kotlin.math.roundToInt
 
 private const val TAG = "DictionaryImport"
+
+private enum class OcrScaleAxis(val label: String) {
+    X("X"),
+    Y("Y"),
+}
 
 private val _dictionaryNames = MutableStateFlow<List<String>>(emptyList())
 private val dictionaryNames = _dictionaryNames.asStateFlow()
@@ -378,8 +388,11 @@ object SettingsDictionaryScreen : SearchableSettings {
         val fontSizePref = dictionaryPreferences.fontSize()
         val fontSize by fontSizePref.collectAsState()
 
-        val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
-        val ocrBoxScale by ocrBoxScalePref.collectAsState()
+        val ocrBoxScaleXPref = dictionaryPreferences.ocrBoxScaleX()
+        val ocrBoxScaleX by ocrBoxScaleXPref.collectAsState()
+
+        val ocrBoxScaleYPref = dictionaryPreferences.ocrBoxScaleY()
+        val ocrBoxScaleY by ocrBoxScaleYPref.collectAsState()
 
         val ocrBoxOpacityPref = dictionaryPreferences.ocrBoxOpacity()
         val ocrBoxOpacity by ocrBoxOpacityPref.collectAsState()
@@ -552,14 +565,74 @@ object SettingsDictionaryScreen : SearchableSettings {
                         fontSizePref.set(newValue)
                     },
                 ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = (ocrBoxScale * 100).toInt(),
+                Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_ocr_box_scale),
-                    subtitle = String.format("%.1fx", ocrBoxScale),
-                    valueRange = 50..200 step 10,
-                    steps = 14,
-                    onValueChanged = { newValue ->
-                        ocrBoxScalePref.set(newValue / 100f)
+                    content = {
+                        var selectedAxis by remember { mutableStateOf(OcrScaleAxis.X) }
+                        val selectedValue = when (selectedAxis) {
+                            OcrScaleAxis.X -> ocrBoxScaleX
+                            OcrScaleAxis.Y -> ocrBoxScaleY
+                        }
+                        val setSelectedValue: (Float) -> Unit = { value ->
+                            val rounded = ((value * 10f).roundToInt() / 10f).coerceIn(0.5f, 3.0f)
+                            when (selectedAxis) {
+                                OcrScaleAxis.X -> ocrBoxScaleXPref.set(rounded)
+                                OcrScaleAxis.Y -> ocrBoxScaleYPref.set(rounded)
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_dict_ocr_box_scale),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(
+                                    onClick = {
+                                        ocrBoxScaleXPref.set(1.0f)
+                                        ocrBoxScaleYPref.set(1.0f)
+                                    },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Refresh,
+                                        contentDescription = "Reset OCR box scale",
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "X ${String.format("%.1fx", ocrBoxScaleX)}  Y ${String.format("%.1fx", ocrBoxScaleY)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                OcrScaleAxis.entries.forEachIndexed { index, axis ->
+                                    SegmentedButton(
+                                        selected = selectedAxis == axis,
+                                        onClick = { selectedAxis = axis },
+                                        shape = SegmentedButtonDefaults.itemShape(index, OcrScaleAxis.entries.size),
+                                    ) {
+                                        Text(axis.label)
+                                    }
+                                }
+                            }
+                            Slider(
+                                value = selectedValue.coerceIn(0.5f, 3.0f),
+                                onValueChange = setSelectedValue,
+                                valueRange = 0.5f..3.0f,
+                                steps = 24,
+                            )
+                        }
                     },
                 ),
                 Preference.PreferenceItem.SliderPreference(

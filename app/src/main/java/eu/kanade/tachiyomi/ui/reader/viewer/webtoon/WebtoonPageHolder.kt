@@ -298,7 +298,8 @@ class WebtoonPageHolder(
 
     fun applyOcrEnabled(enabled: Boolean) {
         frame.ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
-        frame.ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        frame.ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
+        frame.ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
         frame.ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         frame.ocrEnabled = enabled
         if (!enabled) {
@@ -321,6 +322,11 @@ class WebtoonPageHolder(
 
     fun applyOcrOutlineVisible(visible: Boolean) {
         frame.ocrOutlineVisible = visible
+    }
+
+    fun applyOcrBoxScale(scaleX: Float, scaleY: Float) {
+        frame.ocrBoxScaleX = scaleX
+        frame.ocrBoxScaleY = scaleY
     }
 
     fun applyOcrBoxOpacity(opacity: Float) {

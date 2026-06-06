@@ -481,7 +481,8 @@ class PagerPageHolder(
         super.onImageLoaded()
         progressIndicator?.hide()
         ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
-        ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
+        ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
         ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         val ocrEnabled = viewer.activity.viewModel.isOcrEnabled()
         this.ocrEnabled = ocrEnabled
@@ -498,7 +499,8 @@ class PagerPageHolder(
 
     fun applyOcrEnabled(enabled: Boolean) {
         ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
-        ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
+        ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
         ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         ocrEnabled = enabled
         if (!enabled) {
@@ -518,6 +520,11 @@ class PagerPageHolder(
 
     fun applyOcrOutlineVisible(visible: Boolean) {
         ocrOutlineVisible = visible
+    }
+
+    fun applyOcrBoxScale(scaleX: Float, scaleY: Float) {
+        ocrBoxScaleX = scaleX
+        ocrBoxScaleY = scaleY
     }
 
     fun applyOcrBoxOpacity(opacity: Float) {

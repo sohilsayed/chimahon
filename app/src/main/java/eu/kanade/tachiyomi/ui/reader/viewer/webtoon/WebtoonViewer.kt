@@ -492,6 +492,16 @@ class WebtoonViewer(
         }
     }
 
+    fun setOcrBoxScale(scaleX: Float, scaleY: Float) {
+        for (index in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(index)
+            val holder = recycler.getChildViewHolder(child)
+            if (holder is WebtoonPageHolder) {
+                holder.applyOcrBoxScale(scaleX, scaleY)
+            }
+        }
+    }
+
     fun setOcrBoxOpacity(opacity: Float) {
         for (index in 0 until recycler.childCount) {
             val child = recycler.getChildAt(index)

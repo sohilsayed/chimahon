@@ -504,6 +504,14 @@ abstract class PagerViewer(
             }
     }
 
+    fun setOcrBoxScale(scaleX: Float, scaleY: Float) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrBoxScale(scaleX, scaleY)
+            }
+    }
+
     fun setOcrBoxOpacity(opacity: Float) {
         pager.children
             .filterIsInstance(PagerPageHolder::class.java)

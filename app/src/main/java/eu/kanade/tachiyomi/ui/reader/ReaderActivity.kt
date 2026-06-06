@@ -1178,16 +1178,20 @@ class ReaderActivity : BaseActivity() {
         }
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val ocrOutlineVisible by readerPreferences.ocrOutlineVisible().collectAsState()
+        val ocrBoxScaleX by dictionaryPreferences.ocrBoxScaleX().collectAsState()
+        val ocrBoxScaleY by dictionaryPreferences.ocrBoxScaleY().collectAsState()
         val ocrBoxOpacity by dictionaryPreferences.ocrBoxOpacity().collectAsState()
 
-        LaunchedEffect(state.viewer, ocrOutlineVisible, ocrBoxOpacity) {
+        LaunchedEffect(state.viewer, ocrOutlineVisible, ocrBoxScaleX, ocrBoxScaleY, ocrBoxOpacity) {
             when (val viewer = state.viewer) {
                 is PagerViewer -> {
                     viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                    viewer.setOcrBoxScale(ocrBoxScaleX, ocrBoxScaleY)
                     viewer.setOcrBoxOpacity(ocrBoxOpacity)
                 }
                 is WebtoonViewer -> {
                     viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                    viewer.setOcrBoxScale(ocrBoxScaleX, ocrBoxScaleY)
                     viewer.setOcrBoxOpacity(ocrBoxOpacity)
                 }
             }

@@ -1289,7 +1289,9 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun isOcrOutlineVisible(): Boolean = readerPreferences.ocrOutlineVisible().get()
 
-    fun getOcrBoxScale(): Float = dictionaryPreferences.ocrBoxScale().get()
+    fun getOcrBoxScaleX(): Float = dictionaryPreferences.ocrBoxScaleX().get()
+
+    fun getOcrBoxScaleY(): Float = dictionaryPreferences.ocrBoxScaleY().get()
 
     fun getOcrBoxOpacity(): Float = dictionaryPreferences.ocrBoxOpacity().get()
 
