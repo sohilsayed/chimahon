@@ -21,6 +21,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.TextView
@@ -243,6 +244,13 @@ class ReaderActivity : BaseActivity() {
     private var ocrPopupState by mutableStateOf<OcrPopupState?>(null)
     private var ocrPopupVisible by mutableStateOf(false)
     private var ocrSelectionPanelState by mutableStateOf<OcrSelectionPanelState?>(null)
+
+    private val twoFingerTapSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+    private var twoFingerTapTracking = false
+    private var twoFingerTapStartTime = 0L
+    private var twoFingerTapStartX = 0f
+    private var twoFingerTapStartY = 0f
+    private var twoFingerTapStartSpan = 0f
 
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingGlossaryIndex by mutableStateOf<Int?>(null)
@@ -1094,6 +1102,101 @@ class ReaderActivity : BaseActivity() {
         assistUrl?.let { outContent.webUri = it.toUri() }
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        observeTwoFingerOcrTap(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun observeTwoFingerOcrTap(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                twoFingerTapTracking = false
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount == 2) {
+                    twoFingerTapTracking = true
+                    twoFingerTapStartTime = event.eventTime
+                    twoFingerTapStartX = event.twoFingerFocusX()
+                    twoFingerTapStartY = event.twoFingerFocusY()
+                    twoFingerTapStartSpan = event.twoFingerSpan()
+                } else {
+                    twoFingerTapTracking = false
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (twoFingerTapTracking && !event.isTwoFingerTapCandidate()) {
+                    twoFingerTapTracking = false
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (
+                    twoFingerTapTracking &&
+                    event.pointerCount == 2 &&
+                    event.eventTime - twoFingerTapStartTime <= ViewConfiguration.getDoubleTapTimeout().toLong() &&
+                    event.isTwoFingerTapCandidate()
+                ) {
+                    toggleOcrFromReader()
+                }
+                twoFingerTapTracking = false
+            }
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL,
+            -> {
+                twoFingerTapTracking = false
+            }
+        }
+    }
+
+    private fun MotionEvent.isTwoFingerTapCandidate(): Boolean {
+        if (pointerCount != 2) return false
+        return kotlin.math.abs(twoFingerFocusX() - twoFingerTapStartX) <= twoFingerTapSlop &&
+            kotlin.math.abs(twoFingerFocusY() - twoFingerTapStartY) <= twoFingerTapSlop &&
+            kotlin.math.abs(twoFingerSpan() - twoFingerTapStartSpan) <= twoFingerTapSlop
+    }
+
+    private fun MotionEvent.twoFingerFocusX(): Float {
+        return (getX(0) + getX(1)) / 2f
+    }
+
+    private fun MotionEvent.twoFingerFocusY(): Float {
+        return (getY(0) + getY(1)) / 2f
+    }
+
+    private fun MotionEvent.twoFingerSpan(): Float {
+        return kotlin.math.hypot(getX(0) - getX(1), getY(0) - getY(1))
+    }
+
+    private fun toggleOcrFromReader() {
+        val enabled = viewModel.toggleOcrEnabled()
+        if (enabled) {
+            DictionaryPopupWebViewWarmup.warm(this, cachedActiveProfile?.languageCode.orEmpty())
+            lifecycleScope.launchIO {
+                val prefs = Injekt.get<DictionaryPreferences>()
+                val manga = viewModel.manga
+                val sourceId = manga?.source ?: 0L
+                val sourceLang = if (sourceId != 0L) sourceManager.getOrStub(sourceId).lang else ""
+                val profile = prefs.profileResolver.resolve(
+                    mangaId = manga?.id ?: 0L,
+                    sourceId = sourceId,
+                    sourceLang = sourceLang,
+                )
+                val dictPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                cachedActiveProfile = profile
+                cachedTermPaths = dictPaths
+                dictionaryRepository.warmUp(dictPaths, profile.id)
+                DictionaryPopupWebViewWarmup.warm(this@ReaderActivity, profile.languageCode)
+            }
+        }
+        when (val viewer = viewModel.state.value.viewer) {
+            is PagerViewer -> viewer.setOcrEnabled(enabled)
+            is WebtoonViewer -> viewer.setOcrEnabled(enabled)
+        }
+        menuToggleToast?.cancel()
+        menuToggleToast = toast(
+            if (enabled) MR.strings.action_enable_ocr else MR.strings.action_disable_ocr,
+        )
+    }
+
     /**
      * Called when the user clicks the back key or the button on the toolbar. The call is
      * delegated to the presenter.
@@ -1334,36 +1437,7 @@ class ReaderActivity : BaseActivity() {
             },
             ocrEnabled = ocrEnabled,
             ocrLoading = state.ocrScanProgress != null,
-            onToggleOcr = {
-                val enabled = viewModel.toggleOcrEnabled()
-                if (enabled) {
-                    DictionaryPopupWebViewWarmup.warm(this, cachedActiveProfile?.languageCode.orEmpty())
-                    lifecycleScope.launchIO {
-                        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                        val manga = viewModel.manga
-                        val sourceId = manga?.source ?: 0L
-                        val sourceLang = if (sourceId != 0L) sourceManager.getOrStub(sourceId).lang else ""
-                        val profile = prefs.profileResolver.resolve(
-                            mangaId = manga?.id ?: 0L,
-                            sourceId = sourceId,
-                            sourceLang = sourceLang,
-                        )
-                        val dictPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
-                        cachedActiveProfile = profile
-                        cachedTermPaths = dictPaths
-                        dictionaryRepository.warmUp(dictPaths, profile.id)
-                        DictionaryPopupWebViewWarmup.warm(this@ReaderActivity, profile.languageCode)
-                    }
-                }
-                when (val viewer = state.viewer) {
-                    is PagerViewer -> viewer.setOcrEnabled(enabled)
-                    is WebtoonViewer -> viewer.setOcrEnabled(enabled)
-                }
-                menuToggleToast?.cancel()
-                menuToggleToast = toast(
-                    if (enabled) MR.strings.action_enable_ocr else MR.strings.action_disable_ocr,
-                )
-            },
+            onToggleOcr = ::toggleOcrFromReader,
             onClickSettings = viewModel::openSettingsDialog,
             onClickMangaStats = viewModel::openMangaStatsSheet,
             // SY -->
