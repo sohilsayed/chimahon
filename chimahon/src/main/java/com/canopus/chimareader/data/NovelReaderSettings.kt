@@ -25,6 +25,7 @@ enum class Theme {
 }
 
 data class CustomReaderTheme(
+    val name: String = "",
     val backgroundColor: Int,
     val textColor: Int,
 )
@@ -68,17 +69,19 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
     private val dataStore = context.novelReaderDataStore
 
     private fun encodeCustomThemes(themes: List<CustomReaderTheme>): String {
-        return themes.joinToString("|") { "${it.backgroundColor},${it.textColor}" }
+        return themes.joinToString("|") { "${it.name}~${it.backgroundColor},${it.textColor}" }
     }
 
     private fun decodeCustomThemes(value: String?): List<CustomReaderTheme> {
         if (value.isNullOrBlank()) return emptyList()
         return value.split("|")
             .mapNotNull { encoded ->
-                val parts = encoded.split(",")
-                val backgroundColor = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
-                val textColor = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
-                CustomReaderTheme(backgroundColor, textColor)
+                val parts = encoded.split("~", limit = 2)
+                if (parts.size != 2) return@mapNotNull null
+                val colorParts = parts[1].split(",")
+                val backgroundColor = colorParts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                val textColor = colorParts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                CustomReaderTheme(name = parts[0], backgroundColor = backgroundColor, textColor = textColor)
             }
             .distinct()
     }
@@ -299,6 +302,24 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
             prefs[keys.CUSTOM_BACKGROUND_COLOR] = value.backgroundColor
             prefs[keys.CUSTOM_TEXT_COLOR] = value.textColor
             prefs[keys.THEME] = Theme.CUSTOM.name
+        }
+    }
+
+    suspend fun deleteCustomTheme(value: CustomReaderTheme) {
+        dataStore.edit { prefs ->
+            val existing = decodeCustomThemes(prefs[keys.customThemes])
+            val next = existing.filter { it != value }
+            prefs[keys.customThemes] = encodeCustomThemes(next)
+        }
+    }
+
+    suspend fun renameCustomTheme(old: CustomReaderTheme, newName: String) {
+        dataStore.edit { prefs ->
+            val existing = decodeCustomThemes(prefs[keys.customThemes])
+            val next = existing.map {
+                if (it == old) it.copy(name = newName) else it
+            }
+            prefs[keys.customThemes] = encodeCustomThemes(next)
         }
     }
 

@@ -682,13 +682,13 @@ private class ReaderAndroidWebView(
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
-                // Usable content area inside the padded wrapper.
-                // Images are constrained to at most one viewport's worth of content area
-                // so they don't dominate the scroll and overflow the padding.
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad);
-                document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
-                document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
+                // Image max dimensions at 90vw.
+                // Wrapper has no horizontal padding, so margin: auto centers within full viewport.
+                // Height is full viewport (no vertical padding subtracted from images).
+                var imgMaxW = Math.max(1, Math.floor(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var imgMaxH = Math.max(1, ih);
+                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -697,9 +697,9 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Continuous-mode image rules:
-                // .block-img          -> large images: block-level, centered, constrained
-                // everything else     -> inline images: stay in text flow, just capped at max-width
+                // Full-page image rules:
+                // .block-img  -> full-page illustrations, centered within wrapper content
+                // everything else -> inline images: stay in text flow, just capped at max-width
                 var contImgStyle = document.getElementById('reader-cont-img-style');
                 if (contImgStyle) contImgStyle.remove();
                 contImgStyle = document.createElement('style');
@@ -712,8 +712,6 @@ private class ReaderAndroidWebView(
                     '  height: auto !important;',
                     '  display: block !important;',
                     '  margin: auto !important;',
-                    '  break-inside: avoid !important;',
-                    '  -webkit-column-break-inside: avoid !important;',
                     '  object-fit: contain !important;',
                     '}',
                     'img:not(.block-img), svg:not(.block-img) {',
@@ -741,11 +739,19 @@ private class ReaderAndroidWebView(
                     b.appendChild(wrapper);
                 }
 
-                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
+                wrapper.style.setProperty('padding', vPad + 'px 0', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
                 b.style.setProperty('margin', '0', 'important');
+
+                var pPadStyle = document.getElementById('hoshi-p-padding-style');
+                if (!pPadStyle) {
+                    pPadStyle = document.createElement('style');
+                    pPadStyle.id = 'hoshi-p-padding-style';
+                    document.head.appendChild(pPadStyle);
+                }
+                pPadStyle.textContent = '#hoshi-content-wrapper > p { padding-left: ' + hPad + 'px !important; padding-right: ' + hPad + 'px !important; }';
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
@@ -859,17 +865,13 @@ private class ReaderAndroidWebView(
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
-                // Usable content area inside the padded wrapper.
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad);
-
-                // Image sizing: constrained to the usable content area.
-                // bottomOverlap reserves trailing-edge space so the image doesn't
-                // bleed into the next column.
-                var imageMaxW = Math.max(1, contentW);
-                var imageMaxH = Math.max(1, contentH - $bottomOverlapPx);
-                document.documentElement.style.setProperty('--reader-image-max-width', imageMaxW + 'px');
-                document.documentElement.style.setProperty('--reader-image-max-height', imageMaxH + 'px');
+                // Image max dimensions at 90vw.
+                // Wrapper has no horizontal padding, so margin: auto centers within full viewport.
+                // Height is viewport less bottomOverlap (for vertical-rl column bleed).
+                var imgMaxW = Math.max(1, Math.floor(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var imgMaxH = Math.max(1, ih - $bottomOverlapPx);
+                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -920,11 +922,19 @@ private class ReaderAndroidWebView(
                     b.appendChild(wrapper);
                 }
 
-                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
+                wrapper.style.setProperty('padding', vPad + 'px 0', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
                 b.style.setProperty('margin', '0', 'important');
+
+                var pPadStyle = document.getElementById('hoshi-p-padding-style');
+                if (!pPadStyle) {
+                    pPadStyle = document.createElement('style');
+                    pPadStyle.id = 'hoshi-p-padding-style';
+                    document.head.appendChild(pPadStyle);
+                }
+                pPadStyle.textContent = '#hoshi-content-wrapper > p { padding-left: ' + hPad + 'px !important; padding-right: ' + hPad + 'px !important; }';
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
@@ -1066,11 +1076,19 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var hPad = Math.round(iw * ${settings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${settings.verticalPadding} / 100);
-                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
+                wrapper.style.setProperty('padding', vPad + 'px 0', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
                 b.style.setProperty('margin', '0', 'important');
+
+                var pPadStyle = document.getElementById('hoshi-p-padding-style');
+                if (!pPadStyle) {
+                    pPadStyle = document.createElement('style');
+                    pPadStyle.id = 'hoshi-p-padding-style';
+                    document.head.appendChild(pPadStyle);
+                }
+                pPadStyle.textContent = '#hoshi-content-wrapper > p { padding-left: ' + hPad + 'px !important; padding-right: ' + hPad + 'px !important; }';
 
                 wrapper.style.setProperty('font-size', '${settings.fontSize}px', 'important');
                 b.style.setProperty('font-size', '${settings.fontSize}px', 'important');

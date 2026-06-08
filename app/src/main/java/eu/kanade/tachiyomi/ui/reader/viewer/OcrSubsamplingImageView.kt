@@ -68,6 +68,13 @@ class OcrSubsamplingImageView(
         color = Color.BLACK
     }
 
+    private val borderPaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = 2f * context.resources.displayMetrics.density
+        color = Color.argb(180, 0, 170, 255)
+    }
+
     private val backgroundPaint = Paint().apply {
         isAntiAlias = true
         style = Paint.Style.FILL
@@ -133,8 +140,21 @@ class OcrSubsamplingImageView(
         val screenW = brScreen.x - tlScreen.x
         val screenH = brScreen.y - tlScreen.y
 
+        if (host.ocrOutlineVisible) {
+            canvas.drawRect(
+                tlScreen.x,
+                tlScreen.y,
+                brScreen.x,
+                brScreen.y,
+                borderPaint,
+            )
+        }
+
         if (block == host.activeOcrBlock) {
-            val activeBackgroundAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
+            val activeBackgroundAlpha = maxOf(
+                (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255),
+                80,
+            )
             drawOcrTextBox(
                 canvas = canvas,
                 block = block,
