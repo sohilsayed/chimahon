@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -58,6 +60,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -85,10 +89,14 @@ fun AppearanceSheet(
 
     var isImporting by remember { mutableStateOf(false) }
     var showCustomThemeDialog by remember { mutableStateOf(false) }
+    var draftThemeName by remember { mutableStateOf("") }
     var draftBackgroundColor by remember { mutableIntStateOf(viewModel.customBackgroundColor) }
     var draftTextColor by remember { mutableIntStateOf(viewModel.customTextColor) }
     var draftBackgroundInput by remember { mutableStateOf(colorToHex(viewModel.customBackgroundColor)) }
     var draftTextInput by remember { mutableStateOf(colorToHex(viewModel.customTextColor)) }
+    var renameTarget by remember { mutableStateOf<CustomReaderTheme?>(null) }
+    var deleteTarget by remember { mutableStateOf<CustomReaderTheme?>(null) }
+    var renameInput by remember { mutableStateOf("") }
 
     val fontPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -128,10 +136,11 @@ fun AppearanceSheet(
             // Theme (moved to top)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Theme", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                val currentCustomTheme = CustomReaderTheme(
-                    backgroundColor = viewModel.customBackgroundColor,
-                    textColor = viewModel.customTextColor,
-                )
+                val currentCustomTheme = viewModel.customThemes.find { it.backgroundColor == viewModel.customBackgroundColor && it.textColor == viewModel.customTextColor }
+                    ?: CustomReaderTheme(
+                        backgroundColor = viewModel.customBackgroundColor,
+                        textColor = viewModel.customTextColor,
+                    )
                 val customThemeChoices = remember(
                     viewModel.customThemes,
                     viewModel.theme,
@@ -162,17 +171,23 @@ fun AppearanceSheet(
                     }
                     customThemeChoices.forEachIndexed { index, customTheme ->
                         ReaderThemeSwatchButton(
-                            label = "Custom ${index + 1}",
+                            label = customTheme.name.ifBlank { "Custom ${index + 1}" },
                             backgroundColor = customTheme.backgroundColor,
                             textColor = customTheme.textColor,
                             selected = viewModel.theme == Theme.CUSTOM &&
                                 viewModel.customBackgroundColor == customTheme.backgroundColor &&
                                 viewModel.customTextColor == customTheme.textColor,
                             onClick = { viewModel.applyCustomTheme(customTheme) },
+                            onLongClick = {
+                                renameTarget = customTheme
+                                renameInput = customTheme.name
+                            },
+                            onDeleteClick = { deleteTarget = customTheme },
                         )
                     }
                     AddThemeButton(
                         onClick = {
+                            draftThemeName = ""
                             draftBackgroundColor = viewModel.customBackgroundColor
                             draftTextColor = viewModel.customTextColor
                             draftBackgroundInput = colorToHex(viewModel.customBackgroundColor)
@@ -527,10 +542,12 @@ fun AppearanceSheet(
 
     if (showCustomThemeDialog) {
         CustomThemeDialog(
+            themeName = draftThemeName,
             backgroundColor = draftBackgroundColor,
             textColor = draftTextColor,
             backgroundColorInput = draftBackgroundInput,
             textColorInput = draftTextInput,
+            onThemeNameChange = { draftThemeName = it },
             onBackgroundColorInputChange = { input ->
                 draftBackgroundInput = input
                 parseColorInput(input)?.let { draftBackgroundColor = it }
@@ -543,11 +560,60 @@ fun AppearanceSheet(
             onConfirm = {
                 viewModel.addCustomTheme(
                     CustomReaderTheme(
+                        name = draftThemeName,
                         backgroundColor = draftBackgroundColor,
                         textColor = draftTextColor,
                     ),
                 )
                 showCustomThemeDialog = false
+            },
+        )
+    }
+
+    renameTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename theme") },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Theme name") },
+                    placeholder = { Text("Enter a name") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.renameCustomTheme(target, renameInput)
+                        renameTarget = null
+                    },
+                    enabled = renameInput.isNotBlank(),
+                ) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete theme") },
+            text = { Text("Delete \"${target.name.ifBlank { "Custom theme" }}\"?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCustomTheme(target)
+                        deleteTarget = null
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
             },
         )
     }
@@ -644,13 +710,25 @@ private fun ReaderThemeSwatchButton(
     textColor: Int,
     selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null,
     splitBackgroundColor: Int? = null,
 ) {
+    val haptic = LocalHapticFeedback.current
+    var showMenu by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .width(84.dp)
             .height(64.dp)
-            .clickable(enabled = !selected) { onClick() },
+            .combinedClickable(
+                onClick = { onClick() },
+                onLongClick = if (onLongClick != null) {
+                    {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showMenu = true
+                    }
+                } else null,
+            ),
         shape = RoundedCornerShape(8.dp),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f)
@@ -662,6 +740,27 @@ private fun ReaderThemeSwatchButton(
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Rename") },
+                onClick = {
+                    showMenu = false
+                    onLongClick?.invoke()
+                },
+            )
+            if (onDeleteClick != null) {
+                DropdownMenuItem(
+                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                    onClick = {
+                        showMenu = false
+                        onDeleteClick()
+                    },
+                )
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -776,10 +875,12 @@ private fun ColorReviewChip(
 
 @Composable
 private fun CustomThemeDialog(
+    themeName: String,
     backgroundColor: Int,
     textColor: Int,
     backgroundColorInput: String,
     textColorInput: String,
+    onThemeNameChange: (String) -> Unit,
     onBackgroundColorInputChange: (String) -> Unit,
     onTextColorInputChange: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -794,7 +895,7 @@ private fun CustomThemeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New theme") },
+        title = { Text("Save theme") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Surface(
@@ -808,7 +909,7 @@ private fun CustomThemeDialog(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
-                            text = "Custom",
+                            text = themeName.ifBlank { "Custom" },
                             style = MaterialTheme.typography.titleSmall,
                             color = Color(previewTextColor),
                         )
@@ -819,6 +920,15 @@ private fun CustomThemeDialog(
                         )
                     }
                 }
+
+                OutlinedTextField(
+                    value = themeName,
+                    onValueChange = onThemeNameChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Name") },
+                    placeholder = { Text("Theme name") },
+                )
 
                 OutlinedTextField(
                     value = backgroundColorInput,
@@ -872,7 +982,7 @@ private fun CustomThemeDialog(
                 onClick = onConfirm,
                 enabled = backgroundColorValid && textColorValid,
             ) {
-                Text("Add")
+                Text("Save")
             }
         },
         dismissButton = {

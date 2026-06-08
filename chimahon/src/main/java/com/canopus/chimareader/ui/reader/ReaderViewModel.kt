@@ -374,6 +374,8 @@ class ReaderViewModel(
     fun updateCustomTextColor(value: Int) = scope.launch { settings.setCustomTextColor(value) }
     fun applyCustomTheme(value: CustomReaderTheme) = scope.launch { settings.setCustomTheme(value) }
     fun addCustomTheme(value: CustomReaderTheme) = scope.launch { settings.addCustomTheme(value) }
+    fun deleteCustomTheme(value: CustomReaderTheme) = scope.launch { settings.deleteCustomTheme(value) }
+    fun renameCustomTheme(value: CustomReaderTheme, newName: String) = scope.launch { settings.renameCustomTheme(value, newName) }
     fun updateVerticalWriting(value: Boolean) = scope.launch { settings.setVerticalWriting(value) }
     fun updateJustifyText(value: Boolean) = scope.launch { settings.setJustifyText(value) }
     fun updateAvoidPageBreak(value: Boolean) = scope.launch { settings.setAvoidPageBreak(value) }
