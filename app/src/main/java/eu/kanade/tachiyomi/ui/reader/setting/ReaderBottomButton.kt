@@ -15,6 +15,7 @@ enum class ReaderBottomButton(val value: String, val stringRes: StringResource) 
     CropBordersContinuesVertical("cbc", SYMR.strings.pref_crop_borders_continuous_vertical),
     CropBordersWebtoon("cbw", SYMR.strings.pref_crop_borders_webtoon),
     PageLayout("pl", SYMR.strings.page_layout),
+    MangaStats("ms", MR.strings.action_manga_stats),
     ;
 
     fun isIn(buttons: Collection<String>) = value in buttons
@@ -26,6 +27,7 @@ enum class ReaderBottomButton(val value: String, val stringRes: StringResource) 
             CropBordersPager,
             CropBordersContinuesVertical,
             PageLayout,
+            MangaStats,
         ).map { it.value }.toSet()
     }
 }

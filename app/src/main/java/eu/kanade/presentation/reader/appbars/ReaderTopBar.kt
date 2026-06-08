@@ -58,7 +58,7 @@ fun ReaderTopBar(
                                         null
                                     },
                                     onClick = it,
-                                    enabled = !ocrLoading,
+                                    enabled = ocrEnabled || !ocrLoading,
                                 ),
                             )
                         }

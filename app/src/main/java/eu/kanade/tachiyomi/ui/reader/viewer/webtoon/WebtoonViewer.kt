@@ -70,6 +70,16 @@ class WebtoonViewer(
 
     var onDismissOcrPopup: (() -> Unit)? = null
 
+    var onShowOcrSelectionPanel: (
+        (
+            text: String,
+            anchorX: Float,
+            anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+        ) -> Unit
+    )? = null
+
     private val scope = MainScope()
 
     /**
@@ -201,6 +211,25 @@ class WebtoonViewer(
             }
         }
         recycler.longTapListener = f@{ event ->
+            val rx = event.rawX
+            val ry = event.rawY
+            val ocrChild = recycler.findChildViewUnder(event.x, event.y)
+            if (ocrChild != null) {
+                val holder = recycler.getChildViewHolder(ocrChild) as? WebtoonPageHolder
+                if (holder != null) {
+                    val loc = IntArray(2)
+                    ocrChild.getLocationOnScreen(loc)
+                    val localX = rx - loc[0]
+                    val localY = ry - loc[1]
+                    if (localX >= 0 && localX <= ocrChild.width &&
+                        localY >= 0 && localY <= ocrChild.height &&
+                        holder.isPointOnOcrBlock(localX, localY)
+                    ) {
+                        return@f true
+                    }
+                }
+            }
+
             if (activity.viewModel.state.value.menuVisible || config.longTapEnabled) {
                 val child = recycler.findChildViewUnder(event.x, event.y)
                 if (child != null) {
@@ -355,7 +384,7 @@ class WebtoonViewer(
             logcat { "Recycler first layout" }
             val pages = chapters.currChapter.pages ?: return
             moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
-            recycler.post { recycler.isVisible = true }
+            recycler.isVisible = true
         }
     }
 
@@ -449,6 +478,36 @@ class WebtoonViewer(
             val holder = recycler.getChildViewHolder(child)
             if (holder is WebtoonPageHolder) {
                 holder.applyOcrEnabled(enabled)
+            }
+        }
+    }
+
+    fun setOcrOutlineVisible(visible: Boolean) {
+        for (index in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(index)
+            val holder = recycler.getChildViewHolder(child)
+            if (holder is WebtoonPageHolder) {
+                holder.applyOcrOutlineVisible(visible)
+            }
+        }
+    }
+
+    fun setOcrBoxScale(scaleX: Float, scaleY: Float) {
+        for (index in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(index)
+            val holder = recycler.getChildViewHolder(child)
+            if (holder is WebtoonPageHolder) {
+                holder.applyOcrBoxScale(scaleX, scaleY)
+            }
+        }
+    }
+
+    fun setOcrBoxOpacity(opacity: Float) {
+        for (index in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(index)
+            val holder = recycler.getChildViewHolder(child)
+            if (holder is WebtoonPageHolder) {
+                holder.applyOcrBoxOpacity(opacity)
             }
         }
     }

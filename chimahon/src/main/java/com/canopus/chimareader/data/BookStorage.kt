@@ -13,8 +13,8 @@ object BookStorage {
     }
 
     fun loadEpub(directory: File): EpubBook {
-        val cachedSpine = loadSpineCache(directory)
-        return EpubParser.parse(directory, cachedSpine)
+        deleteObsoleteSpineCache(directory)
+        return EpubParser.parse(directory)
     }
 
     fun getBookDirectory(context: android.content.Context, bookId: String): File {
@@ -57,14 +57,6 @@ object BookStorage {
             null
         }
     }
-    fun saveSpineCache(spine: com.canopus.chimareader.data.epub.EpubSpine, directory: File) {
-        save(spine, directory, "spine_cache.json")
-    }
-
-    fun loadSpineCache(directory: File): com.canopus.chimareader.data.epub.EpubSpine? {
-        return load(directory, "spine_cache.json")
-    }
-
     fun saveBookmark(bookmark: Bookmark, directory: File) {
         save(bookmark, directory, FileNames.bookmark)
     }
@@ -117,27 +109,91 @@ object BookStorage {
         val booksDir = getBooksDirectory(context)
         if (!booksDir.exists()) return emptyList()
 
-        val books = mutableListOf<BookMetadata>()
-        booksDir.listFiles()?.filter { it.isDirectory }?.forEach { bookDir ->
-            val metadata = loadMetadata(bookDir)
-            if (metadata != null) {
-                books.add(metadata)
-            }
-        }
-        return books
-            .groupBy { it.id }
+        return loadStoredBookDirs(booksDir)
+            .groupBy { bookIdentityKey(it.metadata) }
             .map { (_, dupes) ->
                 if (dupes.size == 1) {
-                    dupes.first()
+                    dupes.first().metadata
                 } else {
-                    dupes.minWith(compareBy({ it.isGhost }, { -(it.lastAccess) }))
+                    dupes.minWith(
+                        compareBy<StoredBookDir>(
+                            { it.metadata.isGhost },
+                            { !hasImportedBookContent(it.directory) },
+                            { it.directory.name != bookIdentityKey(it.metadata) },
+                            { -it.metadata.lastAccess },
+                        ),
+                    ).metadata
                 }
             }
     }
 
+    fun bookIdentityKey(metadata: BookMetadata): String {
+        val titleKey = metadata.title?.trim()?.lowercase().orEmpty()
+        val authorKey = metadata.author?.trim()?.lowercase().orEmpty()
+        if (titleKey.isNotEmpty() || authorKey.isNotEmpty()) {
+            return md5Hex("$titleKey|$authorKey")
+        }
+
+        metadata.hash?.takeIf { it.isNotBlank() }?.let { return it }
+
+        return metadata.id
+    }
+
+    fun hasImportedBookContent(directory: File): Boolean {
+        val contentExtensions = setOf("opf", "xhtml", "html", "htm", "ncx")
+        return directory.walkTopDown().any { file ->
+            file.isFile && file.extension.lowercase() in contentExtensions
+        }
+    }
+
     fun deleteBook(context: android.content.Context, bookId: String): Boolean {
+        val booksDir = getBooksDirectory(context)
         val bookDir = getBookDirectory(context, bookId)
-        return delete(bookDir)
+        val metadata = loadMetadata(bookDir)
+        val duplicateDirs = metadata?.let { targetMetadata ->
+            val targetKey = bookIdentityKey(targetMetadata)
+            loadStoredBookDirs(booksDir)
+                .filter { bookIdentityKey(it.metadata) == targetKey }
+                .map { it.directory }
+        }.orEmpty()
+
+        val dirsToDelete = (duplicateDirs + bookDir).distinctBy { it.absolutePath }
+        return dirsToDelete.all { delete(it) }
+    }
+
+    private fun loadStoredBookDirs(booksDir: File): List<StoredBookDir> {
+        if (!booksDir.exists()) return emptyList()
+
+        return booksDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { bookDir ->
+                val metadata = loadMetadata(bookDir)?.let {
+                    val hasContent = hasImportedBookContent(bookDir)
+                    val normalizedMetadata = if (it.isGhost && hasContent) {
+                        it.copy(isGhost = false)
+                    } else {
+                        it
+                    }
+                    normalizedMetadata.copy(
+                        id = bookDir.name,
+                        folder = bookDir.name,
+                    )
+                } ?: return@mapNotNull null
+
+                StoredBookDir(bookDir, metadata)
+            }
+            .orEmpty()
+    }
+
+    private data class StoredBookDir(
+        val directory: File,
+        val metadata: BookMetadata,
+    )
+
+    private fun deleteObsoleteSpineCache(directory: File) {
+        File(directory, "spine_cache.json")
+            .takeIf { it.exists() }
+            ?.delete()
     }
 
     enum class BookStorageError {

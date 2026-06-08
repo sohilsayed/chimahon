@@ -20,8 +20,8 @@ data class AnkiProfile(
     // Anki settings
     val ankiEnabled: Boolean = false,
     val ankiDeck: String = "",
-    val ankiModel: String = "",
-    val ankiFieldMap: String = "{}",
+    val ankiModel: String = LapisPreset.MODEL_NAME,
+    val ankiFieldMap: String = LapisPreset.defaultFieldMapJson,
     val ankiTags: String = "chimahon",
     val ankiDupCheck: Boolean = true,
     val ankiDupScope: String = "deck",
@@ -79,8 +79,15 @@ data class AnkiProfile(
             name = json.getString("name"),
             ankiEnabled = json.optBoolean("ankiEnabled", false),
             ankiDeck = json.optString("ankiDeck", ""),
-            ankiModel = json.optString("ankiModel", ""),
-            ankiFieldMap = json.optString("ankiFieldMap", "{}"),
+            ankiModel = json.optString("ankiModel", "").ifBlank { LapisPreset.MODEL_NAME },
+            ankiFieldMap = json.optString("ankiFieldMap", "{}").let { fieldMap ->
+                val model = json.optString("ankiModel", "")
+                when {
+                    model.isBlank() && LapisPreset.isBlankFieldMap(fieldMap) -> LapisPreset.defaultFieldMapJson
+                    LapisPreset.isBundledModelName(model) && LapisPreset.isBlankFieldMap(fieldMap) -> LapisPreset.defaultFieldMapJson
+                    else -> fieldMap
+                }
+            },
             ankiTags = json.optString("ankiTags", "chimahon"),
             ankiDupCheck = json.optBoolean("ankiDupCheck", true),
             ankiDupScope = json.optString("ankiDupScope", "deck"),
@@ -117,8 +124,8 @@ data class AnkiProfile(
             defaultName: String = "Default",
             ankiEnabled: Boolean = false,
             ankiDeck: String = "",
-            ankiModel: String = "",
-            ankiFieldMap: String = "{}",
+            ankiModel: String = LapisPreset.MODEL_NAME,
+            ankiFieldMap: String = LapisPreset.defaultFieldMapJson,
             ankiTags: String = "chimahon",
             ankiDupCheck: Boolean = true,
             ankiDupScope: String = "deck",
@@ -131,8 +138,12 @@ data class AnkiProfile(
             name = defaultName,
             ankiEnabled = ankiEnabled,
             ankiDeck = ankiDeck,
-            ankiModel = ankiModel,
-            ankiFieldMap = ankiFieldMap,
+            ankiModel = ankiModel.ifBlank { LapisPreset.MODEL_NAME },
+            ankiFieldMap = when {
+                ankiModel.isBlank() && LapisPreset.isBlankFieldMap(ankiFieldMap) -> LapisPreset.defaultFieldMapJson
+                LapisPreset.isBundledModelName(ankiModel) && LapisPreset.isBlankFieldMap(ankiFieldMap) -> LapisPreset.defaultFieldMapJson
+                else -> ankiFieldMap
+            },
             ankiTags = ankiTags,
             ankiDupCheck = ankiDupCheck,
             ankiDupScope = ankiDupScope,

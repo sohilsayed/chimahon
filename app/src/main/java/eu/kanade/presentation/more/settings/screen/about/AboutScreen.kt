@@ -265,7 +265,7 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = "Discord",
                             icon = CustomIcons.Discord,
-                            url = "https://discord.gg/jr4VEZTtpM",
+                            url = "https://discord.gg/Ak2sW9Nvr9",
                         )
                         // LinkIcon(
                         //     label = "X",

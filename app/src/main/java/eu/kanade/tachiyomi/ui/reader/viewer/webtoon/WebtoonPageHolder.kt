@@ -17,12 +17,12 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
-import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrCoordinateMapper
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.dpToPx
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
@@ -104,6 +104,9 @@ class WebtoonPageHolder(
         frame.onScaleChanged = { viewer.activity.hideMenu() }
         frame.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, _ ->
             viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, page)
+        }
+        frame.onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+            viewer.onShowOcrSelectionPanel?.invoke(text, anchorX, anchorY, anchorWidth, anchorHeight)
         }
         frame.onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()
@@ -234,11 +237,7 @@ class WebtoonPageHolder(
                     isAnimated,
                     ReaderPageImageView.Config(
                         zoomDuration = viewer.config.doubleTapAnimDuration,
-                        minimumScaleType = if (viewer.config.webtoonScaleType == ReaderPreferences.WebtoonScaleType.FIT) {
-                            SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
-                        } else {
-                            SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH
-                        },
+                        minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
                         cropBorders =
                         (viewer.config.imageCropBorders && viewer.isContinuous) ||
                             (viewer.config.continuousCropBorders && !viewer.isContinuous),
@@ -299,7 +298,9 @@ class WebtoonPageHolder(
 
     fun applyOcrEnabled(enabled: Boolean) {
         frame.ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
-        frame.ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        frame.ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
+        frame.ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
+        frame.ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         frame.ocrEnabled = enabled
         if (!enabled) {
             ocrLoadJob?.cancel()
@@ -319,46 +320,65 @@ class WebtoonPageHolder(
         }
     }
 
+    fun applyOcrOutlineVisible(visible: Boolean) {
+        frame.ocrOutlineVisible = visible
+    }
+
+    fun applyOcrBoxScale(scaleX: Float, scaleY: Float) {
+        frame.ocrBoxScaleX = scaleX
+        frame.ocrBoxScaleY = scaleY
+    }
+
+    fun applyOcrBoxOpacity(opacity: Float) {
+        frame.ocrBoxOpacity = opacity
+    }
+
     private suspend fun loadOcrWithTransform(targetPage: ReaderPage) {
-        val viewModel = viewer.activity.viewModel
-        val dualSplitEnabled = viewer.config.dualPageSplit
-        val cropBordersEnabled = (viewer.config.imageCropBorders && viewer.isContinuous) ||
-            (viewer.config.continuousCropBorders && !viewer.isContinuous)
+        try {
+            val viewModel = viewer.activity.viewModel
+            val dualSplitEnabled = viewer.config.dualPageSplit
+            val cropBordersEnabled = (viewer.config.imageCropBorders && viewer.isContinuous) ||
+                (viewer.config.continuousCropBorders && !viewer.isContinuous)
 
-        logcat { "OCR request start (webtoon): chapter=${targetPage.chapter.chapter.id} page=${targetPage.index}" }
-        var blocks = viewModel.getOcrBlocks(targetPage)
+            logcat { "OCR request start (webtoon): chapter=${targetPage.chapter.chapter.id} page=${targetPage.index}" }
+            var blocks = viewModel.getOcrBlocks(targetPage)
 
-        if (blocks.isEmpty()) {
-            frame.setOcrBlocks(blocks)
-            return
-        }
+            if (blocks.isEmpty()) {
+                frame.setOcrBlocks(blocks)
+                return
+            }
 
-        // ── Case 1: Split and Merge (Webtoon special) ───────────────────────────────
-        if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
-            val streamFn = targetPage.stream
-            if (streamFn != null) {
-                val isWide = withIOContext {
-                    streamFn().use { ImageUtil.isWideImage(okio.Buffer().readFrom(it)) }
-                }
-                if (isWide) {
-                    val upperSide = if (viewer.config.dualPageInvert) ImageUtil.Side.LEFT else ImageUtil.Side.RIGHT
-                    blocks = OcrCoordinateMapper.mapToSplitAndMerge(
-                        blocks = blocks,
-                        upperIsRight = upperSide == ImageUtil.Side.RIGHT,
-                    )
-                    logcat { "OCR splitAndMerge (upperIsRight=${upperSide == ImageUtil.Side.RIGHT}): ${blocks.size} blocks after remap" }
+            // ── Case 1: Split and Merge (Webtoon special) ───────────────────────────────
+            if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
+                val streamFn = targetPage.stream
+                if (streamFn != null) {
+                    val isWide = withIOContext {
+                        streamFn().use { ImageUtil.isWideImage(okio.Buffer().readFrom(it)) }
+                    }
+                    if (isWide) {
+                        val upperSide = if (viewer.config.dualPageInvert) ImageUtil.Side.LEFT else ImageUtil.Side.RIGHT
+                        blocks = OcrCoordinateMapper.mapToSplitAndMerge(
+                            blocks = blocks,
+                            upperIsRight = upperSide == ImageUtil.Side.RIGHT,
+                        )
+                        logcat { "OCR splitAndMerge (upperIsRight=${upperSide == ImageUtil.Side.RIGHT}): ${blocks.size} blocks after remap" }
+                    }
                 }
             }
-        }
 
-        // ── Case 2: Crop borders ────────────────────────────────────────────────────
-        val cropRect = pageCropRect
-        if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
-            blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
-            logcat { "OCR crop-remap done (webtoon): ${blocks.size} blocks" }
-        }
+            // ── Case 2: Crop borders ────────────────────────────────────────────────────
+            val cropRect = pageCropRect
+            if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
+                blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
+                logcat { "OCR crop-remap done (webtoon): ${blocks.size} blocks" }
+            }
 
-        frame.setOcrBlocks(blocks)
+            frame.setOcrBlocks(blocks)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(LogPriority.ERROR, e) { "OCR loadOcrWithTransform failed" }
+        }
     }
 
     /**

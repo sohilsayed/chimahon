@@ -5,8 +5,13 @@ import android.os.Parcelable
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import android.widget.Scroller
 import androidx.viewpager.widget.DirectionalViewPager
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.GestureDetectorWithLongTap
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Pager implementation that listens for tap and long tap and allows temporarily disabling touch
@@ -66,6 +71,35 @@ open class Pager(
      */
     private val gestureDetector = GestureDetectorWithLongTap(context, gestureListener)
 
+    init {
+        if (Injekt.get<ReaderPreferences>().eInkSwipeSensitivity().get()) {
+            reduceSwipeThresholds()
+            try {
+                DirectionalViewPager::class.java
+                    .getDeclaredField("mScroller").apply { isAccessible = true }
+                    .set(this, object : Scroller(context) {
+                        override fun startScroll(startX: Int, startY: Int, dx: Int, dy: Int, duration: Int) {
+                            super.startScroll(startX, startY, dx, dy, 0)
+                        }
+                    })
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun reduceSwipeThresholds() {
+        try {
+            val density = resources.displayMetrics.density
+            val ctx = context
+            val clazz = DirectionalViewPager::class.java
+            val touchSlop = clazz.getDeclaredField("mTouchSlop").apply { isAccessible = true }
+            touchSlop.setInt(this, ViewConfiguration.get(ctx).scaledTouchSlop / 2)
+            val minVel = clazz.getDeclaredField("mMinimumVelocity").apply { isAccessible = true }
+            minVel.setInt(this, (75 * density).toInt())
+            val flingDist = clazz.getDeclaredField("mFlingDistance").apply { isAccessible = true }
+            flingDist.setInt(this, (4 * density).toInt())
+        } catch (_: Exception) {
+        }
+    }
     /**
      * Whether the gesture detector is currently enabled.
      */

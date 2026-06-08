@@ -4,14 +4,14 @@ import android.content.Context
 import chimahon.DictionaryStyle
 import chimahon.LookupResult
 import chimahon.anki.AnkiProfile
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 
 /** Represents one entry in the scrollable lookup-history tab bar shown inside the WebView. */
@@ -26,6 +26,7 @@ internal data class DictionaryRenderSignature(
     val placeholder: String,
     val isDark: Boolean,
     val showFrequencyHarmonic: Boolean,
+    val showFrequencyAverage: Boolean,
     val groupTerms: Boolean,
     val showPitchDiagram: Boolean,
     val showPitchNumber: Boolean,
@@ -39,11 +40,11 @@ internal data class DictionaryRenderSignature(
     val groupPitches: Boolean,
 )
 
-/**
- * Serializes a single lookup result to JSON for lazy entry loading.
- * Used by PayloadBridge.getEntry(index) — avoids serializing all results at once.
- */
-internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: AnkiProfile, context: Context, groupPitches: Boolean): JsonObject {
+private fun buildResultEntryJson(result: LookupResult, index: Int, priorityMap: Map<String, Int>, groupPitches: Boolean): JsonObject {
+    val glossaries = result.term.glossaries.sortedByDictionaryPriority(priorityMap) { it.dictName }
+    val frequencies = result.term.frequencies.sortedByDictionaryPriority(priorityMap) { it.dictName }
+    val pitches = result.term.pitches.sortedByDictionaryPriority(priorityMap) { it.dictName }
+    val ruleTags = splitTags(result.term.rules).distinct()
     return buildJsonObject {
         put("index", index)
         put("matched", result.matched)
@@ -60,20 +61,19 @@ internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: Ank
             put("expression", result.term.expression)
             put("reading", result.term.reading)
             put("rules", result.term.rules)
+            putJsonArray("ruleTags") {
+                for (tag in ruleTags) add(JsonPrimitive(tag))
+            }
             putJsonArray("glossaries") {
-                for (g in result.term.glossaries) {
-                    add(buildJsonObject {
-                        put("dictName", g.dictName)
-                        put("glossary", g.glossary)
-                        put("definitionTags", g.definitionTags)
-                        put("termTags", g.termTags)
-                    })
+                for (g in glossaries) {
+                    add(buildGlossaryPayload(g))
                 }
             }
             putJsonArray("frequencies") {
-                for (group in result.term.frequencies) {
+                for (group in frequencies) {
                     add(buildJsonObject {
                         put("dictName", group.dictName)
+                        put("displayValueText", frequencyDisplayText(group))
                         putJsonArray("frequencies") {
                             for (item in group.frequencies) {
                                 add(buildJsonObject {
@@ -85,9 +85,11 @@ internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: Ank
                     })
                 }
             }
+            harmonicRank(frequencies)?.let { put("frequencyHarmonicRank", it) }
+            averageRank(frequencies)?.let { put("frequencyAverageRank", it) }
             putJsonArray("pitches") {
-                val allPitches = result.term.pitches
-                val priorityTitles = profile.dictionaryOrder.map { getDictionaryTitle(context, it) }
+                val allPitches = pitches.toTypedArray()
+                val priorityTitles = priorityMap.entries.sortedBy { it.value }.map { it.key }
                 if (groupPitches) {
                     val orderedPitches = LinkedHashSet<Int>()
                     for (title in priorityTitles) {
@@ -127,6 +129,26 @@ internal fun buildResultEntryJson(result: LookupResult, index: Int, profile: Ank
     }
 }
 
+internal fun orderLookupResultsForDisplay(
+    results: List<LookupResult>,
+    profile: AnkiProfile,
+    context: Context,
+): List<LookupResult> {
+    val priorityMap = dictionaryPriorityMap(profile, context)
+    if (priorityMap.isEmpty()) return results
+    if (results.size <= 1) return results.map { it.withOrderedDictionaries(priorityMap) }
+
+    return results
+        .map { it.withOrderedDictionaries(priorityMap) }
+        .withIndex()
+        .sortedWith(
+            compareByDescending<IndexedValue<LookupResult>> { it.value.matched.length }
+                .thenBy { dictionaryPriority(priorityMap, it.value.term.glossaries.firstOrNull()?.dictName) }
+                .thenBy { it.index },
+        )
+        .map { it.value }
+}
+
 /**
  * Builds the config portion of the render payload — everything except results.
  * Results are serialized separately and pulled lazily via PayloadBridge.getEntry(index).
@@ -138,6 +160,7 @@ internal fun buildConfigPayload(
     placeholder: String,
     isDark: Boolean,
     showFrequencyHarmonic: Boolean,
+    showFrequencyAverage: Boolean,
     groupTerms: Boolean,
     showPitchDiagram: Boolean,
     showPitchNumber: Boolean,
@@ -164,6 +187,7 @@ internal fun buildConfigPayload(
     put("placeholder", placeholder)
     put("isDark", isDark)
     put("showFrequencyHarmonic", showFrequencyHarmonic)
+    put("showFrequencyAverage", showFrequencyAverage)
     put("groupTerms", groupTerms)
     put("showPitchDiagram", showPitchDiagram)
     put("showPitchNumber", showPitchNumber)
@@ -184,52 +208,19 @@ internal fun buildConfigPayload(
 }
 
 /**
- * Builds the full render payload with all results inlined.
- * Used as a fallback for the DictionaryTab and other non-popup consumers.
+ * Serializes result entries separately so PayloadBridge.getEntry(index) can pull
+ * one entry at a time instead of parsing a single large results array.
  */
-internal fun buildRenderPayload(
-    context: Context,
+internal fun buildResultEntryJsonStrings(
     results: List<LookupResult>,
-    styles: List<DictionaryStyle>,
-    mediaDataUris: Map<String, String>,
-    placeholder: String,
-    isDark: Boolean,
-    showFrequencyHarmonic: Boolean,
-    groupTerms: Boolean,
-    showPitchDiagram: Boolean,
-    showPitchNumber: Boolean,
-    showPitchText: Boolean,
-    wordAudioAutoplay: Boolean,
-    activeProfile: AnkiProfile,
-    existingExpressions: Set<String> = emptySet(),
-    tabs: List<TabInfo> = emptyList(),
-    recursiveNavMode: String = "tabs",
-    wordAudioEnabled: Boolean = true,
-    showNavigationButtons: Boolean = true,
-    groupPitches: Boolean = false,
-): JsonObject = buildJsonObject {
-    val config = buildConfigPayload(
-        context, styles, mediaDataUris, placeholder, isDark,
-        showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
-        wordAudioAutoplay, activeProfile, existingExpressions, tabs, recursiveNavMode,
-        wordAudioEnabled, showNavigationButtons, groupPitches,
-    )
-    config.forEach { (key, value) -> put(key, value) }
-
-    putJsonArray("results") {
-        for ((index, result) in results.withIndex()) {
-            add(buildResultEntryJson(result, index, activeProfile, context, groupPitches))
-        }
+    profile: AnkiProfile,
+    context: Context,
+    groupPitches: Boolean,
+): List<String> {
+    val priorityMap = dictionaryPriorityMap(profile, context)
+    return results.mapIndexed { index, result ->
+        buildResultEntryJson(result, index, priorityMap, groupPitches).toString()
     }
-}
-
-/**
- * Serializes a list of results to a JSON array string for lazy entry loading.
- */
-internal fun buildResultsJsonArray(results: List<LookupResult>, profile: AnkiProfile, context: Context, groupPitches: Boolean): String {
-    return Json.encodeToString(
-        JsonArray(results.mapIndexed { index, result -> buildResultEntryJson(result, index, profile, context, groupPitches) })
-    )
 }
 
 internal fun String.toJavascriptExpression(): String =
@@ -237,20 +228,110 @@ internal fun String.toJavascriptExpression(): String =
 
 private val dictionaryTitleCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
+/** Invalidate the cached title for a single directory. Call when display name or index.json title changes. */
+internal fun invalidateDictionaryTitle(dirName: String) {
+    dictionaryTitleCache.remove(dirName)
+}
+
 internal fun getDictionaryTitle(context: Context, dirName: String): String {
     return dictionaryTitleCache.getOrPut(dirName) {
+        // 1. Display name (user-set custom name, survives updates)
+        val prefs = Injekt.get<DictionaryPreferences>()
+        val displayName = prefs.getDisplayName(dirName)
+        if (displayName != null) return@getOrPut displayName
+
+        // 2. index.json title
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
         for (type in listOf("term", "frequency", "pitch")) {
             val indexFile = File(File(dictionariesDir, type), "$dirName/index.json")
             if (indexFile.exists()) {
                 try {
                     val json = indexFile.readText()
-                    return@getOrPut org.json.JSONObject(json).optString("title", dirName)
+                    val title = org.json.JSONObject(json).optString("title", dirName)
+                    if (title.isNotBlank()) return@getOrPut title
                 } catch (_: Exception) {
-                    return@getOrPut dirName
+                    // fall through to dirName
                 }
             }
         }
+
+        // 3. Directory name (stable fallback)
         dirName
     }
+}
+
+private fun dictionaryPriorityMap(profile: AnkiProfile, context: Context): Map<String, Int> =
+    profile.dictionaryOrder
+        .map { getDictionaryTitle(context, it) }
+        .distinct()
+        .withIndex()
+        .associate { it.value to it.index }
+
+private fun dictionaryPriority(priorityMap: Map<String, Int>, dictName: String?): Int =
+    dictName?.let { priorityMap[it] } ?: Int.MAX_VALUE
+
+private fun buildGlossaryPayload(glossary: chimahon.GlossaryEntry): JsonObject =
+    buildJsonObject {
+        val definitionTags = splitTags(glossary.definitionTags)
+        put("dictName", glossary.dictName)
+        put("glossary", glossary.glossary)
+        put("definitionTags", glossary.definitionTags)
+        putJsonArray("definitionTagList") {
+            for (tag in definitionTags) add(JsonPrimitive(tag))
+        }
+        put("termTags", glossary.termTags)
+    }
+
+private fun splitTags(value: String): List<String> =
+    value.split(Regex("\\s+")).filter { it.isNotBlank() }
+
+private fun frequencyDisplayText(group: chimahon.FrequencyEntry): String =
+    group.frequencies
+        .mapNotNull { item -> item.displayValue.takeIf { it.isNotBlank() } ?: item.value.takeIf { it > 0 }?.toString() }
+        .joinToString(", ")
+
+private fun harmonicRank(frequencies: List<chimahon.FrequencyEntry>): Int? {
+    val values = uniqueFrequencyValues(frequencies)
+    if (values.isEmpty()) return null
+    val reciprocalSum = values.sumOf { 1.0 / it }
+    if (reciprocalSum <= 0.0) return null
+    return kotlin.math.floor(values.size / reciprocalSum).toInt()
+}
+
+private fun averageRank(frequencies: List<chimahon.FrequencyEntry>): Double? {
+    val values = uniqueFrequencyValues(frequencies)
+    if (values.isEmpty()) return null
+    return values.average()
+}
+
+private fun uniqueFrequencyValues(frequencies: List<chimahon.FrequencyEntry>): List<Int> {
+    val seen = HashSet<String>()
+    return frequencies.mapNotNull { group ->
+        if (!seen.add(group.dictName)) return@mapNotNull null
+        group.frequencies.firstOrNull { it.value > 0 }?.value
+    }
+}
+
+private fun LookupResult.withOrderedDictionaries(priorityMap: Map<String, Int>): LookupResult {
+    if (priorityMap.isEmpty()) return this
+    return copy(
+        term = term.copy(
+            glossaries = term.glossaries.sortedByDictionaryPriority(priorityMap) { it.dictName }.toTypedArray(),
+            frequencies = term.frequencies.sortedByDictionaryPriority(priorityMap) { it.dictName }.toTypedArray(),
+            pitches = term.pitches.sortedByDictionaryPriority(priorityMap) { it.dictName }.toTypedArray(),
+        ),
+    )
+}
+
+private inline fun <T> Array<T>.sortedByDictionaryPriority(
+    priorityMap: Map<String, Int>,
+    crossinline dictName: (T) -> String,
+): List<T> {
+    if (priorityMap.isEmpty() || size <= 1) return toList()
+    return withIndex()
+        .sortedWith(
+            compareBy<IndexedValue<T>> { dictionaryPriority(priorityMap, dictName(it.value)) }
+                .thenBy { it.index },
+        )
+        .map { it.value }
 }

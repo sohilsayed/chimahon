@@ -57,10 +57,12 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          # Convert SSH submodule URLs to HTTPS (e.g. utf8proc uses git@github.com:)
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
           if [ -n "$GH_PAT" ]; then
             git config --global url."https://$GH_PAT@github.com/".insteadOf "https://github.com/"
-            git submodule update --init --recursive
           fi
+          git submodule update --init --recursive
 
       - name: Set up JDK
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0

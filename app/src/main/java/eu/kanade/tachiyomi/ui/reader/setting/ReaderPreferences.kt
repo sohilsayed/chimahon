@@ -31,6 +31,8 @@ class ReaderPreferences(
 
     fun flashColor() = preferenceStore.getEnum("pref_reader_flash_mode", FlashColor.BLACK)
 
+    fun eInkSwipeSensitivity() = preferenceStore.getBoolean("pref_reader_eink_swipe", false)
+
     fun doubleTapAnimSpeed() = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
 
     fun showPageNumber() = preferenceStore.getBoolean("pref_show_page_number_key", true)
@@ -110,6 +112,8 @@ class ReaderPreferences(
     fun ocrOutlineVisible() = preferenceStore.getBoolean("reader_ocr_outline_visible", false)
 
     fun ocrAutoOnDownload() = preferenceStore.getBoolean("ocr_auto_on_download", false)
+
+    fun readerStartupDelay() = preferenceStore.getBoolean("reader_startup_delay", false)
     // Chimahon <--
 
     // endregion

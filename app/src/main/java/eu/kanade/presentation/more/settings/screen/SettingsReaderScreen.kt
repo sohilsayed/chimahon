@@ -171,6 +171,10 @@ object SettingsReaderScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_keep_screen_on),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.readerStartupDelay(),
+                    title = stringResource(MR.strings.pref_reader_startup_delay),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.showPageNumber(),
                     title = stringResource(MR.strings.pref_show_page_number),
                 ),
@@ -224,6 +228,11 @@ object SettingsReaderScreen : SearchableSettings {
                     ),
                     title = stringResource(MR.strings.pref_flash_with),
                     enabled = flashPageState,
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.eInkSwipeSensitivity(),
+                    title = "E-Ink swipe",
+                    subtitle = "Disables page transition animations and lowers swipe thresholds for e-ink displays",
                 ),
             ),
         )

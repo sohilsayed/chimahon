@@ -15,7 +15,6 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.annotation.AttrRes
@@ -102,9 +101,23 @@ open class ReaderPageImageView @JvmOverloads constructor(
             (pageView as? SubsamplingScaleImageView)?.invalidate()
         }
 
-    var ocrBoxScale: Float = 1.0f
+    var ocrBoxScaleX: Float = 1.0f
         set(value) {
             field = value
+            ocrLayoutCache = null
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    var ocrBoxScaleY: Float = 1.0f
+        set(value) {
+            field = value
+            ocrLayoutCache = null
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    var ocrBoxOpacity: Float = 0.0f
+        set(value) {
+            field = value.coerceIn(0.0f, 1.0f)
             (pageView as? SubsamplingScaleImageView)?.invalidate()
         }
 
@@ -131,6 +144,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
             isVertical: Boolean,
             mediaInfo: chimahon.MediaInfo?,
             block: OcrTextBlock?,
+        ) -> Unit
+    )? = null
+
+    var onShowOcrSelectionPanel: (
+        (
+            text: String,
+            anchorX: Float,
+            anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
         ) -> Unit
     )? = null
 
@@ -391,11 +414,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             )
             setOnClickListener { this@ReaderPageImageView.onViewClicked() }
         }
-        // In webtoon mode, use WRAP_CONTENT height to respect image dimensions
-        // In paged mode, use MATCH_PARENT to fill the pager
-        val ssivWidth = MATCH_PARENT
-        val ssivHeight = if (isWebtoon) WRAP_CONTENT else MATCH_PARENT
-        addView(pageView, ssivWidth, ssivHeight)
+        addView(pageView, MATCH_PARENT, MATCH_PARENT)
     }
 
     private fun SubsamplingScaleImageView.setupZoom(config: Config?) {
@@ -602,7 +621,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private fun getTermRect(block: OcrTextBlock, startOffset: Int, count: Int): RectF? {
         val ssiv = pageView as? OcrSubsamplingImageView ?: return null
-        return ssiv.getMatchedWordRect(block, startOffset, count, ocrBoxScale)
+        return ssiv.getMatchedWordRect(block, startOffset, count, ocrBoxScaleX, ocrBoxScaleY)
     }
 
     override fun onDetachedFromWindow() {
@@ -633,6 +652,71 @@ open class ReaderPageImageView @JvmOverloads constructor(
     fun isPointOnOcrBlock(viewX: Float, viewY: Float): Boolean {
         val ssiv = pageView as? OcrSubsamplingImageView ?: return false
         return ssiv.dismissHandledInThisGesture || ssiv.isPointOnActiveOrAnyOcrBlock(viewX, viewY)
+    }
+
+    private fun getOcrBlockScreenBounds(
+        block: OcrTextBlock,
+        viewX: Float,
+        viewY: Float,
+        ssiv: SubsamplingScaleImageView,
+    ): RectF {
+        val centerX = (block.xmin + block.xmax) / 2f
+        val centerY = (block.ymin + block.ymax) / 2f
+        val width = block.xmax - block.xmin
+        val height = block.ymax - block.ymin
+
+        val srcXMin = (centerX - (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+
+        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
+        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
+
+        val location = IntArray(2)
+        ssiv.getLocationOnScreen(location)
+        val left = minOf(tl.x, br.x) + location[0]
+        val top = minOf(tl.y, br.y) + location[1]
+        val right = maxOf(tl.x, br.x) + location[0]
+        val bottom = maxOf(tl.y, br.y) + location[1]
+        return RectF(left, top, right, bottom)
+    }
+
+    /**
+     * Handle long press on an OCR block by opening the native selectable text panel.
+     *
+     * Called by [OcrSubsamplingImageView.OcrGestureListener.onLongPress].
+     */
+    internal fun handleOcrLongPress(
+        block: OcrTextBlock,
+        viewX: Float,
+        viewY: Float,
+    ): Boolean {
+        val selectionText = block.orderedFullText.ifBlank { block.fullText }
+        if (selectionText.isBlank()) return true
+
+        logcat {
+            "OCR long press: open selection panel vertical=${block.vertical} chars=${selectionText.length} x=$viewX y=$viewY"
+        }
+
+        activeOcrBlock = block
+        activeOcrCharOffset = 0
+        activeOcrMatchedCount = 0
+        ocrLayoutCache = null
+        ocrPopupLookupString = null
+        onDismissOcrPopup?.invoke()
+
+        val ssiv = pageView as? SubsamplingScaleImageView ?: return true
+        (pageView as? SubsamplingScaleImageView)?.invalidate()
+        val anchorBounds = getOcrBlockScreenBounds(block, viewX, viewY, ssiv)
+        onShowOcrSelectionPanel?.invoke(
+            selectionText,
+            anchorBounds.left,
+            anchorBounds.top,
+            anchorBounds.width(),
+            anchorBounds.height(),
+        )
+        return true
     }
 
     /**
@@ -697,32 +781,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         ocrPopupLookupString = lookupString
 
-        // Calculate screen bounding box of the block for adaptive positioning
-        val centerX = (block.xmin + block.xmax) / 2f
-        val centerY = (block.ymin + block.ymax) / 2f
-        val width = block.xmax - block.xmin
-        val height = block.ymax - block.ymin
-        val boxScale = ocrBoxScale
-
-        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
-        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
-
-        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
-        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
-
-        // Convert view-relative to screen-relative coordinates
-        val location = IntArray(2)
-        ssiv.getLocationOnScreen(location)
-        val anchorX = tl.x + location[0]
-        val anchorY = tl.y + location[1]
-        val anchorWidth = br.x - tl.x
-        val anchorHeight = br.y - tl.y
+        val anchorBounds = getOcrBlockScreenBounds(block, viewX, viewY, ssiv)
 
         onShowOcrPopup?.invoke(
             lookupString, sentenceText, sentenceOffset,
-            anchorX, anchorY, anchorWidth, anchorHeight,
+            anchorBounds.left, anchorBounds.top, anchorBounds.width(), anchorBounds.height(),
             block.vertical, null, block
         )
         return true
@@ -781,10 +844,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
         }
 
-        val tl = ssiv.sourceToViewCoord(block.xmin * ssiv.sWidth, block.ymin * ssiv.sHeight)
-            ?: return null
-        val br = ssiv.sourceToViewCoord(block.xmax * ssiv.sWidth, block.ymax * ssiv.sHeight)
-            ?: return null
+        val centerX = (block.xmin + block.xmax) / 2f
+        val centerY = (block.ymin + block.ymax) / 2f
+        val width = block.xmax - block.xmin
+        val height = block.ymax - block.ymin
+        val srcXMin = (centerX - (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+
+        val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: return null
+        val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: return null
 
         val screenW = br.x - tl.x
         val screenH = br.y - tl.y
@@ -818,12 +888,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val centerY = (geo.ymin + geo.ymax) / 2f
         val width = geo.xmax - geo.xmin
         val height = geo.ymax - geo.ymin
-        val boxScale = ocrBoxScale
 
-        val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
-        val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
-        val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+        val srcXMin = (centerX - (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMin = (centerY - (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
+        val srcXMax = (centerX + (width * ocrBoxScaleX) / 2f) * ssiv.sWidth
+        val srcYMax = (centerY + (height * ocrBoxScaleY) / 2f) * ssiv.sHeight
 
         val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: return null
         val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: return null

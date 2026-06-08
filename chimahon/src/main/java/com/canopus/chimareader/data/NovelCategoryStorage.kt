@@ -21,11 +21,16 @@ class NovelCategoryStorage(private val context: Context) {
             }
         }
 
-        return if (categories.none { it.id == NovelCategory.UNCATEGORIZED_ID }) {
+        val categoriesWithDefault = if (categories.none { it.id == NovelCategory.UNCATEGORIZED_ID }) {
             listOf(createDefaultCategory()) + categories
         } else {
             categories
         }
+
+        return categoriesWithDefault.sortedWith(
+            compareBy<NovelCategory> { if (it.isSystemCategory) Int.MIN_VALUE else it.order }
+                .thenBy { it.name },
+        )
     }
 
     private fun createDefaultCategory() = NovelCategory(id = NovelCategory.UNCATEGORIZED_ID, name = "Default", order = -1)
@@ -36,7 +41,12 @@ class NovelCategoryStorage(private val context: Context) {
 
     fun createCategory(name: String): NovelCategory {
         val categories = loadAllCategories().toMutableList()
-        val newCategory = NovelCategory(name = name, order = categories.size)
+        val nextOrder = categories
+            .filterNot { it.isSystemCategory }
+            .maxOfOrNull { it.order }
+            ?.plus(1)
+            ?: 0
+        val newCategory = NovelCategory(name = name, order = nextOrder)
         categories.add(newCategory)
         saveCategories(categories)
         return newCategory

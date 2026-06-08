@@ -14,6 +14,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkerParameters
 import chimahon.HoshiDicts
 import chimahon.dictionary.checkDictionaryUpdates
+import chimahon.dictionary.readDictionaryIndex
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
@@ -65,12 +66,17 @@ class DictionaryUpdateJob(context: Context, workerParams: WorkerParameters) :
                 Result.success()
             } else {
                 var successCount = 0
+                var notifIndex = 0
                 updates.forEachIndexed { index, update ->
                     notifier.showProgress(update.dictName, index, updates.size)
                     val dlUrl = update.latestDownloadUrl ?: update.downloadUrl
                     if (dlUrl != null) {
-                        val ok = applyUpdate(update.dictName, dlUrl, dictionariesDir)
-                        if (ok) successCount++
+                        val result = applyUpdate(update.dictName, dlUrl, dictionariesDir)
+                        if (result.success) {
+                            successCount++
+                            notifier.showUpdateResult(update.dictName, result.oldRevision, result.newRevision, notifIndex)
+                            notifIndex++
+                        }
                     }
                 }
 
@@ -85,11 +91,17 @@ class DictionaryUpdateJob(context: Context, workerParams: WorkerParameters) :
         }
     }
 
+    private data class UpdateResult(
+        val success: Boolean,
+        val oldRevision: String?,
+        val newRevision: String?,
+    )
+
     private suspend fun applyUpdate(
         dictName: String,
         downloadUrl: String,
         dictionariesDir: File,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): UpdateResult = withContext(Dispatchers.IO) {
         val cacheDir = applicationContext.cacheDir
         val tempZip = File(cacheDir, "dict_update_${System.currentTimeMillis()}.zip")
         val tempImportDir = File(cacheDir, "dict_import_tmp_${System.currentTimeMillis()}")
@@ -100,15 +112,15 @@ class DictionaryUpdateJob(context: Context, workerParams: WorkerParameters) :
 
             Log.d(TAG, "Importing $dictName to temp dir")
             tempImportDir.mkdirs()
-            val result = HoshiDicts.importDictionary(
+            val hoshiResult = HoshiDicts.importDictionary(
                 zipPath = tempZip.absolutePath,
                 outputDir = tempImportDir.absolutePath,
             )
 
-            if (!result.success) {
+            if (!hoshiResult.success) {
                 Log.e(TAG, "Import failed for $dictName")
                 notifier.showError(dictName, "Import failed")
-                return@withContext false
+                return@withContext UpdateResult(false, null, null)
             }
 
             val importedSubdir = tempImportDir.listFiles()
@@ -117,14 +129,17 @@ class DictionaryUpdateJob(context: Context, workerParams: WorkerParameters) :
             if (importedSubdir == null) {
                 Log.e(TAG, "No imported directory found for $dictName")
                 notifier.showError(dictName, "No imported directory found")
-                return@withContext false
+                return@withContext UpdateResult(false, null, null)
             }
 
             val types = buildList {
-                if (result.termCount > 0) add("term")
-                if (result.freqCount > 0) add("frequency")
-                if (result.pitchCount > 0) add("pitch")
+                if (hoshiResult.termCount > 0) add("term")
+                if (hoshiResult.freqCount > 0) add("frequency")
+                if (hoshiResult.pitchCount > 0) add("pitch")
             }
+
+            // Read old revision before cleanup
+            val oldRevision = readOldRevision(dictionariesDir, dictName)
 
             // Clean stale type subdirs from previous version before writing new ones
             for (type in listOf("term", "frequency", "pitch")) {
@@ -139,17 +154,42 @@ class DictionaryUpdateJob(context: Context, workerParams: WorkerParameters) :
                 importedSubdir.copyRecursively(targetDir)
             }
 
-            val resolvedName = if (result.title.isNotBlank()) result.title else dictName
-            Log.d(TAG, "Successfully updated $resolvedName in $types")
-            true
+            // Read new revision from the just-written index.json
+            val newRevision = readNewRevision(dictionariesDir, dictName)
+
+            val resolvedName = if (hoshiResult.title.isNotBlank()) hoshiResult.title else dictName
+            Log.d(TAG, "Successfully updated $resolvedName in $types (${oldRevision ?: "?"} → ${newRevision ?: "?"})")
+            UpdateResult(true, oldRevision, newRevision)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update $dictName", e)
             notifier.showError(dictName, e.message ?: "Unknown error")
-            false
+            UpdateResult(false, null, null)
         } finally {
             if (tempZip.exists()) tempZip.delete()
             if (tempImportDir.exists()) tempImportDir.deleteRecursively()
         }
+    }
+
+    private fun readOldRevision(dictionariesDir: File, dictName: String): String? {
+        for (type in listOf("term", "frequency", "pitch")) {
+            val dir = File(File(dictionariesDir, type), dictName)
+            if (dir.isDirectory) {
+                val index = readDictionaryIndex(dir)
+                if (index?.revision != null) return index.revision
+            }
+        }
+        return null
+    }
+
+    private fun readNewRevision(dictionariesDir: File, dictName: String): String? {
+        for (type in listOf("term", "frequency", "pitch")) {
+            val dir = File(File(dictionariesDir, type), dictName)
+            if (dir.isDirectory) {
+                val index = readDictionaryIndex(dir)
+                if (index?.revision != null) return index.revision
+            }
+        }
+        return null
     }
 
     private fun downloadFile(url: String, output: File) {

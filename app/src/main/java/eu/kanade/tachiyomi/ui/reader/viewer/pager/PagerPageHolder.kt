@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -105,6 +106,9 @@ class PagerPageHolder(
         onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, block ->
             val sourcePage = block?.let { getPageForBlock(it) } ?: page
             viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage)
+        }
+        onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+            viewer.onShowOcrSelectionPanel?.invoke(text, anchorX, anchorY, anchorWidth, anchorHeight)
         }
         onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()
@@ -477,7 +481,9 @@ class PagerPageHolder(
         super.onImageLoaded()
         progressIndicator?.hide()
         ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
-        ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
+        ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
+        ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         val ocrEnabled = viewer.activity.viewModel.isOcrEnabled()
         this.ocrEnabled = ocrEnabled
         if (!ocrEnabled) {
@@ -493,7 +499,9 @@ class PagerPageHolder(
 
     fun applyOcrEnabled(enabled: Boolean) {
         ocrOutlineVisible = viewer.activity.viewModel.isOcrOutlineVisible()
-        ocrBoxScale = viewer.activity.viewModel.getOcrBoxScale()
+        ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
+        ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
+        ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
         ocrEnabled = enabled
         if (!enabled) {
             ocrLoadJob?.cancel()
@@ -508,6 +516,19 @@ class PagerPageHolder(
                 loadOcrWithTransform()
             }
         }
+    }
+
+    fun applyOcrOutlineVisible(visible: Boolean) {
+        ocrOutlineVisible = visible
+    }
+
+    fun applyOcrBoxScale(scaleX: Float, scaleY: Float) {
+        ocrBoxScaleX = scaleX
+        ocrBoxScaleY = scaleY
+    }
+
+    fun applyOcrBoxOpacity(opacity: Float) {
+        ocrBoxOpacity = opacity
     }
 
     /**
@@ -525,63 +546,69 @@ class PagerPageHolder(
      * Modes 2 and 3 can combine (crop applied after split).
      */
     private suspend fun loadOcrWithTransform() {
-        val viewModel = viewer.activity.viewModel
-        val cropBordersEnabled = viewer.config.imageCropBorders
-        val dualSplitEnabled = viewer.config.dualPageSplit
+        try {
+            val viewModel = viewer.activity.viewModel
+            val cropBordersEnabled = viewer.config.imageCropBorders
+            val dualSplitEnabled = viewer.config.dualPageSplit
 
-        // ── Case 1: Merge mode (two pages combined into one wide bitmap) ────────────
-        val ep = extraPage
-        if (ep != null && mergedPage1W > 0 && !page.fullPage && !page.isolatedPage) {
-            logcat { "OCR merge-mode: page=${page.index} extra=${ep.index}" }
-            val rawBlocks1 = viewModel.getOcrBlocks(page)
-            val rawBlocks2 = viewModel.getOcrBlocks(ep)
-            var merged = OcrCoordinateMapper.mapToMerged(
-                blocks1 = rawBlocks1,
-                page1W = mergedPage1W,
-                page1H = mergedPage1H,
-                blocks2 = rawBlocks2,
-                page2W = mergedPage2W,
-                page2H = mergedPage2H,
-                isLTR = mergedIsLTR,
-                centerMarginPx = mergedCenterMargin,
-            )
+            // ── Case 1: Merge mode (two pages combined into one wide bitmap) ────────────
+            val ep = extraPage
+            if (ep != null && mergedPage1W > 0 && !page.fullPage && !page.isolatedPage) {
+                logcat { "OCR merge-mode: page=${page.index} extra=${ep.index}" }
+                val rawBlocks1 = viewModel.getOcrBlocks(page)
+                val rawBlocks2 = viewModel.getOcrBlocks(ep)
+                var merged = OcrCoordinateMapper.mapToMerged(
+                    blocks1 = rawBlocks1,
+                    page1W = mergedPage1W,
+                    page1H = mergedPage1H,
+                    blocks2 = rawBlocks2,
+                    page2W = mergedPage2W,
+                    page2H = mergedPage2H,
+                    isLTR = mergedIsLTR,
+                    centerMarginPx = mergedCenterMargin,
+                )
 
-            // Apply crop remap if needed
-            val cropRect = pageCropRect
-            if (cropBordersEnabled && merged.isNotEmpty() && cropRect != null) {
-                merged = OcrCoordinateMapper.remapToCrop(merged, cropRect)
-                logcat { "OCR merge crop-remap done: ${merged.size} blocks" }
+                // Apply crop remap if needed
+                val cropRect = pageCropRect
+                if (cropBordersEnabled && merged.isNotEmpty() && cropRect != null) {
+                    merged = OcrCoordinateMapper.remapToCrop(merged, cropRect)
+                    logcat { "OCR merge crop-remap done: ${merged.size} blocks" }
+                }
+
+                setOcrBlocks(merged)
+                return
             }
 
-            setOcrBlocks(merged)
-            return
+            // ── Case 2 (+ 3): Split mode / single page ──────────────────────────────────
+            logcat { "OCR request start: chapter=${page.chapter.chapter.id} page=${page.index}" }
+            var blocks = viewModel.getOcrBlocks(page)
+
+            if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
+                // Determine which half of the wide image this page shows
+                val keepLeft = when {
+                    viewer is L2RPagerViewer && page is InsertPage -> false  // InsertPage = right half in L2R
+                    viewer !is L2RPagerViewer && page is InsertPage -> true  // InsertPage = left half in R2L
+                    viewer is L2RPagerViewer && page !is InsertPage -> true  // Original = left half in L2R
+                    else -> false
+                }.let { side -> if (viewer.config.dualPageInvert) !side else side }
+
+                blocks = OcrCoordinateMapper.mapToSplit(blocks, keepLeft)
+                logcat { "OCR split (keepLeft=$keepLeft): ${blocks.size} blocks after remap" }
+            }
+
+            // ── Case 3: Crop borders ────────────────────────────────────────────────────
+            val cropRect = pageCropRect
+            if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
+                blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
+                logcat { "OCR crop-remap done: ${blocks.size} blocks" }
+            }
+
+            setOcrBlocks(blocks)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(LogPriority.ERROR, e) { "OCR loadOcrWithTransform failed" }
         }
-
-        // ── Case 2 (+ 3): Split mode / single page ──────────────────────────────────
-        logcat { "OCR request start: chapter=${page.chapter.chapter.id} page=${page.index}" }
-        var blocks = viewModel.getOcrBlocks(page)
-
-        if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
-            // Determine which half of the wide image this page shows
-            val keepLeft = when {
-                viewer is L2RPagerViewer && page is InsertPage -> false  // InsertPage = right half in L2R
-                viewer !is L2RPagerViewer && page is InsertPage -> true  // InsertPage = left half in R2L
-                viewer is L2RPagerViewer && page !is InsertPage -> true  // Original = left half in L2R
-                else -> false
-            }.let { side -> if (viewer.config.dualPageInvert) !side else side }
-
-            blocks = OcrCoordinateMapper.mapToSplit(blocks, keepLeft)
-            logcat { "OCR split (keepLeft=$keepLeft): ${blocks.size} blocks after remap" }
-        }
-
-        // ── Case 3: Crop borders ────────────────────────────────────────────────────
-        val cropRect = pageCropRect
-        if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
-            blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
-            logcat { "OCR crop-remap done: ${blocks.size} blocks" }
-        }
-
-        setOcrBlocks(blocks)
     }
 
     /**

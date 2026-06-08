@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.Bookmark
+import com.canopus.chimareader.data.CustomReaderTheme
 import com.canopus.chimareader.data.FileNames
 import com.canopus.chimareader.data.FontManager
 import com.canopus.chimareader.data.NovelReaderSettings
@@ -33,6 +34,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
@@ -161,6 +163,7 @@ class ReaderViewModel(
     var continuousMode by mutableStateOf(false)
     var customBackgroundColor by mutableIntStateOf(0xFFF2E2C9.toInt())
     var customTextColor by mutableIntStateOf(0xFF000000.toInt())
+    var customThemes by mutableStateOf<List<CustomReaderTheme>>(emptyList())
     var sasayakiPlayer: SasayakiPlayer? by mutableStateOf(null)
     var verticalWriting by mutableStateOf(true)
     var characterSpacing by mutableDoubleStateOf(0.0)
@@ -196,6 +199,9 @@ class ReaderViewModel(
 
     var fullStatistics = mutableStateListOf<Statistics>()
     private var lastPersistTimeMs = System.currentTimeMillis()
+    private var lastSavedChapterIndex = 0
+    private var lastSavedProgress = 0.0
+    private var lastSavedCharacterCount = 0
 
     lateinit var statisticsTracker: ReaderStatisticsTracker
     private var trackingLocked = false
@@ -231,6 +237,7 @@ class ReaderViewModel(
             continuousMode = settings.continuousMode.first()
             customBackgroundColor = settings.customBackgroundColor.first()
             customTextColor = settings.customTextColor.first()
+            customThemes = settings.customThemes.first()
             verticalWriting = settings.verticalWriting.first()
             paragraphSpacing = settings.paragraphSpacing.first()
             avoidPageBreak = settings.avoidPageBreak.first()
@@ -244,6 +251,9 @@ class ReaderViewModel(
         index = bookmark?.chapterIndex ?: 0
         currentProgress = bookmark?.progress ?: 0.0
         totalExploredCharCount = calculateExploredCharCount(currentProgress)
+        lastSavedChapterIndex = index
+        lastSavedProgress = currentProgress
+        lastSavedCharacterCount = totalExploredCharCount
 
         val stats = BookStorage.loadStatistics(rootUrl)
         if (stats != null) {
@@ -331,6 +341,9 @@ class ReaderViewModel(
             settings.customTextColor.collect { customTextColor = it }
         }
         scope.launch {
+            settings.customThemes.collect { customThemes = it }
+        }
+        scope.launch {
             settings.verticalWriting.collect { verticalWriting = it }
         }
         scope.launch {
@@ -373,6 +386,8 @@ class ReaderViewModel(
     fun updateContinuousMode(value: Boolean) = scope.launch { settings.setContinuousMode(value) }
     fun updateCustomBackgroundColor(value: Int) = scope.launch { settings.setCustomBackgroundColor(value) }
     fun updateCustomTextColor(value: Int) = scope.launch { settings.setCustomTextColor(value) }
+    fun applyCustomTheme(value: CustomReaderTheme) = scope.launch { settings.setCustomTheme(value) }
+    fun addCustomTheme(value: CustomReaderTheme) = scope.launch { settings.addCustomTheme(value) }
     fun updateVerticalWriting(value: Boolean) = scope.launch { settings.setVerticalWriting(value) }
     fun updateJustifyText(value: Boolean) = scope.launch { settings.setJustifyText(value) }
     fun updateAvoidPageBreak(value: Boolean) = scope.launch { settings.setAvoidPageBreak(value) }
@@ -498,10 +513,10 @@ class ReaderViewModel(
         return null
     }
 
-    fun saveBookmark(progress: Double, updateTracker: Boolean = true) {
+    fun saveBookmark(progress: Double, updateTracker: Boolean = true, force: Boolean = false) {
         currentProgress = progress
         bridge.updateProgress(progress)
-        persistBookmark(progress)
+        persistBookmark(progress, force)
         if (updateTracker && !trackingLocked && !appBackgrounded) {
             statisticsTracker.update(totalExploredCharCount)
         }
@@ -647,7 +662,7 @@ class ReaderViewModel(
         // Reset tracker baseline to the new position so neither the timer loop
         // nor the saveBookmark call below register a false delta from the jump.
         statisticsTracker.resetBaseline(calculateExploredCharCount(progress))
-        saveBookmark(progress, updateTracker = false)
+        saveBookmark(progress, updateTracker = false, force = true)
         getCurrentChapter()?.let { file ->
             // Create proper file URL with encoded path
             val fileUrl = "file://${file.absolutePath.replace("\\", "/")}"
@@ -667,20 +682,30 @@ class ReaderViewModel(
         return count
     }
 
-    private fun persistBookmark(progress: Double) {
-        totalExploredCharCount = calculateExploredCharCount(progress)
+    private fun persistBookmark(progress: Double, force: Boolean = false) {
+        val characterCount = calculateExploredCharCount(progress)
+        totalExploredCharCount = characterCount
+
+        val changed = force ||
+            index != lastSavedChapterIndex ||
+            characterCount != lastSavedCharacterCount ||
+            abs(progress - lastSavedProgress) > BOOKMARK_PROGRESS_EPSILON
+
+        if (!changed) return
 
         BookStorage.save(
             Bookmark(
                 chapterIndex = index,
                 progress = progress,
-                characterCount = totalExploredCharCount,
+                characterCount = characterCount,
                 lastModified = System.currentTimeMillis(),
             ),
             rootUrl,
             FileNames.bookmark,
         )
-
+        lastSavedChapterIndex = index
+        lastSavedProgress = progress
+        lastSavedCharacterCount = characterCount
         scheduleSyncExport()
     }
 
@@ -713,5 +738,9 @@ class ReaderViewModel(
         val stats = statisticsTracker.statisticsForPersistence()
         BookStorage.saveStatistics(stats, rootUrl)
         scheduleSyncExport()
+    }
+
+    companion object {
+        private const val BOOKMARK_PROGRESS_EPSILON = 0.0001
     }
 }

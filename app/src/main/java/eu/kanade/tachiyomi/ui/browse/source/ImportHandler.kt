@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.canopus.chimareader.data.BookImporter
+import com.canopus.chimareader.data.BookStorage
+import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.NovelCategoryStorage
 import com.hippo.unifile.UniFile
 import tachiyomi.source.local.LocalSource
@@ -112,11 +114,19 @@ object ImportHandler {
                 ?: categories.firstOrNull() // Should always have a system category now
             
             if (defaultCategory != null) {
+                val existingCategoryIds = bookMetadata.categoryIds
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                val updatedCategoryIds = if (existingCategoryIds.any { it != NovelCategory.UNCATEGORIZED_ID }) {
+                    existingCategoryIds.filterNot { it == NovelCategory.UNCATEGORIZED_ID }
+                } else {
+                    (existingCategoryIds + defaultCategory.id).distinct()
+                }
                 val updatedMetadata = bookMetadata.copy(
-                    categoryIds = (bookMetadata.categoryIds + defaultCategory.id).distinct()
+                    categoryIds = updatedCategoryIds
                 )
-                val bookDir = java.io.File(com.canopus.chimareader.data.BookStorage.getBooksDirectory(context), updatedMetadata.id)
-                com.canopus.chimareader.data.BookStorage.saveMetadata(updatedMetadata, bookDir)
+                val bookDir = java.io.File(BookStorage.getBooksDirectory(context), updatedMetadata.id)
+                BookStorage.saveMetadata(updatedMetadata, bookDir)
             }
         }
     }

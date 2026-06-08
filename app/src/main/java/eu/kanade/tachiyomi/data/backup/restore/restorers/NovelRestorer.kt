@@ -4,10 +4,11 @@ import android.content.Context
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.Bookmark
+import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.Statistics
+import com.canopus.chimareader.data.md5Hex
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory
-import java.io.File
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -16,22 +17,34 @@ class NovelRestorer(
     private val novelCategoryStorage: com.canopus.chimareader.data.NovelCategoryStorage = Injekt.get()
 ) {
 
-    fun restore(backupNovels: List<BackupNovel>) {
-        backupNovels.forEach { restoreNovel(it) }
+    fun restore(
+        backupNovels: List<BackupNovel>,
+        categoryIdMap: Map<String, String> = emptyMap(),
+    ) {
+        backupNovels.forEach { restoreNovel(it, categoryIdMap) }
     }
 
-    fun restoreNovel(backupNovel: BackupNovel) {
-        val bookDir = BookStorage.getBookDirectory(context, backupNovel.id)
+    fun restoreNovel(
+        backupNovel: BackupNovel,
+        categoryIdMap: Map<String, String> = emptyMap(),
+    ) {
+        val novelId = stableNovelId(backupNovel)
+        val bookDir = BookStorage.getBookDirectory(context, novelId)
+        val backupCategoryIds = normalizeCategoryIds(
+            backupNovel.categoryIds.map { categoryIdMap[it] ?: it },
+        )
 
         if (bookDir.exists()) {
             // Merge Metadata
             val localMetadata = BookStorage.loadMetadata(bookDir)
             if (localMetadata != null) {
+                val hasImportedContent = BookStorage.hasImportedBookContent(bookDir)
                 val updatedMetadata = localMetadata.copy(
                     author = backupNovel.author ?: localMetadata.author,
                     cover = backupNovel.cover ?: localMetadata.cover,
                     lang = backupNovel.lang ?: localMetadata.lang,
-                    categoryIds = (localMetadata.categoryIds + backupNovel.categoryIds).distinct()
+                    isGhost = if (hasImportedContent) false else localMetadata.isGhost,
+                    categoryIds = mergeCategoryIds(localMetadata.categoryIds, backupCategoryIds)
                 )
                 BookStorage.saveMetadata(updatedMetadata, bookDir)
             }
@@ -96,16 +109,16 @@ class NovelRestorer(
             bookDir.mkdirs()
 
             val metadata = BookMetadata(
-                id = backupNovel.id,
+                id = novelId,
                 title = backupNovel.title,
                 author = backupNovel.author,
                 cover = backupNovel.cover, // Might be broken link until EPUB import
-                folder = backupNovel.id,
+                folder = novelId,
                 lastAccess = backupNovel.lastModified,
-                hash = backupNovel.id,
+                hash = novelId,
                 isGhost = true,
                 lang = backupNovel.lang,
-                categoryIds = backupNovel.categoryIds
+                categoryIds = backupCategoryIds
             )
             BookStorage.saveMetadata(metadata, bookDir)
 
@@ -140,29 +153,80 @@ class NovelRestorer(
         }
     }
 
-    fun restoreCategories(backupCategories: List<BackupNovelCategory>) {
-        if (backupCategories.isEmpty()) return
+    fun restoreCategories(backupCategories: List<BackupNovelCategory>): Map<String, String> {
+        val categoryIdMap = mutableMapOf(
+            NovelCategory.UNCATEGORIZED_ID to NovelCategory.UNCATEGORIZED_ID,
+        )
+        if (backupCategories.isEmpty()) return categoryIdMap
 
         val currentCategories = novelCategoryStorage.loadAllCategories().toMutableList()
         var changed = false
 
         backupCategories.forEach { backupCategory ->
-            val existing = currentCategories.find { it.id == backupCategory.id || it.name == backupCategory.name }
-            if (existing == null) {
-                currentCategories.add(
-                    com.canopus.chimareader.data.NovelCategory(
-                        id = backupCategory.id,
-                        name = backupCategory.name,
-                        order = backupCategory.order.toInt(),
-                        flags = backupCategory.flags
-                    )
+            val existingIndex = currentCategories.indexOfFirst {
+                it.id == backupCategory.id || categoryKey(it.name) == categoryKey(backupCategory.name)
+            }
+
+            if (existingIndex == -1) {
+                val restoredCategory = NovelCategory(
+                    id = backupCategory.id,
+                    name = backupCategory.name,
+                    order = backupCategory.order.toInt(),
+                    flags = backupCategory.flags,
                 )
+                currentCategories.add(restoredCategory)
+                categoryIdMap[backupCategory.id] = restoredCategory.id
                 changed = true
+            } else {
+                val existing = currentCategories[existingIndex]
+                categoryIdMap[backupCategory.id] = existing.id
+
+                val updatedCategory = existing.copy(
+                    name = backupCategory.name,
+                    order = backupCategory.order.toInt(),
+                    flags = backupCategory.flags,
+                )
+                if (updatedCategory != existing) {
+                    currentCategories[existingIndex] = updatedCategory
+                    changed = true
+                }
             }
         }
 
         if (changed) {
             novelCategoryStorage.saveCategories(currentCategories)
         }
+
+        return categoryIdMap
+    }
+
+    private fun mergeCategoryIds(localIds: List<String>, backupIds: List<String>): List<String> {
+        return normalizeCategoryIds(localIds + backupIds)
+    }
+
+    private fun normalizeCategoryIds(categoryIds: List<String>): List<String> {
+        val distinctIds = categoryIds
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        return if (distinctIds.any { it != NovelCategory.UNCATEGORIZED_ID }) {
+            distinctIds.filterNot { it == NovelCategory.UNCATEGORIZED_ID }
+        } else {
+            distinctIds
+        }
+    }
+
+    private fun stableNovelId(backupNovel: BackupNovel): String {
+        val title = backupNovel.title.trim().lowercase()
+        val author = backupNovel.author?.trim()?.lowercase().orEmpty()
+        return if (title.isNotEmpty() || author.isNotEmpty()) {
+            md5Hex("$title|$author")
+        } else {
+            backupNovel.id
+        }
+    }
+
+    private fun categoryKey(name: String): String {
+        return name.trim().lowercase()
     }
 }

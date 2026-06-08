@@ -4,7 +4,6 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.Cursor
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Base64
@@ -14,13 +13,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.InputStream
 import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.text.Normalizer
 
 class AnkiDroidBridge(private val context: Context) {
 
@@ -49,15 +46,28 @@ class AnkiDroidBridge(private val context: Context) {
         private const val MODEL_ID = "_id"
         private const val MODEL_NAME = "name"
         private const val MODEL_FIELD_NAMES = "field_names"
+        private const val MODEL_NUM_CARDS = "num_cards"
+        private const val MODEL_CSS = "css"
+        private const val MODEL_DECK_ID = "deck_id"
+        private const val MODEL_SORT_FIELD_INDEX = "sort_field_index"
 
         private const val DECK_ID = "deck_id"
         private const val DECK_NAME = "deck_name"
+
+        private const val CARD_TEMPLATE_NAME = "card_template_name"
+        private const val CARD_TEMPLATE_QUESTION_FORMAT = "question_format"
+        private const val CARD_TEMPLATE_ANSWER_FORMAT = "answer_format"
 
         private const val MEDIA_FILE_URI = "file_uri"
         private const val MEDIA_PREFERRED_NAME = "preferred_name"
 
         private const val FIELD_SEPARATOR = "\u001f"
     }
+
+    private data class ModelInfo(
+        val name: String,
+        val fields: List<String>,
+    )
 
     // ==========================================================================
     // Public API
@@ -155,6 +165,40 @@ class AnkiDroidBridge(private val context: Context) {
             Log.e(TAG, "modelFieldNames", e)
         }
         result
+    }
+
+    suspend fun ensureDefaultDeckName(): String = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext ""
+        val defaultName = LapisPreset.DEFAULT_DECK_NAME
+        findDeckIdOrNull(defaultName) ?: createDeck(defaultName)
+        defaultName
+    }
+
+    suspend fun ensureLapisModelName(): String = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext ""
+
+        val models = readModelInfos()
+        val exact = models.firstOrNull { it.name == LapisPreset.MODEL_NAME }
+        if (exact != null && LapisPreset.hasAllFields(exact.fields)) {
+            return@withContext exact.name
+        }
+
+        val completeFallback = models.firstOrNull {
+            it.name.equals(LapisPreset.FALLBACK_MODEL_NAME, ignoreCase = true) &&
+                LapisPreset.hasAllFields(it.fields)
+        }
+        if (completeFallback != null) {
+            return@withContext completeFallback.name
+        }
+
+        val targetName = if (exact == null) {
+            LapisPreset.MODEL_NAME
+        } else {
+            nextAvailableLapisFallbackName(models)
+        }
+
+        createLapisModel(targetName)
+        targetName
     }
 
     suspend fun getDeckId(deckName: String): Long = withContext(Dispatchers.IO) {
@@ -354,6 +398,11 @@ class AnkiDroidBridge(private val context: Context) {
     // ==========================================================================
 
     private fun findDeckId(deckName: String): Long {
+        findDeckIdOrNull(deckName)?.let { return it }
+        throw Exception("Deck '$deckName' not found")
+    }
+
+    private fun findDeckIdOrNull(deckName: String): Long? {
         try {
             context.contentResolver.query(
                 DECKS_URI,
@@ -372,7 +421,17 @@ class AnkiDroidBridge(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "findDeckId failed", e)
         }
-        throw Exception("Deck '$deckName' not found")
+        return null
+    }
+
+    private fun createDeck(deckName: String): Long {
+        val cv = ContentValues().apply {
+            put(DECK_NAME, deckName)
+        }
+        val uri = context.contentResolver.insert(DECKS_URI, cv)
+            ?: throw Exception("Failed to create deck '$deckName'")
+        return uri.lastPathSegment?.toLongOrNull()
+            ?: throw Exception("Failed to parse deck ID for '$deckName'")
     }
 
     private fun findModelId(modelName: String): Long {
@@ -416,6 +475,82 @@ class AnkiDroidBridge(private val context: Context) {
         }
         throw Exception("Model fields not found for ID: $modelId")
     }
+
+    private fun readModelInfos(): List<ModelInfo> {
+        val models = mutableListOf<ModelInfo>()
+        try {
+            context.contentResolver.query(
+                MODELS_URI,
+                arrayOf(MODEL_NAME, MODEL_FIELD_NAMES),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                val nameIdx = c.getColumnIndex(MODEL_NAME)
+                val fieldsIdx = c.getColumnIndex(MODEL_FIELD_NAMES)
+                if (nameIdx == -1 || fieldsIdx == -1) return@use
+                while (c.moveToNext()) {
+                    val name = c.getString(nameIdx) ?: continue
+                    val fields = parseFieldNames(c.getString(fieldsIdx) ?: "")
+                    models += ModelInfo(name, fields)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "readModelInfos failed", e)
+        }
+        return models
+    }
+
+    private fun nextAvailableLapisFallbackName(models: List<ModelInfo>): String {
+        val existingNames = models.map { it.name.lowercase() }.toSet()
+        if (LapisPreset.FALLBACK_MODEL_NAME.lowercase() !in existingNames) {
+            return LapisPreset.FALLBACK_MODEL_NAME
+        }
+
+        var index = 2
+        while (true) {
+            val candidate = "Lapis (Chimahon $index)"
+            if (candidate.lowercase() !in existingNames) return candidate
+            index += 1
+        }
+    }
+
+    private fun createLapisModel(modelName: String): Long {
+        val css = readLapisAsset("styling.css")
+        val front = readLapisAsset("front.html")
+        val back = readLapisAsset("back.html")
+        val deckId = findDeckIdOrNull(LapisPreset.DEFAULT_DECK_NAME)
+
+        val modelValues = ContentValues().apply {
+            put(MODEL_NAME, modelName)
+            put(MODEL_FIELD_NAMES, LapisPreset.fields.joinToString(FIELD_SEPARATOR))
+            put(MODEL_NUM_CARDS, 1)
+            put(MODEL_CSS, css)
+            put(MODEL_SORT_FIELD_INDEX, 0)
+            if (deckId != null) put(MODEL_DECK_ID, deckId)
+        }
+
+        val modelUri = context.contentResolver.insert(MODELS_URI, modelValues)
+            ?: throw Exception("Failed to create Anki model '$modelName'")
+        val modelId = modelUri.lastPathSegment?.toLongOrNull()
+            ?: throw Exception("Failed to parse Anki model ID for '$modelName'")
+
+        val templatesUri = Uri.withAppendedPath(modelUri, "templates")
+        val firstTemplateUri = Uri.withAppendedPath(templatesUri, "0")
+        val templateValues = ContentValues().apply {
+            put(CARD_TEMPLATE_NAME, "Card 1")
+            put(CARD_TEMPLATE_QUESTION_FORMAT, front)
+            put(CARD_TEMPLATE_ANSWER_FORMAT, back)
+        }
+        context.contentResolver.update(firstTemplateUri, templateValues, null, null)
+
+        return modelId
+    }
+
+    private fun readLapisAsset(filename: String): String =
+        context.assets.open("lapis/$filename").use { input ->
+            input.bufferedReader(StandardCharsets.UTF_8).readText()
+        }
 
     private fun parseFieldNames(rawData: String): List<String> {
         val trimmed = rawData.trim()

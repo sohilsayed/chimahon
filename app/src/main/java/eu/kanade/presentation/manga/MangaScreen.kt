@@ -214,6 +214,7 @@ fun MangaScreen(
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
     val context = LocalContext.current
@@ -284,6 +285,7 @@ fun MangaScreen(
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
             onClickDictionaryProfile = onClickDictionaryProfile,
+            onClickMangaStats = onClickMangaStats,
             // KMK <--
         )
     } else {
@@ -347,6 +349,7 @@ fun MangaScreen(
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
             onClickDictionaryProfile = onClickDictionaryProfile,
+            onClickMangaStats = onClickMangaStats,
             // KMK <--
         )
     }
@@ -427,6 +430,7 @@ private fun MangaScreenSmallImpl(
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
     val chapterListState = rememberLazyListState()
@@ -521,6 +525,7 @@ private fun MangaScreenSmallImpl(
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
                 onClickDictionaryProfile = onClickDictionaryProfile,
+                onClickMangaStats = onClickMangaStats,
                 // KMK <--
             )
         },
@@ -893,6 +898,7 @@ private fun MangaScreenLargeImpl(
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -978,6 +984,7 @@ private fun MangaScreenLargeImpl(
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
                 onClickDictionaryProfile = onClickDictionaryProfile,
+                onClickMangaStats = onClickMangaStats,
                 // KMK <--
             )
         },

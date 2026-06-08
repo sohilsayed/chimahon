@@ -1,12 +1,17 @@
 package com.canopus.chimareader.data
 
 import android.content.Context
+import android.graphics.Color
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import android.graphics.Color
 
 val Context.novelReaderDataStore: DataStore<Preferences> by preferencesDataStore(name = "novel_reader_settings")
 
@@ -16,18 +21,25 @@ enum class Theme {
     DARK,
     SEPIA,
     CUSTOM,
-    PURE_BLACK
+    PURE_BLACK,
 }
+
+data class CustomReaderTheme(
+    val backgroundColor: Int,
+    val textColor: Int,
+)
 
 enum class StatisticsAutostartMode {
     OFF,
     ON,
-    PAGETURN
+    PAGETURN,
 }
 
 class NovelReaderSettings(private val context: Context, private val namespace: String? = null) {
 
     companion object {
+        private const val MAX_CUSTOM_THEMES = 24
+
         fun default(): NovelReaderSettings {
             throw IllegalStateException("NovelReaderSettings requires a Context. Pass context from Activity.")
         }
@@ -54,6 +66,22 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
     }
 
     private val dataStore = context.novelReaderDataStore
+
+    private fun encodeCustomThemes(themes: List<CustomReaderTheme>): String {
+        return themes.joinToString("|") { "${it.backgroundColor},${it.textColor}" }
+    }
+
+    private fun decodeCustomThemes(value: String?): List<CustomReaderTheme> {
+        if (value.isNullOrBlank()) return emptyList()
+        return value.split("|")
+            .mapNotNull { encoded ->
+                val parts = encoded.split(",")
+                val backgroundColor = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                val textColor = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                CustomReaderTheme(backgroundColor, textColor)
+            }
+            .distinct()
+    }
 
     private fun androidx.datastore.preferences.core.Preferences.getSafeDouble(key: androidx.datastore.preferences.core.Preferences.Key<Double>, default: Double): Double {
         return try {
@@ -91,6 +119,10 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
 
     val customTextColor: Flow<Int> = dataStore.data.map { prefs ->
         prefs[keys.CUSTOM_TEXT_COLOR] ?: Color.BLACK
+    }
+
+    val customThemes: Flow<List<CustomReaderTheme>> = dataStore.data.map { prefs ->
+        decodeCustomThemes(prefs[keys.customThemes])
     }
 
     val customInfoColor: Flow<Int> = dataStore.data.map { prefs ->
@@ -248,6 +280,25 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
     suspend fun setCustomTextColor(value: Int) {
         dataStore.edit { prefs ->
             prefs[keys.CUSTOM_TEXT_COLOR] = value
+        }
+    }
+
+    suspend fun setCustomTheme(value: CustomReaderTheme) {
+        dataStore.edit { prefs ->
+            prefs[keys.CUSTOM_BACKGROUND_COLOR] = value.backgroundColor
+            prefs[keys.CUSTOM_TEXT_COLOR] = value.textColor
+            prefs[keys.THEME] = Theme.CUSTOM.name
+        }
+    }
+
+    suspend fun addCustomTheme(value: CustomReaderTheme) {
+        dataStore.edit { prefs ->
+            val existing = decodeCustomThemes(prefs[keys.customThemes])
+            val next = (existing + value).distinct().takeLast(MAX_CUSTOM_THEMES)
+            prefs[keys.customThemes] = encodeCustomThemes(next)
+            prefs[keys.CUSTOM_BACKGROUND_COLOR] = value.backgroundColor
+            prefs[keys.CUSTOM_TEXT_COLOR] = value.textColor
+            prefs[keys.THEME] = Theme.CUSTOM.name
         }
     }
 
@@ -443,12 +494,14 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         }
     }
 
+    @Suppress("PropertyName", "ktlint:standard:property-naming")
     private inner class PreferencesKeys {
         val THEME = stringKey("theme")
         val SYSTEM_LIGHT_SEPIA = booleanKey("system_light_sepia")
         val UI_THEME = stringKey("ui_theme")
         val CUSTOM_BACKGROUND_COLOR = intKey("custom_background_color")
         val CUSTOM_TEXT_COLOR = intKey("custom_text_color")
+        val customThemes = stringKey("custom_themes")
         val CUSTOM_INFO_COLOR = intKey("custom_info_color")
         val VERTICAL_WRITING = booleanKey("vertical_writing")
         val SELECTED_FONT = stringKey("selected_font")

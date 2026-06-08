@@ -221,17 +221,33 @@ object AnkiCardCreator {
     ): AnkiResult {
         android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, forceOpen=$forceOpen, glossaryIndex=$glossaryIndex")
 
-        if (deck.isBlank() || model.isBlank()) {
-            android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
-            return AnkiResult.NotConfigured
-        }
-
         val bridge = AnkiDroidBridge(context)
         if (!bridge.hasPermission()) {
             return AnkiResult.PermissionDenied
         }
         return try {
-            val fieldMap = parseFieldMap(fieldMapJson)
+            val effectiveDeck = deck.ifBlank { bridge.ensureDefaultDeckName() }
+            val requestedModel = model.ifBlank { LapisPreset.MODEL_NAME }
+            val effectiveModel = if (LapisPreset.isBundledModelName(requestedModel)) {
+                bridge.ensureLapisModelName()
+            } else {
+                requestedModel
+            }
+            val effectiveFieldMapJson = if (
+                LapisPreset.isBundledModelName(effectiveModel) &&
+                LapisPreset.isBlankFieldMap(fieldMapJson)
+            ) {
+                LapisPreset.defaultFieldMapJson
+            } else {
+                fieldMapJson
+            }
+
+            if (effectiveDeck.isBlank() || effectiveModel.isBlank()) {
+                android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
+                return AnkiResult.NotConfigured
+            }
+
+            val fieldMap = parseFieldMap(effectiveFieldMapJson)
             android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
             val cloze = if (sentence.isNotEmpty() && offset >= 0) {
                 // Use result.matched (the exact surface form the dictionary engine consumed)
@@ -257,7 +273,9 @@ object AnkiCardCreator {
             }
 
             var wordAudioFilename: String? = null
-            val hasWordAudioMarker = fieldMap.values.any { it.contains("{${Marker.WORD_AUDIO}}") }
+            val hasWordAudioMarker = fieldMap.values.any {
+                it.contains("{${Marker.WORD_AUDIO}}") || it.contains("{${Marker.AUDIO}}")
+            }
             if (hasWordAudioMarker) {
                 try {
                     val wordAudioService = Injekt.get<WordAudioService>()
@@ -302,9 +320,9 @@ object AnkiCardCreator {
             val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
             if (dupCheck || forceOpen) {
-                val targetDeckId = if (dupScope == "deck" && deck.isNotBlank()) {
+                val targetDeckId = if (dupScope == "deck" && effectiveDeck.isNotBlank()) {
                     try {
-                        bridge.getDeckId(deck)
+                        bridge.getDeckId(effectiveDeck)
                     } catch (e: Exception) {
                         null
                     }
@@ -328,7 +346,7 @@ object AnkiCardCreator {
                 }
             }
 
-            val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
+            val noteId = bridge.addNote(deckName = effectiveDeck, modelName = effectiveModel, fields = fields, tags = tagList)
             com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type)
             if (syncOnCreate) bridge.triggerSync()
             AnkiResult.Success(noteId)
@@ -749,8 +767,8 @@ object AnkiCardCreator {
         if (reading.isBlank() || expression == reading) return expression
         val segments = distributeFurigana(expression, reading)
         return segments.joinToString("") { (text, furigana) ->
-            if (furigana.isNotEmpty()) "$text[$furigana]" else text
-        }
+            if (furigana.isNotEmpty()) "$text[$furigana]" else "$text "
+        }.trimEnd()
     }
 
     private fun distributeFurigana(expression: String, reading: String): List<Pair<String, String>> {
@@ -837,23 +855,16 @@ object AnkiCardCreator {
 
         val sb = StringBuilder()
         sb.append("""<div style="text-align: left;" class="yomitan-glossary">""")
-
-        if (entries.size == 1) {
-            val dictAttr = attrEscape(entries[0].dictName)
-            sb.append("""<div data-dictionary="$dictAttr">""")
-            sb.append(renderGlossarySingle(entries[0], brief, noDictTag))
-            sb.append("</div>")
-        } else {
-            sb.append("<ol>")
-            for (entry in entries) {
-                val dictAttr = attrEscape(entry.dictName)
-                sb.append("""<li data-dictionary="$dictAttr">""")
-                sb.append(renderGlossarySingle(entry, brief, noDictTag))
-                sb.append("</li>")
-            }
-            sb.append("</ol>")
+        sb.append("<ol>")
+        var previousDictName = ""
+        for (entry in entries) {
+            val dictAttr = attrEscape(entry.dictName)
+            sb.append("""<li data-dictionary="$dictAttr">""")
+            sb.append(renderGlossarySingle(entry, brief, noDictTag, previousDictName))
+            sb.append("</li>")
+            previousDictName = entry.dictName
         }
-
+        sb.append("</ol>")
         sb.append("</div>")
         if (scopedStyles.isNotEmpty()) {
             sb.append("<style>")
@@ -987,6 +998,7 @@ object AnkiCardCreator {
         entry: GlossaryEntry,
         brief: Boolean,
         noDictTag: Boolean,
+        previousDictName: String = "",
     ): String {
         val sb = StringBuilder()
 
@@ -995,7 +1007,7 @@ object AnkiCardCreator {
             if (entry.definitionTags.isNotBlank()) {
                 tagParts += entry.definitionTags.split(" ").filter { it.isNotBlank() }
             }
-            if (!noDictTag && entry.dictName.isNotBlank()) {
+            if (!noDictTag && entry.dictName.isNotBlank() && entry.dictName != previousDictName) {
                 tagParts += entry.dictName
             }
             if (tagParts.isNotEmpty()) {
@@ -1144,12 +1156,12 @@ object AnkiCardCreator {
             }
             sb.append(""" style="$cssStr"""")
         } else {
-            // Apply compact default styles for common block tags in Anki
+            // Apply compact default styles for common block tags in Anki.
+            // Avoid inline defaults for table elements — dictionary CSS
+            // (included as scoped <style>) would be overridden by inline styles.
             when (tag) {
                 "ul", "ol" -> sb.append(""" style="margin: 0.2em 0; padding-left: 1.2em;"""")
                 "p", "div" -> sb.append(""" style="margin: 0.1em 0;"""")
-                "table" -> sb.append(""" style="border-collapse: collapse; margin: 0.2em 0; width: auto; border: 1px solid #888;"""")
-                "th", "td" -> sb.append(""" style="border: 1px solid #888; padding: 2px 4px; vertical-align: top;"""" )
             }
         }
 

@@ -77,6 +77,7 @@ import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.manga.merged.EditMergedSettingsDialog
 import eu.kanade.tachiyomi.ui.manga.notes.MangaNotesScreen
 import eu.kanade.tachiyomi.ui.manga.track.TrackInfoDialogHomeScreen
+import eu.kanade.presentation.reader.stats.MangaStatsSheet
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
@@ -266,6 +267,8 @@ class MangaScreen(
         val isConfigurableSource = successState.source.anyIs<ConfigurableSource>() ||
             (successState.source.isEhBasedSource() && isHentaiEnabled)
         // KMK <--
+
+        var showMangaStats by remember { mutableStateOf(false) }
 
         MangaScreen(
             state = successState,
@@ -463,6 +466,7 @@ class MangaScreen(
             hazeState = hazeState,
             onClickDictionaryProfile = { screenModel.showSetDictionaryProfileDialog() }
                 .takeIf { successState.manga.favorite },
+            onClickMangaStats = { showMangaStats = true },
             // KMK <--
         )
 
@@ -661,6 +665,18 @@ class MangaScreen(
                     onConfirm = screenModel::setMangaDictionaryProfile,
                 )
             }
+        }
+
+        if (showMangaStats) {
+            MangaStatsSheet(
+                context = context,
+                mangaId = successState.manga.id,
+                sessionCharacters = 0,
+                sessionTimeMs = 0,
+                isTracking = null,
+                onToggleTracking = null,
+                onDismiss = { showMangaStats = false },
+            )
         }
 
         if (showScanlatorsDialog) {

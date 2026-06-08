@@ -10,6 +10,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -17,6 +18,7 @@ import java.util.Locale
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.Pager
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * OCR-aware subclass of [SubsamplingScaleImageView].
@@ -66,13 +68,6 @@ class OcrSubsamplingImageView(
         color = Color.BLACK
     }
 
-    private val borderPaint = Paint().apply {
-        isAntiAlias = true
-        style = Paint.Style.STROKE
-        strokeWidth = 2f * context.resources.displayMetrics.density
-        color = Color.argb(180, 0, 170, 255)
-    }
-
     private val backgroundPaint = Paint().apply {
         isAntiAlias = true
         style = Paint.Style.FILL
@@ -107,14 +102,16 @@ class OcrSubsamplingImageView(
             textPaint.setTextLocale(Locale.forLanguageTag(blockLang))
         }
 
-        // Draw all blocks: borders always visible, text only if active
+        // Draw passive OCR text boxes at the configured opacity. The active tapped
+        // box keeps the old transparent-background feel and paints only the OCR text.
         for (block in host.ocrBlocks) {
             drawOcrBlock(canvas, block, host)
         }
     }
 
     /**
-     * Draw a single OCR block: border always, text if active.
+     * Draw a single OCR block. Inactive blocks use the configured opacity; the active
+     * block is rendered at full opacity with match highlighting.
      */
     private fun drawOcrBlock(canvas: Canvas, block: OcrTextBlock, host: ReaderPageImageView) {
         // Calculate center and size, then apply scale around center
@@ -122,13 +119,12 @@ class OcrSubsamplingImageView(
         val centerY = (block.ymin + block.ymax) / 2f
         val width = block.xmax - block.xmin
         val height = block.ymax - block.ymin
-        val scale = host.ocrBoxScale
 
         // Convert normalized coords to source pixel coords with scale applied around center
-        val srcXMin = (centerX - (width * scale) / 2f) * sWidth
-        val srcYMin = (centerY - (height * scale) / 2f) * sHeight
-        val srcXMax = (centerX + (width * scale) / 2f) * sWidth
-        val srcYMax = (centerY + (height * scale) / 2f) * sHeight
+        val srcXMin = (centerX - (width * host.ocrBoxScaleX) / 2f) * sWidth
+        val srcYMin = (centerY - (height * host.ocrBoxScaleY) / 2f) * sHeight
+        val srcXMax = (centerX + (width * host.ocrBoxScaleX) / 2f) * sWidth
+        val srcYMax = (centerY + (height * host.ocrBoxScaleY) / 2f) * sHeight
 
         // Convert source coords to screen coords
         val tlScreen = sourceToViewCoord(srcXMin, srcYMin) ?: return
@@ -137,26 +133,49 @@ class OcrSubsamplingImageView(
         val screenW = brScreen.x - tlScreen.x
         val screenH = brScreen.y - tlScreen.y
 
-        if (host.ocrOutlineVisible) {
-            canvas.drawRect(
-                tlScreen.x,
-                tlScreen.y,
-                brScreen.x,
-                brScreen.y,
-                borderPaint,
+        if (block == host.activeOcrBlock) {
+            val activeBackgroundAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
+            drawOcrTextBox(
+                canvas = canvas,
+                block = block,
+                host = host,
+                tlScreen = tlScreen,
+                brScreen = brScreen,
+                screenW = screenW,
+                screenH = screenH,
+                textAlpha = 255,
+                backgroundAlpha = activeBackgroundAlpha,
+                highlightAlpha = 100,
+                highlightMatches = true,
+                cacheLayout = true,
             )
+            return
         }
 
-        // Draw text if this block is active
-        if (block == host.activeOcrBlock) {
-            drawActiveOcrText(canvas, block, host, tlScreen, brScreen, screenW, screenH)
+        val textAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
+        val backgroundAlpha = (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255)
+        if (textAlpha > 0 || backgroundAlpha > 0) {
+            drawOcrTextBox(
+                canvas = canvas,
+                block = block,
+                host = host,
+                tlScreen = tlScreen,
+                brScreen = brScreen,
+                screenW = screenW,
+                screenH = screenH,
+                textAlpha = textAlpha,
+                backgroundAlpha = backgroundAlpha,
+                highlightAlpha = 0,
+                highlightMatches = false,
+                cacheLayout = false,
+            )
         }
     }
 
     /**
-     * Draw text inside active OCR block with background.
+     * Draw OCR text with caller-provided background and text opacity.
      */
-    private fun drawActiveOcrText(
+    private fun drawOcrTextBox(
         canvas: Canvas,
         block: OcrTextBlock,
         host: ReaderPageImageView,
@@ -164,39 +183,58 @@ class OcrSubsamplingImageView(
         brScreen: PointF,
         screenW: Float,
         screenH: Float,
+        textAlpha: Int,
+        backgroundAlpha: Int,
+        highlightAlpha: Int,
+        highlightMatches: Boolean,
+        cacheLayout: Boolean,
     ) {
+        val oldTextAlpha = textPaint.alpha
+        val oldBackgroundAlpha = backgroundPaint.alpha
+        val oldHighlightAlpha = highlightPaint.alpha
+        textPaint.alpha = textAlpha
+        backgroundPaint.alpha = backgroundAlpha
+        highlightPaint.alpha = highlightAlpha
+
         canvas.save()
 
-        val geometries = block.lineGeometries
-        if (geometries != null && geometries.size == block.lines.size) {
-            // Per-line rendering logic (matches reference userscript)
-            var currentOffset = 0
-            for (i in block.lines.indices) {
-                val text = block.lines[i]
-                drawLineOrientedText(canvas, text, currentOffset, geometries[i], block.vertical, host)
-                currentOffset += text.length
-            }
-        } else {
-            // Fallback: block-level rendering
-            // Draw semi-transparent background for the entire block only if no geometries
-            canvas.drawRect(
-                tlScreen.x,
-                tlScreen.y,
-                brScreen.x,
-                brScreen.y,
-                backgroundPaint,
-            )
-            if (block.vertical) {
-                drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH, host)
+        try {
+            val geometries = block.lineGeometries
+            if (geometries != null && geometries.size == block.lines.size) {
+                // Per-line rendering logic (matches reference userscript)
+                var currentOffset = 0
+                for (i in block.lines.indices) {
+                    val text = block.lines[i]
+                    drawLineOrientedText(canvas, text, currentOffset, geometries[i], block.vertical, host, highlightMatches)
+                    currentOffset += text.length
+                }
             } else {
-                val layout = buildLayoutForHorizontal(block, screenW, screenH, host)
-                host.ocrLayoutCache = Pair(block, layout)
-                canvas.translate(tlScreen.x, tlScreen.y)
-                layout.draw(canvas)
+                // Fallback: block-level rendering
+                // Draw semi-transparent background for the entire block only if no geometries
+                canvas.drawRect(
+                    tlScreen.x,
+                    tlScreen.y,
+                    brScreen.x,
+                    brScreen.y,
+                    backgroundPaint,
+                )
+                if (block.vertical) {
+                    drawVerticalOcrText(canvas, block, tlScreen, screenW, screenH, host, highlightMatches)
+                } else {
+                    val layout = buildLayoutForHorizontal(block, screenW, screenH, host, useCache = cacheLayout)
+                    if (cacheLayout) {
+                        host.ocrLayoutCache = Pair(block, layout)
+                    }
+                    canvas.translate(tlScreen.x, tlScreen.y)
+                    layout.draw(canvas)
+                }
             }
+        } finally {
+            canvas.restore()
+            textPaint.alpha = oldTextAlpha
+            backgroundPaint.alpha = oldBackgroundAlpha
+            highlightPaint.alpha = oldHighlightAlpha
         }
-
-        canvas.restore()
     }
 
     /**
@@ -209,10 +247,11 @@ class OcrSubsamplingImageView(
         geo: OcrLineGeometry,
         isVertical: Boolean,
         host: ReaderPageImageView,
+        highlightMatches: Boolean,
     ) {
         if (text.isBlank()) return
 
-        val rect = getLineRect(geo, host.ocrBoxScale) ?: return
+        val rect = getLineRect(geo, host.ocrBoxScaleX, host.ocrBoxScaleY) ?: return
         val sW = rect.width()
         val sH = rect.height()
 
@@ -228,25 +267,25 @@ class OcrSubsamplingImageView(
         val lineIsVertical = isVertical || (geo.ymax - geo.ymin) / (geo.xmax - geo.xmin) > 1.2f
 
         if (lineIsVertical) {
-            drawColumnText(canvas, text, lineStartOffset, rect, host)
+            drawColumnText(canvas, text, lineStartOffset, rect, host, highlightMatches)
         } else {
-            drawHorizontalLineText(canvas, text, lineStartOffset, rect, host)
+            drawHorizontalLineText(canvas, text, lineStartOffset, rect, host, highlightMatches)
         }
 
         canvas.restore()
     }
 
-    fun getLineRect(geo: OcrLineGeometry, scale: Float): RectF? {
+    fun getLineRect(geo: OcrLineGeometry, scaleX: Float, scaleY: Float): RectF? {
         if (!isReady) return null
         val centerX = (geo.xmin + geo.xmax) / 2f
         val centerY = (geo.ymin + geo.ymax) / 2f
         val width = geo.xmax - geo.xmin
         val height = geo.ymax - geo.ymin
 
-        val srcXMin = (centerX - (width * scale) / 2f) * sWidth
-        val srcYMin = (centerY - (height * scale) / 2f) * sHeight
-        val srcXMax = (centerX + (width * scale) / 2f) * sWidth
-        val srcYMax = (centerY + (height * scale) / 2f) * sHeight
+        val srcXMin = (centerX - (width * scaleX) / 2f) * sWidth
+        val srcYMin = (centerY - (height * scaleY) / 2f) * sHeight
+        val srcXMax = (centerX + (width * scaleX) / 2f) * sWidth
+        val srcYMax = (centerY + (height * scaleY) / 2f) * sHeight
 
         val tl = sourceToViewCoord(srcXMin, srcYMin) ?: return null
         val br = sourceToViewCoord(srcXMax, srcYMax) ?: return null
@@ -258,10 +297,11 @@ class OcrSubsamplingImageView(
         geo: OcrLineGeometry,
         start: Int,
         end: Int,
-        scale: Float,
+        scaleX: Float,
+        scaleY: Float,
         isVertical: Boolean,
     ): RectF? {
-        val rect = getLineRect(geo, scale) ?: return null
+        val rect = getLineRect(geo, scaleX, scaleY) ?: return null
         if (start <= 0 && end >= text.length) return rect
 
         val sW = rect.width()
@@ -280,7 +320,13 @@ class OcrSubsamplingImageView(
      * Get the screen-space bounding box for a range of characters in a block.
      * Reuses the same geometry logic as [onDraw] to ensure alignment.
      */
-    fun getMatchedWordRect(block: OcrTextBlock, startOffset: Int, count: Int, scale: Float): RectF? {
+    fun getMatchedWordRect(
+        block: OcrTextBlock,
+        startOffset: Int,
+        count: Int,
+        scaleX: Float,
+        scaleY: Float,
+    ): RectF? {
         if (!isReady || count <= 0) return null
 
         val geometries = block.lineGeometries
@@ -297,7 +343,8 @@ class OcrSubsamplingImageView(
                         geometries[i],
                         maxOf(0, startOffset - currentOffset),
                         minOf(text.length, startOffset + count - currentOffset),
-                        scale,
+                        scaleX,
+                        scaleY,
                         block.vertical,
                     )
                     if (lineRect != null) rects.add(lineRect)
@@ -321,7 +368,14 @@ class OcrSubsamplingImageView(
         return result
     }
 
-    private fun drawHorizontalLineText(canvas: Canvas, text: String, lineStartOffset: Int, rect: RectF, host: ReaderPageImageView) {
+    private fun drawHorizontalLineText(
+        canvas: Canvas,
+        text: String,
+        lineStartOffset: Int,
+        rect: RectF,
+        host: ReaderPageImageView,
+        highlightMatches: Boolean,
+    ) {
         val density = context.resources.displayMetrics.density
         val sW = rect.width()
         val sH = rect.height()
@@ -361,7 +415,7 @@ class OcrSubsamplingImageView(
             val xCenter = rect.left + charWidth * (i + 0.5f)
             val yCenter = rect.top + sH / 2f
             
-            if (host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
+            if (highlightMatches && host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
                 canvas.drawRect(
                     rect.left + charWidth * i,
                     rect.top,
@@ -375,7 +429,14 @@ class OcrSubsamplingImageView(
         }
     }
 
-    private fun drawColumnText(canvas: Canvas, text: String, lineStartOffset: Int, rect: RectF, host: ReaderPageImageView) {
+    private fun drawColumnText(
+        canvas: Canvas,
+        text: String,
+        lineStartOffset: Int,
+        rect: RectF,
+        host: ReaderPageImageView,
+        highlightMatches: Boolean,
+    ) {
         val density = context.resources.displayMetrics.density
         val sW = rect.width()
         val sH = rect.height()
@@ -415,7 +476,7 @@ class OcrSubsamplingImageView(
         text.forEachIndexed { i, ch ->
             val yCenter = rect.top + rowStep * (i + 0.5f)
 
-            if (host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
+            if (highlightMatches && host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
                 canvas.drawRect(
                     rect.left,
                     rect.top + rowStep * i,
@@ -436,6 +497,7 @@ class OcrSubsamplingImageView(
         screenW: Float,
         screenH: Float,
         host: ReaderPageImageView,
+        highlightMatches: Boolean,
     ) {
         val columns = block.lines.filter { it.isNotEmpty() }.ifEmpty { listOf(block.fullText) }
         if (columns.isEmpty()) return
@@ -466,7 +528,7 @@ class OcrSubsamplingImageView(
             text.forEachIndexed { charIndex, ch ->
                 val yCenter = contentTop + rowStep * (charIndex + 0.5f)
 
-                if (host.activeOcrMatchedCount > 0 && charIndex in matchedStart until matchedEnd) {
+                if (highlightMatches && host.activeOcrMatchedCount > 0 && charIndex in matchedStart until matchedEnd) {
                     canvas.drawRect(
                         x - columnWidth / 2f,
                         contentTop + rowStep * charIndex,
@@ -526,9 +588,12 @@ class OcrSubsamplingImageView(
         screenW: Float,
         screenH: Float,
         host: ReaderPageImageView,
+        useCache: Boolean = true,
     ): StaticLayout {
         // Check cache first
-        host.ocrLayoutCache?.takeIf { it.first == block }?.second?.let { return it }
+        if (useCache) {
+            host.ocrLayoutCache?.takeIf { it.first == block }?.second?.let { return it }
+        }
 
         val lineCount = block.lines.size.coerceAtLeast(1)
         var textSize = screenH / lineCount / 1.2f // slight padding
@@ -668,18 +733,16 @@ class OcrSubsamplingImageView(
         val nyPadding = sourcePaddingPx / sHeight
 
         // Apply the same scale to hit area as used in drawing
-        val boxScale = host.ocrBoxScale
-
         // Prioritize currently active block so overlapping OCR boxes don't steal taps.
         host.activeOcrBlock?.let { active ->
-            if (blockContainsPoint(active, nx, ny, nxPadding, nyPadding, boxScale)) {
+            if (blockContainsPoint(active, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)) {
                 return active
             }
         }
 
         // Otherwise resolve first matching block.
         return host.ocrBlocks.firstOrNull { block ->
-            blockContainsPoint(block, nx, ny, nxPadding, nyPadding, boxScale)
+            blockContainsPoint(block, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)
         }
     }
 
@@ -689,17 +752,18 @@ class OcrSubsamplingImageView(
         ny: Float,
         nxPadding: Float,
         nyPadding: Float,
-        boxScale: Float,
+        boxScaleX: Float,
+        boxScaleY: Float,
     ): Boolean {
         val centerX = (block.xmin + block.xmax) / 2f
         val centerY = (block.ymin + block.ymax) / 2f
         val width = block.xmax - block.xmin
         val height = block.ymax - block.ymin
 
-        val scaledXMin = centerX - (width * boxScale) / 2f
-        val scaledYMin = centerY - (height * boxScale) / 2f
-        val scaledXMax = centerX + (width * boxScale) / 2f
-        val scaledYMax = centerY + (height * boxScale) / 2f
+        val scaledXMin = centerX - (width * boxScaleX) / 2f
+        val scaledYMin = centerY - (height * boxScaleY) / 2f
+        val scaledXMax = centerX + (width * boxScaleX) / 2f
+        val scaledYMax = centerY + (height * boxScaleY) / 2f
 
         return nx >= (scaledXMin - nxPadding) && nx <= (scaledXMax + nxPadding) &&
             ny >= (scaledYMin - nyPadding) && ny <= (scaledYMax + nyPadding)
@@ -758,7 +822,13 @@ class OcrSubsamplingImageView(
             return host.handleOcrTap(block, e.x, e.y, e.rawX, e.rawY)
         }
 
-        // onLongPress intentionally NOT overridden
-        // Long press on block falls through to pager.longTapListener (normal behavior)
+        override fun onLongPress(e: MotionEvent) {
+            if (swipeReleased) return
+            val host = ocrHost ?: return
+            val block = getCachedHitBlock(e.x, e.y) ?: return
+            parent?.requestDisallowInterceptTouchEvent(true)
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            host.handleOcrLongPress(block, e.x, e.y)
+        }
     }
 }

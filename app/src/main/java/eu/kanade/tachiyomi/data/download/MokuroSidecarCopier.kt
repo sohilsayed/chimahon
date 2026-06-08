@@ -43,7 +43,13 @@ class MokuroSidecarCopier(
             chapterDir
         }
 
-        val sidecarName = "${chapterDir.name}.mokuro"
+        val chapterName = chapterDir.name ?: return
+        val sidecarBaseName = if (isCbz) {
+            chapterName.substringBeforeLast('.')
+        } else {
+            chapterName
+        }.removeChapterUrlHash()
+        val sidecarName = "$sidecarBaseName.mokuro"
 
         val sidecarFile = targetDir.findFile(sidecarName)
             ?: targetDir.createFile(sidecarName)
@@ -91,5 +97,9 @@ class MokuroSidecarCopier(
             logcat(LogPriority.ERROR, e) { "MokuroSidecarCopier: error fetching .mokuro from $url" }
             null
         }
+    }
+
+    private fun String.removeChapterUrlHash(): String {
+        return replace(Regex("_[A-Za-z0-9]{6}$"), "")
     }
 }

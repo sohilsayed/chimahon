@@ -60,11 +60,12 @@ internal class DictionaryReadyBridge(
  */
 internal class PayloadBridge {
     @Volatile var rawPayloadJson: String = ""
-    @Volatile var rawEntriesJson: String = ""
+    @Volatile var rawEntryJsons: List<String> = emptyList()
 
     @JavascriptInterface fun getPayloadJson(): String = rawPayloadJson
-    @JavascriptInterface fun getEntry(index: Int): String? =
-        rawEntriesJson.takeIf { it.isNotEmpty() }?.let { org.json.JSONArray(it).optString(index, null) }
+    @JavascriptInterface fun getEntryCount(): Int = rawEntryJsons.size
+
+    @JavascriptInterface fun getEntry(index: Int): String? = rawEntryJsons.getOrNull(index)
 }
 
 /**

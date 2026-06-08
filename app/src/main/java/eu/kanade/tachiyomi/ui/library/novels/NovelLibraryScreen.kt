@@ -685,7 +685,9 @@ fun NovelLibraryContent(
                 pagerState = pagerState,
                 getItemCountForCategory = { cat ->
                     if (showNumberOfItems) {
-                        state.displayedCategories.find { it.name == cat.name }?.let { state.getItemCountForCategory(it) }
+                        state.displayedCategories.find {
+                            (if (it.isSystemCategory) 0L else it.id.hashCode().toLong()) == cat.id
+                        }?.let { state.getItemCountForCategory(it) }
                     } else {
                         null
                     }

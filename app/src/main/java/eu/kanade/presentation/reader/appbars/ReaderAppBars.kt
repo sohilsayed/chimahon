@@ -76,6 +76,7 @@ fun ReaderAppBars(
     cropEnabled: Boolean,
     onClickCropBorder: () -> Unit,
     onClickSettings: () -> Unit,
+    onClickMangaStats: (() -> Unit)?,
     // SY -->
     isExhToolsVisible: Boolean,
     onSetExhUtilsVisibility: (Boolean) -> Unit,
@@ -274,6 +275,7 @@ fun ReaderAppBars(
                     cropEnabled = cropEnabled,
                     onClickCropBorder = onClickCropBorder,
                     onClickSettings = onClickSettings,
+                    onClickMangaStats = onClickMangaStats,
                     // SY -->
                     enabledButtons = enabledButtons,
                     currentReadingMode = currentReadingMode,

@@ -533,7 +533,7 @@ private class ReaderAndroidWebView(
         appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
         appendLine("p { margin-block-start: 0 !important; margin-block-end: ${readerSettings.paragraphSpacing}em !important; }")
         appendLine("body * { font-family: inherit !important; }")
-        appendLine("img.hoshi-image-block, svg.hoshi-image-block { position: static !important; }")
+        appendLine("img.block-img, svg.block-img { position: static !important; }")
     }
 
     // Safe fallback for inline / gaiji images — keeps them from overflowing their container
@@ -687,8 +687,8 @@ private class ReaderAndroidWebView(
                 // so they don't dominate the scroll and overflow the padding.
                 var contentW = Math.max(1, iw - 2 * hPad);
                 var contentH = Math.max(1, ih - 2 * vPad);
-                document.documentElement.style.setProperty('--hoshi-image-max-width', contentW + 'px');
-                document.documentElement.style.setProperty('--hoshi-image-max-height', contentH + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -698,27 +698,26 @@ private class ReaderAndroidWebView(
                 document.head.appendChild(s);
 
                 // Continuous-mode image rules:
-                // .hoshi-image-block  → large images: block-level, centered, constrained
-                // everything else     → inline images: stay in text flow, just capped at max-width
-                var contImgStyle = document.getElementById('hoshi-cont-img-style');
+                // .block-img          -> large images: block-level, centered, constrained
+                // everything else     -> inline images: stay in text flow, just capped at max-width
+                var contImgStyle = document.getElementById('reader-cont-img-style');
                 if (contImgStyle) contImgStyle.remove();
                 contImgStyle = document.createElement('style');
-                contImgStyle.id = 'hoshi-cont-img-style';
+                contImgStyle.id = 'reader-cont-img-style';
                 contImgStyle.textContent = [
-                    'img.hoshi-image-block, svg.hoshi-image-block {',
-                    '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
-                    '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
+                    'img.block-img, svg.block-img {',
+                    '  max-width: var(--reader-image-max-width, 95vw) !important;',
+                    '  max-height: var(--reader-image-max-height, 95vh) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  display: block !important;',
-                    '  margin-left: auto !important;',
-                    '  margin-right: auto !important;',
-                    '  margin-top: 12px !important;',
-                    '  margin-bottom: 12px !important;',
+                    '  margin: auto !important;',
+                    '  break-inside: avoid !important;',
+                    '  -webkit-column-break-inside: avoid !important;',
                     '  object-fit: contain !important;',
                     '}',
-                    'img:not(.hoshi-image-block), svg:not(.hoshi-image-block) {',
-                    '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
+                    'img:not(.block-img), svg:not(.block-img) {',
+                    '  max-width: min(var(--reader-image-max-width, 95vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  min-width: 1em !important;',
@@ -783,7 +782,7 @@ private class ReaderAndroidWebView(
                 window.hoshiReader.registerCopyText();
                 window.hoshiReader.continuousMode = true;
 
-                // Classify images as .hoshi-image-block (large, standalone) or leave inline.
+                // Classify large non-gaiji media as block images.
                 // Wait for all images to finish loading before classifying and restoring progress —
                 // late-loading images shift element positions and cause scrollIntoView() to land
                 // at the wrong offset.
@@ -796,22 +795,15 @@ private class ReaderAndroidWebView(
                             if (!isGaiji) {
                                 var isLarge = false;
                                 if (tag === 'img') {
-                                    isLarge = el.naturalWidth > 300 || el.naturalHeight > 300;
+                                    isLarge = el.naturalWidth > 256 || el.naturalHeight > 256;
                                 } else if (tag === 'svg') {
                                     var vb = el.viewBox && el.viewBox.baseVal;
                                     var w = vb ? vb.width : (el.width ? el.width.baseVal.value : 0);
                                     var h = vb ? vb.height : (el.height ? el.height.baseVal.value : 0);
-                                    isLarge = w > 300 || h > 300;
+                                    isLarge = w > 256 || h > 256;
                                 }
                                 if (isLarge) {
-                                    // Only block-promote if no text siblings in parent
-                                    var isInlineContext = Array.from(el.parentElement?.childNodes || []).some(function(n) {
-                                        return n !== el &&
-                                            ((n.nodeType === 3 && n.textContent.trim().length > 0) ||
-                                             (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
-                                              n.textContent.trim().length > 0));
-                                    });
-                                    if (!isInlineContext) el.classList.add('hoshi-image-block');
+                                    el.classList.add('block-img');
                                 }
                             }
                             resolve();
@@ -873,11 +865,11 @@ private class ReaderAndroidWebView(
 
                 // Image sizing: constrained to the usable content area.
                 // bottomOverlap reserves trailing-edge space so the image doesn't
-                // bleed into the next column (matches Hoshi's bottomOverlapPx).
+                // bleed into the next column.
                 var imageMaxW = Math.max(1, contentW);
                 var imageMaxH = Math.max(1, contentH - $bottomOverlapPx);
-                document.documentElement.style.setProperty('--hoshi-image-max-width', imageMaxW + 'px');
-                document.documentElement.style.setProperty('--hoshi-image-max-height', imageMaxH + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-width', imageMaxW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', imageMaxH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -886,15 +878,15 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Block-image rules: large images/SVGs classified as .hoshi-image-block by JS below.
-                var blockImgStyle = document.getElementById('hoshi-block-img-style');
+                // Large images/SVGs are contained by the CSS below.
+                var blockImgStyle = document.getElementById('reader-block-img-style');
                 if (blockImgStyle) blockImgStyle.remove();
                 blockImgStyle = document.createElement('style');
-                blockImgStyle.id = 'hoshi-block-img-style';
+                blockImgStyle.id = 'reader-block-img-style';
                 blockImgStyle.textContent = [
-                    'img.hoshi-image-block, svg.hoshi-image-block {',
-                    '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
-                    '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
+                    'img.block-img, svg.block-img {',
+                    '  max-width: var(--reader-image-max-width, 95vw) !important;',
+                    '  max-height: var(--reader-image-max-height, 95vh) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  display: block !important;',
@@ -903,8 +895,8 @@ private class ReaderAndroidWebView(
                     '  -webkit-column-break-inside: avoid !important;',
                     '  object-fit: contain !important;',
                     '}',
-                    'img:not(.hoshi-image-block), svg:not(.hoshi-image-block) {',
-                    '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
+                    'img:not(.block-img), svg:not(.block-img) {',
+                    '  max-width: min(var(--reader-image-max-width, 95vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  min-width: 1em !important;',
@@ -998,7 +990,7 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader.registerCopyText();
 
-                // Classify images and SVGs as .hoshi-image-block if large (naturalWidth/Height > 300).
+                // Treat images/SVGs over 256px as block media.
                 // Gaiji inline glyphs are explicitly excluded. Classification happens after images
                 // load so naturalWidth is available. Then a 50ms settle lets column layout stabilise
                 // before restoreProgress() snaps to the correct page.
@@ -1011,22 +1003,15 @@ private class ReaderAndroidWebView(
                             if (!isGaiji) {
                                 var isLarge = false;
                                 if (tag === 'img') {
-                                    isLarge = el.naturalWidth > 300 || el.naturalHeight > 300;
+                                    isLarge = el.naturalWidth > 256 || el.naturalHeight > 256;
                                 } else if (tag === 'svg') {
                                     var vb = el.viewBox && el.viewBox.baseVal;
                                     var w = vb ? vb.width : (el.width ? el.width.baseVal.value : 0);
                                     var h = vb ? vb.height : (el.height ? el.height.baseVal.value : 0);
-                                    isLarge = w > 300 || h > 300;
+                                    isLarge = w > 256 || h > 256;
                                 }
                                 if (isLarge) {
-                                    // Only block-promote if no text siblings in parent
-                                    var isInlineContext = Array.from(el.parentElement?.childNodes || []).some(function(n) {
-                                        return n !== el &&
-                                            ((n.nodeType === 3 && n.textContent.trim().length > 0) ||
-                                             (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
-                                              n.textContent.trim().length > 0));
-                                    });
-                                    if (!isInlineContext) el.classList.add('hoshi-image-block');
+                                    el.classList.add('block-img');
                                 }
                             }
                             resolve();

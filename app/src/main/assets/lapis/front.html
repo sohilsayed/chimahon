@@ -1,0 +1,85 @@
+<div id="lapis">
+    <!---------- Header ------------->
+    <header style="visibility: hidden"></header>
+
+    <main lang="ja" style="width: 100%;">
+    <!--------- Vocab card ---------->
+    {{^IsSentenceCard}} {{^IsWordAndSentenceCard}} {{^IsClickCard}}
+    {{^IsAudioCard}}
+    <div lang="ja" class="front-vocab">{{Expression}}</div>
+    {{/IsAudioCard}} {{/IsClickCard}} {{/IsWordAndSentenceCard}}
+    {{/IsSentenceCard}}
+
+    <!------- Sentence card --------->
+    {{#IsSentenceCard}}
+    <div lang="ja" class="front-sentence">{{kanji:Sentence}}</div>
+    {{/IsSentenceCard}}
+
+    <!--------- Word And Sentence card ----------->
+    {{#IsWordAndSentenceCard}}
+    <div lang="ja" class="front-vocab">{{Expression}}</div>
+    <div lang="ja" id="hint">{{kanji:Sentence}}</div>
+    {{/IsWordAndSentenceCard}}
+
+    <!-------- Click card ----------->
+    {{#IsClickCard}}
+    <div id="click" class="tappable">
+        <div lang="ja" class="front-vocab">{{Expression}}</div>
+    </div>
+    {{/IsClickCard}}
+
+    <!-------- Audio card ----------->
+    {{#IsAudioCard}}
+    <div id="audio">
+        <div lang="ja" class="front-sentence">{{kanji:Sentence}}</div>
+        <div>
+        {{#SentenceAudio}}{{SentenceAudio}}{{/SentenceAudio}}
+        {{^SentenceAudio}}{{ExpressionAudio}}{{/SentenceAudio}}
+        </div>
+    </div>
+    {{/IsAudioCard}}
+
+    <!-- Hint -->
+    {{#Hint}}
+    <div id="hint">{{Hint}}</div>
+    {{/Hint}}
+    </main>
+</div>
+
+<script>
+  function ClickCard() {
+    const clickElement = document.getElementById("click");
+
+    // Store original content so that we can click back to it
+    const originalContent = clickElement.innerHTML;
+
+    // This is what it is going to click to
+    const clickedContent = `<div lang="ja" class="front-sentence">{{kanji:Sentence}}</div>`;
+
+    function toggleContent() {
+      if (clickElement.innerHTML === originalContent) {
+        clickElement.innerHTML = clickedContent;
+      } else {
+        clickElement.innerHTML = originalContent;
+      }
+    }
+    // Implement the clicking mechanism
+    clickElement.addEventListener("click", (e) => toggleContent());
+    document.addEventListener("keydown", (e) => {
+      if ((event.key === "c") | (event.key === "C")) toggleContent();
+    });
+  }
+
+  function HideTargetWord() {
+    const targetWords = document.querySelectorAll("#audio b");
+    targetWords.forEach((word) => (word.innerText = "[...]"));
+  }
+
+  function initialize() {
+    // Check what card type it is
+    if (`{{IsClickCard}}`) ClickCard();
+    if (`{{IsAudioCard}}`) HideTargetWord();
+  }
+
+  initialize();
+</script>

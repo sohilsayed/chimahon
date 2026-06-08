@@ -84,16 +84,18 @@ class NovelCategoryScreenModel(
 
     fun reorderCategory(category: NovelCategory, newIndex: Int) {
         screenModelScope.launch {
-            val categories = categoryStorage.loadAllCategories().toMutableList()
-            val oldIndex = categories.indexOfFirst { it.id == category.id }
+            val categories = categoryStorage.loadAllCategories()
+            val systemCategories = categories.filter { it.isSystemCategory }
+            val userCategories = categories.filterNot { it.isSystemCategory }.toMutableList()
+            val oldIndex = userCategories.indexOfFirst { it.id == category.id }
             if (oldIndex != -1) {
-                val item = categories.removeAt(oldIndex)
-                categories.add(newIndex, item)
-                // Update order values
-                val reordered = categories.mapIndexed { index, cat ->
+                val item = userCategories.removeAt(oldIndex)
+                userCategories.add(newIndex.coerceIn(0, userCategories.size), item)
+                val reorderedUserCategories = userCategories.mapIndexed { index, cat ->
                     cat.copy(order = index)
                 }
-                categoryStorage.saveCategories(reordered)
+                val reorderedSystemCategories = systemCategories.map { it.copy(order = -1) }
+                categoryStorage.saveCategories(reorderedSystemCategories + reorderedUserCategories)
                 loadCategories()
             }
         }

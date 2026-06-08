@@ -42,6 +42,7 @@
     <string name="action_reset_reading_progress">Reset reading progress</string>
     <string name="backup_option_novels">Novel progress &amp; stats</string>
     <string name="label_stats">Statistics</string>
+    <string name="action_manga_stats">Statistics</string>
     <string name="label_migration">Migrate</string>
     <string name="label_extensions">Extensions</string>
     <string name="label_extension_info">Extension info</string>
@@ -244,6 +245,8 @@
     <string name="pref_dict_popup_font_size">Popup font size</string>
     <string name="pref_dict_show_frequency_harmonic">Show frequency as harmonic rank</string>
     <string name="pref_dict_show_frequency_harmonic_summary">Display harmonic rank instead of full frequency list in dictionary popup</string>
+    <string name="pref_dict_frequency_display">Frequency display</string>
+    <string name="pref_dict_show_frequency_average">Average freq</string>
     <string name="pref_dict_group_terms">Group dictionary definitions</string>
     <string name="pref_dict_group_terms_summary">Show multiple dictionary definitions under one headword</string>
     <string name="pref_dict_custom_css">Custom CSS</string>
@@ -265,6 +268,7 @@
     <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>
     <string name="pref_ocr_auto_on_download_summary">Automatically OCR chapters when downloading</string>
     <string name="pref_dict_ocr_box_scale">OCR box scale</string>
+    <string name="pref_dict_ocr_box_opacity">OCR box opacity</string>
     <string name="pref_ocr_cache_size">OCR cache size</string>
     <string name="pref_ocr_clear_cache">Clear OCR cache</string>
     <string name="ocr_ready">OCR ready</string>
@@ -481,6 +485,7 @@
     <string name="filter_mode_lighten">Dodge / Lighten</string>
     <string name="filter_mode_darken">Burn / Darken</string>
     <string name="pref_keep_screen_on">Keep screen on</string>
+    <string name="pref_reader_startup_delay">Startup delay</string>
     <string name="pref_show_ocr_outlines">Show OCR outlines</string>
     <string name="pref_skip_read_chapters">Skip chapters marked read</string>
     <string name="pref_skip_filtered_chapters">Skip filtered chapters</string>
@@ -897,6 +902,7 @@
     <string name="on_hold">On hold</string>
     <string name="paused">Paused</string>
     <string name="plan_to_read">Plan to read</string>
+    <string name="considering">Considering</string>
     <string name="repeating">Rereading</string>
     <string name="reading_list">Reading List</string>
     <string name="wish_list">Wish List</string>

@@ -351,6 +351,21 @@ class OcrManager(
                 return OcrTaskResult.ERROR
             }
 
+            val dictPrefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+            val profile = dictPrefs.profileResolver.resolve(
+                mangaId = manga.id,
+                sourceId = manga.source,
+                sourceLang = source.lang,
+            )
+            if (!isOcrAllowedForLanguage(source.lang, profile.languageCode)) {
+                logcat { "OcrManager: skipping OCR for source language ${source.lang} and profile language ${profile.languageCode}" }
+                chapterRepository.update(ChapterUpdate(id = chapterId, isOcrReady = false))
+                updateStoredTask(chapterId) { it.copy(status = OcrQueueStatus.COMPLETED) }
+                return OcrTaskResult.SUCCESS
+            }
+            val ocrLang = OcrLanguage.entries.find { it.bcp47.equals(profile.languageCode, ignoreCase = true) }
+                ?: OcrLanguage.JAPANESE
+
             if (stopRequested()) return OcrTaskResult.STOPPED
             if (ocrStore.get(chapterId) == null) return OcrTaskResult.CANCELLED
 
@@ -449,16 +464,6 @@ class OcrManager(
                     }
 
                     val blocks = try {
-                        val dictPrefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
-                        val source = sourceManager.getOrStub(manga.source)
-                        val profile = dictPrefs.profileResolver.resolve(
-                            mangaId = manga.id,
-                            sourceId = manga.source,
-                            sourceLang = source.lang,
-                        )
-                        val ocrLang = OcrLanguage.entries.find { it.bcp47.equals(profile.languageCode, ignoreCase = true) }
-                            ?: OcrLanguage.JAPANESE
-
                         val result = retryWithBackoff(times = 3) {
                             recognizePage(bytes = bytes, language = ocrLang)
                         }

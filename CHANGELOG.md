@@ -4,6 +4,72 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.9.0]
+
+### Added
+- OCR selection panel triggered with long-press to select and copy text
+- OCR progress HUD
+- Configurable OCR box opacity for inactive text blocks
+- Support for more image formats in OCR: AVIF, HEIF, HEIC, JXL
+
+### Changed
+- Dictionary popup WebView warming refactored for lighter reader startup
+- Improved dictionary popup rendering performance
+- MangaBaka API updated with improved date-time formatting
+
+### Fixed
+- Clipped webtoon page rendering
+- Novel category assignments lost during sync merge
+
+## [v1.8.5]
+
+### Added
+- E-Ink swipe: instant page transitions
+
+### Changed
+- Replaced async OCR prefetch with structured scan and page-ready guard
+- Updated hoshidicts (normalization processors, freq sorting)
+
+### Fixed
+- Reader crash and startup workaround
+- Deduplicate manga page stats to prevent recount on back-navigation
+- Preserve novel category assignments during sync merge
+- Revert problematic NPE reader fixes
+- General reader bug fixes (page viewer, Webtoon viewer)
+
+## [v1.8.3]
+
+### Added
+- Per-manga stats sheet with session/today/all-time tracking
+- Lower sensitivity swipe setting for E-ink
+
+### Changed
+- Separate paginated scrolling from e-ink mode in dictionary popup
+
+### Fixed
+- Prevent NPE on reader startup (Android 16 dispatchAttachedToWindow)
+- Correct manga sentence export offset in Anki export
+- Fix furigana spacing in Anki export
+- Remove inline style overrides on table elements in Anki export
+
+## [v1.8.2]
+
+### Fixed
+- Dictionary Reorder
+
+## [v1.8.1]
+
+### Added
+- Mangabaka tracker integration
+- Dictionary display name update
+- Per-dictionary update notifications
+
+### Changed
+- Dictionary now uses directory names as stable keys
+
+### Fixed
+- Dictionary import UI
+- Yomitan glossary HTML structure: always `<ol><li>`
 ## [v1.8.0]
 
 ### Added

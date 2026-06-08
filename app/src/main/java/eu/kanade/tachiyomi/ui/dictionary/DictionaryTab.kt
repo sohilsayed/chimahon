@@ -205,6 +205,7 @@ data object DictionaryTab : Tab {
         val ankiSyncOnCreate = activeProfile.ankiSyncOnCreate
 
         val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
+        val showFreqAverage by dictionaryPreferences.showFrequencyAverage().collectAsState()
         val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
         val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
         val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
@@ -562,6 +563,7 @@ data object DictionaryTab : Tab {
                         "Search to view dictionary entries"
                     },
                     showFrequencyHarmonic = showFreqHarmonic,
+                    showFrequencyAverage = showFreqAverage,
                     groupTerms = groupTerms,
                     showPitchDiagram = showPitchDiagram,
                     showPitchNumber = showPitchNumber,
@@ -634,7 +636,7 @@ data object DictionaryTab : Tab {
                 )
             }
 
-            try {
+            val lookupResult = try {
                 sessionManager.lookup(
                     query = query,
                     paths = dictionaryPaths,
@@ -650,6 +652,9 @@ data object DictionaryTab : Tab {
                     debugDumpDir = null,
                 )
             }
+            lookupResult.copy(
+                results = orderLookupResultsForDisplay(lookupResult.results, activeProfile, context),
+            )
         }
     }
 

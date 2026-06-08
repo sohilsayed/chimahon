@@ -20,6 +20,7 @@ internal fun getDictionaryBootstrapHtml(
     isAmoled: Boolean = false,
     fontFamily: String = "",
     eInkMode: Boolean = false,
+    paginatedScrolling: Boolean = false,
     languageCode: String = "",
 ): String {
     val css = dictionaryBaseCss.getOrPut(Unit) {
@@ -78,12 +79,13 @@ internal fun getDictionaryBootstrapHtml(
     } else ""
 
     val eInkAttr = if (eInkMode) "true" else "false"
+    val paginatedScrollingAttr = if (paginatedScrolling) "true" else "false"
     val themeAttr = if (isDark == true) "dark" else "light"
     val langAttr = if (languageCode.isNotEmpty()) """lang="$languageCode" """ else ""
 
     return """
         <!doctype html>
-        <html $langAttr data-theme="$themeAttr" data-chima-eink-mode="$eInkAttr">
+        <html $langAttr data-theme="$themeAttr" data-chima-eink-mode="$eInkAttr" data-chima-paginated-scrolling="$paginatedScrollingAttr">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">

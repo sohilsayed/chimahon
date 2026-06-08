@@ -101,4 +101,29 @@ class DictionaryUpdateNotifier(private val context: Context) {
             setOngoing(false)
         }
     }
+
+    /**
+     * Show a notification for a single updated dictionary with version info.
+     * [index] is used to derive a unique notification ID so multiple updates
+     * produce separate notifications.
+     */
+    fun showUpdateResult(dictName: String, oldRevision: String?, newRevision: String?, index: Int) {
+        val versionText = buildString {
+            append(dictName)
+            append(": ")
+            if (oldRevision != null) append(oldRevision) else append("?")
+            append(" → ")
+            if (newRevision != null) append(newRevision) else append("?")
+        }
+        context.notify(
+            Notifications.ID_DICT_UPDATE_RESULT + index,
+            Notifications.CHANNEL_DICTIONARY_UPDATE,
+        ) {
+            setSmallIcon(android.R.drawable.stat_sys_download_done)
+            setContentTitle("Dictionary updated")
+            setContentText(versionText)
+            setAutoCancel(true)
+            setOngoing(false)
+        }
+    }
 }

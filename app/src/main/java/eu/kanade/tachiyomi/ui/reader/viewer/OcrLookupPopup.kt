@@ -55,6 +55,7 @@ import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryColorScheme
 import eu.kanade.tachiyomi.ui.dictionary.TabInfo
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
+import eu.kanade.tachiyomi.ui.dictionary.orderLookupResultsForDisplay
 import eu.kanade.tachiyomi.ui.dictionary.stopDictionaryAudio
 import eu.kanade.tachiyomi.util.system.toast
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -165,6 +166,7 @@ fun OcrLookupPopup(
     val ankiSyncOnCreate = activeProfile.ankiSyncOnCreate
 
     val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
+    val showFreqAverage by dictionaryPreferences.showFrequencyAverage().collectAsState()
     val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
     val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
     val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
@@ -214,7 +216,7 @@ fun OcrLookupPopup(
         contentReady = false
         val shouldShowLoading = !isRecursive && lastRenderedLookupGeneration < 0
 
-        fun handleResult(result: chimahon.DictionaryRepository.LookupResult2, phaseStart: Long) {
+        fun handleResult(result: chimahon.DictionaryRepository.LookupResult2, orderedResults: List<LookupResult>, phaseStart: Long) {
             if (generation != lookupGeneration) return
             if (isRecursive && result.results.isEmpty()) {
                 if (shouldShowLoading) isLoading = false
@@ -225,7 +227,7 @@ fun OcrLookupPopup(
             val frame = LookupFrame(
                 id = UUID.randomUUID().toString(),
                 query = finalQuery,
-                results = result.results,
+                results = orderedResults,
                 styles = result.styles,
                 mediaDataUris = result.mediaDataUris,
                 existingExpressions = emptySet(),
@@ -239,8 +241,8 @@ fun OcrLookupPopup(
             // Hide loading spinner — popup is visible
             isLoading = false
 
-            if (!isRecursive && result.results.isNotEmpty()) {
-                val firstMatched = result.results.firstOrNull()?.matched
+            if (!isRecursive && orderedResults.isNotEmpty()) {
+                val firstMatched = orderedResults.firstOrNull()?.matched
                 if (firstMatched != null) {
                     val charCount = firstMatched.codePointCount(0, firstMatched.length)
                     val matchOffset = finalQuery.indexOf(firstMatched).coerceAtLeast(0)
@@ -251,8 +253,8 @@ fun OcrLookupPopup(
             }
 
             // Anki duplicate check runs in background, doesn't block UI
-            if (ankiEnabled && result.results.isNotEmpty()) {
-                val uniqueExpressions = result.results.map { it.term.expression }.distinct()
+            if (ankiEnabled && orderedResults.isNotEmpty()) {
+                val uniqueExpressions = orderedResults.map { it.term.expression }.distinct()
                 scope.launch(Dispatchers.IO) {
                     val existing = AnkiCardCreator.checkExistingCards(
                         context = context,
@@ -277,7 +279,7 @@ fun OcrLookupPopup(
 
             // Load media in background
             scope.launch(Dispatchers.IO) {
-                val media = repository.loadMediaAsync(finalQuery, result.results)
+                val media = repository.loadMediaAsync(finalQuery, orderedResults)
                 if (media.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
                         val stack = lookupStackState.stack.toMutableList()
@@ -306,7 +308,8 @@ fun OcrLookupPopup(
                     error = it.message,
                 )
             }
-            handleResult(result, android.os.SystemClock.elapsedRealtime())
+            val orderedResults = orderLookupResultsForDisplay(result.results, activeProfile, context)
+            handleResult(result, orderedResults, android.os.SystemClock.elapsedRealtime())
             return
         } else {
             scope.async(Dispatchers.IO) {
@@ -325,7 +328,10 @@ fun OcrLookupPopup(
                 val phaseStart = android.os.SystemClock.elapsedRealtime()
                 try {
                     val result = deferred.await()
-                    handleResult(result, phaseStart)
+                    val orderedResults = withContext(Dispatchers.Default) {
+                        orderLookupResultsForDisplay(result.results, activeProfile, context)
+                    }
+                    handleResult(result, orderedResults, phaseStart)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     if (generation != lookupGeneration) return@launch
@@ -341,7 +347,8 @@ fun OcrLookupPopup(
             try {
                 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
                 val result = deferred.getCompleted()
-                handleResult(result, phaseStart)
+                val orderedResults = orderLookupResultsForDisplay(result.results, activeProfile, context)
+                handleResult(result, orderedResults, phaseStart)
             } catch (e: Exception) {
                 if (generation != lookupGeneration) return
                 errorMessage = e.message ?: "Lookup failed"
@@ -411,7 +418,7 @@ fun OcrLookupPopup(
                     dupScope = ankiDupScope,
                     dupAction = ankiDupAction,
                     sentence = fullText,
-                    offset = charOffset,
+                    offset = fullText.indexOf(result.matched).let { if (it >= 0) it else charOffset },
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
                     selection = result.matched,
@@ -457,7 +464,7 @@ fun OcrLookupPopup(
                     dupScope = ankiDupScope,
                     dupAction = ankiDupAction,
                     sentence = fullText,
-                    offset = charOffset,
+                    offset = fullText.indexOf(result.matched).let { if (it >= 0) it else charOffset },
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
                     screenshotBytes = encoding?.bytes,
@@ -696,6 +703,7 @@ fun OcrLookupPopup(
                     headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
                     fontSize = popupFontSizePref,
                     showFrequencyHarmonic = showFreqHarmonic,
+                    showFrequencyAverage = showFreqAverage,
                     groupTerms = groupTerms,
                     showPitchDiagram = showPitchDiagram,
                     showPitchNumber = showPitchNumber,

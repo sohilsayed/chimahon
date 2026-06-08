@@ -61,6 +61,7 @@ fun MangaToolbar(
     onClickMergedSettings: (() -> Unit)?,
     // SY <--
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
 
     // For action mode
     actionModeCounter: Int,
@@ -263,6 +264,14 @@ fun MangaToolbar(
                             AppBar.OverflowAction(
                                 title = stringResource(MR.strings.pref_dict_profile_override_manga),
                                 onClick = onClickDictionaryProfile,
+                            ),
+                        )
+                    }
+                    if (onClickMangaStats != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(MR.strings.action_manga_stats),
+                                onClick = onClickMangaStats,
                             ),
                         )
                     }
