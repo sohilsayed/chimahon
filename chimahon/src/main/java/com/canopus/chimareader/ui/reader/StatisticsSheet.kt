@@ -84,19 +84,15 @@ fun StatisticsSheet(
 
                 val bookTimeRemaining = secondsRemaining(
                     viewModel.totalCharacters - projectionChar,
-                    session.lastReadingSpeed
+                    session.lastReadingSpeed,
                 )
-                if (bookTimeRemaining > 0.0) {
-                    StatRow("Time to finish Book", formatDurationSeconds(bookTimeRemaining))
-                }
+                StatRow("Time to finish Book", formatDurationSeconds(bookTimeRemaining))
 
                 val chapterTimeRemaining = secondsRemaining(
                     viewModel.currentChapterEndCharacter - projectionChar,
-                    session.lastReadingSpeed
+                    session.lastReadingSpeed,
                 )
-                if (chapterTimeRemaining > 0.0) {
-                    StatRow("Time to finish Chapter", formatDurationSeconds(chapterTimeRemaining))
-                }
+                StatRow("Time to finish Chapter", formatDurationSeconds(chapterTimeRemaining))
             }
 
             Section(title = "Today") {

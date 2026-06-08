@@ -36,6 +36,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import java.time.LocalDate
 import java.util.Locale
+import kotlin.math.max
 
 data class MangaStatsDisplay(
     val charactersRead: Int = 0,
@@ -47,6 +48,11 @@ data class MangaStatsDisplay(
         } else 0
 }
 
+data class MangaStatsEstimate(
+    val remainingBookCharacters: Int = 0,
+    val remainingChapterCharacters: Int = 0,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaStatsSheet(
@@ -54,6 +60,7 @@ fun MangaStatsSheet(
     mangaId: Long,
     sessionCharacters: Int,
     sessionTimeMs: Long,
+    estimate: MangaStatsEstimate = MangaStatsEstimate(),
     isTracking: Boolean?,
     onToggleTracking: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -114,9 +121,18 @@ fun MangaStatsSheet(
             }
 
             Section(title = "Session") {
+                val speed = sessionSpeed(sessionCharacters, sessionTimeMs)
                 StatRow("Characters Read", sessionCharacters.toString())
-                StatRow("Reading Speed", "${sessionSpeed(sessionCharacters, sessionTimeMs)} /h")
+                StatRow("Reading Speed", "$speed /h")
                 StatRow("Reading Time", formatDuration(sessionTimeMs / 1000))
+                StatRow(
+                    "Time to finish Book",
+                    formatDurationSeconds(secondsRemaining(estimate.remainingBookCharacters, speed)),
+                )
+                StatRow(
+                    "Time to finish Chapter",
+                    formatDurationSeconds(secondsRemaining(estimate.remainingChapterCharacters, speed)),
+                )
             }
 
             Section(title = "Today") {
@@ -181,4 +197,21 @@ private fun formatDuration(totalSeconds: Long): String {
 private fun sessionSpeed(chars: Int, timeMs: Long): Int {
     if (timeMs <= 0) return 0
     return (chars.toDouble() / (timeMs / 3600000.0)).toInt()
+}
+
+private fun formatDurationSeconds(seconds: Double): String {
+    val totalSeconds = max(seconds.toLong(), 0L)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val remainingSeconds = totalSeconds % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m ${remainingSeconds}s"
+        minutes > 0 -> "${minutes}m ${remainingSeconds}s"
+        else -> "${remainingSeconds}s"
+    }
+}
+
+private fun secondsRemaining(remainingCharacters: Int, speed: Int): Double {
+    if (speed <= 0) return 0.0
+    return max(remainingCharacters, 0).toDouble() / (speed.toDouble() / 3600.0)
 }

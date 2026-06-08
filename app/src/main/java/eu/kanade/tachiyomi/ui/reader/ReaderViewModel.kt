@@ -25,6 +25,7 @@ import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
+import eu.kanade.presentation.reader.stats.MangaStatsEstimate
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -248,6 +249,8 @@ class ReaderViewModel @JvmOverloads constructor(
     var mangaStatsSessionTimeMs: Long = 0
         private set
     var mangaStatsTracking by mutableStateOf(true)
+        private set
+    var mangaStatsEstimate by mutableStateOf(MangaStatsEstimate())
         private set
     var showMangaStats by mutableStateOf(false)
         private set
@@ -1237,6 +1240,7 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun openMangaStatsSheet() {
         showMangaStats = true
+        refreshMangaStatsEstimate()
     }
 
     fun closeMangaStatsSheet() {
@@ -2503,6 +2507,9 @@ class ReaderViewModel @JvmOverloads constructor(
                             mangaStatsSessionCharacters += chars
                             mangaStatsSessionTimeMs += timeSpent
                         }
+                        if (showMangaStats) {
+                            refreshMangaStatsEstimate()
+                        }
                     }
                 }
             }
@@ -2510,6 +2517,90 @@ class ReaderViewModel @JvmOverloads constructor(
 
         currentMangaStatsPage = newPage
         lastMangaStatsTime = now
+        if (showMangaStats) {
+            refreshMangaStatsEstimate()
+        }
+    }
+
+    private fun refreshMangaStatsEstimate() {
+        viewModelScope.launchIO {
+            val estimate = buildMangaStatsEstimate()
+            withUIContext {
+                mangaStatsEstimate = estimate
+            }
+        }
+    }
+
+    private suspend fun buildMangaStatsEstimate(): MangaStatsEstimate {
+        val viewerChapters = state.value.viewerChapters ?: return MangaStatsEstimate()
+        val currentChapter = viewerChapters.currChapter
+        val currentPages = currentChapter.pages.orEmpty()
+        if (currentPages.isEmpty()) return MangaStatsEstimate()
+
+        val currentPageIndex = (
+            state.value.currentPage
+                .takeIf { it > 0 }
+                ?.minus(1)
+                ?: currentMangaStatsPage?.index
+                ?: 0
+            ).coerceIn(currentPages.indices)
+
+        val averageCharsPerPage = averageMangaCharsPerPage(currentPages)
+        val remainingChapterCharacters = estimateMangaPageCharacters(
+            pages = currentPages,
+            startIndex = currentPageIndex,
+            fallbackCharsPerPage = averageCharsPerPage,
+        )
+
+        val currentChapterIndex = chapterList.indexOf(currentChapter)
+        val loadedPageCounts = chapterList.mapNotNull { it.pages?.size }.filter { it > 0 }
+        val fallbackPagesPerChapter = when {
+            loadedPageCounts.isNotEmpty() -> loadedPageCounts.average()
+            currentPages.isNotEmpty() -> currentPages.size.toDouble()
+            else -> 0.0
+        }
+        val remainingFuturePages = if (currentChapterIndex >= 0) {
+            chapterList
+                .drop(currentChapterIndex + 1)
+                .sumOf { chapter ->
+                    chapter.pages?.size?.takeIf { it > 0 }?.toDouble() ?: fallbackPagesPerChapter
+                }
+        } else {
+            0.0
+        }
+        val remainingBookCharacters = remainingChapterCharacters +
+            (remainingFuturePages * averageCharsPerPage).toInt()
+
+        return MangaStatsEstimate(
+            remainingBookCharacters = remainingBookCharacters,
+            remainingChapterCharacters = remainingChapterCharacters,
+        )
+    }
+
+    private suspend fun averageMangaCharsPerPage(currentPages: List<ReaderPage>): Double {
+        val consumedPageCount = consumedMangaStatsPages.size
+        if (mangaStatsSessionCharacters > 0 && consumedPageCount > 0) {
+            return mangaStatsSessionCharacters.toDouble() / consumedPageCount.toDouble()
+        }
+
+        val knownPageCharacters = currentPages.mapNotNull { page ->
+            getCachedOcrBlocks(page)
+                .sumOf { block -> block.fullText.length }
+                .takeIf { it > 0 }
+        }
+        return knownPageCharacters.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+    }
+
+    private suspend fun estimateMangaPageCharacters(
+        pages: List<ReaderPage>,
+        startIndex: Int,
+        fallbackCharsPerPage: Double,
+    ): Int {
+        if (pages.isEmpty() || startIndex !in pages.indices) return 0
+        return pages.drop(startIndex).sumOf { page ->
+            val knownChars = getCachedOcrBlocks(page).sumOf { block -> block.fullText.length }
+            if (knownChars > 0) knownChars else fallbackCharsPerPage.toInt()
+        }
     }
 }
 

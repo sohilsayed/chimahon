@@ -146,6 +146,14 @@ private fun LibraryRegularToolbar(
                         onClick = onClickRefresh,
                     ),
                 ).builder().apply {
+                    if (isSyncEnabled && onClickSyncNow != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(SYMR.strings.sync_library),
+                                onClick = onClickSyncNow,
+                            ),
+                        )
+                    }
                     if (onClickGlobalUpdate != null) {
                         add(
                             AppBar.OverflowAction(
@@ -194,14 +202,6 @@ private fun LibraryRegularToolbar(
                             AppBar.OverflowAction(
                                 title = stringResource(SYMR.strings.sync_favorites),
                                 onClick = onClickSyncExh,
-                            ),
-                        )
-                    }
-                    if (isSyncEnabled && onClickSyncNow != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(SYMR.strings.sync_library),
-                                onClick = onClickSyncNow,
                             ),
                         )
                     }

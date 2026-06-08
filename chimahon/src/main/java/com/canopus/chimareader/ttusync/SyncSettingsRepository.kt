@@ -22,20 +22,40 @@ class SyncSettingsRepository(context: Context) {
         _settings.value = updated
     }
 
-    private fun loadFromPrefs(): SyncSettings = SyncSettings(
-        enabled = prefs.getBoolean(KEY_ENABLED, false),
-        mode = SyncMode.fromRawValue(prefs.getString(KEY_MODE, null)),
-        autoSyncEnabled = prefs.getBoolean(KEY_AUTO_SYNC_ENABLED, false),
-        statisticsSyncEnabled = prefs.getBoolean(KEY_STATS_SYNC_ENABLED, false),
-        statisticsSyncMode = StatisticsSyncMode.fromRawValue(prefs.getString(KEY_STATS_SYNC_MODE, null)),
-        audioBookSyncEnabled = prefs.getBoolean(KEY_AUDIO_SYNC_ENABLED, false),
-    )
+    private fun loadFromPrefs(): SyncSettings {
+        val open = prefs.getBoolean(KEY_AUTO_SYNC_ON_OPEN, false)
+        val close = prefs.getBoolean(KEY_AUTO_SYNC_ON_CLOSE, false)
+        val periodic = prefs.getBoolean(KEY_AUTO_SYNC_PERIODIC, false)
+        val oldAutoSync = prefs.getBoolean(KEY_AUTO_SYNC_ENABLED, false)
+        val migrated = oldAutoSync && !prefs.contains(KEY_AUTO_SYNC_ON_OPEN) && !prefs.contains(KEY_AUTO_SYNC_ON_CLOSE) && !prefs.contains(KEY_AUTO_SYNC_PERIODIC)
+
+        val finalOpen = if (migrated) true else open
+        val finalClose = if (migrated) true else close
+        val finalPeriodic = if (migrated) true else periodic
+
+        return SyncSettings(
+            enabled = prefs.getBoolean(KEY_ENABLED, false),
+            mode = SyncMode.fromRawValue(prefs.getString(KEY_MODE, null)),
+            autoSyncEnabled = finalOpen || finalClose || finalPeriodic,
+            statisticsSyncEnabled = prefs.getBoolean(KEY_STATS_SYNC_ENABLED, false),
+            statisticsSyncMode = StatisticsSyncMode.fromRawValue(prefs.getString(KEY_STATS_SYNC_MODE, null)),
+            audioBookSyncEnabled = prefs.getBoolean(KEY_AUDIO_SYNC_ENABLED, false),
+            autoSyncOnOpen = finalOpen,
+            autoSyncOnClose = finalClose,
+            autoSyncPeriodic = finalPeriodic,
+            autoSyncIntervalMins = prefs.getInt(KEY_AUTO_SYNC_INTERVAL_MINS, 10),
+        )
+    }
 
     private fun saveToPrefs(settings: SyncSettings) {
         prefs.edit()
             .putBoolean(KEY_ENABLED, settings.enabled)
             .putString(KEY_MODE, settings.mode.rawValue)
-            .putBoolean(KEY_AUTO_SYNC_ENABLED, settings.autoSyncEnabled)
+            .putBoolean(KEY_AUTO_SYNC_ENABLED, settings.autoSyncOnOpen || settings.autoSyncOnClose || settings.autoSyncPeriodic)
+            .putBoolean(KEY_AUTO_SYNC_ON_OPEN, settings.autoSyncOnOpen)
+            .putBoolean(KEY_AUTO_SYNC_ON_CLOSE, settings.autoSyncOnClose)
+            .putBoolean(KEY_AUTO_SYNC_PERIODIC, settings.autoSyncPeriodic)
+            .putInt(KEY_AUTO_SYNC_INTERVAL_MINS, settings.autoSyncIntervalMins)
             .putBoolean(KEY_STATS_SYNC_ENABLED, settings.statisticsSyncEnabled)
             .putString(KEY_STATS_SYNC_MODE, settings.statisticsSyncMode.rawValue)
             .putBoolean(KEY_AUDIO_SYNC_ENABLED, settings.audioBookSyncEnabled)
@@ -47,6 +67,10 @@ class SyncSettingsRepository(context: Context) {
         private const val KEY_ENABLED = "syncEnabled"
         private const val KEY_MODE = "syncMode"
         private const val KEY_AUTO_SYNC_ENABLED = "autoSyncEnabled"
+        private const val KEY_AUTO_SYNC_ON_OPEN = "autoSyncOnOpen"
+        private const val KEY_AUTO_SYNC_ON_CLOSE = "autoSyncOnClose"
+        private const val KEY_AUTO_SYNC_PERIODIC = "autoSyncPeriodic"
+        private const val KEY_AUTO_SYNC_INTERVAL_MINS = "autoSyncIntervalMins"
         private const val KEY_STATS_SYNC_ENABLED = "statsSyncEnabled"
         private const val KEY_STATS_SYNC_MODE = "statsSyncMode"
         private const val KEY_AUDIO_SYNC_ENABLED = "audioSyncEnabled"

@@ -248,7 +248,7 @@ class TtuDriveClient(
         val statusCode = connection.responseCode
         if (statusCode == HttpURLConnection.HTTP_UNAUTHORIZED && retry) {
             connection.disconnect()
-            authManager.clearAuth()
+            authManager.clearAccessToken()
             return performRequest(url, method, body, contentType, retry = false)
         }
         val responseBytes = try {

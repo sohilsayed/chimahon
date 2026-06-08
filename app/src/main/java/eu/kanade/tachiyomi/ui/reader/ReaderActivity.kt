@@ -528,6 +528,7 @@ class ReaderActivity : BaseActivity() {
                     mangaId = viewModel.manga!!.id,
                     sessionCharacters = viewModel.mangaStatsSessionCharacters,
                     sessionTimeMs = viewModel.mangaStatsSessionTimeMs,
+                    estimate = viewModel.mangaStatsEstimate,
                     isTracking = viewModel.mangaStatsTracking,
                     onToggleTracking = viewModel::toggleMangaStatsTracking,
                     onDismiss = viewModel::closeMangaStatsSheet,

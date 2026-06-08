@@ -5,18 +5,19 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.BorderStroke
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudSync
@@ -24,15 +25,10 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,8 +39,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -56,6 +52,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.more.settings.widget.PreferenceGroupHeader
+import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
+import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
+import tachiyomi.presentation.core.components.material.Scaffold
 import com.canopus.chimareader.ttusync.DriveAuthStatus
 import com.canopus.chimareader.ttusync.DriveAuthorizationPollResult
 import com.canopus.chimareader.ttusync.DeviceCodePrompt
@@ -65,18 +68,28 @@ import com.canopus.chimareader.ttusync.SyncMode
 import com.canopus.chimareader.ttusync.TtuOAuthManager
 import com.canopus.chimareader.ttusync.TtuSyncManager
 import com.canopus.chimareader.ttusync.nextDeviceCodePollIntervalSeconds
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import eu.kanade.tachiyomi.data.SyncStatus
+import eu.kanade.tachiyomi.util.system.toast
 
 @Composable
 fun TtuSyncSettingsScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val navigator = LocalNavigator.currentOrThrow
     val oauthManager = remember { Injekt.get<TtuOAuthManager>() }
     val syncManager = remember { Injekt.get<TtuSyncManager>() }
     val settings by syncManager.settingsFlow.collectAsState(initial = syncManager.loadSettings())
+    val syncStatus = remember {
+        try { Injekt.get<SyncStatus>() } catch (_: Exception) { null }
+    }
+    var ttuSyncJob by remember { mutableStateOf<Job?>(null) }
 
     var clientId by remember { mutableStateOf("") }
     var clientSecret by remember { mutableStateOf("") }
@@ -88,6 +101,7 @@ fun TtuSyncSettingsScreen() {
     var message by remember { mutableStateOf<String?>(null) }
     var copyMessage by remember { mutableStateOf<String?>(null) }
     var statsModeMenuExpanded by remember { mutableStateOf(false) }
+    var showAutoSyncDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(oauthManager) {
         clientId = oauthManager.clientId
@@ -104,10 +118,13 @@ fun TtuSyncSettingsScreen() {
         if (!isAuthorizing) return@LaunchedEffect
         val expiresAtMillis = System.currentTimeMillis() + prompt.expiresInSeconds * 1000L
         var nextIntervalSeconds = pollIntervalSeconds
+        Log.d("TtuSyncAuth", "Authorization polling started: interval=${nextIntervalSeconds}s")
         while (isAuthorizing && System.currentTimeMillis() < expiresAtMillis) {
             delay(nextIntervalSeconds * 1000L)
             val result = try {
-                oauthManager.pollAuthorization(prompt)
+                withContext(Dispatchers.IO) {
+                    oauthManager.pollAuthorization(prompt)
+                }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -115,22 +132,28 @@ fun TtuSyncSettingsScreen() {
             }
             when (result) {
                 is DriveAuthorizationPollResult.Authorized -> {
+                    Log.d("TtuSyncAuth", "Authorization polling authorized")
                     isAuthorizing = false
                     devicePrompt = null
                     authStatus = DriveAuthStatus.Connected
                     message = null
                 }
-                DriveAuthorizationPollResult.Pending -> Unit
+                DriveAuthorizationPollResult.Pending -> {
+                    Log.d("TtuSyncAuth", "Authorization polling pending")
+                }
                 DriveAuthorizationPollResult.SlowDown -> {
+                    Log.d("TtuSyncAuth", "Authorization polling slow_down")
                     nextIntervalSeconds = nextDeviceCodePollIntervalSeconds(nextIntervalSeconds, result)
                     pollIntervalSeconds = nextIntervalSeconds
                 }
                 DriveAuthorizationPollResult.TransientNetworkFailure -> {
+                    Log.w("TtuSyncAuth", "Authorization polling transient network failure")
                     nextIntervalSeconds = nextDeviceCodePollIntervalSeconds(nextIntervalSeconds, result)
                     pollIntervalSeconds = nextIntervalSeconds
                     message = "Network issue. Open ${prompt.verificationUrl} and enter ${prompt.userCode} if needed."
                 }
                 is DriveAuthorizationPollResult.Failed -> {
+                    Log.w("TtuSyncAuth", "Authorization polling failed: ${result.message}")
                     isAuthorizing = false
                     devicePrompt = null
                     authStatus = DriveAuthStatus.Failed(result.message)
@@ -139,6 +162,7 @@ fun TtuSyncSettingsScreen() {
             }
         }
         if (isAuthorizing) {
+            Log.w("TtuSyncAuth", "Authorization polling expired")
             isAuthorizing = false
             devicePrompt = null
             authStatus = DriveAuthStatus.NotConnected
@@ -147,6 +171,7 @@ fun TtuSyncSettingsScreen() {
     }
 
     fun connectGoogleDrive() {
+        Log.d("TtuSyncAuth", "Connect Google Drive clicked: isAuthorizing=$isAuthorizing")
         if (isAuthorizing) return
         isAuthorizing = true
         message = null
@@ -154,14 +179,23 @@ fun TtuSyncSettingsScreen() {
         devicePrompt = null
         scope.launch {
             if (clientId.isBlank() || clientSecret.isBlank()) {
+                Log.w("TtuSyncAuth", "Connect skipped: OAuth client is blank")
                 isAuthorizing = false
                 authStatus = DriveAuthStatus.MissingConfiguration
                 message = "Configure a Google OAuth client before connecting."
                 return@launch
             }
             oauthManager.saveClient(clientId, clientSecret)
-            runCatching { oauthManager.requestDeviceCode() }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    oauthManager.requestDeviceCode()
+                }
+            }
                 .onSuccess { prompt ->
+                    Log.d(
+                        "TtuSyncAuth",
+                        "Device code requested: verificationUrl=${prompt.verificationUrl}, expiresIn=${prompt.expiresInSeconds}, interval=${prompt.intervalSeconds}",
+                    )
                     pollIntervalSeconds = prompt.intervalSeconds
                     devicePrompt = prompt
                     authStatus = DriveAuthStatus.NotConnected
@@ -171,6 +205,7 @@ fun TtuSyncSettingsScreen() {
                     }
                 }
                 .onFailure { error ->
+                    Log.e("TtuSyncAuth", "Device code request failed", error)
                     isAuthorizing = false
                     val text = error.message ?: "Authorization failed"
                     authStatus = DriveAuthStatus.Failed(text)
@@ -211,39 +246,35 @@ fun TtuSyncSettingsScreen() {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-    ) {
-        Text(
-            text = "\u30C3\u30C4 Novel Sync",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
+    Scaffold(
+        topBar = { scrollBehavior ->
+            AppBar(
+                title = "TTSU sync",
+                navigateUp = navigator::pop,
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(contentPadding),
+        ) {
+            PreferenceGroupHeader(title = "TTSU sync")
 
-        Spacer(Modifier.height(18.dp))
-
-        // Enable / Direction / Auto Sync card
-        SettingsCard {
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Enable") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.enabled,
-                        onCheckedChange = { checked ->
-                            syncManager.updateSettings { s -> s.copy(enabled = checked) }
-                        },
-                    )
+            SwitchPreferenceWidget(
+                title = "Enable",
+                subtitle = "Use Google Drive-compatible TTSU progress files",
+                checked = settings.enabled,
+                onCheckedChanged = { checked ->
+                    syncManager.updateSettings { s -> s.copy(enabled = checked) }
                 },
             )
-            SettingsDivider()
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Direction") },
-                trailingContent = {
+
+            TextPreferenceWidget(
+                title = "Direction",
+                widget = {
                     Box {
                         TextButton(onClick = { directionMenuExpanded = true }) {
                             Text(settings.mode.rawValue)
@@ -265,42 +296,124 @@ fun TtuSyncSettingsScreen() {
                     }
                 },
             )
-            SettingsDivider()
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Auto Sync") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.autoSyncEnabled,
-                        onCheckedChange = { checked ->
-                            syncManager.updateSettings { s -> s.copy(autoSyncEnabled = checked) }
-                        },
-                    )
+
+            val autoSyncSubtitle = remember(settings.autoSyncOnOpen, settings.autoSyncOnClose, settings.autoSyncPeriodic) {
+                val parts = mutableListOf<String>()
+                if (settings.autoSyncOnOpen) parts.add("On book open")
+                if (settings.autoSyncOnClose) parts.add("On book close")
+                if (settings.autoSyncPeriodic) parts.add("Periodic while reading")
+                if (parts.isEmpty()) "Disabled" else parts.joinToString(", ")
+            }
+
+            TextPreferenceWidget(
+                title = "Auto Sync",
+                subtitle = autoSyncSubtitle,
+                onPreferenceClick = { showAutoSyncDialog = true }
+            )
+
+            if (settings.autoSyncPeriodic) {
+                var intervalMenuExpanded by remember { mutableStateOf(false) }
+                val intervalOptions = listOf(1, 3, 10, 15, 30)
+                val intervalLabels = mapOf(
+                    1 to "1 minute",
+                    3 to "3 minutes",
+                    10 to "10 minutes",
+                    15 to "15 minutes",
+                    30 to "30 minutes"
+                )
+                TextPreferenceWidget(
+                    title = "Periodic sync interval",
+                    subtitle = intervalLabels[settings.autoSyncIntervalMins] ?: "${settings.autoSyncIntervalMins} minutes",
+                    onPreferenceClick = { intervalMenuExpanded = true },
+                    widget = {
+                        Box {
+                            DropdownMenu(
+                                expanded = intervalMenuExpanded,
+                                onDismissRequest = { intervalMenuExpanded = false },
+                            ) {
+                                intervalOptions.forEach { mins ->
+                                    DropdownMenuItem(
+                                        text = { Text(intervalLabels[mins] ?: "$mins minutes") },
+                                        onClick = {
+                                            intervalMenuExpanded = false
+                                            syncManager.updateSettings { s -> s.copy(autoSyncIntervalMins = mins) }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+
+            if (showAutoSyncDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showAutoSyncDialog = false },
+                    title = { Text("Auto Sync Triggers") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val triggers = listOf(
+                                "On book open" to settings.autoSyncOnOpen,
+                                "On book close" to settings.autoSyncOnClose,
+                                "Periodic while reading" to settings.autoSyncPeriodic,
+                            )
+                            triggers.forEach { (label, checked) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            syncManager.updateSettings { s ->
+                                                when (label) {
+                                                    "On book open" -> s.copy(autoSyncOnOpen = !s.autoSyncOnOpen)
+                                                    "On book close" -> s.copy(autoSyncOnClose = !s.autoSyncOnClose)
+                                                    "Periodic while reading" -> s.copy(autoSyncPeriodic = !s.autoSyncPeriodic)
+                                                    else -> s
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    androidx.compose.material3.Checkbox(
+                                        checked = checked,
+                                        onCheckedChange = {
+                                            syncManager.updateSettings { s ->
+                                                when (label) {
+                                                    "On book open" -> s.copy(autoSyncOnOpen = it)
+                                                    "On book close" -> s.copy(autoSyncOnClose = it)
+                                                    "Periodic while reading" -> s.copy(autoSyncPeriodic = it)
+                                                    else -> s
+                                                }
+                                            }
+                                        }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(label)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showAutoSyncDialog = false }) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+
+            PreferenceGroupHeader(title = "Google Drive")
+
+            TextPreferenceWidget(
+                title = "Google Drive",
+                subtitle = when (authStatus) {
+                    DriveAuthStatus.Connected -> "Connected"
+                    DriveAuthStatus.NotConnected -> "Not connected"
+                    DriveAuthStatus.MissingConfiguration -> "OAuth client not configured"
+                    is DriveAuthStatus.Failed -> (authStatus as DriveAuthStatus.Failed).message
+                    null -> ""
                 },
             )
-        }
 
-        Spacer(Modifier.height(18.dp))
-
-        // Google Drive credentials card
-        SettingsCard {
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Google Drive") },
-                supportingContent = {
-                    Text(
-                        text = when (authStatus) {
-                            DriveAuthStatus.Connected -> "Connected"
-                            DriveAuthStatus.NotConnected -> "Not connected"
-                            DriveAuthStatus.MissingConfiguration -> "OAuth client not configured"
-                            is DriveAuthStatus.Failed -> (authStatus as DriveAuthStatus.Failed).message
-                            null -> ""
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-            )
-            SettingsDivider()
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -321,14 +434,42 @@ fun TtuSyncSettingsScreen() {
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-        }
 
-        // Device code prompt
-        devicePrompt?.let { prompt ->
-            Spacer(Modifier.height(18.dp))
-            SettingsCard {
+            connectionActions?.let { actions ->
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (actions.showConnect) {
+                        Button(
+                            onClick = { connectGoogleDrive() },
+                            enabled = actions.connectEnabled && clientId.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CloudSync,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                            Text("Connect Google Drive")
+                        }
+                    }
+                    if (actions.showSignOut) {
+                        OutlinedButton(
+                            onClick = { signOut() },
+                            enabled = actions.signOutEnabled,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Sign out")
+                        }
+                    }
+                }
+            }
+
+            devicePrompt?.let { prompt ->
+                PreferenceGroupHeader(title = "Authorization")
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
@@ -367,204 +508,161 @@ fun TtuSyncSettingsScreen() {
                     }
                 }
             }
-        }
 
-        // Copy confirmation message
-        copyMessage?.let { text ->
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = text,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-
-        // Status message
-        message?.let { text ->
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = text,
-                color = if (authStatus is DriveAuthStatus.Failed) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-
-        // Connect / Sign Out buttons
-        connectionActions?.let { actions ->
-            Spacer(Modifier.height(18.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (actions.showConnect) {
-                    Button(
-                        onClick = { connectGoogleDrive() },
-                        enabled = actions.connectEnabled && clientId.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Outlined.CloudSync, contentDescription = null)
-                        Text("Connect Google Drive")
-                    }
-                }
-                if (actions.showSignOut) {
-                    OutlinedButton(
-                        onClick = { signOut() },
-                        enabled = actions.signOutEnabled,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Sign out")
-                    }
-                }
+            // Copy confirmation message
+            copyMessage?.let { text ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = text,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
-        }
 
-        // Sync settings (visible when connected and enabled)
-        if (authStatus is DriveAuthStatus.Connected && settings.enabled) {
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(16.dp))
+            // Status message
+            message?.let { text ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = text,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = if (authStatus is DriveAuthStatus.Failed) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
 
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Auto Sync") },
-                supportingContent = { Text("Sync progress automatically while reading") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.autoSyncEnabled,
-                        onCheckedChange = { checked ->
-                            syncManager.updateSettings { s -> s.copy(autoSyncEnabled = checked) }
-                        },
-                    )
-                },
-            )
+            if (authStatus is DriveAuthStatus.Connected && settings.enabled) {
+                PreferenceGroupHeader(title = "Content")
 
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(8.dp))
+                SwitchPreferenceWidget(
+                    title = "Sync reading statistics",
+                    checked = settings.statisticsSyncEnabled,
+                    onCheckedChanged = { checked ->
+                        syncManager.updateSettings { s -> s.copy(statisticsSyncEnabled = checked) }
+                    },
+                )
 
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Sync Reading Statistics") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.statisticsSyncEnabled,
-                        onCheckedChange = { checked ->
-                            syncManager.updateSettings { s -> s.copy(statisticsSyncEnabled = checked) }
-                        },
-                    )
-                },
-            )
-
-            if (settings.statisticsSyncEnabled) {
-                Spacer(Modifier.height(4.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Statistics Sync Mode",
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Box {
-                            TextButton(onClick = { statsModeMenuExpanded = true }) {
-                                Text(settings.statisticsSyncMode.rawValue)
-                            }
-                            DropdownMenu(
-                                expanded = statsModeMenuExpanded,
-                                onDismissRequest = { statsModeMenuExpanded = false },
-                            ) {
-                                StatisticsSyncMode.entries.forEach { mode ->
-                                    DropdownMenuItem(
-                                        text = { Text(mode.rawValue) },
-                                        onClick = {
-                                            statsModeMenuExpanded = false
-                                            syncManager.updateSettings { s -> s.copy(statisticsSyncMode = mode) }
-                                        },
-                                    )
+                if (settings.statisticsSyncEnabled) {
+                    TextPreferenceWidget(
+                        title = "Statistics sync mode",
+                        widget = {
+                            Box {
+                                TextButton(onClick = { statsModeMenuExpanded = true }) {
+                                    Text(settings.statisticsSyncMode.rawValue)
+                                }
+                                DropdownMenu(
+                                    expanded = statsModeMenuExpanded,
+                                    onDismissRequest = { statsModeMenuExpanded = false },
+                                ) {
+                                    StatisticsSyncMode.entries.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = { Text(mode.rawValue) },
+                                            onClick = {
+                                                statsModeMenuExpanded = false
+                                                syncManager.updateSettings { s -> s.copy(statisticsSyncMode = mode) }
+                                            },
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                headlineContent = { Text("Sync Audiobook Position") },
-                trailingContent = {
-                    Switch(
-                        checked = settings.audioBookSyncEnabled,
-                        onCheckedChange = { checked ->
-                            syncManager.updateSettings { s -> s.copy(audioBookSyncEnabled = checked) }
                         },
                     )
-                },
-            )
+                }
 
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(8.dp))
+                SwitchPreferenceWidget(
+                    title = "Sync audiobook position",
+                    checked = settings.audioBookSyncEnabled,
+                    onCheckedChanged = { checked ->
+                        syncManager.updateSettings { s -> s.copy(audioBookSyncEnabled = checked) }
+                    },
+                )
 
-            OutlinedButton(
-                onClick = {
-                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        val books = com.canopus.chimareader.data.BookStorage.loadAllBooks(context)
-                        for (book in books) {
-                            syncManager.syncBook(book)
+                TextPreferenceWidget(
+                    title = "Sync all books now",
+                    subtitle = "Run a one-time TTSU sync for every local novel",
+                    onPreferenceClick = {
+                        if (ttuSyncJob?.isActive == true) {
+                            context.toast("Sync in progress")
+                            return@TextPreferenceWidget
                         }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Sync All Books Now")
+                        ttuSyncJob = scope.launch(Dispatchers.IO) {
+                            syncStatus?.start()
+                            syncStatus?.updateProgress(0f)
+                            try {
+                                val books = com.canopus.chimareader.data.BookStorage.loadAllBooks(context)
+                                var imported = 0
+                                var exported = 0
+                                var synced = 0
+                                var skipped = 0
+                                var failed = 0
+                                books.forEachIndexed { index, book ->
+                                    when (val result = syncManager.syncBook(book)) {
+                                        is com.canopus.chimareader.ttusync.SyncResult.Imported -> imported++
+                                        is com.canopus.chimareader.ttusync.SyncResult.Exported -> exported++
+                                        is com.canopus.chimareader.ttusync.SyncResult.Synced -> synced++
+                                        is com.canopus.chimareader.ttusync.SyncResult.Skipped -> skipped++
+                                        is com.canopus.chimareader.ttusync.SyncResult.Failed -> {
+                                            failed++
+                                            Log.w("TtuSyncUi", "TTSU sync failed for '${result.title}': ${result.error}")
+                                        }
+                                    }
+                                    if (books.isNotEmpty()) {
+                                        syncStatus?.updateProgress((index + 1).toFloat() / books.size.toFloat())
+                                    }
+                                }
+                                withContext(Dispatchers.Main) {
+                                    context.toast("TTSU sync: $imported imported, $exported exported, $synced synced, $skipped skipped, $failed failed")
+                                }
+                            } finally {
+                                syncStatus?.stop()
+                            }
+                        }
+                    },
+                )
             }
-        }
 
-        // Device Code setup card
-        Spacer(Modifier.height(18.dp))
-        DeviceCodeSetupCard()
+            PreferenceGroupHeader(title = "Setup")
+            DeviceCodeSetup()
+        }
     }
 }
 
 @Composable
-private fun DeviceCodeSetupCard() {
+private fun DeviceCodeSetup() {
     val context = LocalContext.current
-    SettingsCard {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "Device Code setup",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = GoogleCloudOAuthConfiguration.introduction,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = GoogleCloudOAuthConfiguration.ttuSetupLinkLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                textDecoration = TextDecoration.Underline,
-                modifier = Modifier.clickable {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(GoogleCloudOAuthConfiguration.ttuSetupUrl)),
-                    )
-                },
-            )
-            GoogleCloudOAuthConfiguration.instructions.forEachIndexed { index, instruction ->
-                InstructionTextWithLinks(
-                    index = index,
-                    instruction = instruction,
-                    links = GoogleCloudOAuthConfiguration.instructionLinks,
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = "Device Code setup",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = GoogleCloudOAuthConfiguration.introduction,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = GoogleCloudOAuthConfiguration.ttuSetupLinkLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier.clickable {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(GoogleCloudOAuthConfiguration.ttuSetupUrl)),
                 )
-            }
+            },
+        )
+        GoogleCloudOAuthConfiguration.instructions.forEachIndexed { index, instruction ->
+            InstructionTextWithLinks(
+                index = index,
+                instruction = instruction,
+                links = GoogleCloudOAuthConfiguration.instructionLinks,
+            )
         }
     }
 }
@@ -614,27 +712,6 @@ private fun InstructionTextWithLinks(
         text = annotated,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        tonalElevation = 0.dp,
-    ) {
-        Column { content() }
-    }
-}
-
-@Composable
-private fun SettingsDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        color = MaterialTheme.colorScheme.outlineVariant,
     )
 }
 

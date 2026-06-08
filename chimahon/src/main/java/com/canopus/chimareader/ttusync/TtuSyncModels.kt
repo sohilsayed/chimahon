@@ -73,6 +73,10 @@ data class SyncSettings(
     val statisticsSyncEnabled: Boolean = false,
     val statisticsSyncMode: StatisticsSyncMode = StatisticsSyncMode.Merge,
     val audioBookSyncEnabled: Boolean = false,
+    val autoSyncOnOpen: Boolean = false,
+    val autoSyncOnClose: Boolean = false,
+    val autoSyncPeriodic: Boolean = false,
+    val autoSyncIntervalMins: Int = 10,
 )
 
 sealed interface SyncResult {

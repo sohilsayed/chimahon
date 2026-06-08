@@ -297,6 +297,20 @@ class ReaderViewModel(
         }
 
         scope.launch(Dispatchers.IO) {
+            val sync = ttuSyncManager
+            while (sync != null) {
+                val intervalMins = sync.autoSyncIntervalMins
+                delay(intervalMins * 60 * 1000L)
+                if (sync.isEnabled && sync.autoSyncPeriodic && !trackingLocked && !appBackgrounded) {
+                    val metadata = BookStorage.loadMetadata(rootUrl)
+                    if (metadata != null) {
+                        sync.syncBook(metadata, SyncDirection.AUTO)
+                    }
+                }
+            }
+        }
+
+        scope.launch(Dispatchers.IO) {
             var runningTotal = 0
             for (i in 0 until document.linearSpineItems.size) {
                 accumulatedCharCounts[i] = runningTotal
@@ -525,20 +539,7 @@ class ReaderViewModel(
     }
 
     fun syncOnOpen() {
-        val sync = ttuSyncManager?.takeIf { it.isEnabled && it.autoSyncEnabled } ?: return
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
-            val result = sync.syncBook(metadata, importOnly = true)
-            if (result is SyncResult.Imported) {
-                reloadAfterImport()
-            }
-            getCurrentChapter()?.let { file ->
-                val fileUrl = "file://${file.absolutePath.replace("\\", "/")}"
-                val chapterTitle = getCurrentChapterTitle()
-                bridge.updateState(fileUrl, currentProgress, chapterTitle)
-                bridge.send(WebViewCommand.LoadChapter(fileUrl, currentProgress))
-            }
-        }
+        // Handled synchronously in ReaderScreen if enabled
     }
 
     fun syncAfterForeground() {
@@ -565,25 +566,14 @@ class ReaderViewModel(
     }
 
     fun scheduleSyncExport() {
-        ttuSyncManager?.takeIf { it.isEnabled && it.autoSyncEnabled } ?: return
-        syncExportJob?.cancel()
-        syncExportJob = scope.launch {
-            delay(30000L)
-            runSyncExport()
-        }
+        // Debounced sync on page turns is disabled. Sync is handled periodic and on book close.
     }
 
     fun flushSyncExport() {
-        syncExportJob?.cancel()
-        syncExportJob = scope.launch {
-            runSyncExport()
-        }
-    }
-
-    private fun runSyncExport() {
         val sync = ttuSyncManager ?: return
-        if (!sync.isEnabled || !sync.autoSyncEnabled) return
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        if (!sync.isEnabled || !sync.autoSyncOnClose) return
+        syncExportJob?.cancel()
+        syncExportJob = scope.launch(Dispatchers.IO) {
             val metadata = BookStorage.loadMetadata(rootUrl) ?: return@launch
             sync.syncBook(metadata, SyncDirection.AUTO)
         }

@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.library.novels
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -83,6 +84,7 @@ import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.presentation.manga.components.Button as BottomMenuButton
 import com.canopus.chimareader.ttusync.TtuSyncManager
+import eu.kanade.tachiyomi.data.SyncStatus
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
@@ -90,12 +92,14 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
@@ -129,6 +133,69 @@ fun Screen.NovelLibraryScreen(
 
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val ttuSyncManager = remember {
+        try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
+    }
+    val syncStatus = remember {
+        try { Injekt.get<SyncStatus>() } catch (_: Exception) { null }
+    }
+    var ttuSyncJob by remember { mutableStateOf<Job?>(null) }
+
+    fun syncAllTtuBooks() {
+        if (ttuSyncJob?.isActive == true) {
+            context.toast(SYMR.strings.sync_in_progress)
+            return
+        }
+        val sync = ttuSyncManager
+        if (sync == null) {
+            context.toast("TTSU sync is not available")
+            Log.w("TtuSyncUi", "Sync all requested, but TtuSyncManager is not available")
+            return
+        }
+        if (!sync.isEnabled) {
+            context.toast("TTSU sync is disabled or Drive is not connected")
+            Log.w("TtuSyncUi", "Sync all requested, but sync is disabled or Drive is not connected")
+            return
+        }
+        ttuSyncJob = coroutineScope.launch(Dispatchers.IO) {
+            syncStatus?.start()
+            syncStatus?.updateProgress(0f)
+            try {
+                Log.d("TtuSyncUi", "Manual TTSU sync all started")
+                val books = com.canopus.chimareader.data.BookStorage.loadAllBooks(context)
+                var imported = 0
+                var exported = 0
+                var synced = 0
+                var skipped = 0
+                var failed = 0
+                books.forEachIndexed { index, book ->
+                    when (val result = sync.syncBook(book)) {
+                        is com.canopus.chimareader.ttusync.SyncResult.Imported -> imported++
+                        is com.canopus.chimareader.ttusync.SyncResult.Exported -> exported++
+                        is com.canopus.chimareader.ttusync.SyncResult.Synced -> synced++
+                        is com.canopus.chimareader.ttusync.SyncResult.Skipped -> skipped++
+                        is com.canopus.chimareader.ttusync.SyncResult.Failed -> {
+                            failed++
+                            Log.w("TtuSyncUi", "TTSU sync failed for '${result.title}': ${result.error}")
+                        }
+                    }
+                    if (books.isNotEmpty()) {
+                        syncStatus?.updateProgress((index + 1).toFloat() / books.size.toFloat())
+                    }
+                }
+                Log.d(
+                    "TtuSyncUi",
+                    "Manual TTSU sync all finished: total=${books.size}, imported=$imported, exported=$exported, synced=$synced, skipped=$skipped, failed=$failed",
+                )
+                withContext(Dispatchers.Main) {
+                    context.toast("TTSU sync: $imported imported, $exported exported, $synced synced, $skipped skipped, $failed failed")
+                }
+            } finally {
+                syncStatus?.stop()
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         requestSortEvent?.receiveAsFlow()?.collectLatest {
@@ -177,13 +244,7 @@ fun Screen.NovelLibraryScreen(
                             context.toast(SYMR.strings.sync_in_progress)
                         }
                     },
-                    onClickSyncNow = {
-                        if (!SyncDataJob.isRunning(context)) {
-                            SyncDataJob.startNow(context, manual = true)
-                        } else {
-                            context.toast(SYMR.strings.sync_in_progress)
-                        }
-                    },
+                    onClickSyncNow = { syncAllTtuBooks() },
                 onClickGlobalUpdate = null,
                 onClickOpenRandomManga = {
                     val randomBook = screenModel.getRandomBookForCurrentCategory()
@@ -193,7 +254,7 @@ fun Screen.NovelLibraryScreen(
                     }
                 },
                 onClickSyncExh = null,
-                isSyncEnabled = try { Injekt.get<TtuSyncManager>().isEnabled } catch (_: Exception) { false },
+                isSyncEnabled = true,
                 searchQuery = state.searchQuery,
                 onSearchQueryChange = screenModel::search,
                 scrollBehavior = scrollBehavior,
@@ -206,10 +267,12 @@ fun Screen.NovelLibraryScreen(
             )
         },
         bottomBar = {
-            val ttuSyncManager = remember {
-                try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
-            }
             val singleBookId = if (state.selection.size == 1) state.selection.first() else null
+            val ttuSyncSettings by remember(ttuSyncManager) {
+                ttuSyncManager?.settingsFlow ?: kotlinx.coroutines.flow.flowOf(null)
+            }.collectAsState(initial = ttuSyncManager?.loadSettings())
+            val isAutoSyncMode = ttuSyncSettings?.mode == com.canopus.chimareader.ttusync.SyncMode.Auto
+
             NovelLibraryBottomActionMenu(
                 visible = state.selectionMode,
                 onEditClicked = screenModel::showEditDialog,
@@ -217,13 +280,37 @@ fun Screen.NovelLibraryScreen(
                 onChangeCategoryClicked = screenModel::showChangeCategoryDialog,
                 onDeleteClicked = screenModel::showDeleteConfirmDialog,
                 onResetClicked = screenModel::resetStatsForSelected,
+                isAutoSyncMode = isAutoSyncMode,
                 onSyncImport = if (ttuSyncManager?.isEnabled == true && singleBookId != null) {
                     {
-                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                            val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
-                            val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
-                            if (metadata != null) {
-                                ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.IMPORT)
+                        coroutineScope.launch(Dispatchers.IO) {
+                            syncStatus?.start()
+                            syncStatus?.updateProgress(0f)
+                            try {
+                                val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
+                                val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
+                                if (metadata != null) {
+                                    val result = ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.IMPORT)
+                                    withContext(Dispatchers.Main) {
+                                        when (result) {
+                                            is com.canopus.chimareader.ttusync.SyncResult.Imported -> {
+                                                context.toast("Imported successfully: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Synced -> {
+                                                context.toast("Already synced: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Failed -> {
+                                                context.toast("Import failed: ${result.error}")
+                                            }
+                                            else -> {}
+                                        }
+                                    }
+                                }
+                            } finally {
+                                syncStatus?.updateProgress(1f)
+                                syncStatus?.stop()
                             }
                         }
                     }
@@ -232,11 +319,74 @@ fun Screen.NovelLibraryScreen(
                 },
                 onSyncExport = if (ttuSyncManager?.isEnabled == true && singleBookId != null) {
                     {
-                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                            val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
-                            val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
-                            if (metadata != null) {
-                                ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.EXPORT)
+                        coroutineScope.launch(Dispatchers.IO) {
+                            syncStatus?.start()
+                            syncStatus?.updateProgress(0f)
+                            try {
+                                val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
+                                val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
+                                if (metadata != null) {
+                                    val result = ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.EXPORT)
+                                    withContext(Dispatchers.Main) {
+                                        when (result) {
+                                            is com.canopus.chimareader.ttusync.SyncResult.Exported -> {
+                                                context.toast("Exported successfully: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Synced -> {
+                                                context.toast("Already synced: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Failed -> {
+                                                context.toast("Export failed: ${result.error}")
+                                            }
+                                            else -> {}
+                                        }
+                                    }
+                                }
+                            } finally {
+                                syncStatus?.updateProgress(1f)
+                                syncStatus?.stop()
+                            }
+                        }
+                    }
+                } else {
+                    null
+                },
+                onSyncAuto = if (ttuSyncManager?.isEnabled == true && singleBookId != null) {
+                    {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            syncStatus?.start()
+                            syncStatus?.updateProgress(0f)
+                            try {
+                                val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, singleBookId)
+                                val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(bookDir)
+                                if (metadata != null) {
+                                    val result = ttuSyncManager.syncBook(metadata, com.canopus.chimareader.ttusync.SyncDirection.AUTO)
+                                    withContext(Dispatchers.Main) {
+                                        when (result) {
+                                            is com.canopus.chimareader.ttusync.SyncResult.Imported -> {
+                                                context.toast("Imported successfully: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Exported -> {
+                                                context.toast("Exported successfully: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Synced -> {
+                                                context.toast("Sync completed: ${result.title}")
+                                                screenModel.clearSelection()
+                                            }
+                                            is com.canopus.chimareader.ttusync.SyncResult.Failed -> {
+                                                context.toast("Sync failed: ${result.error}")
+                                            }
+                                            else -> {}
+                                        }
+                                    }
+                                }
+                            } finally {
+                                syncStatus?.updateProgress(1f)
+                                syncStatus?.stop()
                             }
                         }
                     }
@@ -895,6 +1045,8 @@ fun NovelLibraryBottomActionMenu(
     onResetClicked: () -> Unit,
     onSyncImport: (() -> Unit)? = null,
     onSyncExport: (() -> Unit)? = null,
+    onSyncAuto: (() -> Unit)? = null,
+    isAutoSyncMode: Boolean = true,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -911,7 +1063,7 @@ fun NovelLibraryBottomActionMenu(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             val haptic = LocalHapticFeedback.current
-            val confirm = remember { mutableStateListOf(false, false, false, false) }
+            val confirm = remember { mutableStateListOf(false, false, false, false, false) }
             var resetJob by remember { mutableStateOf<Job?>(null) }
             val onLongClickItem: (Int) -> Unit = { toConfirmIndex ->
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -960,35 +1112,50 @@ fun NovelLibraryBottomActionMenu(
                     onLongClick = { onLongClickItem(3) },
                     onClick = onDeleteClicked,
                 )
-                if (onSyncImport != null && onSyncExport != null) {
+                if (onSyncImport != null && onSyncExport != null && onSyncAuto != null) {
                     var expanded by remember { mutableStateOf(false) }
                     BottomMenuButton(
-                        title = "Sync",
+                        title = stringResource(SYMR.strings.label_sync),
                         icon = Icons.Outlined.Sync,
-                        toConfirm = false,
-                        onLongClick = {},
-                        onClick = { expanded = true },
-                    )
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false },
+                        toConfirm = confirm[4],
+                        onLongClick = { onLongClickItem(4) },
+                        onClick = {
+                            if (isAutoSyncMode) {
+                                onSyncAuto()
+                            } else {
+                                expanded = true
+                            }
+                        },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Import from Drive") },
-                            onClick = {
-                                expanded = false
-                                onSyncImport()
-                            },
-                            leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Export to Drive") },
-                            onClick = {
-                                expanded = false
-                                onSyncExport()
-                            },
-                            leadingIcon = { Icon(Icons.Outlined.FileUpload, null) },
-                        )
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Import from Drive") },
+                                onClick = {
+                                    expanded = false
+                                    onSyncImport()
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export to Drive") },
+                                onClick = {
+                                    expanded = false
+                                    onSyncExport()
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.FileUpload, null) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Auto") },
+                                onClick = {
+                                    expanded = false
+                                    onSyncAuto()
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.Sync, null) },
+                            )
+                        }
                     }
                 }
             }

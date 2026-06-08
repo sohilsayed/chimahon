@@ -26,6 +26,8 @@ import com.canopus.chimareader.data.Statistics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 private sealed interface ReaderLoadState {
     data object Loading : ReaderLoadState
@@ -89,21 +91,35 @@ fun ReaderScreen(
         ReaderSettings(backgroundColor = bg, textColor = txt)
     }
 
+    var loadingMessage by remember { mutableStateOf("Opening...") }
+
     val loadState by produceState<ReaderLoadState>(initialValue = ReaderLoadState.Loading, key1 = book.id) {
         value = try {
-            withContext(Dispatchers.IO) {
-                val loader = ReaderLoaderViewModel(context, book)
-                val document = loader.document ?: error("Could not open book")
-                val rootUrl = loader.rootUrl ?: error("Missing root URL")
-                ReaderLoadState.Ready(
-                    ReaderViewModel(
-                        document = document,
-                        rootUrl = rootUrl,
-                        settings = settings,
-                        scope = scope
-                    )
-                )
+            val loader = withContext(Dispatchers.IO) {
+                ReaderLoaderViewModel(context, book)
             }
+            val document = loader.document ?: error("Could not open book")
+            val rootUrl = loader.rootUrl ?: error("Missing root URL")
+
+            val ttuSyncManager = try { Injekt.get<com.canopus.chimareader.ttusync.TtuSyncManager>() } catch (_: Exception) { null }
+            if (ttuSyncManager?.isEnabled == true && ttuSyncManager.autoSyncOnOpen) {
+                loadingMessage = "Syncing reading progress..."
+                withContext(Dispatchers.IO) {
+                    val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(rootUrl)
+                    if (metadata != null) {
+                        ttuSyncManager.syncBook(metadata, importOnly = true)
+                    }
+                }
+            }
+
+            ReaderLoadState.Ready(
+                ReaderViewModel(
+                    document = document,
+                    rootUrl = rootUrl,
+                    settings = settings,
+                    scope = scope
+                )
+            )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -156,7 +172,7 @@ fun ReaderScreen(
 
         ReaderThemedArea(currentSettings) {
             when (val state = loadState) {
-                ReaderLoadState.Loading -> ReaderMessage("Opening...", loading = true)
+                ReaderLoadState.Loading -> ReaderMessage(loadingMessage, loading = true)
                 is ReaderLoadState.Error -> ReaderMessage(state.message)
                 is ReaderLoadState.Ready -> {
                     val viewModel = state.viewModel

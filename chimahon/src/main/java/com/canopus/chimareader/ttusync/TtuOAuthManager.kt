@@ -1,6 +1,7 @@
 package com.canopus.chimareader.ttusync
 
 import android.content.Context
+import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -39,7 +40,7 @@ class TtuOAuthManager(private val context: Context) {
 
     val isConfigured: Boolean get() = clientId.isNotBlank()
 
-    val isConnected: Boolean get() = accessToken.isNotBlank()
+    val isConnected: Boolean get() = accessToken.isNotBlank() || refreshToken.isNotBlank()
 
     private val accessToken: String
         get() = prefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
@@ -67,6 +68,11 @@ class TtuOAuthManager(private val context: Context) {
             "&scope=${java.net.URLEncoder.encode(SCOPE, "UTF-8")}"
         val response = postForm(DEVICE_CODE_URL, body)
         val obj = json.parseToJsonElement(response).jsonObject
+        obj["error"]?.jsonPrimitive?.content?.let { error ->
+            val description = obj["error_description"]?.jsonPrimitive?.content
+            Log.w("TtuSyncAuth", "Device code request returned OAuth error: $error")
+            throw DriveAuthException.Unknown(description ?: error)
+        }
         return DeviceCodePrompt(
             deviceCode = obj["device_code"]?.jsonPrimitive?.content ?: throw DriveAuthException.Unknown("Missing device_code"),
             userCode = obj["user_code"]?.jsonPrimitive?.content ?: throw DriveAuthException.Unknown("Missing user_code"),
@@ -95,6 +101,9 @@ class TtuOAuthManager(private val context: Context) {
         }
         val obj = json.parseToJsonElement(response).jsonObject
         val error = obj["error"]?.jsonPrimitive?.content
+        if (error != null && error != "authorization_pending") {
+            Log.w("TtuSyncAuth", "Authorization poll returned OAuth error: $error")
+        }
         return when (error) {
             null -> {
                 val access = obj["access_token"]?.jsonPrimitive?.content ?: return DriveAuthorizationPollResult.Failed("No access token")
@@ -102,8 +111,12 @@ class TtuOAuthManager(private val context: Context) {
                 val expiresIn = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
                 prefs.edit()
                     .putString(KEY_ACCESS_TOKEN, access)
-                    .putString(KEY_REFRESH_TOKEN, refresh)
                     .putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000)
+                    .apply {
+                        if (refresh.isNotBlank()) {
+                            putString(KEY_REFRESH_TOKEN, refresh)
+                        }
+                    }
                     .apply()
                 DriveAuthorizationPollResult.Authorized(access)
             }
@@ -136,7 +149,14 @@ class TtuOAuthManager(private val context: Context) {
         val response = postForm(TOKEN_URL, body)
         val obj = json.parseToJsonElement(response).jsonObject
         val newAccess = obj["access_token"]?.jsonPrimitive?.content
-            ?: throw DriveAuthException.Unknown("Failed to refresh token")
+        if (newAccess.isNullOrBlank()) {
+            val error = obj["error"]?.jsonPrimitive?.content
+            val description = obj["error_description"]?.jsonPrimitive?.content
+            if (error == "invalid_grant") {
+                clearTokens()
+            }
+            throw DriveAuthException.Unknown(description ?: error ?: "Failed to refresh token")
+        }
         val expiresIn = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, newAccess)
@@ -165,6 +185,13 @@ class TtuOAuthManager(private val context: Context) {
 
     fun clearAuth() {
         clearTokens()
+    }
+
+    fun clearAccessToken() {
+        prefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_EXPIRES_AT)
+            .apply()
     }
 
     private fun clearTokens() {

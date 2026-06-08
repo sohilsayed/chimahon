@@ -1,9 +1,12 @@
 package com.canopus.chimareader.ttusync
 
 import android.content.Context
+import android.util.Log
 import com.canopus.chimareader.data.Bookmark
+import com.canopus.chimareader.data.BookInfo
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
+import com.canopus.chimareader.data.ChapterInfo
 import com.canopus.chimareader.data.SasayakiPlaybackData
 import com.canopus.chimareader.data.Statistics
 import kotlinx.serialization.json.Json
@@ -22,6 +25,18 @@ class TtuSyncManager(
 
     val autoSyncEnabled: Boolean
         get() = settingsRepository.currentSettings().autoSyncEnabled
+
+    val autoSyncOnOpen: Boolean
+        get() = settingsRepository.currentSettings().autoSyncOnOpen
+
+    val autoSyncOnClose: Boolean
+        get() = settingsRepository.currentSettings().autoSyncOnClose
+
+    val autoSyncPeriodic: Boolean
+        get() = settingsRepository.currentSettings().autoSyncPeriodic
+
+    val autoSyncIntervalMins: Int
+        get() = settingsRepository.currentSettings().autoSyncIntervalMins
 
     val statisticsSyncEnabled: Boolean
         get() = settingsRepository.currentSettings().statisticsSyncEnabled
@@ -53,24 +68,45 @@ class TtuSyncManager(
         direction: SyncDirection = SyncDirection.AUTO,
         importOnly: Boolean = false,
     ): SyncResult {
-        if (!isEnabled) return SyncResult.Skipped
+        val titleForLog = bookMetadata.title ?: "Unknown"
+        Log.d("TtuSyncManager", "syncBook requested: id=${bookMetadata.id}, title='$titleForLog', direction=$direction, importOnly=$importOnly")
+        if (!isEnabled) {
+            Log.d(
+                "TtuSyncManager",
+                "syncBook skipped: enabled=${settingsRepository.currentSettings().enabled}, connected=${authManager.isConnected}",
+            )
+            return SyncResult.Skipped
+        }
 
         val bookDir = BookStorage.getBookDirectory(context, bookMetadata.id)
-        if (!bookDir.exists()) return SyncResult.Skipped
+        if (!bookDir.exists()) {
+            Log.d("TtuSyncManager", "syncBook skipped: book directory does not exist: ${bookDir.absolutePath}")
+            return SyncResult.Skipped
+        }
 
-        if (bookMetadata.title.isNullOrBlank()) return SyncResult.Skipped
+        if (bookMetadata.title.isNullOrBlank()) {
+            Log.d("TtuSyncManager", "syncBook skipped: title is blank")
+            return SyncResult.Skipped
+        }
         val displayTitle = bookMetadata.title
 
         return try {
-            performSync(bookMetadata, bookDir, direction, importOnly, displayTitle)
+            performSync(bookMetadata, bookDir, direction, importOnly, displayTitle).also {
+                Log.d("TtuSyncManager", "syncBook finished: title='$displayTitle', result=$it")
+            }
         } catch (e: DriveFileNotFoundException) {
+            Log.w("TtuSyncManager", "syncBook got stale Drive file, clearing cache and retrying", e)
             driveClient.clearCache()
             try {
-                performSync(bookMetadata, bookDir, direction, importOnly, displayTitle)
+                performSync(bookMetadata, bookDir, direction, importOnly, displayTitle).also {
+                    Log.d("TtuSyncManager", "syncBook retry finished: title='$displayTitle', result=$it")
+                }
             } catch (e2: Exception) {
+                Log.e("TtuSyncManager", "syncBook retry failed: title='$displayTitle'", e2)
                 SyncResult.Failed(displayTitle, e2.message ?: "Unknown error")
             }
         } catch (e: Exception) {
+            Log.e("TtuSyncManager", "syncBook failed: title='$displayTitle'", e)
             SyncResult.Failed(displayTitle, e.message ?: "Unknown error")
         }
     }
@@ -109,6 +145,10 @@ class TtuSyncManager(
 
         val remoteFiles = driveClient.listSyncFiles(bookFolderId)
         val localBookmark = BookStorage.loadBookmark(bookDir)
+        Log.d(
+            "TtuSyncManager",
+            "performSync state: folder='$folderName', localLastModified=${localBookmark?.lastModified}, remoteProgress=${remoteFiles.progress?.name}",
+        )
 
         val resolvedDirection = if (direction != SyncDirection.AUTO) {
             direction
@@ -116,8 +156,10 @@ class TtuSyncManager(
             val localTs = localBookmark?.lastModified
             TtuSyncRules.determineDirection(localTs, remoteFiles.progress)
         }
+        Log.d("TtuSyncManager", "performSync direction: requested=$direction, resolved=$resolvedDirection")
 
         if (importOnly && resolvedDirection != SyncDirection.IMPORT) {
+            Log.d("TtuSyncManager", "performSync importOnly skipped: resolvedDirection=$resolvedDirection")
             return SyncResult.Synced(displayTitle)
         }
 
@@ -137,12 +179,13 @@ class TtuSyncManager(
         displayTitle: String,
     ): SyncResult {
         var imported = false
+        var importedCharacterCount = localBookmark?.characterCount ?: 0
 
         if (remoteFiles.progress != null) {
             try {
                 val content = driveClient.downloadFile(remoteFiles.progress.id)
                 val ttuProgress = json.decodeFromString<TtuProgress>(content)
-                val bookInfo = BookStorage.loadBookInfo(bookDir)
+                val bookInfo = loadOrBuildBookInfo(bookDir)
                 val resolved = bookInfo?.resolveCharacterPosition(ttuProgress.exploredCharCount)
                 val bookmark = Bookmark(
                     chapterIndex = resolved?.first ?: 0,
@@ -151,9 +194,18 @@ class TtuSyncManager(
                     lastModified = ttuProgress.lastBookmarkModified,
                 )
                 BookStorage.saveBookmark(bookmark, bookDir)
+                importedCharacterCount = ttuProgress.exploredCharCount
                 imported = true
-            } catch (_: Exception) {
+                Log.d(
+                    "TtuSyncManager",
+                    "importProgress saved: title='$displayTitle', remoteFile='${remoteFiles.progress.name}', " +
+                        "chapter=${bookmark.chapterIndex}, progress=${bookmark.progress}, chars=${bookmark.characterCount}",
+                )
+            } catch (e: Exception) {
+                Log.w("TtuSyncManager", "importProgress failed: title='$displayTitle', file='${remoteFiles.progress.name}'", e)
             }
+        } else {
+            Log.d("TtuSyncManager", "importProgress skipped: title='$displayTitle', no remote progress file")
         }
 
         if (settingsRepository.currentSettings().statisticsSyncEnabled && remoteFiles.statistics != null) {
@@ -177,8 +229,7 @@ class TtuSyncManager(
         }
 
         val title = displayTitle
-        val count = localBookmark?.characterCount ?: 0
-        return if (imported) SyncResult.Imported(title, count) else SyncResult.Synced(title)
+        return if (imported) SyncResult.Imported(title, importedCharacterCount) else SyncResult.Synced(title)
     }
 
     private fun exportToTtu(
@@ -190,15 +241,20 @@ class TtuSyncManager(
         displayTitle: String,
     ): SyncResult {
         val title = displayTitle
-        val bookInfo = BookStorage.loadBookInfo(bookDir)
+        val bookInfo = loadOrBuildBookInfo(bookDir)
+        var progressExported = false
+        var progressCharacterCount = localBookmark?.characterCount ?: 0
 
-        if (localBookmark != null && bookInfo != null) {
+        if (localBookmark != null) {
             val lastModified = localBookmark.lastModified ?: System.currentTimeMillis()
             // Round to millisecond precision (matching iOS behavior)
             val unixTimestamp = lastModified
-            val charBasedProgress = if (bookInfo.characterCount > 0) {
+            val charBasedProgress = if (bookInfo != null && bookInfo.characterCount > 0) {
                 localBookmark.characterCount.toDouble() / bookInfo.characterCount
-            } else 0.0
+            } else {
+                Log.w("TtuSyncManager", "exportProgress using bookmark progress fallback: title='$title', bookInfo=${bookInfo != null}")
+                localBookmark.progress
+            }.coerceIn(0.0, 1.0)
 
             // Fetch remote progress to preserve dataId
             val remoteProgress = try {
@@ -222,12 +278,20 @@ class TtuSyncManager(
             } else {
                 driveClient.uploadFile(bookFolderId, fileName, content)
             }
+            progressExported = true
+            progressCharacterCount = localBookmark.characterCount
+            Log.d(
+                "TtuSyncManager",
+                "exportProgress saved: title='$title', file='$fileName', chars=${localBookmark.characterCount}, progress=$charBasedProgress",
+            )
 
             // Save rounded timestamp back to local bookmark (matching iOS behavior)
             BookStorage.saveBookmark(
                 localBookmark.copy(lastModified = unixTimestamp),
                 bookDir,
             )
+        } else {
+            Log.w("TtuSyncManager", "exportProgress skipped: title='$title', no local bookmark")
         }
 
         if (settingsRepository.currentSettings().statisticsSyncEnabled) {
@@ -272,7 +336,42 @@ class TtuSyncManager(
             }
         }
 
-        return SyncResult.Exported(title, localBookmark?.characterCount ?: 0)
+        return if (progressExported) {
+            SyncResult.Exported(title, progressCharacterCount)
+        } else {
+            SyncResult.Synced(title)
+        }
+    }
+
+    private fun loadOrBuildBookInfo(bookDir: File): BookInfo? {
+        BookStorage.loadBookInfo(bookDir)?.let { return it }
+        return try {
+            val epub = BookStorage.loadEpub(bookDir)
+            var runningTotal = 0
+            val chapters = linkedMapOf<String, ChapterInfo>()
+            for (index in epub.linearSpineItems.indices) {
+                val chapterCount = epub.getChapterCharacters(index)
+                chapters[index.toString()] = ChapterInfo(
+                    spineIndex = index,
+                    currentTotal = runningTotal,
+                    chapterCount = chapterCount,
+                )
+                runningTotal += chapterCount
+            }
+            BookInfo(
+                characterCount = runningTotal,
+                chapterInfo = chapters,
+            ).also {
+                BookStorage.saveBookInfo(it, bookDir)
+                Log.d(
+                    "TtuSyncManager",
+                    "Built missing bookinfo: dir='${bookDir.name}', chapters=${chapters.size}, chars=$runningTotal",
+                )
+            }
+        } catch (e: Exception) {
+            Log.w("TtuSyncManager", "Failed to build missing bookinfo: dir='${bookDir.name}'", e)
+            null
+        }
     }
 
     // iOS export: start with remote, overlay with local (newer wins)
