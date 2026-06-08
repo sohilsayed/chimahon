@@ -218,7 +218,7 @@ class TtuSyncManager(
             val fileName = TtuSyncRules.progressFileName(ttuProgress)
 
             if (remoteFiles.progress != null) {
-                driveClient.updateFile(remoteFiles.progress.id, content)
+                driveClient.updateFile(remoteFiles.progress.id, fileName, content)
             } else {
                 driveClient.uploadFile(bookFolderId, fileName, content)
             }
@@ -247,7 +247,7 @@ class TtuSyncManager(
                 val content = json.encodeToString(mergedStats)
                 val fileName = TtuSyncRules.statisticsFileName(mergedStats)
                 if (remoteFiles.statistics != null) {
-                    driveClient.updateFile(remoteFiles.statistics.id, content)
+                    driveClient.updateFile(remoteFiles.statistics.id, fileName, content)
                 } else {
                     driveClient.uploadFile(bookFolderId, fileName, content)
                 }
@@ -265,7 +265,7 @@ class TtuSyncManager(
                 val content = json.encodeToString(TtuAudioBook.serializer(), ttuAudio)
                 val fileName = TtuSyncRules.audioBookFileName(ttuAudio)
                 if (remoteFiles.audioBook != null) {
-                    driveClient.updateFile(remoteFiles.audioBook.id, content)
+                    driveClient.updateFile(remoteFiles.audioBook.id, fileName, content)
                 } else {
                     driveClient.uploadFile(bookFolderId, fileName, content)
                 }

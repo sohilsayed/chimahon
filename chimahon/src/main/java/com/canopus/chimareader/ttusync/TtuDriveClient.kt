@@ -85,17 +85,11 @@ class TtuDriveClient(
     fun listSyncFiles(folderId: String): DriveSyncFiles {
         val query = "trashed=false and '${folderId.driveQueryLiteral()}' in parents and mimeType != '$FOLDER_MIME_TYPE'"
         val files = listFiles(query)
-        var progress: DriveFile? = null
-        var statistics: DriveFile? = null
-        var audioBook: DriveFile? = null
-        for (f in files) {
-            when {
-                TtuSyncRules.isProgressFile(f.name) -> progress = f
-                TtuSyncRules.isStatisticsFile(f.name) -> statistics = f
-                TtuSyncRules.isAudioBookFile(f.name) -> audioBook = f
-            }
-        }
-        return DriveSyncFiles(progress, statistics, audioBook)
+        return DriveSyncFiles(
+            progress = files.latestTtuFile("progress_", TtuSyncRules::parseProgressTimestampMillis),
+            statistics = files.latestTtuFile("statistics_", TtuSyncRules::parseStatisticsTimestampMillis),
+            audioBook = files.latestTtuFile("audioBook_", TtuSyncRules::parseAudioBookTimestampMillis),
+        )
     }
 
     fun downloadFile(fileId: String): String {
@@ -116,11 +110,11 @@ class TtuDriveClient(
         )
     }
 
-    fun updateFile(fileId: String, content: String, mimeType: String = "application/json") {
+    fun updateFile(fileId: String, fileName: String, content: String, mimeType: String = "application/json") {
         uploadMultipartFile(
             parentId = null,
             fileId = fileId,
-            name = null,
+            name = fileName,
             content = content.toByteArray(StandardCharsets.UTF_8),
             contentType = mimeType,
         )
@@ -163,17 +157,26 @@ class TtuDriveClient(
     }
 
     private fun listFiles(query: String): List<DriveFile> {
+        val files = mutableListOf<DriveFile>()
         val encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
-        val url = "$DRIVE_API/files?q=$encodedQuery&fields=files(id,name)&pageSize=100"
-        val data = performRequest(url = url, method = "GET")
-        val obj = json.parseToJsonElement(data.decodeToString()).jsonObject
-        return obj["files"]?.jsonArray?.map { element ->
-            val fileObj = element.jsonObject
-            DriveFile(
-                id = fileObj["id"]?.jsonPrimitive?.content ?: "",
-                name = fileObj["name"]?.jsonPrimitive?.content ?: "",
-            )
-        } ?: emptyList()
+        var pageToken: String? = null
+        do {
+            val tokenQuery = pageToken?.let {
+                "&pageToken=${URLEncoder.encode(it, StandardCharsets.UTF_8.name())}"
+            }.orEmpty()
+            val url = "$DRIVE_API/files?q=$encodedQuery&fields=nextPageToken,files(id,name)&pageSize=100$tokenQuery"
+            val data = performRequest(url = url, method = "GET")
+            val obj = json.parseToJsonElement(data.decodeToString()).jsonObject
+            files += obj["files"]?.jsonArray?.map { element ->
+                val fileObj = element.jsonObject
+                DriveFile(
+                    id = fileObj["id"]?.jsonPrimitive?.content ?: "",
+                    name = fileObj["name"]?.jsonPrimitive?.content ?: "",
+                )
+            }.orEmpty()
+            pageToken = obj["nextPageToken"]?.jsonPrimitive?.content
+        } while (!pageToken.isNullOrBlank())
+        return files
     }
 
     private fun uploadMultipartFile(
@@ -300,3 +303,7 @@ private fun ByteArrayOutputStream.writeUtf8(text: String) {
 }
 
 class DriveFileNotFoundException : Exception("File not found")
+
+private fun List<DriveFile>.latestTtuFile(prefix: String, timestampMillis: (DriveFile) -> Long?): DriveFile? =
+    filter { it.name.startsWith(prefix) }
+        .maxByOrNull { timestampMillis(it) ?: Long.MIN_VALUE }
