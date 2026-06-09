@@ -343,7 +343,7 @@ object BookImporter {
     }
 
     private fun stripLineHeightAndTextIndent(css: String): String {
-        return css.replace(Regex("""(?i)[ \t]*(line-height|text-indent)\s*:[^;]+;[ \t]*\n?"""), "")
+        return css.replace(Regex("""(?i)[ \t]*(?:line-height|text-indent)\s*:[^;]+;[ \t]*\n?|[ \t]*text-align\s*:\s*justify\s*;[ \t]*\n?"""), "")
     }
 
     private fun md5Hex(file: File): String {
