@@ -96,6 +96,8 @@
     <string name="action_remove_bookmark">Unbookmark chapter</string>
     <string name="action_enable_ocr">Enable OCR</string>
     <string name="action_disable_ocr">Disable OCR</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_open_settings">Open settings</string>
     <string name="action_delete">Delete</string>
     <string name="action_update_library">Update library</string>
     <string name="action_enable_all">Enable all</string>
@@ -283,6 +285,20 @@
     <string name="ocr_status_pending">Pending</string>
     <string name="ocr_status_processing">Processing</string>
     <string name="ocr_status_error">Error</string>
+    <string name="screen_lookup_title">Screen lookup</string>
+    <string name="screen_lookup_more_summary">OCR text from other apps with a floating capture button</string>
+    <string name="screen_lookup_enable_title">Enable screen lookup</string>
+    <string name="screen_lookup_enable_summary">Chimahon needs permission to show a small capture button over other apps. Android will ask for screen capture permission after that.</string>
+    <string name="screen_lookup_notification_title">Screen lookup is on</string>
+    <string name="screen_lookup_notification_text">Tap the floating button to OCR the current screen.</string>
+    <string name="screen_lookup_capture_button">Capture screen for lookup</string>
+    <string name="screen_lookup_overlay_required">Overlay permission is required for screen lookup.</string>
+    <string name="screen_lookup_unavailable">Screen capture is not available on this device.</string>
+    <string name="screen_lookup_capture_denied">Screen capture permission was not granted.</string>
+    <string name="screen_lookup_capture_failed">Could not capture the screen.</string>
+    <string name="screen_lookup_finding_text">Finding text…</string>
+    <string name="screen_lookup_no_text">No text found</string>
+    <string name="screen_lookup_tap_text">Tap highlighted text to look it up</string>
 
       <!-- General section -->
     <string name="pref_category_theme">Theme</string>

@@ -26,6 +26,8 @@
 
     <!-- For background jobs -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -175,6 +177,30 @@
             android:theme="@style/Theme.Tachiyomi" />
 
         <activity
+            android:name=".ui.dictionary.ProcessTextLookupActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:finishOnTaskLaunch="true"
+            android:label="@string/app_name"
+            android:noHistory="true"
+            android:theme="@style/Theme.Tachiyomi.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.dictionary.ScreenLookupPermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Tachiyomi" />
+
+        <activity
             android:name=".ui.security.UnlockActivity"
             android:exported="false"
             android:theme="@style/Theme.Tachiyomi" />
@@ -254,6 +280,11 @@
             android:name=".extension.util.ExtensionInstallService"
             android:exported="false"
             android:foregroundServiceType="shortService" />
+
+        <service
+            android:name=".ui.dictionary.ScreenLookupService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"

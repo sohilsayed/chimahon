@@ -153,7 +153,7 @@ class OcrSubsamplingImageView(
         if (block == host.activeOcrBlock) {
             val activeBackgroundAlpha = maxOf(
                 (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255),
-                80,
+                180,
             )
             drawOcrTextBox(
                 canvas = canvas,
@@ -706,7 +706,7 @@ class OcrSubsamplingImageView(
         }
 
         // Let gesture detector process the event first (for safe single tap methods)
-        val gestureResult = if (ocrEnabled && !swipeReleased) {
+        val gestureResult = if (ocrEnabled) {
             gestureDetector.onTouchEvent(event)
         } else {
             false

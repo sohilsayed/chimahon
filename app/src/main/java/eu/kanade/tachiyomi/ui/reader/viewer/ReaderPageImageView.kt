@@ -791,35 +791,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
         return true
     }
 
-    private fun isLookupStartChar(char: Char): Boolean {
-        if (char.isWhitespace()) return false
-        // Skip punctuation/symbol taps (., 。, 、, !, ?, brackets, etc.).
-        val type = Character.getType(char)
-        return type != Character.CONNECTOR_PUNCTUATION.toInt() &&
-            type != Character.DASH_PUNCTUATION.toInt() &&
-            type != Character.START_PUNCTUATION.toInt() &&
-            type != Character.END_PUNCTUATION.toInt() &&
-            type != Character.INITIAL_QUOTE_PUNCTUATION.toInt() &&
-            type != Character.FINAL_QUOTE_PUNCTUATION.toInt() &&
-            type != Character.OTHER_PUNCTUATION.toInt() &&
-            type != Character.MATH_SYMBOL.toInt() &&
-            type != Character.CURRENCY_SYMBOL.toInt() &&
-            type != Character.MODIFIER_SYMBOL.toInt() &&
-            type != Character.OTHER_SYMBOL.toInt()
-    }
-
-    private fun extractOcrLookupString(text: String, start: Int): String {
-        val result = StringBuilder()
-        var index = start.coerceIn(0, text.length)
-        while (index < text.length) {
-            val char = text[index]
-            if (!isLookupStartChar(char)) break
-            result.append(char)
-            index++
-        }
-        return result.toString()
-    }
-
     /**
      * Get character offset at tap position using StaticLayout or fallback uniform grid.
      *
@@ -925,53 +896,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
             (lx / (sW / text.length.coerceAtLeast(1)))
                 .toInt().coerceIn(0, text.length - 1)
         }
-    }
-
-    /**
-     * Fallback caret detection: approximate character position using uniform grid.
-     *
-     * Used when layout is not yet built (first tap before onDraw renders text).
-     * Divides box into uniform character grid based on line count and line lengths.
-     */
-    private fun uniformCharOffset(
-        block: OcrTextBlock,
-        localX: Float,
-        localY: Float,
-        screenW: Float,
-        screenH: Float,
-    ): Int {
-        if (block.vertical) {
-            val columns = block.lines.ifEmpty { listOf(block.fullText) }
-            if (columns.isEmpty()) return 0
-
-            val columnWidth = (screenW / columns.size.coerceAtLeast(1)).coerceAtLeast(1f)
-            val maxChars = columns.maxOfOrNull { it.length }?.coerceAtLeast(1) ?: 1
-            val rowHeight = (screenH / maxChars).coerceAtLeast(1f)
-            val contentTop = (screenH - rowHeight * maxChars) / 2f
-
-            val fromRight = (screenW - localX).coerceIn(0f, screenW)
-            val columnIndex = (fromRight / columnWidth)
-                .toInt()
-                .coerceIn(0, columns.lastIndex)
-
-            val columnText = columns[columnIndex]
-            val charsInColumn = columnText.length.coerceAtLeast(1)
-            val yInColumn = (localY - contentTop)
-                .coerceIn(0f, (rowHeight * charsInColumn - 0.001f).coerceAtLeast(0f))
-            val charIndex = (yInColumn / rowHeight)
-                .toInt()
-                .coerceIn(0, charsInColumn - 1)
-
-            return columns.take(columnIndex).sumOf { it.length } + charIndex
-        }
-
-        val lineCount = block.lines.size.coerceAtLeast(1)
-        val lineIndex = (localY / (screenH / lineCount))
-            .toInt().coerceIn(0, lineCount - 1)
-        val line = block.lines[lineIndex]
-        val charIndex = (localX / (screenW / line.length.coerceAtLeast(1)))
-            .toInt().coerceIn(0, line.length - 1)
-        return block.lines.take(lineIndex).sumOf { it.length } + charIndex
     }
 
     /**

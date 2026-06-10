@@ -685,7 +685,7 @@ private class ReaderAndroidWebView(
                 // Image max dimensions at 90vw.
                 // Wrapper has no horizontal padding, so margin: auto centers within full viewport.
                 // Height is full viewport (no vertical padding subtracted from images).
-                var imgMaxW = Math.max(1, Math.floor(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var imgMaxW = iw;
                 var imgMaxH = Math.max(1, ih);
                 document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
@@ -698,8 +698,6 @@ private class ReaderAndroidWebView(
                 document.head.appendChild(s);
 
                 // Full-page image rules:
-                // .block-img  -> full-page illustrations, centered within wrapper content
-                // everything else -> inline images: stay in text flow, just capped at max-width
                 var contImgStyle = document.getElementById('reader-cont-img-style');
                 if (contImgStyle) contImgStyle.remove();
                 contImgStyle = document.createElement('style');
@@ -868,7 +866,7 @@ private class ReaderAndroidWebView(
                 // Image max dimensions at 90vw.
                 // Wrapper has no horizontal padding, so margin: auto centers within full viewport.
                 // Height is viewport less bottomOverlap (for vertical-rl column bleed).
-                var imgMaxW = Math.max(1, Math.floor(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var imgMaxW = iw;
                 var imgMaxH = Math.max(1, ih - $bottomOverlapPx);
                 document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
@@ -880,7 +878,6 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Large images/SVGs are contained by the CSS below.
                 var blockImgStyle = document.getElementById('reader-block-img-style');
                 if (blockImgStyle) blockImgStyle.remove();
                 blockImgStyle = document.createElement('style');

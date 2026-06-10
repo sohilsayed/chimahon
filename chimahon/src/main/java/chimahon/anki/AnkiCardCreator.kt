@@ -2,6 +2,8 @@ package chimahon.anki
 
 import android.content.Context
 import chimahon.Cloze
+import chimahon.DictionaryRepository
+import chimahon.HoshiDicts
 import chimahon.DictionaryStyle
 import chimahon.GlossaryEntry
 import chimahon.LookupResult
@@ -112,6 +114,7 @@ object Marker {
 
         // Sentence/Cloze
         SENTENCE_BOLD, CLOZE_PREFIX, CLOZE_BODY, CLOZE_BODY_KANA, CLOZE_SUFFIX,
+        SENTENCE_FURIGANA, SENTENCE_FURIGANA_PLAIN,
 
         // Pitch Accent
         PITCH_ACCENTS, PITCH_ACCENT_POSITIONS, PITCH_ACCENT_CATEGORIES,
@@ -146,6 +149,8 @@ object Marker {
         PITCH_ACCENT_CATEGORIES to listOf("pitch-accent-categories", "pitch-categories", "categories", "pitchaccentcategories"),
         PITCH_ACCENT_GRAPHS to listOf("pitch-accent-graphs", "pitch-graphs", "graphs", "pitchaccentgraphs"),
         SENTENCE to listOf("sentence", "example-sentence"),
+        SENTENCE_FURIGANA to listOf("sentence-furigana", "sentenceFurigana", "sentence_furigana"),
+        SENTENCE_FURIGANA_PLAIN to listOf("sentence-furigana-plain", "sentenceFuriganaPlain", "sentence_furigana_plain"),
         CLOZE_BODY to listOf("cloze-body", "cloze"),
         CLOZE_PREFIX to listOf("cloze-prefix"),
         CLOZE_SUFFIX to listOf("cloze-suffix"),
@@ -618,6 +623,24 @@ object AnkiCardCreator {
         )
         Marker.SENTENCE -> cloze?.let { escapeHtml(it.sentence) } ?: ""
         Marker.SENTENCE_BOLD -> cloze?.let { "${escapeHtml(it.prefix)}<b>${escapeHtml(it.body)}</b>${escapeHtml(it.suffix)}" } ?: ""
+        Marker.SENTENCE_FURIGANA -> {
+            val sentence = cloze?.sentence ?: ""
+            val session = Injekt.get<DictionaryRepository>().lookupSession
+            if (sentence.isNotEmpty() && session != null) {
+                buildSentenceFuriganaHtml(sentence, session)
+            } else {
+                escapeHtml(sentence)
+            }
+        }
+        Marker.SENTENCE_FURIGANA_PLAIN -> {
+            val sentence = cloze?.sentence ?: ""
+            val session = Injekt.get<DictionaryRepository>().lookupSession
+            if (sentence.isNotEmpty() && session != null) {
+                buildSentenceFuriganaPlain(sentence, session)
+            } else {
+                sentence
+            }
+        }
         Marker.CLOZE_PREFIX -> cloze?.let { escapeHtml(it.prefix) } ?: ""
         Marker.CLOZE_BODY -> cloze?.let { escapeHtml(it.body) } ?: ""
         Marker.CLOZE_BODY_KANA -> cloze?.let { escapeHtml(it.bodyKana) } ?: ""
@@ -827,6 +850,52 @@ object AnkiCardCreator {
         if (nextKana.isEmpty()) return reading.length
         val idx = reading.indexOf(nextKana, start)
         return if (idx >= 0) idx else reading.length
+    }
+
+    // =============================================================================
+    // Sentence Furigana
+    // =============================================================================
+
+    private fun buildSentenceFuriganaHtml(sentence: String, session: Long): String {
+        if (sentence.isEmpty()) return ""
+        val sb = StringBuilder()
+        var i = 0
+        while (i < sentence.length) {
+            val suffix = sentence.substring(i)
+            val results = HoshiDicts.lookup(session, suffix, 20, 25).toList()
+            val best = results
+                .filter { suffix.startsWith(it.matched) }
+                .maxByOrNull { it.matched.length }
+            if (best != null) {
+                sb.append(buildFuriganaHtml(best.matched, best.term.reading))
+                i += best.matched.length
+            } else {
+                sb.append(escapeHtml(sentence[i].toString()))
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun buildSentenceFuriganaPlain(sentence: String, session: Long): String {
+        if (sentence.isEmpty()) return ""
+        val sb = StringBuilder()
+        var i = 0
+        while (i < sentence.length) {
+            val suffix = sentence.substring(i)
+            val results = HoshiDicts.lookup(session, suffix, 20, 25).toList()
+            val best = results
+                .filter { suffix.startsWith(it.matched) }
+                .maxByOrNull { it.matched.length }
+            if (best != null) {
+                sb.append(buildFuriganaPlain(best.matched, best.term.reading))
+                i += best.matched.length
+            } else {
+                sb.append(sentence[i])
+                i++
+            }
+        }
+        return sb.toString()
     }
 
     // =============================================================================

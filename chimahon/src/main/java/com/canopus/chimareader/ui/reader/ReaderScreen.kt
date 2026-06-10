@@ -266,14 +266,16 @@ fun ReaderScreen(
         }
 
         if (readyVm != null) {
-            // Persistent timer indicator (visible when HUD hidden and tracking active)
-            if (!showHud && readyVm.statisticsTracker.state.isTracking) {
-                Box(
+            // Persistent tracking indicator
+            if (readyVm.statisticsTracker.state.isTracking) {
+                Icon(
+                    imageVector = Icons.Default.Timer,
+                    contentDescription = "Tracking active",
+                    tint = Color(0xFF4CAF50),
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 8.dp, end = 8.dp)
-                        .size(8.dp)
-                        .background(Color(0xFF4CAF50), CircleShape)
+                        .padding(top = 32.dp, end = 12.dp)
+                        .size(12.dp),
                 )
             }
 

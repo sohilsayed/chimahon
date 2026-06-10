@@ -1699,7 +1699,12 @@
           const prevDictName = _selectedDictionaries[entryIdx];
           if (prevDictName === dictName) {
             delete _selectedDictionaries[entryIdx];
+            dictHeader.classList.remove('selected');
           } else {
+            if (prevDictName) {
+              const prevHeader = entryArticle.querySelector('.dictionary-header.selected');
+              if (prevHeader) prevHeader.classList.remove('selected');
+            }
             _selectedDictionaries[entryIdx] = dictName;
             dictHeader.classList.add('selected');
           }

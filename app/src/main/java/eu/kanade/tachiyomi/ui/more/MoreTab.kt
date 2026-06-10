@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.more
 
+import android.content.Intent
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
@@ -20,6 +21,8 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.domain.ui.model.NavSection
+import eu.kanade.domain.ui.model.NavTabLayout
 import eu.kanade.presentation.more.MoreScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
@@ -28,15 +31,16 @@ import eu.kanade.tachiyomi.data.connections.discord.DiscordScreen
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
-import eu.kanade.tachiyomi.ui.library.novels.NovelLibraryScreenModel
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupPermissionActivity
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupService
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupServiceState
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
+import eu.kanade.tachiyomi.ui.library.novels.NovelLibraryScreenModel
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsScreen
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
-import eu.kanade.domain.ui.model.NavSection
-import eu.kanade.domain.ui.model.NavTabLayout
 import exh.ui.batchadd.BatchAddScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,12 +78,21 @@ data object MoreTab : Tab {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { MoreScreenModel() }
         val downloadQueueState by screenModel.downloadQueueState.collectAsState()
+        val screenLookupActive by ScreenLookupServiceState.isRunning.collectAsState()
         MoreScreen(
             downloadQueueStateProvider = { downloadQueueState },
             downloadedOnly = screenModel.downloadedOnly,
             onDownloadedOnlyChange = { screenModel.downloadedOnly = it },
             incognitoMode = screenModel.incognitoMode,
             onIncognitoModeChange = { screenModel.incognitoMode = it },
+            screenLookupActive = screenLookupActive,
+            onScreenLookupChange = { enabled ->
+                if (enabled) {
+                    context.startActivity(Intent(context, ScreenLookupPermissionActivity::class.java))
+                } else {
+                    ScreenLookupService.stop(context)
+                }
+            },
             // SY -->
             moreTabKeys = NavTabLayout.parse(screenModel.moreTabKeys.value).getKeysForSection(NavSection.MORE),
             // SY <--

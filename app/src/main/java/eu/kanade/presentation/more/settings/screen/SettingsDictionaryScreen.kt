@@ -165,6 +165,8 @@ private val markerSections = listOf(
         listOf(
             Marker.SENTENCE,
             Marker.SENTENCE_BOLD,
+            Marker.SENTENCE_FURIGANA,
+            Marker.SENTENCE_FURIGANA_PLAIN,
             Marker.CLOZE_PREFIX,
             Marker.CLOZE_BODY,
             Marker.CLOZE_BODY_KANA,

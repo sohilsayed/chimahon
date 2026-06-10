@@ -14,6 +14,7 @@ class DictionaryRepository(
     private val externalFilesDir: File?,
 ) {
     private var session: Long? = null
+    val lookupSession: Long? get() = session
     private var configuredPaths: DictionaryPaths = DictionaryPaths()
     private var cachedStyles: List<DictionaryStyle> = emptyList()
     /** ID of the profile that was last used to call [warmUp].  Prevents redundant engine rebuilds. */
