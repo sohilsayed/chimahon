@@ -1094,7 +1094,7 @@ object AnkiCardCreator {
             .joinToString("\n") { style ->
                 scopeDictionaryCss(
                     css = sanitizeDictionaryCss(style.styles),
-                    scopeSelector = """[data-dictionary="${attrEscape(style.dictName)}"]""",
+                    scopeSelector = """[data-dictionary="${cssDoubleQuotedContent(style.dictName)}"]""",
                 )
             }
             .trim()
@@ -1106,7 +1106,11 @@ object AnkiCardCreator {
         .replace(Regex("(?is)url\\s*\\(\\s*javascript:[^)]+\\)"), "")
         .trim()
 
-    private fun scopeDictionaryCss(css: String, scopeSelector: String): String {
+    private fun scopeDictionaryCss(
+        css: String,
+        scopeSelector: String,
+        parentSelectors: List<String> = emptyList(),
+    ): String {
         if (css.isBlank()) return ""
         if (!css.contains("{")) return "$scopeSelector { $css }"
 
@@ -1141,7 +1145,7 @@ object AnkiCardCreator {
                 prelude.startsWith("@media", ignoreCase = true) ||
                     prelude.startsWith("@supports", ignoreCase = true) ||
                     prelude.startsWith("@layer", ignoreCase = true) -> {
-                    val scopedBody = scopeDictionaryCss(body, scopeSelector)
+                    val scopedBody = scopeDictionaryCss(body, scopeSelector, parentSelectors)
                     if (scopedBody.isNotBlank()) {
                         out.append(prelude).append(" {\n").append(scopedBody).append("\n}\n")
                     }
@@ -1155,14 +1159,28 @@ object AnkiCardCreator {
                     out.append(prelude).append(" { ").append(body).append(" }\n")
                 }
                 else -> {
-                    val selectors = prelude.split(",")
-                        .map { prefixCssSelector(it.trim(), scopeSelector) }
+                    val selectors = if (parentSelectors.isNotEmpty()) {
+                        splitCssSelectorList(prelude).flatMap { selector ->
+                            parentSelectors.map { parent -> combineNestedCssSelector(selector.trim(), parent) }
+                        }
+                    } else {
+                        splitCssSelectorList(prelude).map { prefixCssSelector(it.trim(), scopeSelector) }
+                    }
                         .filter { it.isNotBlank() }
                     if (selectors.isNotEmpty()) {
-                        out.append(selectors.joinToString(", "))
-                            .append(" { ")
-                            .append(body)
-                            .append(" }\n")
+                        val (declarations, nestedRules) = splitCssDeclarationsAndNestedRules(body)
+                        if (declarations.isNotBlank()) {
+                            out.append(selectors.joinToString(", "))
+                                .append(" { ")
+                                .append(declarations)
+                                .append(" }\n")
+                        }
+                        if (nestedRules.isNotBlank()) {
+                            val scopedNestedRules = scopeDictionaryCss(nestedRules, scopeSelector, selectors)
+                            if (scopedNestedRules.isNotBlank()) {
+                                out.append(scopedNestedRules).append("\n")
+                            }
+                        }
                     }
                 }
             }
@@ -1188,13 +1206,149 @@ object AnkiCardCreator {
         return css.length
     }
 
+    private fun splitCssSelectorList(selectorText: String): List<String> {
+        val out = mutableListOf<String>()
+        val current = StringBuilder()
+        var parenDepth = 0
+        var bracketDepth = 0
+        var quote: Char? = null
+
+        selectorLoop@ for (i in selectorText.indices) {
+            val ch = selectorText[i]
+            val prev = selectorText.getOrNull(i - 1)
+
+            if (quote != null) {
+                current.append(ch)
+                if (ch == quote && prev != '\\') quote = null
+                continue
+            }
+
+            if (ch == '"' || ch == '\'') {
+                quote = ch
+                current.append(ch)
+                continue
+            }
+
+            when (ch) {
+                '(' -> parenDepth++
+                ')' -> parenDepth = (parenDepth - 1).coerceAtLeast(0)
+                '[' -> bracketDepth++
+                ']' -> bracketDepth = (bracketDepth - 1).coerceAtLeast(0)
+                ',' -> if (parenDepth == 0 && bracketDepth == 0) {
+                    current.toString().trim().takeIf { it.isNotEmpty() }?.let { out += it }
+                    current.clear()
+                    continue@selectorLoop
+                }
+            }
+
+            current.append(ch)
+        }
+
+        current.toString().trim().takeIf { it.isNotEmpty() }?.let { out += it }
+        return out
+    }
+
+    private fun findTopLevelCssChar(text: String, charToFind: Char, startIndex: Int): Int {
+        var quote: Char? = null
+        var parenDepth = 0
+        var bracketDepth = 0
+
+        var i = startIndex
+        while (i < text.length) {
+            val ch = text[i]
+            val prev = text.getOrNull(i - 1)
+
+            if (quote != null) {
+                if (ch == quote && prev != '\\') quote = null
+                i++
+                continue
+            }
+
+            if (ch == '"' || ch == '\'') {
+                quote = ch
+                i++
+                continue
+            }
+
+            when (ch) {
+                '(' -> parenDepth++
+                ')' -> parenDepth = (parenDepth - 1).coerceAtLeast(0)
+                '[' -> bracketDepth++
+                ']' -> bracketDepth = (bracketDepth - 1).coerceAtLeast(0)
+            }
+
+            if (ch == charToFind && parenDepth == 0 && bracketDepth == 0) return i
+            i++
+        }
+
+        return -1
+    }
+
+    private fun splitCssDeclarationsAndNestedRules(blockContent: String): Pair<String, String> {
+        val declarations = StringBuilder()
+        val nestedRules = StringBuilder()
+        var i = 0
+
+        while (i < blockContent.length) {
+            while (i < blockContent.length && blockContent[i].isWhitespace()) i++
+            if (i >= blockContent.length) break
+
+            val nextSemi = findTopLevelCssChar(blockContent, ';', i)
+            val nextBrace = findTopLevelCssChar(blockContent, '{', i)
+
+            if (nextBrace >= 0 && (nextSemi < 0 || nextBrace < nextSemi)) {
+                val closeBrace = findCssBlockEnd(blockContent, nextBrace)
+                if (closeBrace <= nextBrace) {
+                    declarations.append(blockContent.substring(i))
+                    break
+                }
+                nestedRules.append(blockContent.substring(i, closeBrace + 1)).append('\n')
+                i = closeBrace + 1
+                continue
+            }
+
+            if (nextSemi >= 0) {
+                declarations.append(blockContent.substring(i, nextSemi + 1)).append('\n')
+                i = nextSemi + 1
+            } else {
+                declarations.append(blockContent.substring(i))
+                break
+            }
+        }
+
+        return declarations.toString().trim() to nestedRules.toString().trim()
+    }
+
+    private fun combineNestedCssSelector(selector: String, parentSelector: String): String {
+        if (selector.isBlank()) return ""
+        return if (selector.contains("&")) {
+            selector.replace("&", parentSelector)
+        } else {
+            "$parentSelector $selector"
+        }
+    }
+
     private fun prefixCssSelector(selector: String, scopeSelector: String): String {
         if (selector.isBlank()) return ""
+        if (selector.contains("&")) {
+            return selector.replace("&", scopeSelector)
+        }
         if (selector.equals(":root", ignoreCase = true) ||
             selector.equals("html", ignoreCase = true) ||
             selector.equals("body", ignoreCase = true)
         ) {
             return scopeSelector
+        }
+        val rootWithAttr = Regex("""(?i)^(:root|html|body)(\[[^\]]+\])([\s\S]*)$""").find(selector)
+        if (rootWithAttr != null) {
+            val head = rootWithAttr.groupValues[1]
+            val attr = rootWithAttr.groupValues[2]
+            val tail = rootWithAttr.groupValues[3]
+            return if (tail.isBlank()) {
+                "$head$attr $scopeSelector"
+            } else {
+                "$head$attr $scopeSelector$tail"
+            }
         }
         val rootDesc = Regex("""(?i)^(:root|html|body)\s+(.+)$""").find(selector)
         if (rootDesc != null) {
@@ -1318,7 +1472,7 @@ object AnkiCardCreator {
 
         if (type == "structured-content") {
             val content = node.opt("content") ?: return ""
-            return contentValueToHtml(content, dictionary, "div", exportMedia)
+            return """<span class="structured-content">${contentValueToHtml(content, dictionary, "span", exportMedia)}</span>"""
         }
 
         if (type == "image") {
@@ -1341,30 +1495,48 @@ object AnkiCardCreator {
         if (tag == "hr") return "<hr>"
 
         val sb = StringBuilder("<$tag")
+        val classParts = mutableListOf("gloss-sc-$tag")
+        val dataAttributes = StringBuilder()
 
         node.optString("href", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" href="${attrEscape(it)}"""") }
         node.optString("title", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" title="${attrEscape(it)}"""") }
         node.optString("lang", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" lang="${attrEscape(it)}"""") }
         node.optString("id", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" id="${attrEscape(it)}"""") }
+        if (tag == "td" || tag == "th") {
+            node.optInt("colSpan", 0).takeIf { it > 0 }?.let { sb.append(""" colspan="$it"""") }
+            node.optInt("rowSpan", 0).takeIf { it > 0 }?.let { sb.append(""" rowspan="$it"""") }
+        }
+        if (tag == "details" && node.optBoolean("open", false)) {
+            sb.append(" open")
+        }
 
         if (dataObj != null) {
             for (key in dataObj.keys()) {
-                val value = dataObj.get(key).toString()
+                val rawValue = dataObj.get(key)
+                if (rawValue == JSONObject.NULL) continue
+                val value = rawValue.toString()
                 if (key == "class") {
-                    sb.append(""" class="${attrEscape(value)}"""")
-                    sb.append(""" data-sc-class="${attrEscape(value)}"""")
+                    classParts += value.split(" ").filter { it.isNotBlank() }
+                    dataAttributes.append(""" data-sc-class="${attrEscape(value)}"""")
                 } else {
-                    sb.append(""" data-sc-$key="${attrEscape(value)}"""")
+                    dataAttributes.append(""" ${structuredDataAttributeName(key)}="${attrEscape(value)}"""")
                 }
             }
         }
+        sb.append(""" class="${attrEscape(classParts.joinToString(" "))}"""")
+        sb.append(dataAttributes)
 
         val styleObj = node.optJSONObject("style")
         if (styleObj != null && styleObj.length() > 0) {
-            val cssStr = styleObj.keys().asSequence().joinToString("; ") { prop ->
-                "${camelToKebab(prop)}: ${attrEscape(styleObj.getString(prop))}"
-            }
-            sb.append(""" style="$cssStr"""")
+            val cssStr = styleObj.keys().asSequence()
+                .mapNotNull { prop ->
+                    val rawValue = styleObj.get(prop)
+                    if (rawValue == JSONObject.NULL) return@mapNotNull null
+                    val value = structuredStyleValue(prop, rawValue)
+                    if (value.isBlank()) null else "${camelToKebab(prop)}: ${attrEscape(value)}"
+                }
+                .joinToString("; ")
+            if (cssStr.isNotBlank()) sb.append(""" style="$cssStr"""")
         } else {
             // Apply compact default styles for common block tags in Anki.
             // Avoid inline defaults for table elements — dictionary CSS
@@ -1813,6 +1985,44 @@ object AnkiCardCreator {
         .replace("\u0000", "")
         .replace("&", "&amp;")
         .replace("\"", "&quot;")
+
+    private fun cssDoubleQuotedContent(text: String): String = text
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\A ")
+        .replace("\r", "")
+
+    private fun structuredDataAttributeName(key: String): String {
+        val kebab = key.replace(Regex("[A-Z]")) { match ->
+            val lower = match.value.lowercase()
+            if (match.range.first == 0) lower else "-$lower"
+        }
+        val prefix = if (kebab.firstOrNull()?.isStructuredDataCjkStart() == true) {
+            "data-sc"
+        } else {
+            "data-sc-"
+        }
+        return "$prefix$kebab"
+    }
+
+    private fun Char.isStructuredDataCjkStart(): Boolean =
+        this in '\u3000'..'\u9FFF' ||
+            this in '\uF900'..'\uFAFF'
+
+    private fun structuredStyleValue(prop: String, value: Any): String {
+        if (value is JSONArray) {
+            return (0 until value.length()).joinToString(" ") { index ->
+                value.get(index).toString()
+            }
+        }
+        if (value is Number) {
+            return when (prop) {
+                "marginTop", "marginLeft", "marginRight", "marginBottom" -> "${value}em"
+                else -> value.toString()
+            }
+        }
+        return value.toString()
+    }
 
     private fun camelToKebab(name: String): String =
         name.replace(Regex("([A-Z])")) { "-${it.value.lowercase()}" }

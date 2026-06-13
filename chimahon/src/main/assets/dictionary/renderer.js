@@ -160,6 +160,23 @@
       .join(', ');
   }
 
+  function combineNestedSelectorList(selectorText, parentSelectors) {
+    const parents = Array.isArray(parentSelectors) ? parentSelectors.filter(Boolean) : [];
+    if (parents.length === 0) return selectorText;
+    return splitSelectorList(selectorText)
+      .flatMap((sel) => {
+        const trimmed = sel.trim();
+        if (!trimmed) return [];
+        return parents.map((parent) => {
+          if (trimmed.includes('&')) {
+            return trimmed.replace(/&/g, parent);
+          }
+          return `${parent} ${trimmed}`;
+        });
+      })
+      .join(', ');
+  }
+
   function getCachedScopedStyle(dictName, css, scopeSelector) {
     const cacheKey = `${dictName}\u0000${css}\u0000${HAS_NATIVE_SCOPE}`;
     if (scopedStyleCache.has(cacheKey)) {
@@ -203,7 +220,72 @@
     return -1;
   }
 
-  function scopeCssBlocks(cssText, scopeSelector) {
+  function findTopLevelChar(text, charToFind, startIndex) {
+    let quote = null;
+    let parenDepth = 0;
+    let bracketDepth = 0;
+
+    for (let i = startIndex; i < text.length; i++) {
+      const ch = text[i];
+      const prev = i > 0 ? text[i - 1] : '';
+
+      if (quote) {
+        if (ch === quote && prev !== '\\') quote = null;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        continue;
+      }
+
+      if (ch === '(') parenDepth++;
+      if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+      if (ch === '[') bracketDepth++;
+      if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+
+      if (ch === charToFind && parenDepth === 0 && bracketDepth === 0) return i;
+    }
+
+    return -1;
+  }
+
+  function splitDeclarationsAndNestedRules(blockContent) {
+    let declarations = '';
+    let nestedRules = '';
+    let i = 0;
+
+    while (i < blockContent.length) {
+      while (i < blockContent.length && /\s/.test(blockContent[i])) i++;
+      if (i >= blockContent.length) break;
+
+      const nextSemi = findTopLevelChar(blockContent, ';', i);
+      const nextBrace = findTopLevelChar(blockContent, '{', i);
+
+      if (nextBrace !== -1 && (nextSemi === -1 || nextBrace < nextSemi)) {
+        const closeBrace = findMatchingBrace(blockContent, nextBrace);
+        if (closeBrace === -1) {
+          declarations += blockContent.slice(i);
+          break;
+        }
+        nestedRules += `${blockContent.slice(i, closeBrace + 1)}\n`;
+        i = closeBrace + 1;
+        continue;
+      }
+
+      if (nextSemi !== -1) {
+        declarations += `${blockContent.slice(i, nextSemi + 1)}\n`;
+        i = nextSemi + 1;
+      } else {
+        declarations += blockContent.slice(i);
+        break;
+      }
+    }
+
+    return {declarations: declarations.trim(), nestedRules: nestedRules.trim()};
+  }
+
+  function scopeCssBlocks(cssText, scopeSelector, parentSelectors) {
     let i = 0;
     let out = '';
 
@@ -245,14 +327,22 @@
       const body = cssText.slice(openBraceIndex + 1, closeBraceIndex);
       if (prelude.startsWith('@')) {
         if (/^@(media|supports|layer|document)\b/i.test(prelude)) {
-          const scopedInner = scopeCssBlocks(body, scopeSelector);
+          const scopedInner = scopeCssBlocks(body, scopeSelector, parentSelectors);
           out += `${prelude} {\n${scopedInner}\n}\n`;
         } else {
           out += `${prelude} {\n${body}\n}\n`;
         }
       } else {
-        const scopedSelectors = prefixSelectorList(prelude, scopeSelector);
-        out += `${scopedSelectors} {\n${body}\n}\n`;
+        const scopedSelectors = parentSelectors && parentSelectors.length > 0
+          ? combineNestedSelectorList(prelude, parentSelectors)
+          : prefixSelectorList(prelude, scopeSelector);
+        const {declarations, nestedRules} = splitDeclarationsAndNestedRules(body);
+        if (declarations) {
+          out += `${scopedSelectors} {\n${declarations}\n}\n`;
+        }
+        if (nestedRules) {
+          out += `${scopeCssBlocks(nestedRules, scopeSelector, splitSelectorList(scopedSelectors))}\n`;
+        }
       }
 
       i = closeBraceIndex + 1;
@@ -275,11 +365,15 @@
       const type = rule.type;
 
       if (type === CSSRule.STYLE_RULE) {
-        const prefixed = rule.selectorText
-          .split(',')
+        const prefixed = splitSelectorList(rule.selectorText)
           .map(s => prefixSelectorForCSSOM(s.trim(), scope))
           .join(', ');
-        out.push(`${prefixed} { ${rule.style.cssText} }`);
+        if (rule.style.cssText.trim()) {
+          out.push(`${prefixed} { ${rule.style.cssText} }`);
+        }
+        if (rule.cssRules && rule.cssRules.length > 0) {
+          processRulesFromCSSOM(rule.cssRules, prefixed, out);
+        }
       } else if (type === CSSRule.MEDIA_RULE) {
         const inner = [];
         processRulesFromCSSOM(rule.cssRules, scope, inner);
@@ -296,6 +390,10 @@
   }
 
   function prefixSelectorForCSSOM(sel, scope) {
+    if (sel.includes('&')) {
+      return combineNestedSelectorList(sel, splitSelectorList(scope));
+    }
+
     // :root / html / body alone → scope selector
     if (/^(:root|html|body)$/i.test(sel)) {
       return scope;
@@ -320,7 +418,7 @@
     }
 
     // Regular selector → [scope] selector
-    return `${scope} ${sel}`;
+    return combineNestedSelectorList(sel, splitSelectorList(scope));
   }
 
   function buildDictionaryScopedStyle(css, scopeSelector) {
@@ -413,7 +511,7 @@
       const css = sanitizeDictionaryStyles(rawCss, dictName);
       if (!dictName || !css) continue;
 
-      const escapedName = dictName.replace(/"/g, '\\"');
+      const escapedName = cssDoubleQuotedContent(dictName);
       const selector = `[data-dictionary="${escapedName}"]`;
       const {value: scoped, cacheHit} = getCachedScopedStyle(dictName, css, selector);
       parts.push(scoped);
@@ -444,6 +542,23 @@
     return value;
   }
 
+  function cssDoubleQuotedContent(value) {
+    return String(value)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\A ')
+      .replace(/\r/g, '');
+  }
+
+  function hashString(value) {
+    const text = String(value);
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    }
+    return `${text.length}:${hash >>> 0}`;
+  }
+
   function applyDataAttributes(node, data) {
     if (!data || typeof data !== 'object') return;
     for (const key of Object.keys(data)) {
@@ -463,14 +578,25 @@
         }
         continue;
       }
-      const attrName = `data-sc-${key}`;
-      // Keep empty-string values to preserve attribute-presence selectors.
-      node.setAttribute(attrName, String(value));
+      let datasetKey = key.length > 0 ? `${key[0].toUpperCase()}${key.substring(1)}` : key;
+      datasetKey = `sc${datasetKey}`;
+      try {
+        // Keep empty-string values to preserve attribute-presence selectors.
+        node.dataset[datasetKey] = String(value);
+      } catch (e) {
+        debugWarn('applyDataAttributes.datasetFailed', {
+          tag: node.tagName,
+          key,
+          datasetKey,
+          error: e.message
+        });
+        continue;
+      }
 
       if (key === 'content' || key === 'headword' || key === 'example' || key === 'meaning') {
         debugLog('applyDataAttributes.attr', {
           tag: node.tagName,
-          attrName,
+          datasetKey,
           value: String(value)
         });
       }
@@ -751,6 +877,25 @@
       debugLog('navigateTo.saveScroll', {key: scrollKey, y: window.scrollY});
     }
     window.location.href = url;
+  }
+
+  function navigateStructuredLink(href, internal) {
+    if (!href) return;
+    if (internal) {
+      try {
+        const queryStart = href.indexOf('?');
+        const params = queryStart >= 0 ? new URLSearchParams(href.slice(queryStart + 1)) : null;
+        const query = params ? (params.get('query') || params.get('q') || params.get('term')) : null;
+        if (query) {
+          navigateTo(CHIMA_SCHEME + '//lookup?q=' + encodeURIComponent(query));
+          return;
+        }
+      } catch (e) {
+        debugWarn('navigateStructuredLink.internalFailed', {href, error: e.message});
+      }
+      return;
+    }
+    navigateTo(href);
   }
 
   // ── Touch / tap listener (delegated on document) ──────────────────────────
@@ -1265,11 +1410,27 @@
 
   function createLinkNode(node, dictName, mediaMap, language) {
     const href = sanitizeHref(node.href);
-    const internal = href && href.startsWith('?');
+    const internal = href && !/^https?:\/\//i.test(href);
 
     const a = document.createElement('span');
     a.className = 'gloss-link gloss-sc-a';
     a.dataset.external = String(!internal);
+    if (href) {
+      a.dataset.href = href;
+      a.setAttribute('href', href);
+      a.tabIndex = 0;
+      a.setAttribute('role', 'link');
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigateStructuredLink(href, internal);
+      });
+      a.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        navigateStructuredLink(href, internal);
+      });
+    }
     if (typeof node.title === 'string') a.title = node.title;
     if (typeof node.lang === 'string') {
       a.lang = node.lang;
@@ -2413,9 +2574,9 @@
       if (styleNode) {
         const stylesPayload = Array.isArray(payload.styles) ? payload.styles : [];
 
-        // Create a cache key based on dict names and CSS lengths
+        // Create a cache key based on dict names and CSS content.
         const stylesKey = stylesPayload
-          .map(s => `${s.dictName}:${(s.styles || '').length}`)
+          .map(s => `${s.dictName}:${hashString(s.styles || '')}`)
           .join('|');
 
         if (styleNode.dataset.cacheKey !== stylesKey) {
