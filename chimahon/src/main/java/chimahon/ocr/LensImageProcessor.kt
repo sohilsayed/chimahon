@@ -6,7 +6,7 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 internal data class ImageChunk(
-    val pngBytes: ByteArray,
+    val bitmap: Bitmap,
     val width: Int,
     val height: Int,
     val globalY: Int,
@@ -14,7 +14,7 @@ internal data class ImageChunk(
     val fullHeight: Int,
 )
 
-internal data class ProcessedImage(
+data class ProcessedImage(
     val bytes: ByteArray,
     val width: Int,
     val height: Int,
@@ -22,7 +22,7 @@ internal data class ProcessedImage(
 
 internal fun processImageFromBytes(data: ByteArray): ProcessedImage {
     val bitmap = decodeBitmap(data)
-    return processImageInternal(bitmap)
+    return processImageInternal(bitmap).also { bitmap.recycle() }
 }
 
 internal fun splitImageIntoChunks(
@@ -43,18 +43,14 @@ internal fun splitImageIntoChunks(
             }
 
             val chunkBitmap = Bitmap.createBitmap(bitmap, 0, currentY, fullWidth, currentChunkHeight)
-            try {
-                chunks += ImageChunk(
-                    pngBytes = bitmapToPng(chunkBitmap),
-                    width = fullWidth,
-                    height = currentChunkHeight,
-                    globalY = currentY,
-                    fullWidth = fullWidth,
-                    fullHeight = fullHeight,
-                )
-            } finally {
-                chunkBitmap.recycle()
-            }
+            chunks += ImageChunk(
+                bitmap = chunkBitmap,
+                width = fullWidth,
+                height = currentChunkHeight,
+                globalY = currentY,
+                fullWidth = fullWidth,
+                fullHeight = fullHeight,
+            )
 
             currentY += chunkHeightLimit
         }
@@ -69,7 +65,7 @@ private fun decodeBitmap(data: ByteArray): Bitmap {
     return OcrBitmapDecoder.decode(data)
 }
 
-private fun processImageInternal(bitmap: Bitmap): ProcessedImage {
+internal fun processImageInternal(bitmap: Bitmap): ProcessedImage {
     var resized: Bitmap? = null
     return try {
         val resizedBitmap = resizeIfNeeded(bitmap).also { resized = it }
@@ -79,7 +75,6 @@ private fun processImageInternal(bitmap: Bitmap): ProcessedImage {
         if (resized != null && resized !== bitmap) {
             resized.recycle()
         }
-        bitmap.recycle()
     }
 }
 
@@ -105,16 +100,14 @@ internal fun prepareForOcr(data: ByteArray): List<ImageChunk> {
     val shouldChunkByAspect = aspectRatio > WEBTOON_ASPECT_RATIO && pixelCount > MAX_TOTAL_PIXELS
 
     return if (shouldChunkByHeight || shouldChunkByAspect) {
-        // Chunk only outlier pages to keep regular pages on the fast single-image path.
-        chunkImage(bitmap)
+        chunkImage(bitmap).also { bitmap.recycle() }
     } else {
-        // Normal page: resize proportional to 3MP, send as single chunk
         var resized: Bitmap? = null
         try {
             val resizedBitmap = resizeToMaxPixels(bitmap, MAX_TOTAL_PIXELS).also { resized = it }
             listOf(
                 ImageChunk(
-                    pngBytes = bitmapToPng(resizedBitmap),
+                    bitmap = resizedBitmap,
                     width = resizedBitmap.width,
                     height = resizedBitmap.height,
                     globalY = 0,
@@ -124,10 +117,34 @@ internal fun prepareForOcr(data: ByteArray): List<ImageChunk> {
             )
         } finally {
             if (resized != null && resized !== bitmap) {
-                resized.recycle()
+                bitmap.recycle()
             }
-            bitmap.recycle()
         }
+    }
+}
+
+internal fun prepareForOcr(bitmap: Bitmap): List<ImageChunk> {
+    val w = bitmap.width
+    val h = bitmap.height
+    val pixelCount = w * h
+    val aspectRatio = h.toDouble() / w
+    val shouldChunkByHeight = h > TALL_IMAGE_CHUNK_THRESHOLD
+    val shouldChunkByAspect = aspectRatio > WEBTOON_ASPECT_RATIO && pixelCount > MAX_TOTAL_PIXELS
+
+    return if (shouldChunkByHeight || shouldChunkByAspect) {
+        chunkImage(bitmap)
+    } else {
+        val resizedBitmap = resizeToMaxPixels(bitmap, MAX_TOTAL_PIXELS)
+        listOf(
+            ImageChunk(
+                bitmap = resizedBitmap,
+                width = resizedBitmap.width,
+                height = resizedBitmap.height,
+                globalY = 0,
+                fullWidth = resizedBitmap.width,
+                fullHeight = resizedBitmap.height,
+            ),
+        )
     }
 }
 
@@ -161,30 +178,22 @@ internal fun chunkImage(
     val fullHeight = bitmap.height
     val chunks = mutableListOf<ImageChunk>()
 
-    try {
-        val step = (chunkHeightLimit - chunkOverlapPx).coerceAtLeast(1)
-        var currentY = 0
-        while (currentY < fullHeight) {
-            val currentChunkHeight = min(chunkHeightLimit, fullHeight - currentY)
-            if (currentChunkHeight == 0) break
+    val step = (chunkHeightLimit - chunkOverlapPx).coerceAtLeast(1)
+    var currentY = 0
+    while (currentY < fullHeight) {
+        val currentChunkHeight = min(chunkHeightLimit, fullHeight - currentY)
+        if (currentChunkHeight == 0) break
 
-            val chunkBitmap = Bitmap.createBitmap(bitmap, 0, currentY, fullWidth, currentChunkHeight)
-            try {
-                chunks += ImageChunk(
-                    pngBytes = bitmapToPng(chunkBitmap),
-                    width = fullWidth,
-                    height = currentChunkHeight,
-                    globalY = currentY,
-                    fullWidth = fullWidth,
-                    fullHeight = fullHeight,
-                )
-            } finally {
-                chunkBitmap.recycle()
-            }
-            currentY += step
-        }
-    } finally {
-        bitmap.recycle()
+        val chunkBitmap = Bitmap.createBitmap(bitmap, 0, currentY, fullWidth, currentChunkHeight)
+        chunks += ImageChunk(
+            bitmap = chunkBitmap,
+            width = fullWidth,
+            height = currentChunkHeight,
+            globalY = currentY,
+            fullWidth = fullWidth,
+            fullHeight = fullHeight,
+        )
+        currentY += step
     }
 
     return chunks

@@ -41,9 +41,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
@@ -65,6 +63,7 @@ class ScreenLookupService : Service() {
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var virtualDisplaySize: CaptureSize? = null
+    private var lastCaptureError: String? = null
     private var floatingButton: View? = null
     private var floatingButtonParams: WindowManager.LayoutParams? = null
     private var captureJob: Job? = null
@@ -84,6 +83,11 @@ class ScreenLookupService : Service() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                if (!Settings.canDrawOverlays(this)) {
+                    Toast.makeText(this, this.stringResource(MR.strings.screen_lookup_overlay_required), Toast.LENGTH_LONG).show()
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 startLookupForeground()
                 if (!startProjection(resultCode, resultData)) {
                     stopSelf()
@@ -91,6 +95,7 @@ class ScreenLookupService : Service() {
                 }
                 showFloatingButton()
                 ScreenLookupServiceState.isRunning.value = true
+                ScreenLookupTileService.requestUpdate(this)
             }
             ACTION_CAPTURE -> captureFromButton()
             ACTION_SHOW_BUTTON -> setFloatingButtonVisible(true)
@@ -107,6 +112,7 @@ class ScreenLookupService : Service() {
         removeFloatingButton()
         releaseProjection()
         ScreenLookupServiceState.isRunning.value = false
+        ScreenLookupTileService.requestUpdate(this)
         super.onDestroy()
     }
 
@@ -225,24 +231,46 @@ class ScreenLookupService : Service() {
         if (captureJob?.isActive == true) return
 
         captureJob = scope.launch {
-            if (!ensureVirtualDisplay()) {
-                toast(MR.strings.screen_lookup_unavailable)
-                return@launch
-            }
-
             setFloatingButtonVisible(false)
-            drainImages()
-            delay(BUTTON_HIDE_DELAY_MS)
 
-            val bitmap = withContext(Dispatchers.Default) { awaitBitmap() }
+            val bitmap = captureWithProjection()
             if (bitmap == null) {
                 setFloatingButtonVisible(true)
                 toast(MR.strings.screen_lookup_capture_failed)
+                lastCaptureError?.let { msg ->
+                    Toast.makeText(this@ScreenLookupService, "Error: $msg", Toast.LENGTH_LONG).show()
+                }
                 return@launch
             }
 
             showLookupOverlay(bitmap)
         }
+    }
+
+    private suspend fun captureWithProjection(): Bitmap? {
+        lastCaptureError = null
+        if (projection == null) return null
+        if (!ensureVirtualDisplay()) return null
+
+        delay(64)
+        return withContext(Dispatchers.Default) {
+            runCatching { acquireBitmap() }
+                .onFailure { e ->
+                    lastCaptureError = e.message
+                    logcat(LogPriority.ERROR, e) { "capture failed" }
+                }
+                .getOrNull()
+        }
+    }
+
+    private suspend fun acquireBitmap(): Bitmap? {
+        val reader = imageReader ?: return null
+        var image = reader.acquireLatestImage()
+        if (image == null) {
+            delay(48)
+            image = reader.acquireLatestImage() ?: return null
+        }
+        return image.use { it.toBitmap() }
     }
 
     private fun showLookupOverlay(bitmap: Bitmap) {
@@ -253,32 +281,6 @@ class ScreenLookupService : Service() {
             onRecapture = { captureFromButton() },
         ).also { overlayController = it }
         controller.show(bitmap)
-    }
-
-    private suspend fun awaitBitmap(): Bitmap? {
-        val reader = imageReader ?: return null
-        reader.acquireLatestImage()?.use { image ->
-            return image.toBitmap()
-        }
-
-        return withTimeoutOrNull(IMAGE_TIMEOUT_MS) {
-            suspendCancellableCoroutine { continuation ->
-                reader.setOnImageAvailableListener(
-                    { availableReader ->
-                        val image = availableReader.acquireLatestImage() ?: return@setOnImageAvailableListener
-                        availableReader.setOnImageAvailableListener(null, null)
-                        scope.launch(Dispatchers.Default) {
-                            val bitmap = runCatching { image.use { it.toBitmap() } }.getOrNull()
-                            if (continuation.isActive) continuation.resume(bitmap)
-                        }
-                    },
-                    mainHandler,
-                )
-                continuation.invokeOnCancellation {
-                    reader.setOnImageAvailableListener(null, null)
-                }
-            }
-        }
     }
 
     private fun Image.toBitmap(): Bitmap {
@@ -294,14 +296,6 @@ class ScreenLookupService : Service() {
 
         return Bitmap.createBitmap(paddedBitmap, 0, 0, width, height).also {
             paddedBitmap.recycle()
-        }
-    }
-
-    private fun drainImages() {
-        val reader = imageReader ?: return
-        while (true) {
-            val image = reader.acquireLatestImage() ?: break
-            image.close()
         }
     }
 
@@ -420,14 +414,18 @@ class ScreenLookupService : Service() {
     }
 
     private fun captureSize(): CaptureSize {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = windowManager.maximumWindowMetrics.bounds
-            CaptureSize(bounds.width(), bounds.height())
-        } else {
-            @Suppress("DEPRECATION")
-            val metrics = resources.displayMetrics
-            CaptureSize(metrics.widthPixels, metrics.heightPixels)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val wm = createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+                    .getSystemService<WindowManager>()
+                val bounds = wm?.currentWindowMetrics?.bounds
+                if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
+                    return CaptureSize(bounds.width(), bounds.height())
+                }
+            } catch (_: Exception) {}
         }
+        val metrics = resources.displayMetrics
+        return CaptureSize(metrics.widthPixels, metrics.heightPixels)
     }
 
     private fun Intent.getProjectionIntent(): Intent? {
@@ -461,7 +459,6 @@ class ScreenLookupService : Service() {
         private const val NOTIFICATION_ID = 320_420
         private const val BUTTON_SIZE_DP = 56
         private const val BUTTON_ALPHA = 0.92f
-        private const val BUTTON_HIDE_DELAY_MS = 140L
         private const val IMAGE_TIMEOUT_MS = 1_500L
 
         fun start(context: Context, resultCode: Int, resultData: Intent) {

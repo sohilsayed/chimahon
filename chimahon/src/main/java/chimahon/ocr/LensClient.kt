@@ -2,6 +2,7 @@
 
 package chimahon.ocr
 
+import android.graphics.Bitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -65,6 +66,12 @@ class LensClient(
             sendRequest(processed, lang)
         }
 
+    suspend fun processImageBytes(bitmap: Bitmap, lang: String? = null): LensResult =
+        withContext(Dispatchers.IO) {
+            val processed = processImageInternal(bitmap)
+            sendRequest(processed, lang)
+        }
+
     /**
      * decode → Lens API → flatten paragraphs→lines → filter + merge → normalize 0..1
      */
@@ -85,6 +92,15 @@ class LensClient(
         }
     }
 
+    suspend fun getRawOcrData(
+        bitmap: Bitmap,
+        language: OcrLanguage = OcrLanguage.JAPANESE,
+    ): List<RawChunk> = withContext(Dispatchers.IO) {
+        retryOcr {
+            getRawOcrDataInternal(bitmap, language)
+        }
+    }
+
     enum class MergerType { LEGACY, OWOCR }
 
     suspend fun getDebugOcrData(
@@ -95,6 +111,41 @@ class LensClient(
     ): OcrDebugResult = withContext(Dispatchers.IO) {
         retryOcr {
             val rawChunks = getRawOcrDataInternal(bytes, language)
+            val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
+            val mergedResults = when (merger) {
+                MergerType.LEGACY -> rawChunks.flatMap { chunk ->
+                    LensMerger.autoMerge(chunk.lines, chunk.width, chunk.height, config).map { result ->
+                        result.normalizeFromChunk(chunk)
+                    }
+                }
+                MergerType.OWOCR -> {
+                    val allEngineLines = rawChunks.flatMap { chunk ->
+                        chunk.lines.map { it.toEngineLine(chunk, language) }
+                    }.distinctBy { it.text + it.bbox.toString() }
+                    OwOCRMerger.merge(allEngineLines, config)
+                }
+            }
+            val dedupedResults = if (rawChunks.size > 1) {
+                dedupeChunkBoundaryResults(mergedResults)
+            } else {
+                mergedResults
+            }
+
+            OcrDebugResult(
+                rawChunks = rawChunks,
+                mergedResults = dedupedResults,
+            )
+        }
+    }
+
+    suspend fun getDebugOcrData(
+        bitmap: Bitmap,
+        language: OcrLanguage = OcrLanguage.JAPANESE,
+        addSpaceOnMerge: Boolean? = null,
+        merger: MergerType = MergerType.OWOCR,
+    ): OcrDebugResult = withContext(Dispatchers.IO) {
+        retryOcr {
+            val rawChunks = getRawOcrDataInternal(bitmap, language)
             val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
             val mergedResults = when (merger) {
                 MergerType.LEGACY -> rawChunks.flatMap { chunk ->
@@ -200,17 +251,47 @@ class LensClient(
         bytes: ByteArray,
         language: OcrLanguage,
     ): List<RawChunk> {
-        return prepareForOcr(bytes).map { chunk ->
-            val lensResult = processImageBytes(chunk.pngBytes, language.bcp47)
-            val flatLines = LensMerger.flattenToPixelLines(lensResult, chunk.width, chunk.height, language)
-            RawChunk(
-                lines = flatLines,
-                width = chunk.width,
-                height = chunk.height,
-                globalY = chunk.globalY,
-                fullWidth = chunk.fullWidth,
-                fullHeight = chunk.fullHeight,
-            )
+        val chunks = prepareForOcr(bytes)
+        return chunks.map { chunk ->
+            try {
+                val lensResult = processImageBytes(chunk.bitmap, language.bcp47)
+                val flatLines = LensMerger.flattenToPixelLines(lensResult, chunk.width, chunk.height, language)
+                RawChunk(
+                    lines = flatLines,
+                    width = chunk.width,
+                    height = chunk.height,
+                    globalY = chunk.globalY,
+                    fullWidth = chunk.fullWidth,
+                    fullHeight = chunk.fullHeight,
+                )
+            } finally {
+                chunk.bitmap.recycle()
+            }
+        }
+    }
+
+    private suspend fun getRawOcrDataInternal(
+        bitmap: Bitmap,
+        language: OcrLanguage,
+    ): List<RawChunk> {
+        val chunks = prepareForOcr(bitmap)
+        return chunks.map { chunk ->
+            try {
+                val lensResult = processImageBytes(chunk.bitmap, language.bcp47)
+                val flatLines = LensMerger.flattenToPixelLines(lensResult, chunk.width, chunk.height, language)
+                RawChunk(
+                    lines = flatLines,
+                    width = chunk.width,
+                    height = chunk.height,
+                    globalY = chunk.globalY,
+                    fullWidth = chunk.fullWidth,
+                    fullHeight = chunk.fullHeight,
+                )
+            } finally {
+                if (chunk.bitmap !== bitmap) {
+                    chunk.bitmap.recycle()
+                }
+            }
         }
     }
 

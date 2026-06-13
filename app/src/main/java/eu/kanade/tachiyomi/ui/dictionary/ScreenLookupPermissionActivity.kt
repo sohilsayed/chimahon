@@ -110,6 +110,7 @@ class ScreenLookupPermissionActivity : BaseActivity() {
         }
         projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
     }
+
 }
 
 @Composable

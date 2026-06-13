@@ -1,34 +1,10 @@
 package eu.kanade.tachiyomi.ui.dictionary
 
-import android.graphics.Bitmap
 import chimahon.ocr.OcrResult
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLineGeometry
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
 import eu.kanade.tachiyomi.ui.reader.viewer.fullText
 import eu.kanade.tachiyomi.ui.reader.viewer.uniformCharOffset
-import java.io.ByteArrayOutputStream
-import kotlin.math.sqrt
-
-internal fun Bitmap.toScreenLookupOcrPngBytes(maxPixels: Int = 3_000_000): ByteArray {
-    val sourcePixels = width.toLong() * height.toLong()
-    val bitmapForOcr = if (sourcePixels > maxPixels) {
-        val scale = sqrt(maxPixels.toDouble() / sourcePixels.toDouble())
-        Bitmap.createScaledBitmap(
-            this,
-            (width * scale).toInt().coerceAtLeast(1),
-            (height * scale).toInt().coerceAtLeast(1),
-            true,
-        )
-    } else {
-        this
-    }
-
-    return ByteArrayOutputStream().use { output ->
-        bitmapForOcr.compress(Bitmap.CompressFormat.PNG, 100, output)
-        if (bitmapForOcr !== this) bitmapForOcr.recycle()
-        output.toByteArray()
-    }
-}
 
 internal fun List<OcrResult>.toScreenLookupBlocks(language: String): List<OcrTextBlock> {
     return mapNotNull { result ->
