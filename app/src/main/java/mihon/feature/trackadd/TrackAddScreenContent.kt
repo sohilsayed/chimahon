@@ -69,6 +69,8 @@ fun TrackAddScreenContent(
     finishedCount: Int,
     trackerName: String,
     onSearchManually: (TrackAddItem) -> Unit,
+    onCancelItem: (Long) -> Unit,
+    onRemoveItem: (Long) -> Unit,
     onTrackAll: () -> Unit,
 ) {
     Scaffold(
@@ -134,6 +136,8 @@ fun TrackAddScreenContent(
                         modifier = Modifier.weight(0.2f),
                         result = result,
                         onSearchManually = { onSearchManually(item) },
+                        onCancel = { onCancelItem(item.manga.id) },
+                        onSkip = { onRemoveItem(item.manga.id) },
                     )
                 }
             }
@@ -305,13 +309,15 @@ private fun TrackAddActionItem(
     modifier: Modifier,
     result: TrackAddItem.SearchResult,
     onSearchManually: () -> Unit,
+    onCancel: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     var menuExpanded by rememberSaveable { mutableStateOf(false) }
     val closeMenu = { menuExpanded = false }
     Box(modifier) {
         when (result) {
             TrackAddItem.SearchResult.Searching -> {
-                IconButton(onClick = {}) {
+                IconButton(onClick = onCancel) {
                     Icon(
                         imageVector = Icons.Outlined.Close,
                         contentDescription = null,
@@ -335,6 +341,13 @@ private fun TrackAddActionItem(
                         onClick = {
                             closeMenu()
                             onSearchManually()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Skip") },
+                        onClick = {
+                            closeMenu()
+                            onSkip()
                         },
                     )
                 }

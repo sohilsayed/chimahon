@@ -55,6 +55,8 @@ class TrackAddScreen(
                     )
                 )
             },
+            onCancelItem = screenModel::cancelItem,
+            onRemoveItem = screenModel::removeItem,
             onTrackAll = screenModel::showConfirmDialog,
         )
 

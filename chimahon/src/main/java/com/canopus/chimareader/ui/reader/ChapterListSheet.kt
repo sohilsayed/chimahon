@@ -30,7 +30,7 @@ fun ChapterListSheet(
     viewModel: ReaderViewModel,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val chapters = viewModel.document.linearSpineItems
 
     ModalBottomSheet(

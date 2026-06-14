@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -82,6 +83,25 @@ class TrackAddScreenModel(
                 TrackAddItem.SearchResult.NotFound
             }
 
+            updateProgress()
+        }
+    }
+
+    fun cancelItem(mangaId: Long) {
+        screenModelScope.launchIO {
+            val item = items.find { it.manga.id == mangaId } ?: return@launchIO
+            item.searchResult.value = TrackAddItem.SearchResult.NotFound
+            updateProgress()
+        }
+    }
+
+    fun removeItem(mangaId: Long) {
+        screenModelScope.launchIO {
+            val item = items.find { it.manga.id == mangaId } ?: return@launchIO
+            mutableState.update { it.copy(items = it.items.toPersistentList().remove(item)) }
+            if (state.value.items.isEmpty()) {
+                navigateBack()
+            }
             updateProgress()
         }
     }

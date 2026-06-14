@@ -458,7 +458,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         data: Any,
         config: Config,
     ) = (pageView as? SubsamplingScaleImageView)?.apply {
-        setDoubleTapZoomDuration(if (config.eInkMode) 0 else config.zoomDuration.getSystemScaledDuration())
+        setDoubleTapZoomDuration(if (config.eInkMode) 1 else config.zoomDuration.getSystemScaledDuration())
         setMinimumScaleType(config.minimumScaleType)
         setMinimumDpi(1) // Just so that very small image will be fit for initial load
         setCropBorders(config.cropBorders)
@@ -564,7 +564,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         config: Config,
     ) = (pageView as? AppCompatImageView)?.apply {
         if (this is PhotoView) {
-            setZoomTransitionDuration(if (config.eInkMode) 0 else config.zoomDuration.getSystemScaledDuration())
+            setZoomTransitionDuration(if (config.eInkMode) 1 else config.zoomDuration.getSystemScaledDuration())
         }
 
         val request = ImageRequest.Builder(context)
