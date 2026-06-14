@@ -4,6 +4,22 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.9.2]
+
+### Added
+- Batch tracker add flow in library
+- Screen lookup tile (Quick Settings) for OCR
+- Expanded Yomitan Anki export markers (dynamic frequency, part-of-speech, pitch-accent-graphs)
+- E-Ink mode in reader
+
+### Fixed
+- Fix OOM during OCR model downloads
+- Novel reader horizontal padding and gaiji image rendering
+- Yomitan Anki export markers and media alignment
+- Error 500 in mangabaka tracker
+- Improved dictionary structured content display for Yomitan dictionaries
+- Dictionary CSS style isolation and recursive lookup exclusions
+
 ## [v1.9.1]
 
 ### Added
