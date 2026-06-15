@@ -35,6 +35,7 @@ data class AnkiStats(
     val dateKey: String,
     var mangaCards: Int = 0,
     var novelCards: Int = 0,
+    var profileId: String = "",
 )
 
 @Serializable

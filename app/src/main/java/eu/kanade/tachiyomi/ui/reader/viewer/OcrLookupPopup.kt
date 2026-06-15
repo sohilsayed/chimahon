@@ -428,6 +428,7 @@ fun OcrLookupPopup(
                     forceOpen = forceOpen,
                     type = type,
                     syncOnCreate = ankiSyncOnCreate,
+                    profileId = activeProfile.id,
                 )
                 if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -475,6 +476,7 @@ fun OcrLookupPopup(
                     forceOpen = forceOpen,
                     type = type,
                     syncOnCreate = ankiSyncOnCreate,
+                    profileId = activeProfile.id,
                 )
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     when (ankiResult) {
