@@ -428,6 +428,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
                     onTermMatched = null,
                     onContentReadyChange = ::onPopupContentReady,
                     modifier = Modifier,
+                    titleId = bookMetadata?.id,
                 )
             }
         }

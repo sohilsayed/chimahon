@@ -20,11 +20,11 @@ object AnkiStatsStorage {
         BookStorage.save(stats, context.filesDir, FileNames.ankiStats)
     }
 
-    fun addCard(context: Context, type: String? = null, date: LocalDate = LocalDate.now(), profileId: String = "") {
+    fun addCard(context: Context, type: String? = null, date: LocalDate = LocalDate.now(), profileId: String = "", titleId: String? = null) {
         val dateKey = date.toString()
         val allStats = loadAll(context).toMutableList()
-        val existing = allStats.find { it.dateKey == dateKey && it.profileId == profileId }
-        android.util.Log.d("AnkiStatsStorage", "addCard: type=$type, date=$dateKey, profile=$profileId")
+        val existing = allStats.find { it.dateKey == dateKey && it.profileId == profileId && it.titleId == titleId }
+        android.util.Log.d("AnkiStatsStorage", "addCard: type=$type, date=$dateKey, profile=$profileId, titleId=$titleId")
         if (existing != null) {
             if (type == "manga") {
                 existing.mangaCards++
@@ -33,7 +33,7 @@ object AnkiStatsStorage {
             }
             android.util.Log.d("AnkiStatsStorage", "Updated existing: manga=${existing.mangaCards}, novel=${existing.novelCards}")
         } else {
-            val stats = AnkiStats(dateKey, profileId = profileId)
+            val stats = AnkiStats(dateKey, profileId = profileId, titleId = titleId)
             if (type == "manga") {
                 stats.mangaCards = 1
             } else {
@@ -50,7 +50,7 @@ object AnkiStatsStorage {
         val local = loadAll(context).toMutableList()
         var changed = false
         incoming.forEach { remote ->
-            val existing = local.find { it.dateKey == remote.dateKey && it.profileId == remote.profileId }
+            val existing = local.find { it.dateKey == remote.dateKey && it.profileId == remote.profileId && it.titleId == remote.titleId }
             if (existing != null) {
                 if (remote.mangaCards > existing.mangaCards) {
                     existing.mangaCards = remote.mangaCards

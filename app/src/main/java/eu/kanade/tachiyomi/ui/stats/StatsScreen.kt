@@ -16,38 +16,47 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
+import eu.kanade.presentation.more.stats.data.StatsType
 import tachiyomi.presentation.core.screens.LoadingScreen
 
-class StatsScreen : Screen() {
+class StatsScreen(
+    private val titleId: String? = null,
+    private val isNovel: Boolean = false,
+    private val titleName: String? = null,
+) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
 
-        val screenModel = rememberScreenModel { StatsScreenModel() }
+        val screenModel = rememberScreenModel {
+            StatsScreenModel(titleId = titleId, isNovel = isNovel, titleName = titleName)
+        }
         val state by screenModel.state.collectAsState()
         val allRead by screenModel.allRead.collectAsState()
 
         Scaffold(
             topBar = { scrollBehavior ->
                 AppBar(
-                    title = stringResource(MR.strings.label_stats),
+                    title = titleName ?: stringResource(MR.strings.label_stats),
                     navigateUp = navigator::pop,
                     scrollBehavior = scrollBehavior,
                     // SY -->
                     actions = {
-                        AppBarActions(
-                            persistentListOf(
-                                AppBar.OverflowAction(
-                                    title = if (allRead) {
-                                        stringResource(SYMR.strings.ignore_non_library_entries)
-                                    } else {
-                                        stringResource(SYMR.strings.include_all_read_entries)
-                                    },
-                                    onClick = screenModel::toggleReadManga,
+                        if (titleId == null) {
+                            AppBarActions(
+                                persistentListOf(
+                                    AppBar.OverflowAction(
+                                        title = if (allRead) {
+                                            stringResource(SYMR.strings.ignore_non_library_entries)
+                                        } else {
+                                            stringResource(SYMR.strings.include_all_read_entries)
+                                        },
+                                        onClick = screenModel::toggleReadManga,
+                                    ),
                                 ),
-                            ),
-                        )
+                            )
+                        }
                     },
                     // SY <--
                 )
@@ -66,6 +75,20 @@ class StatsScreen : Screen() {
                 onStatsTypeSelect = screenModel::setStatsType,
                 onProfileSelect = screenModel::setProfileFilter,
                 allRead = allRead,
+                isSingleTitle = titleId != null,
+                titleName = titleName,
+                onLibraryCardClick = if (titleId == null) {
+                    {
+                        val successState = state as? StatsScreenState.Success ?: return@StatsScreenContent
+                        navigator.push(
+                            StatsTitlesScreen(
+                                activeProfileId = successState.activeProfileId,
+                                allRead = allRead,
+                                statsType = successState.statsType
+                            )
+                        )
+                    }
+                } else null,
             )
         }
     }

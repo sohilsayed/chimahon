@@ -790,6 +790,7 @@ class ReaderActivity : BaseActivity() {
                         )
                     }
                 },
+                titleId = viewModel.state.value.manga?.id?.toString(),
             )
         }
 

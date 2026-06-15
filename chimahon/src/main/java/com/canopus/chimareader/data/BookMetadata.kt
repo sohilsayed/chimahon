@@ -16,4 +16,5 @@ data class BookMetadata(
     val categoryIds: List<String> = emptyList(),
     val lang: String? = null,
     val ttuFolderName: String? = null,
+    val chapterStarts: List<Int>? = null,
 )

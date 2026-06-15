@@ -317,6 +317,24 @@ class ReaderViewModel(
                 runningTotal += document.getChapterCharacters(i)
             }
             accumulatedCharCounts[document.linearSpineItems.size] = runningTotal
+
+            val toc = getFlattenedToc()
+            val chapterStartsList = if (toc.isNotEmpty()) {
+                toc.map { entry ->
+                    val spineIndex = entry.href?.let { getSpineIndexForHref(it) } ?: 0
+                    accumulatedCharCounts[spineIndex] ?: 0
+                }
+            } else {
+                document.linearSpineItems.indices.map { index ->
+                    accumulatedCharCounts[index] ?: 0
+                }
+            }
+            val chapterStartsListWithEnd = chapterStartsList + runningTotal
+
+            val metadata = BookStorage.loadMetadata(rootUrl)
+            if (metadata != null && metadata.chapterStarts != chapterStartsListWithEnd) {
+                BookStorage.saveMetadata(metadata.copy(chapterStarts = chapterStartsListWithEnd), rootUrl)
+            }
         }
 
         getCurrentChapter()?.let { file ->
