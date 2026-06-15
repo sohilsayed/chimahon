@@ -23,6 +23,9 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.data.connections.ConnectionsManager
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadProvider
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -35,6 +38,8 @@ import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.sync.service.GoogleDriveService
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.animeextension.AnimeExtensionManager
+import eu.kanade.tachiyomi.animesource.AndroidAnimeSourceManager
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
@@ -52,6 +57,9 @@ import tachiyomi.core.common.storage.AndroidStorageFolderProvider
 import tachiyomi.core.common.storage.UniFileTempFileManager
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.Database
+import tachiyomi.data.Anime_history
+import tachiyomi.data.Animes
+import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
@@ -59,6 +67,7 @@ import tachiyomi.data.Reading_sessions
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.domain.animesource.service.AnimeSourceManager
 import tachiyomi.domain.manga.interactor.GetCustomMangaInfo
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
@@ -135,6 +144,13 @@ class AppModule(val app: Application) : InjektModule {
                     genreAdapter = StringListColumnAdapter,
                     update_strategyAdapter = UpdateStrategyColumnAdapter,
                 ),
+                anime_historyAdapter = Anime_history.Adapter(
+                    last_watchedAdapter = DateColumnAdapter,
+                ),
+                animesAdapter = Animes.Adapter(
+                    genreAdapter = StringListColumnAdapter,
+                    update_strategyAdapter = AnimeUpdateStrategyColumnAdapter,
+                ),
                 reading_sessionsAdapter = Reading_sessions.Adapter(
                     read_atAdapter = DateColumnAdapter,
                 ),
@@ -175,11 +191,17 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
         addSingletonFactory { ExtensionManager(app) }
+        addSingletonFactory { AnimeExtensionManager(app) }
+        addSingletonFactory<AnimeSourceManager> { AndroidAnimeSourceManager(app, get(), get()) }
 
         addSingletonFactory { DownloadProvider(app) }
         addSingletonFactory { DownloadManager(app) }
         addSingletonFactory { DownloadCache(app) }
         addSingletonFactory { MokuroSidecarCopier(get<NetworkHelper>().client) }
+
+        addSingletonFactory { AnimeDownloadProvider(app) }
+        addSingletonFactory { AnimeDownloadManager(app) }
+        addSingletonFactory { AnimeDownloadCache(app) }
 
         addSingletonFactory { OcrCacheManager(app, get(), get()) }
         addSingletonFactory { OcrStore(app) }

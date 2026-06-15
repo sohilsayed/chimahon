@@ -16,6 +16,11 @@ materialKolor = "5.0.0-alpha06"
 image-cropper = "4.7.0"
 datastore = "1.1.2"
 media3 = "1.5.1"
+aniyomi-mpv-lib = "1.17.n"
+seeker = "1.2.2"
+media = "1.7.1"
+truetypeparser = "2.1.4"
+ffmpeg-kit = "1.17"
 
 
 [libraries]
@@ -77,6 +82,16 @@ palette-ktx = "androidx.palette:palette-ktx:1.0.0"
 haze = "dev.chrisbanes.haze:haze:1.7.2"
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+
+aniyomi-mpv = { module = "com.github.aniyomiorg:aniyomi-mpv-lib", version.ref = "aniyomi-mpv-lib" }
+seeker = { module = "io.github.2307vivek:seeker", version.ref = "seeker" }
+mediasession = { module = "androidx.media:media", version.ref = "media" }
+truetypeparser = { module = "io.github.yubyf:truetypeparser-light", version.ref = "truetypeparser" }
+torrentserver = "com.github.Diegopyl1209:torrentserver-aniyomi:c18f58e51b"
+media-router = "androidx.mediarouter:mediarouter:1.8.1"
+cast-play-services = "com.google.android.gms:play-services-cast-framework:22.1.0"
+ffmpeg-kit = { module = "com.github.jmir1:ffmpeg-kit", version.ref = "ffmpeg-kit" }
+smart-exception-java = "com.arthenica:smart-exception-java:0.2.1"
 
 
 swipe = "me.saket.swipe:swipe:1.3.0"

@@ -1,0 +1,24 @@
+CREATE TABLE anime_sources(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    lang TEXT NOT NULL,
+    name TEXT NOT NULL
+);
+
+findAll:
+SELECT *
+FROM anime_sources;
+
+findOne:
+SELECT *
+FROM anime_sources
+WHERE _id = :id;
+
+upsert:
+INSERT INTO anime_sources(_id, lang, name)
+VALUES (:id, :lang, :name)
+ON CONFLICT(_id)
+DO UPDATE
+SET
+    lang = :lang,
+    name = :name
+WHERE _id = :id;

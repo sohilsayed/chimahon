@@ -1,10 +1,13 @@
 package eu.kanade.tachiyomi.source
 
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.animeextension.AnimeExtensionManager
+import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import exh.source.EH_PACKAGE
 import exh.source.LOCAL_SOURCE_PACKAGE
 import exh.source.isEhBasedSource
+import tachiyomi.domain.animesource.model.StubAnimeSource
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.presentation.core.icons.FlagEmoji
 import tachiyomi.source.local.isLocal
@@ -92,3 +95,12 @@ fun Source.isIncognitoModeEnabled(incognitoExtensions: Set<String>? = null): Boo
     return extensionPackage in (incognitoExtensions ?: Injekt.get<SourcePreferences>().incognitoExtensions().get())
 }
 // KMK <--
+
+// (TORRENT) -->
+fun AnimeSource?.isSourceForTorrents(): Boolean {
+    if (this == null || this is StubAnimeSource) return false
+    val sourceUsed = Injekt.get<AnimeExtensionManager>().installedExtensionsFlow.value
+        .find { ext -> ext.sources.any { it.id == this.id } }
+    return sourceUsed?.isTorrent == true
+}
+// <-- (TORRENT)

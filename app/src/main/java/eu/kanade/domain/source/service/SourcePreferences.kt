@@ -59,6 +59,8 @@ class SourcePreferences(
 
     fun extensionUpdatesCount() = preferenceStore.getInt("ext_updates_count", 0)
 
+    fun animeExtensionUpdatesCount() = preferenceStore.getInt("anime_ext_updates_count", 0)
+
     fun trustedExtensions() = preferenceStore.getStringSet(
         Preference.appStateKey("trusted_extensions"),
         emptySet(),

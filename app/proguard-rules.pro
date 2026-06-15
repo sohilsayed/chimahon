@@ -18,6 +18,10 @@
 -keep class com.canopus.** { *; }
 -keepclassmembers class com.canopus.** { *; }
 
+# MPV native player
+-keep class is.xyz.mpv.** { *; }
+-keepclassmembers class is.xyz.mpv.** { *; }
+
 # Injekt type resolution - FullTypeReference needs generic type info
 -keep class * extends uy.kohesive.injekt.api.TypeReference { *; }
 -keep class * extends uy.kohesive.injekt.api.FullTypeReference { *; }

@@ -14,7 +14,8 @@
       <!-- Permission to save cover into Pictures. It isn't required from API 29 -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="28"
+        tools:replace="android:maxSdkVersion" />
       <!-- For access custom cover on Android 12 & below (API 32) -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -177,6 +178,27 @@
             android:theme="@style/Theme.Tachiyomi" />
 
         <activity
+            android:name=".ui.player.PlayerActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:theme="@style/Theme.Tachiyomi"
+            android:supportsPictureInPicture="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".data.torrentServer.service.TorrentServerService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="eu.kanade.tachiyomi.ui.player.cast.CastOptionsProvider" />
             android:name=".ui.dictionary.ProcessTextLookupActivity"
             android:excludeFromRecents="true"
             android:exported="true"

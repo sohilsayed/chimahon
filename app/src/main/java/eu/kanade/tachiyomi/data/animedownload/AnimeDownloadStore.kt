@@ -1,0 +1,95 @@
+package eu.kanade.tachiyomi.data.animedownload
+
+import android.content.Context
+import androidx.core.content.edit
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import tachiyomi.domain.anime.interactor.GetAnime
+import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.episode.interactor.GetEpisode
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+
+class AnimeDownloadStore(
+    context: Context,
+    private val animeSourceManager: AnimeSourceManager = Injekt.get(),
+    private val json: Json = Injekt.get(),
+    private val getAnime: GetAnime = Injekt.get(),
+    private val getEpisode: GetEpisode = Injekt.get(),
+) {
+
+    private val preferences = context.getSharedPreferences("active_anime_downloads", Context.MODE_PRIVATE)
+
+    private var counter = 0
+
+    fun addAll(downloads: List<AnimeDownload>) {
+        preferences.edit {
+            downloads.forEach { putString(getKey(it), serialize(it)) }
+        }
+    }
+
+    fun remove(download: AnimeDownload) {
+        preferences.edit {
+            remove(getKey(download))
+        }
+    }
+
+    fun removeAll(downloads: List<AnimeDownload>) {
+        preferences.edit {
+            downloads.forEach { remove(getKey(it)) }
+        }
+    }
+
+    fun clear() {
+        preferences.edit {
+            clear()
+        }
+    }
+
+    private fun getKey(download: AnimeDownload): String {
+        return download.episode.id.toString()
+    }
+
+    suspend fun restore(): List<AnimeDownload> {
+        val objs = preferences.all
+            .mapNotNull { it.value as? String }
+            .mapNotNull { deserialize(it) }
+            .sortedBy { it.order }
+
+        val downloads = mutableListOf<AnimeDownload>()
+        if (objs.isNotEmpty()) {
+            val cachedAnime = mutableMapOf<Long, Anime?>()
+            for ((animeId, episodeId) in objs) {
+                val anime = cachedAnime.getOrPut(animeId) {
+                    getAnime.await(animeId)
+                } ?: continue
+                val source = animeSourceManager.get(anime.source) as? AnimeHttpSource ?: continue
+                val episode = getEpisode.await(episodeId) ?: continue
+                downloads.add(AnimeDownload(source, anime, episode))
+            }
+        }
+
+        clear()
+        return downloads
+    }
+
+    private fun serialize(download: AnimeDownload): String {
+        val obj = AnimeDownloadObject(download.anime.id, download.episode.id, counter++)
+        return json.encodeToString(obj)
+    }
+
+    private fun deserialize(string: String): AnimeDownloadObject? {
+        return try {
+            json.decodeFromString<AnimeDownloadObject>(string)
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
+@Serializable
+private data class AnimeDownloadObject(val animeId: Long, val episodeId: Long, val order: Int)
