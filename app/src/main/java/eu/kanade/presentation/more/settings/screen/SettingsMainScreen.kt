@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.OndemandVideo
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security
@@ -201,6 +202,12 @@ object SettingsMainScreen : Screen() {
             subtitleRes = MR.strings.pref_reader_summary,
             icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
             screen = SettingsReaderScreen,
+        ),
+        Item(
+            titleRes = MR.strings.pref_category_player,
+            subtitleRes = MR.strings.pref_player_summary,
+            icon = Icons.Outlined.OndemandVideo,
+            screen = SettingsPlayerScreen,
         ),
         Item(
             titleRes = MR.strings.pref_category_downloads,

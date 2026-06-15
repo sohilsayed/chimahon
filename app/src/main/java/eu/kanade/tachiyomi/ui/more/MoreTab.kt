@@ -28,6 +28,7 @@ import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
 import eu.kanade.tachiyomi.data.connections.discord.DiscordScreen
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
@@ -111,6 +112,7 @@ data object MoreTab : Tab {
             onClickBrowse = { navigator.push(eu.kanade.tachiyomi.ui.browse.BrowseTab) },
             onClickDictionary = { navigator.push(eu.kanade.tachiyomi.ui.dictionary.DictionaryTab) },
             onClickNovels = { navigator.push(eu.kanade.tachiyomi.ui.library.novels.NovelsTab) },
+            onClickAnime = { navigator.push(eu.kanade.tachiyomi.ui.anime.AnimeTab) },
             // SY <--
             // KMK -->
             onClickLibraryUpdateErrors = { navigator.push(LibraryUpdateErrorScreen()) },
@@ -129,6 +131,7 @@ data object MoreTab : Tab {
 
 private class MoreScreenModel(
     private val downloadManager: DownloadManager = Injekt.get(),
+    private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
     preferences: BasePreferences = Injekt.get(),
     // SY -->
     uiPreferences: UiPreferences = Injekt.get(),
@@ -146,12 +149,17 @@ private class MoreScreenModel(
     val downloadQueueState: StateFlow<DownloadQueueState> = _downloadQueueState.asStateFlow()
 
     init {
-        // Handle running/paused status change and queue progress updating
         screenModelScope.launchIO {
             combine(
                 downloadManager.isDownloaderRunning,
                 downloadManager.queueState,
-            ) { isRunning, downloadQueue -> Pair(isRunning, downloadQueue.size) }
+                animeDownloadManager.isDownloaderRunning,
+                animeDownloadManager.queueState,
+            ) { mangaRunning, mangaQueue, animeRunning, animeQueue ->
+                val totalSize = mangaQueue.size + animeQueue.size
+                val isRunning = mangaRunning || animeRunning
+                Pair(isRunning, totalSize)
+            }
                 .collectLatest { (isDownloading, downloadQueueSize) ->
                     val pendingDownloadExists = downloadQueueSize != 0
                     _downloadQueueState.value = when {

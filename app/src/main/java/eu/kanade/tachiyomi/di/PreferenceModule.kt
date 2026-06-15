@@ -11,6 +11,13 @@ import eu.kanade.tachiyomi.core.security.PrivacyPreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.torrentServer.TorrentServerPreferences
+import eu.kanade.tachiyomi.ui.player.setting.AdvancedPlayerPreferences
+import eu.kanade.tachiyomi.ui.player.setting.AudioPreferences
+import eu.kanade.tachiyomi.ui.player.setting.DecoderPreferences
+import eu.kanade.tachiyomi.ui.player.setting.GesturePreferences
+import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
+import eu.kanade.tachiyomi.ui.player.setting.SubtitlePreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import com.canopus.chimareader.data.NovelReaderSettings
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
@@ -62,6 +69,27 @@ class PreferenceModule(val app: Application) : InjektModule {
         // KMK <--
         addSingletonFactory {
             ReaderPreferences(get())
+        }
+        addSingletonFactory {
+            PlayerPreferences(get())
+        }
+        addSingletonFactory {
+            GesturePreferences(get())
+        }
+        addSingletonFactory {
+            SubtitlePreferences(get())
+        }
+        addSingletonFactory {
+            AudioPreferences(get())
+        }
+        addSingletonFactory {
+            DecoderPreferences(get())
+        }
+        addSingletonFactory {
+            AdvancedPlayerPreferences(get())
+        }
+        addSingletonFactory {
+            TorrentServerPreferences(get())
         }
         addSingletonFactory {
             DictionaryPreferences(get())

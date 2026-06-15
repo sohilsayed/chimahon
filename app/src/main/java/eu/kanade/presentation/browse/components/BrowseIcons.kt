@@ -29,6 +29,8 @@ import coil3.compose.AsyncImage
 import eu.kanade.domain.source.model.icon
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.animeextension.model.AnimeExtension
+import eu.kanade.tachiyomi.animeextension.util.AnimeExtensionLoader
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import tachiyomi.core.common.util.lang.withIOContext
@@ -128,6 +130,68 @@ private fun Extension.getIcon(density: Int = DisplayMetrics.DENSITY_DEFAULT): St
         withIOContext {
             value = try {
                 val appInfo = ExtensionLoader.getExtensionPackageInfoFromPkgName(context, pkgName)!!.applicationInfo!!
+                val appResources = context.packageManager.getResourcesForApplication(appInfo)
+                Result.Success(
+                    appResources.getDrawableForDensity(appInfo.icon, density, null)!!
+                        .toBitmap()
+                        .asImageBitmap(),
+                )
+            } catch (e: Exception) {
+                Result.Error
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimeExtensionIcon(
+    extension: AnimeExtension,
+    modifier: Modifier = Modifier,
+    density: Int = DisplayMetrics.DENSITY_DEFAULT,
+) {
+    when (extension) {
+        is AnimeExtension.Available -> {
+            AsyncImage(
+                model = extension.iconUrl,
+                contentDescription = null,
+                placeholder = ColorPainter(Color(0x1F888888)),
+                error = rememberResourceBitmapPainter(id = R.drawable.cover_error),
+                modifier = modifier
+                    .clip(MaterialTheme.shapes.extraSmall),
+            )
+        }
+        is AnimeExtension.Installed -> {
+            val icon by extension.getIcon(density)
+            when (icon) {
+                is Result.Loading -> Box(modifier = modifier)
+                is Result.Success -> Image(
+                    bitmap = (icon as Result.Success<ImageBitmap>).value,
+                    contentDescription = null,
+                    modifier = modifier,
+                )
+                is Result.Error -> Image(
+                    bitmap = ImageBitmap.imageResource(id = R.mipmap.ic_default_source),
+                    contentDescription = null,
+                    modifier = modifier,
+                )
+            }
+        }
+        is AnimeExtension.Untrusted -> Image(
+            imageVector = Icons.Filled.Dangerous,
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.error),
+            modifier = modifier.then(defaultModifier),
+        )
+    }
+}
+
+@Composable
+private fun AnimeExtension.getIcon(density: Int = DisplayMetrics.DENSITY_DEFAULT): State<Result<ImageBitmap>> {
+    val context = LocalContext.current
+    return produceState<Result<ImageBitmap>>(initialValue = Result.Loading, this) {
+        withIOContext {
+            value = try {
+                val appInfo = AnimeExtensionLoader.getExtensionPackageInfoFromPkgName(context, pkgName)!!.applicationInfo!!
                 val appResources = context.packageManager.getResourcesForApplication(appInfo)
                 Result.Success(
                     appResources.getDrawableForDensity(appInfo.icon, density, null)!!

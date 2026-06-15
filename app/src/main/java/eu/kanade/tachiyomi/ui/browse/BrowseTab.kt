@@ -22,6 +22,9 @@ import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
 import eu.kanade.tachiyomi.data.connections.discord.DiscordScreen
+import eu.kanade.tachiyomi.ui.browse.animeextension.AnimeExtensionsScreenModel
+import eu.kanade.tachiyomi.ui.browse.animeextension.animeExtensionsTab
+import eu.kanade.tachiyomi.ui.browse.animesource.animeSourcesTab
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.extension.extensionsTab
 import eu.kanade.tachiyomi.ui.browse.feed.FeedScreenModel
@@ -79,6 +82,9 @@ data object BrowseTab : Tab {
         val extensionsScreenModel = rememberScreenModel { ExtensionsScreenModel() }
         val extensionsState by extensionsScreenModel.state.collectAsState()
 
+        val animeExtensionsScreenModel = rememberScreenModel { AnimeExtensionsScreenModel() }
+        val animeExtensionsState by animeExtensionsScreenModel.state.collectAsState()
+
         // KMK -->
         val feedScreenModel = rememberScreenModel { FeedScreenModel() }
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
@@ -90,6 +96,8 @@ data object BrowseTab : Tab {
                 persistentListOf(
                     sourcesTab(),
                     extensionsTab(extensionsScreenModel),
+                    animeSourcesTab(),
+                    animeExtensionsTab(animeExtensionsScreenModel),
                     migrateSourceTab(),
                 )
 
@@ -103,6 +111,8 @@ data object BrowseTab : Tab {
                     ),
                     sourcesTab(),
                     extensionsTab(extensionsScreenModel),
+                    animeSourcesTab(),
+                    animeExtensionsTab(animeExtensionsScreenModel),
                     migrateSourceTab(),
                 )
 
@@ -116,6 +126,8 @@ data object BrowseTab : Tab {
                         // KMK <--
                     ),
                     extensionsTab(extensionsScreenModel),
+                    animeSourcesTab(),
+                    animeExtensionsTab(animeExtensionsScreenModel),
                     migrateSourceTab(),
                 )
         }
@@ -123,12 +135,23 @@ data object BrowseTab : Tab {
 
         val state = rememberPagerState { tabs.size }
 
+        val currentTabTitleRes = tabs.getOrNull(state.currentPage)?.titleRes
+        val searchQuery = when (currentTabTitleRes) {
+            MR.strings.label_anime_extensions -> animeExtensionsState.searchQuery
+            MR.strings.label_extensions -> extensionsState.searchQuery
+            else -> null
+        }
+        val onChangeSearchQuery: (String?) -> Unit = when (currentTabTitleRes) {
+            MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
+            MR.strings.label_extensions -> extensionsScreenModel::search
+            else -> { _ -> }
+        }
         TabbedScreen(
             titleRes = MR.strings.browse,
             tabs = tabs,
             state = state,
-            searchQuery = extensionsState.searchQuery,
-            onChangeSearchQuery = extensionsScreenModel::search,
+            searchQuery = searchQuery,
+            onChangeSearchQuery = onChangeSearchQuery,
             // KMK -->
             feedScreenModel = feedScreenModel,
             bulkFavoriteScreenModel = bulkFavoriteScreenModel,
@@ -136,7 +159,14 @@ data object BrowseTab : Tab {
         )
         LaunchedEffect(Unit) {
             switchToExtensionTabChannel.receiveAsFlow()
-                .collectLatest { state.scrollToPage(/* SY --> */2/* SY <-- */) }
+                .collectLatest {
+                    val extensionsIndex = tabs.indexOfFirst { tab ->
+                        tab.titleRes == MR.strings.label_extensions
+                    }
+                    if (extensionsIndex >= 0) {
+                        state.scrollToPage(extensionsIndex)
+                    }
+                }
         }
 
         LaunchedEffect(Unit) {

@@ -1,0 +1,136 @@
+import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy;
+import kotlin.collections.List;
+import kotlin.Boolean;
+import kotlin.String;
+
+CREATE TABLE animes(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    source INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    artist TEXT,
+    author TEXT,
+    description TEXT,
+    genre TEXT AS List<String>,
+    title TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    thumbnail_url TEXT,
+    favorite INTEGER AS Boolean NOT NULL,
+    last_update INTEGER,
+    next_update INTEGER,
+    initialized INTEGER AS Boolean NOT NULL,
+    viewer INTEGER NOT NULL,
+    episode_flags INTEGER NOT NULL,
+    cover_last_modified INTEGER NOT NULL,
+    date_added INTEGER NOT NULL,
+    update_strategy INTEGER AS AnimeUpdateStrategy NOT NULL DEFAULT 0,
+    calculate_interval INTEGER DEFAULT 0 NOT NULL,
+    last_modified_at INTEGER NOT NULL DEFAULT 0,
+    favorite_modified_at INTEGER,
+    version INTEGER NOT NULL DEFAULT 0,
+    is_syncing INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX library_favorite_anime_index ON animes(favorite) WHERE favorite = 1;
+CREATE INDEX animes_url_index ON animes(url);
+CREATE INDEX animes_source_index ON animes(source);
+
+CREATE TRIGGER update_last_favorited_at_animes
+AFTER UPDATE OF favorite ON animes
+BEGIN
+  UPDATE animes
+  SET favorite_modified_at = strftime('%s', 'now')
+  WHERE _id = new._id;
+END;
+
+CREATE TRIGGER update_last_modified_at_animes
+AFTER UPDATE ON animes
+FOR EACH ROW
+BEGIN
+  UPDATE animes
+  SET last_modified_at = strftime('%s', 'now')
+  WHERE _id = new._id;
+END;
+
+CREATE TRIGGER update_anime_version AFTER UPDATE ON animes
+BEGIN
+    UPDATE animes SET version = version + 1
+    WHERE _id = new._id AND new.is_syncing = 0 AND (
+        new.url != old.url OR
+        new.description != old.description OR
+        new.favorite != old.favorite
+    );
+END;
+
+getAnimeById:
+SELECT *
+FROM animes
+WHERE _id = :id;
+
+getAnimeByUrlAndSource:
+SELECT *
+FROM animes
+WHERE url = :url
+AND source = :source
+LIMIT 1;
+
+getFavorites:
+SELECT *
+FROM animes
+WHERE favorite = 1;
+
+getFavoriteBySourceId:
+SELECT *
+FROM animes
+WHERE favorite = 1
+AND source = :sourceId;
+
+getAllAnime:
+SELECT *
+FROM animes;
+
+getDuplicateLibraryAnime:
+SELECT *
+FROM animes
+WHERE favorite = 1
+AND lower(title) = :title
+AND _id != :id;
+
+resetIsSyncing:
+UPDATE animes
+SET is_syncing = 0
+WHERE is_syncing = 1;
+
+insert:
+INSERT INTO animes(source, url, artist, author, description, genre, title, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, episode_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, version)
+VALUES (:source, :url, :artist, :author, :description, :genre, :title, :status, :thumbnailUrl, :favorite, :lastUpdate, :nextUpdate, :initialized, :viewerFlags, :episodeFlags, :coverLastModified, :dateAdded, :updateStrategy, :calculateInterval, 0, :version);
+
+update:
+UPDATE animes SET
+    source = coalesce(:source, source),
+    url = coalesce(:url, url),
+    artist = coalesce(:artist, artist),
+    author = coalesce(:author, author),
+    description = coalesce(:description, description),
+    genre = coalesce(:genre, genre),
+    title = coalesce(:title, title),
+    status = coalesce(:status, status),
+    thumbnail_url = coalesce(:thumbnailUrl, thumbnail_url),
+    favorite = coalesce(:favorite, favorite),
+    last_update = coalesce(:lastUpdate, last_update),
+    next_update = coalesce(:nextUpdate, next_update),
+    initialized = coalesce(:initialized, initialized),
+    viewer = coalesce(:viewer, viewer),
+    episode_flags = coalesce(:episodeFlags, episode_flags),
+    cover_last_modified = coalesce(:coverLastModified, cover_last_modified),
+    date_added = coalesce(:dateAdded, date_added),
+    update_strategy = coalesce(:updateStrategy, update_strategy),
+    calculate_interval = coalesce(:calculateInterval, calculate_interval),
+    version = coalesce(:version, version),
+    is_syncing = coalesce(:isSyncing, is_syncing)
+WHERE _id = :animeId;
+
+selectLastInsertedRowId:
+SELECT last_insert_rowid();
+
+deleteById:
+DELETE FROM animes WHERE _id = :id;

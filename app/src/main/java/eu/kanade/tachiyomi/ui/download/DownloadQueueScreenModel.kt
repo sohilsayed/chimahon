@@ -5,6 +5,8 @@ import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.ocr.OcrManager
@@ -32,6 +34,7 @@ import uy.kohesive.injekt.api.get
 
 class DownloadQueueScreenModel(
     private val downloadManager: DownloadManager = Injekt.get(),
+    private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
     // KMK -->
     private val navigator: Navigator? = null,
     // KMK <--
@@ -44,6 +47,9 @@ class DownloadQueueScreenModel(
 
     // OCR queue state
     val ocrQueueState: StateFlow<List<OcrQueueItem>> = ocrManager.queueState
+
+    // Anime download queue state
+    val animeQueueState = animeDownloadManager.queueState
 
     lateinit var controllerBinding: DownloadListBinding
 
@@ -142,7 +148,10 @@ class DownloadQueueScreenModel(
         adapter = null
     }
 
-    val isDownloaderRunning = downloadManager.isDownloaderRunning
+    val isDownloaderRunning = combine(
+        downloadManager.isDownloaderRunning,
+        animeDownloadManager.isDownloaderRunning,
+    ) { manga, anime -> manga || anime }
         .stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val isOcrRunning: StateFlow<Boolean> = ocrManager.queueState
@@ -154,14 +163,17 @@ class DownloadQueueScreenModel(
 
     fun startDownloads() {
         downloadManager.startDownloads()
+        animeDownloadManager.startDownloads()
     }
 
     fun pauseDownloads() {
         downloadManager.pauseDownloads()
+        animeDownloadManager.pauseDownloads()
     }
 
     fun clearQueue() {
         downloadManager.clearQueue()
+        animeDownloadManager.clearQueue()
     }
 
     fun reorder(downloads: List<Download>) {
@@ -177,6 +189,10 @@ class DownloadQueueScreenModel(
         navigator?.push(MangaScreen(mangaId))
     }
     // KMK <--
+
+    fun cancelAnimeDownload(download: AnimeDownload) {
+        animeDownloadManager.cancelEpisodeDownload(download)
+    }
 
     // Chimahon: OCR methods
     fun cancelOcr(chapterId: Long) {

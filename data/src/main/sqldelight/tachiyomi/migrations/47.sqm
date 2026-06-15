@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS anime_extension_repos (
+    base_url TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    short_name TEXT,
+    website TEXT NOT NULL,
+    signing_key_fingerprint TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS anime_sources(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    lang TEXT NOT NULL,
+    name TEXT NOT NULL
+);

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NewReleases
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Search
@@ -87,6 +88,7 @@ fun MoreScreen(
     onClickBrowse: () -> Unit,
     onClickDictionary: () -> Unit,
     onClickNovels: () -> Unit,
+    onClickAnime: () -> Unit,
     // KMK -->
     onClickLibraryUpdateErrors: () -> Unit,
     // KMK <--
@@ -236,6 +238,11 @@ fun MoreScreen(
                             title = stringResource(MR.strings.label_novels),
                             icon = Icons.Outlined.Book,
                             onPreferenceClick = onClickNovels,
+                        )
+                        NavTabLayout.KEY_ANIME -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_anime),
+                            icon = Icons.Outlined.PlayCircle,
+                            onPreferenceClick = onClickAnime,
                         )
                     }
                 }

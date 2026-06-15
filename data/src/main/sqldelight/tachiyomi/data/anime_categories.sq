@@ -1,0 +1,69 @@
+CREATE TABLE anime_categories(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    sort INTEGER NOT NULL,
+    flags INTEGER NOT NULL,
+    hidden INTEGER NOT NULL DEFAULT 0
+);
+
+-- Insert system category
+INSERT OR IGNORE INTO anime_categories(_id, name, sort, flags, hidden) VALUES (0, "", -1, 0, 0);
+-- Disallow deletion of default category
+CREATE TRIGGER IF NOT EXISTS system_anime_category_delete_trigger BEFORE DELETE
+ON anime_categories
+BEGIN SELECT CASE
+    WHEN old._id <= 0 THEN
+        RAISE(ABORT, "System category can't be deleted")
+    END;
+END;
+
+getCategory:
+SELECT _id, name, sort, flags, hidden
+FROM anime_categories
+WHERE _id = :id
+LIMIT 1;
+
+getCategories:
+SELECT
+_id AS id,
+name,
+sort AS `order`,
+flags,
+hidden
+FROM anime_categories
+ORDER BY sort;
+
+getCategoriesByAnimeId:
+SELECT
+C._id AS id,
+C.name,
+C.sort AS `order`,
+C.flags,
+C.hidden
+FROM anime_categories C
+JOIN animes_categories AC
+ON C._id = AC.category_id
+WHERE AC.anime_id = :animeId;
+
+insert:
+INSERT INTO anime_categories(name, sort, flags, hidden)
+VALUES (:name, :order, :flags, :hidden);
+
+delete:
+DELETE FROM anime_categories
+WHERE _id = :categoryId;
+
+update:
+UPDATE anime_categories
+SET name = coalesce(:name, name),
+    sort = coalesce(:order, sort),
+    flags = coalesce(:flags, flags),
+    hidden = coalesce(:hidden, hidden)
+WHERE _id = :categoryId;
+
+updateAllFlags:
+UPDATE anime_categories SET
+flags = coalesce(?, flags);
+
+selectLastInsertedRowId:
+SELECT last_insert_rowid();
