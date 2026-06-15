@@ -14,8 +14,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -66,7 +68,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import eu.kanade.tachiyomi.data.track.EnhancedTracker
+import eu.kanade.tachiyomi.data.track.TrackerManager
 import mihon.feature.migration.config.MigrationConfigScreen
+import mihon.feature.trackadd.TrackAddScreen
+import mihon.feature.trackadd.components.TrackAddTrackerPicker
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.category.model.Category
@@ -117,6 +123,8 @@ data object LibraryTab : Tab {
         val state by screenModel.state.collectAsState()
 
         val snackbarHostState = remember { SnackbarHostState() }
+        var showTrackerPicker by remember { mutableStateOf(false) }
+        var selectedMangaIdsForTracker by remember { mutableStateOf<List<Long>>(emptyList()) }
 
         val onClickRefresh: (Category?) -> Boolean = { category ->
             // SY -->
@@ -278,6 +286,13 @@ data object LibraryTab : Tab {
                     onClickAddToMangaDex = screenModel::syncMangaToDex.takeIf { state.showAddToMangadex },
                     onClickResetInfo = screenModel::resetInfo.takeIf { state.showResetInfo },
                     // SY <--
+                    onTrackAddClicked = {
+                        selectedMangaIdsForTracker = state.selectedManga.map { it.id }
+                        showTrackerPicker = true
+                    }.takeIf {
+                        state.selectionMode &&
+                            Injekt.get<TrackerManager>().loggedInTrackers().any { it !is EnhancedTracker }
+                    },
                 )
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -432,6 +447,22 @@ data object LibraryTab : Tab {
             setStatusCancelling = { screenModel.recommendationSearch.status.value = SearchStatus.Cancelling },
         )
         // SY <--
+
+        if (showTrackerPicker) {
+            TrackAddTrackerPicker(
+                trackers = Injekt.get<TrackerManager>().loggedInTrackers()
+                    .filter { it !is EnhancedTracker },
+                onSelect = { tracker ->
+                    showTrackerPicker = false
+                    screenModel.clearSelection()
+                    navigator.push(TrackAddScreen(selectedMangaIdsForTracker, tracker.id))
+                },
+                onDismiss = {
+                    showTrackerPicker = false
+                    screenModel.clearSelection()
+                },
+            )
+        }
 
         BackHandler(enabled = state.selectionMode || state.searchQuery != null) {
             when {

@@ -2,7 +2,7 @@ package chimahon.ocr
 
 import kotlin.math.abs
 
-internal data class NormalizedBBox(
+data class NormalizedBBox(
     val left: Double,
     val top: Double,
     val right: Double,
@@ -15,13 +15,13 @@ internal data class NormalizedBBox(
     val centerY: Double get() = (top + bottom) / 2.0
 }
 
-internal enum class WritingDirection { LTR, TTB, RTL }
+enum class WritingDirection { LTR, TTB, RTL }
 
 /**
  * Shared intermediate representation between any OCR engine and the merger.
  * All coordinates are normalized 0.0–1.0 and axis-aligned.
  */
-internal data class EngineLine(
+data class EngineLine(
     val text: String,
     val bbox: NormalizedBBox,
     val writingDirection: WritingDirection?,
@@ -34,7 +34,7 @@ internal data class EngineLine(
 private val CJ_REGEX = Regex("[\u3041-\u3096\u30A1-\u30FA\u4E01-\u9FFF]")
 private val KANJI_REGEX_ENGINE = Regex("[\u4E00-\u9FFF]")
 
-internal fun EngineLine(
+fun EngineLine(
     text: String,
     bbox: NormalizedBBox,
     writingDirection: WritingDirection?,

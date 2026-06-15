@@ -23,12 +23,20 @@ class OpfParser {
     private fun parseMetadata(doc: Document): EpubMetadata {
         val dc = "dc"
 
+        fun selectElement(selector: String): org.jsoup.nodes.Element? {
+            val localName = selector.substringAfter("|")
+            return doc.select(selector).first()
+                ?: doc.select("*|$localName").first()
+                ?: doc.select(localName).first()
+                ?: doc.select("*").find { it.tagName().endsWith(":$localName") }
+        }
+
         fun selectText(selector: String): String? {
-            return doc.select("$selector").first()?.text()
+            return selectElement(selector)?.text()
         }
 
         fun selectCreator(): EpubCreator? {
-            val creatorEl = doc.select("$dc|creator").first() ?: return null
+            val creatorEl = selectElement("$dc|creator") ?: return null
             val name = creatorEl.text()
             if (name.isNullOrBlank()) return null
             return EpubCreator(
@@ -39,7 +47,7 @@ class OpfParser {
         }
 
         fun selectContributor(): EpubCreator? {
-            val contribEl = doc.select("$dc|contributor").first() ?: return null
+            val contribEl = selectElement("$dc|contributor") ?: return null
             val name = contribEl.text()
             if (name.isNullOrBlank()) return null
             return EpubCreator(

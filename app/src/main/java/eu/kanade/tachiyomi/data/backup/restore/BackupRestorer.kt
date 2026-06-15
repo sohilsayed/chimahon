@@ -108,6 +108,13 @@ class BackupRestorer(
         // Chimahon -->
         if (options.novels) {
             restoreAmount += backup.backupNovels.size
+            if (backup.backupNovelCategories.isNotEmpty()) {
+                restoreAmount += 1
+            }
+        }
+        if (options.appSettings) {
+            if (backup.backupMangaStats.isNotEmpty()) restoreAmount += 1
+            if (backup.backupAnkiStats.isNotEmpty()) restoreAmount += 1
         }
         // Chimahon <--
 
@@ -127,6 +134,7 @@ class BackupRestorer(
             // SY <--
             if (options.appSettings) {
                 restoreAppPreferences(backup.backupPreferences, backup.backupCategories.takeIf { options.categories })
+                restoreGlobalStats(backup.backupMangaStats, backup.backupAnkiStats)
             }
             if (options.sourceSettings) {
                 restoreSourcePreferences(backup.backupSourcePreferences)
@@ -139,7 +147,7 @@ class BackupRestorer(
             }
             // Chimahon -->
             if (options.novels) {
-                restoreNovels(backup.backupNovels)
+                restoreNovels(backup.backupNovels, backup.backupNovelCategories)
             }
             // Chimahon <--
 
@@ -290,23 +298,63 @@ class BackupRestorer(
     }
 
     // Chimahon -->
-    private fun CoroutineScope.restoreNovels(backupNovels: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>) = launch {
+    private fun CoroutineScope.restoreNovels(
+        backupNovels: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>,
+        backupNovelCategories: List<eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory>
+    ) = launch {
         ensureActive()
-        
-        try {
-            novelRestorer.restore(backupNovels)
+
+        val categoryIdMap = try {
+            novelRestorer.restoreCategories(backupNovelCategories)
         } catch (e: Exception) {
-            errors.add(Date() to "Error Restoring Novels: ${e.message}")
+            errors.add(Date() to "Error Restoring Novel Categories: ${e.message}")
+            emptyMap()
         }
 
-        restoreProgress += backupNovels.size
+        if (backupNovelCategories.isNotEmpty()) {
+            restoreProgress += 1
+        }
+
+        backupNovels.forEach { backupNovel ->
+            ensureActive()
+
+            try {
+                novelRestorer.restoreNovel(backupNovel, categoryIdMap)
+            } catch (e: Exception) {
+                errors.add(Date() to "${backupNovel.title}: ${e.message}")
+            }
+
+            restoreProgress += 1
+            with(notifier) {
+                showRestoreProgress(
+                    backupNovel.title,
+                    restoreProgress,
+                    restoreAmount,
+                    isSync,
+                ).show(Notifications.ID_RESTORE_PROGRESS)
+            }
+        }
+    }
+
+    private fun CoroutineScope.restoreGlobalStats(
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
+        ankiStats: List<com.canopus.chimareader.data.AnkiStats>
+    ) = launch {
         with(notifier) {
-            showRestoreProgress(
-                context.stringResource(MR.strings.label_novels),
-                restoreProgress,
-                restoreAmount,
-                isSync,
-            ).show(Notifications.ID_RESTORE_PROGRESS)
+            if (mangaStats.isNotEmpty()) {
+                ensureActive()
+                com.canopus.chimareader.data.MangaStatsStorage.merge(context, mangaStats)
+                restoreProgress += 1
+                showRestoreProgress(context.stringResource(MR.strings.manga_singular), restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
+            if (ankiStats.isNotEmpty()) {
+                ensureActive()
+                com.canopus.chimareader.data.AnkiStatsStorage.merge(context, ankiStats)
+                restoreProgress += 1
+                showRestoreProgress("Anki", restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
         }
     }
     // Chimahon <--

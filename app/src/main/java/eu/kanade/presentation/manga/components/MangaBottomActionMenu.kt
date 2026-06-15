@@ -274,6 +274,7 @@ fun LibraryBottomActionMenu(
     onClickAddToMangaDex: (() -> Unit)?,
     onClickResetInfo: (() -> Unit)?,
     // SY <--
+    onTrackAddClicked: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     AnimatedVisibility(
@@ -430,6 +431,12 @@ fun LibraryBottomActionMenu(
                             )
                         }
                         // KMK <--
+                        if (onTrackAddClicked != null) {
+                            DropdownMenuItem(
+                                text = { Text(text = "Add to tracker") },
+                                onClick = onTrackAddClicked,
+                            )
+                        }
                     }
                 }
             }

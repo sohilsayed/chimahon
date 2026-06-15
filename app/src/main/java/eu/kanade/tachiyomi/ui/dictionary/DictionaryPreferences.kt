@@ -13,23 +13,53 @@ class DictionaryPreferences(
     fun popupWidth() = preferenceStore.getInt("pref_dictionary_popup_width", 300)
 
     fun popupHeight() = preferenceStore.getInt("pref_dictionary_popup_height", 360)
+
+    fun popupMode() = preferenceStore.getString("pref_dictionary_popup_mode", "floating")
     fun fontSize() = preferenceStore.getInt("pref_dictionary_font_size", 16)
     fun fontFamily() = preferenceStore.getString("pref_dictionary_font_family", "")
 
     fun ocrBoxScale() = preferenceStore.getFloat("pref_ocr_box_scale", 1.0f)
 
+    fun ocrBoxScaleX() = preferenceStore.getFloat("pref_ocr_box_scale_x", ocrBoxScale().get())
+
+    fun ocrBoxScaleY() = preferenceStore.getFloat("pref_ocr_box_scale_y", ocrBoxScale().get())
+
+    fun ocrBoxOpacity() = preferenceStore.getFloat("pref_ocr_box_opacity", 0.0f)
+
+    /** "cloud" (default) or "local" */
+    fun ocrEngine() = preferenceStore.getString("pref_ocr_engine", "cloud")
+
     fun showFrequencyHarmonic() = preferenceStore.getBoolean("pref_dict_show_frequency_harmonic", false)
+    fun showFrequencyAverage() = preferenceStore.getBoolean("pref_dict_show_frequency_average", false)
 
     fun groupTerms() = preferenceStore.getBoolean("pref_dict_group_terms", true)
     fun showPitchDiagram() = preferenceStore.getBoolean("pref_dict_show_pitch_diagram", true)
     fun showPitchNumber() = preferenceStore.getBoolean("pref_dict_show_pitch_number", true)
     fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
+    fun groupPitches() = preferenceStore.getBoolean("pref_dict_group_pitches", false)
     fun showNavigationButtons() = preferenceStore.getBoolean("pref_dict_show_navigation_buttons", true)
+
+    fun autoKanaConversion() = preferenceStore.getBoolean("pref_dict_auto_kana_conversion", true)
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
 
-    fun themeDarkAmoled() = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)
+    fun themeMode(): tachiyomi.core.common.preference.Preference<String> {
+        // One-time migration from old boolean pref
+        val oldPref = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)
+        if (oldPref.isSet()) {
+            val oldValue = oldPref.get()
+            oldPref.delete()
+            val newPref = preferenceStore.getString("pref_dictionary_theme_mode", "system")
+            newPref.set(if (oldValue) "pure_black" else "system")
+            return newPref
+        }
+        return preferenceStore.getString("pref_dictionary_theme_mode", "system")
+    }
     fun customColor() = preferenceStore.getInt("pref_dictionary_custom_color", 0)
+
+    fun eInkMode() = preferenceStore.getBoolean("pref_dictionary_eink_mode", false)
+
+    fun paginatedScrolling() = preferenceStore.getBoolean("pref_dictionary_paginated_scrolling", false)
 
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
@@ -77,6 +107,64 @@ class DictionaryPreferences(
     }
 
     // -------------------------------------------------------------------------
+    // Per-manga / per-source profile overrides
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns a raw [tachiyomi.core.common.preference.Preference] for the given
+     * dynamic override key.  Callers use [chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey]
+     * or [chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey] to build the key.
+     */
+    fun rawProfileOverride(key: String) = preferenceStore.getString(key, "")
+
+    /**
+     * The single [chimahon.dictionary.DictionaryProfileResolver] instance.
+     * Reads override keys directly from [preferenceStore].
+     */
+    val profileResolver: chimahon.dictionary.DictionaryProfileResolver by lazy {
+        chimahon.dictionary.DictionaryProfileResolver(
+            profileStore = profileStore,
+            readMangaOverride = { mangaId ->
+                preferenceStore.getString(
+                    chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey(mangaId), "",
+                ).get()
+            },
+            readSourceOverride = { sourceId ->
+                preferenceStore.getString(
+                    chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey(sourceId), "",
+                ).get()
+            },
+            readNovelOverride = { novelId ->
+                preferenceStore.getString(
+                    chimahon.dictionary.DictionaryProfileResolver.novelOverrideKey(novelId), "",
+                ).get()
+            },
+        )
+    }
+
+    /**
+     * Delete a profile by ID and clean up any manga/source override keys that
+     * pointed to it, so orphaned overrides can never resolve to a ghost profile.
+     * Returns false (and does nothing) if it is the last profile.
+     */
+    fun deleteProfileWithOverrides(profileId: String): Boolean {
+        val deleted = profileStore.deleteProfile(profileId)
+        if (!deleted) return false
+
+        // Sweep all pref keys — any override that matched the deleted ID becomes ""
+        val mangaPrefix = "pref_dict_profile_manga_"
+        val sourcePrefix = "pref_dict_profile_source_"
+        val novelPrefix = "pref_dict_profile_novel_"
+        preferenceStore.getAll().keys
+            .filter { it.startsWith(mangaPrefix) || it.startsWith(sourcePrefix) || it.startsWith(novelPrefix) }
+            .forEach { key ->
+                val pref = preferenceStore.getString(key, "")
+                if (pref.get() == profileId) pref.delete()
+            }
+        return true
+    }
+
+    // -------------------------------------------------------------------------
     // Legacy flat-key READERS — only used for one-time migration.
     // -------------------------------------------------------------------------
 
@@ -89,8 +177,67 @@ class DictionaryPreferences(
     fun legacyAnkiDefaultTags() = preferenceStore.getString("pref_anki_default_tags", "chimahon")
     fun legacyAnkiCropMode() = preferenceStore.getString("pref_dict_anki_crop_mode", "full")
 
+    // -------------------------------------------------------------------------
+    // Dictionary display names (dirName → displayName, stored as JSON map)
+    // -------------------------------------------------------------------------
+
+    fun displayNames() = preferenceStore.getString("pref_display_names", "{}")
+
+    /**
+     * Get display name for a directory, or null if none is set.
+     */
+    fun getDisplayName(dirName: String): String? {
+        val json = displayNames().get()
+        if (json.isBlank() || json == "{}") return null
+        return try {
+            org.json.JSONObject(json).optString(dirName, null)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Set display name for a directory. Pass null to remove it.
+     */
+    fun setDisplayName(dirName: String, displayName: String?) {
+        val json = displayNames().get()
+        val obj = try {
+            if (json.isBlank() || json == "{}") org.json.JSONObject()
+            else org.json.JSONObject(json)
+        } catch (_: Exception) {
+            org.json.JSONObject()
+        }
+        if (displayName != null) {
+            obj.put(dirName, displayName)
+        } else {
+            obj.remove(dirName)
+        }
+        displayNames().set(obj.toString())
+    }
+
+    /**
+     * One-time cleanup: clear stale migration artifacts from a previous version.
+     * Resets display names and removes the migration flag so it runs only once.
+     */
+    fun clearMigrationArtifacts() {
+        val migrated = preferenceStore.getBoolean("pref_display_names_migrated", false).get()
+        if (migrated) {
+            displayNames().set("{}")
+            preferenceStore.getBoolean("pref_display_names_migrated", false).set(false)
+        }
+    }
+
     /** Legacy global dictionary order — kept only to supply the initial migration list. */
     fun dictionaryOrder() = preferenceStore.getString("pref_dictionary_order", "")
+
+    // -------------------------------------------------------------------------
+    // Dictionary auto-update
+    // -------------------------------------------------------------------------
+
+    fun autoUpdateEnabled() = preferenceStore.getBoolean("pref_dict_auto_update", false)
+    fun autoUpdateInterval() = preferenceStore.getInt("pref_dict_auto_update_interval", 24)
+    fun lastDictUpdateCheck() = preferenceStore.getLong("pref_last_dict_update_check", 0L)
+    fun dictUpdateCheckState() = preferenceStore.getString("pref_dict_update_check_state", "idle")
 
     // -------------------------------------------------------------------------
     // Word Audio Preferences (Implementing WordAudioPreferences interface)

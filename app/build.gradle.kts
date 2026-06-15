@@ -15,6 +15,7 @@ plugins {
 
 val includeTelemetry = false
 val enableUpdater = Config.enableUpdater
+val hasLocalOcr = file("../chimahon-local-ocr/build.gradle.kts").exists()
 val releaseVersionName = providers.gradleProperty("releaseVersionName").orNull
 val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orNull?.toIntOrNull()
 
@@ -41,6 +42,7 @@ android {
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
         buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
+        buildConfigField("boolean", "HAS_LOCAL_OCR", hasLocalOcr.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -213,6 +215,10 @@ kotlin {
 
 dependencies {
     implementation(projects.chimahon)
+
+    if (hasLocalOcr) {
+        implementation(project(":chimahon-local-ocr"))
+    }
 
     implementation(projects.i18n)
     // KMK -->

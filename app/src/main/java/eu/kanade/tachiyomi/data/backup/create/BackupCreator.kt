@@ -117,6 +117,9 @@ class BackupCreator(
 
                 // Chimahon -->
                 backupNovels = backupNovels(options),
+                backupNovelCategories = backupNovelCategories(options),
+                backupMangaStats = backupMangaStats(options),
+                backupAnkiStats = backupAnkiStats(options),
                 // Chimahon <--
             )
 
@@ -208,6 +211,22 @@ class BackupCreator(
         if (!options.novels) return emptyList()
 
         return novelBackupCreator.backupNovels()
+    }
+
+    fun backupNovelCategories(options: BackupOptions): List<eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory> {
+        if (!options.novels) return emptyList()
+
+        return novelBackupCreator.backupCategories()
+    }
+
+    fun backupMangaStats(options: BackupOptions): List<com.canopus.chimareader.data.MangaStats> {
+        if (!options.appSettings) return emptyList()
+        return com.canopus.chimareader.data.MangaStatsStorage.loadAll(context)
+    }
+
+    fun backupAnkiStats(options: BackupOptions): List<com.canopus.chimareader.data.AnkiStats> {
+        if (!options.appSettings) return emptyList()
+        return com.canopus.chimareader.data.AnkiStatsStorage.loadAll(context)
     }
     // Chimahon <--
 

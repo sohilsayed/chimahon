@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
-import java.util.UUID
 import java.util.zip.ZipFile
 
 data class ImportResult(
@@ -24,7 +23,11 @@ object BookImporter {
     private const val MAX_DIM = 2048
     private const val MAX_PIXELS = 4_000_000L
 
-    suspend fun importEpub(context: Context, uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+    suspend fun importEpub(
+        context: Context,
+        uri: Uri,
+        categoryIds: List<String>? = null,
+    ): ImportResult = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting import from URI: $uri")
 
@@ -81,13 +84,13 @@ object BookImporter {
 
             var existingBookmark: Bookmark? = null
             var existingStats: List<Statistics>? = null
-            var existingLastAccess: Long? = null
+            var existingMetadata: BookMetadata? = null
 
             // Move from temp to final destination
             if (bookDir.exists()) {
                 existingBookmark = BookStorage.loadBookmark(bookDir)
                 existingStats = BookStorage.loadStatistics(bookDir)
-                existingLastAccess = BookStorage.loadMetadata(bookDir)?.lastAccess
+                existingMetadata = BookStorage.loadMetadata(bookDir)
                 bookDir.deleteRecursively()
             }
             tempExtractDir.renameTo(bookDir)
@@ -119,17 +122,37 @@ object BookImporter {
 
             Log.d(TAG, "Parsed EPUB: title=$title, contentDir=${extractedBook.contentDirectory}, chapters=${extractedBook.spine.items.size}")
 
+            val existingCategoryIds = existingMetadata?.categoryIds.orEmpty()
+            val resolvedCategoryIds = when {
+                categoryIds != null -> (existingCategoryIds + categoryIds).distinct()
+                existingCategoryIds.isNotEmpty() -> existingCategoryIds
+                else -> emptyList()
+            }.let { ids ->
+                val distinctIds = ids
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+                if (distinctIds.any { it != NovelCategory.UNCATEGORIZED_ID }) {
+                    distinctIds.filterNot { it == NovelCategory.UNCATEGORIZED_ID }
+                } else {
+                    distinctIds
+                }
+            }
+
             val metadata = BookMetadata(
                 id = stableId,
                 title = title,
+                author = author,
                 cover = coverAbsPath,
                 folder = stableId,
-                lastAccess = existingLastAccess ?: System.currentTimeMillis(),
+                lastAccess = existingMetadata?.lastAccess ?: System.currentTimeMillis(),
+                dateAdded = existingMetadata?.dateAdded ?: System.currentTimeMillis(),
                 hash = stableId,
                 isGhost = false,
+                lang = extractedBook.language,
+                categoryIds = resolvedCategoryIds,
             )
             BookStorage.saveMetadata(metadata, bookDir)
-            BookStorage.saveSpineCache(extractedBook.spine, bookDir)
 
             existingBookmark?.let { BookStorage.saveBookmark(it, bookDir) }
             existingStats?.let { BookStorage.saveStatistics(it, bookDir) }
@@ -286,7 +309,10 @@ object BookImporter {
             // overflow / overflow-x / overflow-y
             text = text.replace(Regex("""(?i)[ \t]*overflow(?:-[xy])?\s*:[^;]+;[ \t]*\n?"""), "")
 
-            text = stripBodyHtmlLayoutProps(text)
+            // Remove entire rules targeting html/body selectors
+            text = removeHtmlBodyRules(text)
+            // Strip line-height and text-indent from all remaining rules
+            text = stripLineHeightAndTextIndent(text)
 
             file.writeText(text, Charsets.UTF_8)
             Log.d(TAG, "cleanCss: cleaned ${file.name}")
@@ -295,7 +321,7 @@ object BookImporter {
         }
     }
 
-    private fun stripBodyHtmlLayoutProps(css: String): String {
+    private fun removeHtmlBodyRules(css: String): String {
         // Matches a CSS selector + single-level { declarations } block.
         // Leading '@' guard prevents mismatching inside @media bodies.
         val blockRe = Regex("""([^{}@]+)\{([^{}]*)\}""")
@@ -306,28 +332,18 @@ object BookImporter {
             RegexOption.IGNORE_CASE,
         )
 
-        // Layout properties the reader injection overrides on html/body.
-        // Written as a single raw triple-quoted string to avoid escaping issues.
-        val layoutPropRe = Regex(
-            """(?i)[ \t]*(margin(?:-(?:top|right|bottom|left))?|padding(?:-(?:top|right|bottom|left))?|font-size|line-height|letter-spacing|text-align|background(?:-color)?|(?:min-|max-)?height|(?:min-|max-)?width)\s*:[^;]+;[ \t]*\n?""",
-        )
-
         return blockRe.replace(css) { match ->
             val selector = match.groupValues[1]
-            val declarations = match.groupValues[2]
-            if (!targetSelectorRe.containsMatchIn(selector)) {
-                match.value // not targeting html/body — leave unchanged
+            if (targetSelectorRe.containsMatchIn(selector)) {
+                "" // remove entire rule
             } else {
-                val cleaned = layoutPropRe.replace(declarations, "")
-                "$selector{$cleaned}"
+                match.value // leave unchanged
             }
         }
     }
 
-    private fun md5Hex(input: String): String {
-        val digest = MessageDigest.getInstance("MD5")
-        val bytes = digest.digest(input.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+    private fun stripLineHeightAndTextIndent(css: String): String {
+        return css.replace(Regex("""(?i)[ \t]*(?:line-height|text-indent)\s*:[^;]+;[ \t]*\n?|[ \t]*text-align\s*:\s*justify\s*;[ \t]*\n?"""), "")
     }
 
     private fun md5Hex(file: File): String {

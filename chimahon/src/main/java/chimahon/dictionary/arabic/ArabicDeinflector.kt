@@ -1,40 +1,12 @@
 package chimahon.dictionary.arabic
 
-data class DeinflectionResult(val text: String, val conditionsOut: Set<String>)
+import chimahon.dictionary.DeinflectionResult
+import chimahon.dictionary.Deinflector
+import chimahon.dictionary.Rule
+import chimahon.dictionary.RuleDeinflector
+import chimahon.dictionary.arabic.ArabicTextPreprocessors
 
-sealed class Rule {
-    abstract val conditionsIn: Set<String>
-    abstract val conditionsOut: Set<String>
-    abstract val isInflected: Regex
-
-    data class Prefix(
-        val inflectedPrefix: String,
-        val deinflectedPrefix: String,
-        override val conditionsIn: Set<String>,
-        override val conditionsOut: Set<String>,
-        override val isInflected: Regex,
-    ) : Rule()
-
-    data class Suffix(
-        val inflectedSuffix: String,
-        val deinflectedSuffix: String,
-        override val conditionsIn: Set<String>,
-        override val conditionsOut: Set<String>,
-        override val isInflected: Regex,
-    ) : Rule()
-
-    data class Sandwich(
-        val inflectedPrefix: String,
-        val deinflectedPrefix: String,
-        val inflectedSuffix: String,
-        val deinflectedSuffix: String,
-        override val conditionsIn: Set<String>,
-        override val conditionsOut: Set<String>,
-        override val isInflected: Regex,
-    ) : Rule()
-}
-
-object ArabicDeinflector {
+object ArabicDeinflector : Deinflector {
 
     private val arabicLetters = "[\u0620-\u065F\u066E-\u06D3\u06D5\u06EE\u06EF\u06FA-\u06FC\u06FF]"
 
@@ -415,30 +387,14 @@ object ArabicDeinflector {
         directObjectPronouns3rd.forEach { add(suffixInflection("ن$it", "", setOf("cv_s"), setOf("cv"))) }
     }
 
-    fun deinflect(text: String, conditions: Set<String> = emptySet()): List<DeinflectionResult> {
-        val results = mutableListOf(DeinflectionResult(text, conditions))
-        val seen = mutableSetOf(text to conditions)
+    private val deinflector = RuleDeinflector(rules)
 
-        for (rule in rules) {
-            if (conditions.isNotEmpty() && (rule.conditionsIn intersect conditions).isEmpty()) continue
-            if (!rule.isInflected.containsMatchIn(text)) continue
+    override fun preProcess(text: String): List<String> = ArabicTextPreprocessors.process(text)
 
-            val deinflected = when (rule) {
-                is Rule.Prefix -> rule.deinflectedPrefix + text.drop(rule.inflectedPrefix.length)
-                is Rule.Suffix -> text.dropLast(rule.inflectedSuffix.length) + rule.deinflectedSuffix
-                is Rule.Sandwich ->
-                    rule.deinflectedPrefix +
-                        text.drop(rule.inflectedPrefix.length).dropLast(rule.inflectedSuffix.length) +
-                        rule.deinflectedSuffix
-            }
-
-            val key = deinflected to rule.conditionsOut
-            if (seen.add(key)) {
-                results.add(DeinflectionResult(deinflected, rule.conditionsOut))
-                results.addAll(deinflect(deinflected, rule.conditionsOut).drop(1))
-            }
-        }
-
-        return results
+    override fun deinflect(
+        text: String,
+        languageCode: String,
+    ): List<DeinflectionResult> {
+        return deinflector.deinflect(text)
     }
 }

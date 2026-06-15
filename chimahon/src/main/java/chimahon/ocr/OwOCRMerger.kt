@@ -16,7 +16,7 @@ import kotlin.math.abs
  *
  * Outputs [OcrResult] (same type as [LensMerger]) .
  */
-internal object OwOCRMerger {
+object OwOCRMerger {
 
     fun merge(engineLines: List<EngineLine>, config: MergeConfig): List<OcrResult> {
         if (!config.enabled || engineLines.isEmpty()) return emptyList()
@@ -42,7 +42,7 @@ internal object OwOCRMerger {
     // STAGE 1: createLineDictionaries
     // ================================================================
 
-    internal data class LineDict(
+    data class LineDict(
         val text: String,
         val bbox: NormalizedBBox,
         val isVertical: Boolean,

@@ -63,3 +63,8 @@ include(":presentation-widget")
 include(":source-api")
 include(":source-local")
 include(":telemetry")
+
+val hasLocalOcr = file("chimahon-local-ocr/build.gradle.kts").exists()
+if (hasLocalOcr) {
+    include(":chimahon-local-ocr")
+}

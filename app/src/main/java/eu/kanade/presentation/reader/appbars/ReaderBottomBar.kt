@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ fun ReaderBottomBar(
     cropEnabled: Boolean,
     onClickCropBorder: () -> Unit,
     onClickSettings: () -> Unit,
+    onClickMangaStats: (() -> Unit)?,
     // SY -->
     currentReadingMode: ReadingMode,
     dualPageSplitEnabled: Boolean,
@@ -175,6 +177,16 @@ fun ReaderBottomBar(
                     // KMK -->
                     tint = iconColor,
                     // KMK <--
+                )
+            }
+        }
+
+        if (ReaderBottomButton.MangaStats.isIn(enabledButtons) && onClickMangaStats != null) {
+            IconButton(onClick = onClickMangaStats) {
+                Icon(
+                    imageVector = Icons.Outlined.QueryStats,
+                    contentDescription = stringResource(MR.strings.action_manga_stats),
+                    tint = iconColor,
                 )
             }
         }

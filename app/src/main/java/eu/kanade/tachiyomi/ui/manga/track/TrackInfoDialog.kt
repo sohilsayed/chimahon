@@ -790,6 +790,7 @@ data class TrackerSearchScreen(
     private val initialQuery: String,
     private val currentUrl: String?,
     private val serviceId: Long,
+    private val onResult: ((TrackSearch) -> Unit)? = null,
 ) : Screen() {
 
     @Composable
@@ -816,7 +817,11 @@ data class TrackerSearchScreen(
             onConfirmSelection = f@{ private: Boolean ->
                 val selected = state.selected ?: return@f
                 selected.private = private
-                screenModel.registerTracking(selected)
+                if (onResult != null) {
+                    onResult(selected)
+                } else {
+                    screenModel.registerTracking(selected)
+                }
                 navigator.pop()
             },
             onDismissRequest = navigator::pop,

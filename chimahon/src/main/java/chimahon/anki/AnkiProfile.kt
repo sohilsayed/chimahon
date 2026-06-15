@@ -20,16 +20,27 @@ data class AnkiProfile(
     // Anki settings
     val ankiEnabled: Boolean = false,
     val ankiDeck: String = "",
-    val ankiModel: String = "",
-    val ankiFieldMap: String = "{}",
+    val ankiModel: String = LapisPreset.MODEL_NAME,
+    val ankiFieldMap: String = LapisPreset.defaultFieldMapJson,
     val ankiTags: String = "chimahon",
     val ankiDupCheck: Boolean = true,
     val ankiDupScope: String = "deck",
     val ankiDupAction: String = "prevent",
     val ankiCropMode: String = "full",
+    val ankiSyncOnCreate: Boolean = false,
     // Dictionary configuration
     val dictionaryOrder: List<String> = emptyList(),
     val enabledDictionaries: Set<String> = emptySet(), // empty = all enabled
+    val dictionaryCollapseMode: String = DICTIONARY_COLLAPSE_EXPAND_ALL,
+    val dictionaryDisplayModes: Map<String, String> = emptyMap(),
+
+    /**
+     * BCP-47-style language code for this profile, e.g. "ja", "ko", "ar", "en".
+     * Used by [chimahon.dictionary.DictionaryProfileResolver] to auto-select a
+     * matching profile when a source declares a specific language.
+     * Empty string means "any / not language-specific".
+     */
+    val languageCode: String = "",
 ) {
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -44,30 +55,64 @@ data class AnkiProfile(
         put("ankiDupScope", ankiDupScope)
         put("ankiDupAction", ankiDupAction)
         put("ankiCropMode", ankiCropMode)
+        put("ankiSyncOnCreate", ankiSyncOnCreate)
         put("dictionaryOrder", JSONArray(dictionaryOrder))
         put("enabledDictionaries", JSONArray(enabledDictionaries.toList()))
+        put("dictionaryCollapseMode", dictionaryCollapseMode)
+        put("dictionaryDisplayModes", JSONObject(dictionaryDisplayModes))
+        put("languageCode", languageCode)
     }
 
     companion object {
+        val EMPTY = AnkiProfile(id = "", name = "")
+        const val DICTIONARY_COLLAPSE_EXPAND_ALL = "expand_all"
+        const val DICTIONARY_COLLAPSE_EXPAND_FIRST_AVAILABLE = "expand_first_available"
+        const val DICTIONARY_COLLAPSE_COLLAPSE_ALL = "collapse_all"
+        const val DICTIONARY_COLLAPSE_CUSTOM = "custom"
+
+        const val DICTIONARY_DISPLAY_ALWAYS_EXPANDED = "always_expanded"
+        const val DICTIONARY_DISPLAY_FALLBACK = "fallback"
+        const val DICTIONARY_DISPLAY_ALWAYS_COLLAPSED = "always_collapsed"
 
         fun fromJson(json: JSONObject): AnkiProfile = AnkiProfile(
             id = json.getString("id"),
             name = json.getString("name"),
             ankiEnabled = json.optBoolean("ankiEnabled", false),
             ankiDeck = json.optString("ankiDeck", ""),
-            ankiModel = json.optString("ankiModel", ""),
-            ankiFieldMap = json.optString("ankiFieldMap", "{}"),
+            ankiModel = json.optString("ankiModel", "").ifBlank { LapisPreset.MODEL_NAME },
+            ankiFieldMap = json.optString("ankiFieldMap", "{}").let { fieldMap ->
+                val model = json.optString("ankiModel", "")
+                when {
+                    model.isBlank() && LapisPreset.isBlankFieldMap(fieldMap) -> LapisPreset.defaultFieldMapJson
+                    LapisPreset.isBundledModelName(model) && LapisPreset.isBlankFieldMap(fieldMap) -> LapisPreset.defaultFieldMapJson
+                    else -> fieldMap
+                }
+            },
             ankiTags = json.optString("ankiTags", "chimahon"),
             ankiDupCheck = json.optBoolean("ankiDupCheck", true),
             ankiDupScope = json.optString("ankiDupScope", "deck"),
             ankiDupAction = json.optString("ankiDupAction", "prevent"),
             ankiCropMode = json.optString("ankiCropMode", "full"),
+            ankiSyncOnCreate = json.optBoolean("ankiSyncOnCreate", false),
             dictionaryOrder = json.optJSONArray("dictionaryOrder")
                 ?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }
                 ?: emptyList(),
             enabledDictionaries = json.optJSONArray("enabledDictionaries")
                 ?.let { arr -> (0 until arr.length()).map { arr.getString(it) }.toSet() }
                 ?: emptySet(),
+            dictionaryCollapseMode = json.optString("dictionaryCollapseMode", DICTIONARY_COLLAPSE_EXPAND_ALL),
+            dictionaryDisplayModes = json.optJSONObject("dictionaryDisplayModes")
+                ?.let { obj ->
+                    buildMap {
+                        val keys = obj.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            put(key, obj.optString(key, DICTIONARY_DISPLAY_FALLBACK))
+                        }
+                    }
+                }
+                ?: emptyMap(),
+            languageCode = json.optString("languageCode", ""),
         )
 
         /**
@@ -79,26 +124,32 @@ data class AnkiProfile(
             defaultName: String = "Default",
             ankiEnabled: Boolean = false,
             ankiDeck: String = "",
-            ankiModel: String = "",
-            ankiFieldMap: String = "{}",
+            ankiModel: String = LapisPreset.MODEL_NAME,
+            ankiFieldMap: String = LapisPreset.defaultFieldMapJson,
             ankiTags: String = "chimahon",
             ankiDupCheck: Boolean = true,
             ankiDupScope: String = "deck",
             ankiDupAction: String = "prevent",
             ankiCropMode: String = "full",
+            ankiSyncOnCreate: Boolean = false,
             dictionaryOrder: List<String> = emptyList(),
         ): AnkiProfile = AnkiProfile(
             id = java.util.UUID.randomUUID().toString(),
             name = defaultName,
             ankiEnabled = ankiEnabled,
             ankiDeck = ankiDeck,
-            ankiModel = ankiModel,
-            ankiFieldMap = ankiFieldMap,
+            ankiModel = ankiModel.ifBlank { LapisPreset.MODEL_NAME },
+            ankiFieldMap = when {
+                ankiModel.isBlank() && LapisPreset.isBlankFieldMap(ankiFieldMap) -> LapisPreset.defaultFieldMapJson
+                LapisPreset.isBundledModelName(ankiModel) && LapisPreset.isBlankFieldMap(ankiFieldMap) -> LapisPreset.defaultFieldMapJson
+                else -> ankiFieldMap
+            },
             ankiTags = ankiTags,
             ankiDupCheck = ankiDupCheck,
             ankiDupScope = ankiDupScope,
             ankiDupAction = ankiDupAction,
             ankiCropMode = ankiCropMode,
+            ankiSyncOnCreate = ankiSyncOnCreate,
             dictionaryOrder = dictionaryOrder,
             enabledDictionaries = emptySet(),
         )

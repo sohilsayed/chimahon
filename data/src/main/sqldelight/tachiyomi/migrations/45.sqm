@@ -102,3 +102,13 @@ BEGIN
     UPDATE animes SET version = version + 1
     WHERE _id = new.anime_id AND (SELECT is_syncing FROM animes WHERE _id = new.anime_id) = 0;
 END;
+CREATE TABLE reading_sessions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    chapter_id INTEGER NOT NULL,
+    read_at INTEGER AS Date NOT NULL,
+    duration INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapters (_id) ON DELETE CASCADE
+);
+
+CREATE INDEX reading_sessions_chapter_id_index ON reading_sessions(chapter_id);
+CREATE INDEX reading_sessions_read_at_index ON reading_sessions(read_at);

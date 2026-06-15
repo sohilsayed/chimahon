@@ -26,6 +26,7 @@ class StatsScreen : Screen() {
 
         val screenModel = rememberScreenModel { StatsScreenModel() }
         val state by screenModel.state.collectAsState()
+        val allRead by screenModel.allRead.collectAsState()
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -35,7 +36,6 @@ class StatsScreen : Screen() {
                     scrollBehavior = scrollBehavior,
                     // SY -->
                     actions = {
-                        val allRead by screenModel.allRead.collectAsState()
                         AppBarActions(
                             persistentListOf(
                                 AppBar.OverflowAction(
@@ -61,6 +61,10 @@ class StatsScreen : Screen() {
             StatsScreenContent(
                 state = state as? StatsScreenState.Success ?: return@Scaffold,
                 paddingValues = paddingValues,
+                onDateScaleSelect = screenModel::setDateScale,
+                onDateOffsetChange = screenModel::setDateOffset,
+                onStatsTypeSelect = screenModel::setStatsType,
+                allRead = allRead,
             )
         }
     }

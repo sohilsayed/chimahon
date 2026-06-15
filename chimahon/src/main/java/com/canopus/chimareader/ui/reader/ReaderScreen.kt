@@ -5,9 +5,11 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.*
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -16,11 +18,16 @@ import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.Statistics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 private sealed interface ReaderLoadState {
     data object Loading : ReaderLoadState
@@ -36,6 +43,7 @@ enum class ActiveSheet {
 fun ReaderScreen(
     book: BookMetadata,
     onBack: () -> Unit,
+    showHud: Boolean = false,
     onShowHudChanged: (Boolean) -> Unit = {},
     onThemeChanged: (backgroundColor: Int) -> Unit = {},
     onLookupRequested: (String, String, Float, Float, Float, Float) -> Unit = { _, _, _, _, _, _ -> },
@@ -43,14 +51,16 @@ fun ReaderScreen(
     onDismissPopupRequested: () -> Unit = {},
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
-    additionalSettings: @Composable ColumnScope.() -> Unit = {}
+    additionalSettings: @Composable ColumnScope.() -> Unit = {},
+    settingsNamespace: String? = null,
+    onSelectionRectsReceived: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
 
     var focusMode by remember { mutableStateOf(false) }
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
     val scope = rememberCoroutineScope()
-    val settings = remember { com.canopus.chimareader.data.NovelReaderSettings(context) }
+    val settings = remember(settingsNamespace) { com.canopus.chimareader.data.NovelReaderSettings(context, settingsNamespace) }
 
     // Collect swipe and tap settings
     val chapterSwipeDistance by settings.chapterSwipeDistance.collectAsState(initial = 96)
@@ -59,12 +69,13 @@ fun ReaderScreen(
     val systemLightSepia by settings.systemLightSepia.collectAsState(initial = false)
     val customBg by settings.customBackgroundColor.collectAsState(initial = 0xFFF2E2C9.toInt())
     val customTxt by settings.customTextColor.collectAsState(initial = 0xFF000000.toInt())
-    
+
     val initialSettings = remember(currentTheme, systemLightSepia, customBg, customTxt) {
         val (bg, txt) = when (currentTheme) {
             com.canopus.chimareader.data.Theme.LIGHT -> 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
             com.canopus.chimareader.data.Theme.DARK -> 0xFF121212.toInt() to 0xFFE0E0E0.toInt()
             com.canopus.chimareader.data.Theme.SEPIA -> 0xFFF2E2C9.toInt() to 0xFF3C2C1C.toInt()
+            com.canopus.chimareader.data.Theme.PURE_BLACK -> 0xFF000000.toInt() to 0xFFE0E0E0.toInt()
             com.canopus.chimareader.data.Theme.CUSTOM -> customBg to customTxt
             com.canopus.chimareader.data.Theme.SYSTEM -> {
                 val isDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
@@ -80,21 +91,35 @@ fun ReaderScreen(
         ReaderSettings(backgroundColor = bg, textColor = txt)
     }
 
+    var loadingMessage by remember { mutableStateOf("Opening...") }
+
     val loadState by produceState<ReaderLoadState>(initialValue = ReaderLoadState.Loading, key1 = book.id) {
         value = try {
-            withContext(Dispatchers.IO) {
-                val loader = ReaderLoaderViewModel(context, book)
-                val document = loader.document ?: error("Could not open book")
-                val rootUrl = loader.rootUrl ?: error("Missing root URL")
-                ReaderLoadState.Ready(
-                    ReaderViewModel(
-                        document = document,
-                        rootUrl = rootUrl,
-                        settings = settings,
-                        scope = scope
-                    )
-                )
+            val loader = withContext(Dispatchers.IO) {
+                ReaderLoaderViewModel(context, book)
             }
+            val document = loader.document ?: error("Could not open book")
+            val rootUrl = loader.rootUrl ?: error("Missing root URL")
+
+            val ttuSyncManager = try { Injekt.get<com.canopus.chimareader.ttusync.TtuSyncManager>() } catch (_: Exception) { null }
+            if (ttuSyncManager?.isEnabled == true && ttuSyncManager.autoSyncOnOpen) {
+                loadingMessage = "Syncing reading progress..."
+                withContext(Dispatchers.IO) {
+                    val metadata = com.canopus.chimareader.data.BookStorage.loadMetadata(rootUrl)
+                    if (metadata != null) {
+                        ttuSyncManager.syncBook(metadata, importOnly = true)
+                    }
+                }
+            }
+
+            ReaderLoadState.Ready(
+                ReaderViewModel(
+                    document = document,
+                    rootUrl = rootUrl,
+                    settings = settings,
+                    scope = scope
+                )
+            )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -127,11 +152,11 @@ fun ReaderScreen(
             .background(bgColor)
     ) {
         Log.d("ReaderScreen", "BoxWithConstraints: maxHeight=$maxHeight, maxWidth=$maxWidth")
-        
+
         // Capture initial height once, then use requiredHeight to override parent constraints
         var webViewHeightDp by remember { mutableStateOf<Dp?>(null) }
         val density = LocalDensity.current
-        
+
         val heightModifier = if (webViewHeightDp != null) {
             Modifier.requiredHeight(webViewHeightDp!!)
         } else {
@@ -144,14 +169,14 @@ fun ReaderScreen(
                     }
                 }
         }
-        
+
         ReaderThemedArea(currentSettings) {
             when (val state = loadState) {
-                ReaderLoadState.Loading -> ReaderMessage("Opening...", loading = true)
+                ReaderLoadState.Loading -> ReaderMessage(loadingMessage, loading = true)
                 is ReaderLoadState.Error -> ReaderMessage(state.message)
                 is ReaderLoadState.Ready -> {
                     val viewModel = state.viewModel
-                    
+
                     val view = LocalView.current
                     DisposableEffect(viewModel.keepScreenOn) {
                         view.keepScreenOn = viewModel.keepScreenOn
@@ -167,16 +192,17 @@ fun ReaderScreen(
                             context = context,
                             rootDir = rootDir,
                             bridge = viewModel.bridge,
-                            loadChapter = { chapterIndex -> 
+                            loadChapter = { chapterIndex ->
                                 viewModel.jumpToChapter(chapterIndex)
                             },
                             getCurrentIndex = { viewModel.index }
                         )
                     }
-                    
+
                     DisposableEffect(Unit) {
                         onDispose {
                             viewModel.saveBookmark(viewModel.currentProgress)
+                            viewModel.flushSyncExport()
                         }
                     }
 
@@ -184,13 +210,6 @@ fun ReaderScreen(
                         if (!isPopupActive) {
                             viewModel.bridge.send(WebViewCommand.ClearSelection)
                         }
-                    }
-
-                    // HUD visibility state - toggled by edge taps
-                    var showHud by remember { mutableStateOf(false) }
-
-                    LaunchedEffect(showHud) {
-                        onShowHudChanged(showHud)
                     }
 
                     val tapZonePx = with(density) { 64.dp.toPx() }.toInt()
@@ -214,8 +233,8 @@ fun ReaderScreen(
                         onProgressChanged = { viewModel.saveBookmark(it) },
                         onLoadFailed = { },
                         onTap = { if (focusMode) focusMode = false },
-                        onTapTop = { showHud = !showHud },
-                        onTapBottom = { showHud = !showHud },
+                        onTapTop = { onShowHudChanged(!showHud) },
+                        onTapBottom = { onShowHudChanged(!showHud) },
                         swipeThreshold = chapterSwipeDistance,
                         tapZonePx = tapZonePx,
                         isPopupActive = isPopupActive,
@@ -223,68 +242,106 @@ fun ReaderScreen(
                         onTextSelected = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
                         onSentenceReady = onSentenceReady,
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
+                        onSelectionRectsReceived = onSelectionRectsReceived,
                     )
-
-                    // Top HUD
-                    AnimatedVisibility(
-                        visible = showHud,
-                        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-                        modifier = Modifier.align(Alignment.TopCenter)
-                    ) {
-                        ReaderTopBar(
-                            title = viewModel.document.title().orEmpty(),
-                            onBack = onBack,
-                            onToggleHud = { showHud = false },
-                            backgroundColor = currentSettings.backgroundColor,
-                            contentColor = currentSettings.textColor,
-                            modifier = Modifier
-                                .statusBarsPadding()
-                                .displayCutoutPadding()
-                        )
-                    }
-
-                    // Bottom HUD
-                    AnimatedVisibility(
-                        visible = showHud,
-                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                        modifier = Modifier.align(Alignment.BottomCenter)
-                    ) {
-                        ReaderBottomBar(
-                            focusMode = focusMode,
-                            progressText = "${(viewModel.currentProgress * 100).toInt()}%",
-                            backgroundColor = currentSettings.backgroundColor,
-                            contentColor = currentSettings.textColor,
-                            onToggleHud = { showHud = false },
-                            onToggleFocusMode = { focusMode = true },
-                            onOpenChapters = { activeSheet = ActiveSheet.Chapters },
-                            onOpenAppearance = { activeSheet = ActiveSheet.Appearance },
-                            onOpenStatistics = { activeSheet = ActiveSheet.Statistics },
-                            onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki }
-                        )
-                    }
                 }
             }
         }
-    }
-    
-    // Sheets outside the Box - true overlay that doesn't affect WebView size
-    when (val state = loadState) {
-        is ReaderLoadState.Ready -> {
-            val viewModel = state.viewModel
-            activeSheet?.let { sheet ->
-                ReaderThemedArea(viewModel.getReaderSettings(context)) {
-                    when (sheet) {
-                        ActiveSheet.Appearance -> AppearanceSheet(viewModel, additionalSettings) { activeSheet = null }
-                        ActiveSheet.Chapters -> ChapterListSheet(viewModel) { activeSheet = null }
-                        ActiveSheet.Statistics -> StatisticsSheet(viewModel) { activeSheet = null }
-                        ActiveSheet.Sasayaki -> SasayakiSheet(viewModel) { activeSheet = null }
+
+        // Overlays — direct BoxWithConstraints children (BoxScope available)
+        val readyVm = (loadState as? ReaderLoadState.Ready)?.viewModel
+
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, readyVm) {
+            if (readyVm == null) return@DisposableEffect onDispose {}
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE -> readyVm.onAppBackgrounded()
+                    Lifecycle.Event.ON_RESUME -> readyVm.onAppForegrounded()
+                    else -> {}
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        if (readyVm != null) {
+            // Persistent tracking indicator
+            if (readyVm.statisticsTracker.state.isTracking) {
+                Icon(
+                    imageVector = Icons.Default.Timer,
+                    contentDescription = "Tracking active",
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 32.dp, end = 12.dp)
+                        .size(12.dp),
+                )
+            }
+
+            // Top HUD
+            AnimatedVisibility(
+                visible = showHud,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter)
+            ) {
+                ReaderTopBar(
+                    title = readyVm.document.title().orEmpty(),
+                    onBack = onBack,
+                    onToggleHud = { onShowHudChanged(false) },
+                    backgroundColor = currentSettings.backgroundColor,
+                    contentColor = currentSettings.textColor,
+                    modifier = Modifier
+                        .statusBarsPadding()
+                )
+            }
+
+            // Bottom HUD
+            AnimatedVisibility(
+                visible = showHud,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+            ) {
+                ReaderBottomBar(
+                    focusMode = focusMode,
+                    progressText = "${(readyVm.currentProgress * 100).toInt()}%",
+                    backgroundColor = currentSettings.backgroundColor,
+                    contentColor = currentSettings.textColor,
+                    onToggleHud = { onShowHudChanged(false) },
+                    onToggleFocusMode = { focusMode = true },
+                    onOpenChapters = { activeSheet = ActiveSheet.Chapters },
+                    onOpenAppearance = { activeSheet = ActiveSheet.Appearance },
+                    onOpenStatistics = { activeSheet = ActiveSheet.Statistics },
+                    onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki }
+                )
+            }
+        }
+
+        // Sheets outside the Box - true overlay that doesn't affect WebView size
+        when (val state = loadState) {
+            is ReaderLoadState.Ready -> {
+                val viewModel = state.viewModel
+                // Pause tracking while any sheet is open, resume when dismissed
+                LaunchedEffect(activeSheet) {
+                    viewModel.setTrackingLocked(activeSheet != null)
+                }
+                activeSheet?.let { sheet ->
+                    ReaderThemedArea(viewModel.getReaderSettings(context)) {
+                        when (sheet) {
+                            ActiveSheet.Appearance -> AppearanceSheet(viewModel, additionalSettings) { activeSheet = null }
+                            ActiveSheet.Chapters -> ChapterListSheet(viewModel) { activeSheet = null }
+                            ActiveSheet.Statistics -> StatisticsSheet(viewModel) { activeSheet = null }
+                            ActiveSheet.Sasayaki -> SasayakiSheet(viewModel) { activeSheet = null }
+                        }
                     }
                 }
             }
+            else -> {}
         }
-        else -> {}
     }
 }
 
@@ -315,7 +372,7 @@ private fun ReaderTopBar(
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack, 
+                    Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = Color(contentColor)
                 )
@@ -345,7 +402,6 @@ private fun ReaderBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .background(Color(backgroundColor).copy(alpha = 0.9f))
-            .navigationBarsPadding()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -359,7 +415,7 @@ private fun ReaderBottomBar(
             style = MaterialTheme.typography.bodyMedium,
             color = Color(contentColor).copy(alpha = 0.7f)
         )
-        
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(onClick = onOpenChapters) {
                 Icon(
@@ -370,14 +426,14 @@ private fun ReaderBottomBar(
             }
             IconButton(onClick = onOpenAppearance) {
                 Icon(
-                    Icons.Default.Settings, 
+                    Icons.Default.Settings,
                     contentDescription = "Appearance",
                     tint = Color(contentColor)
                 )
             }
             IconButton(onClick = onOpenStatistics) {
                 Icon(
-                    Icons.Default.Info, 
+                    Icons.Outlined.QueryStats,
                     contentDescription = "Statistics",
                     tint = Color(contentColor)
                 )
@@ -410,7 +466,7 @@ private fun ReaderThemedArea(
 ) {
     val bgColor = Color(readerSettings.backgroundColor)
     val textColor = Color(readerSettings.textColor)
-    
+
     // Create a comprehensive ColorScheme based on the reader's background and text colors.
     // This overrides global app theme values while inside the themed area.
     val colorScheme = MaterialTheme.colorScheme.copy(
@@ -436,6 +492,6 @@ private fun ReaderThemedArea(
         surfaceContainerHigh = bgColor,
         surfaceContainerHighest = bgColor
     )
-    
+
     MaterialTheme(colorScheme = colorScheme, content = content)
 }

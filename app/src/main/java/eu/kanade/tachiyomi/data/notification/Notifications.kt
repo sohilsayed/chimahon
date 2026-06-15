@@ -49,6 +49,7 @@ object Notifications {
     const val ID_DOWNLOAD_CHAPTER_PAUSED = -203
     // KMK <--
     const val ID_OCR_PROGRESS = -204
+    const val CHANNEL_OCR_MODEL_DOWNLOAD = "ocr_model_download_channel"
     const val CHANNEL_DOWNLOADER_ERROR = "downloader_error_channel"
     const val ID_DOWNLOAD_CHAPTER_ERROR = -202
 
@@ -114,6 +115,15 @@ object Notifications {
     const val ID_ANIME_DOWNLOAD_PROGRESS = -901
     const val ID_ANIME_DOWNLOAD_PAUSED = -902
     const val ID_ANIME_DOWNLOAD_ERROR = -903
+    /**
+     * Notification channel and ids used for dictionary auto-updates.
+     */
+    const val CHANNEL_DICTIONARY_UPDATE = "dictionary_update_channel"
+    const val ID_DICT_UPDATE_CHECKING = -600
+    const val ID_DICT_UPDATE_PROGRESS = -601
+    const val ID_DICT_UPDATE_COMPLETE = -602
+    const val ID_DICT_UPDATE_NO_UPDATES = -603
+    const val ID_DICT_UPDATE_RESULT = -604
 
     private val deprecatedChannels = listOf(
         "downloader_channel",
@@ -244,6 +254,14 @@ object Notifications {
                     setShowBadge(false)
                 },
                 // SY <--
+                buildNotificationChannel(CHANNEL_DICTIONARY_UPDATE, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_dictionary_update))
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_OCR_MODEL_DOWNLOAD, IMPORTANCE_LOW) {
+                    setName("OCR model download")
+                    setShowBadge(false)
+                },
             ),
         )
     }

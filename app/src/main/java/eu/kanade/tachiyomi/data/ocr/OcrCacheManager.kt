@@ -479,6 +479,7 @@ class OcrCacheManager(
         lineGeometries = lineGeometries?.map { lg ->
             chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
         },
+        language = language,
     )
 
     private fun OcrBlockData.toTextBlock() = OcrTextBlock(
@@ -491,6 +492,7 @@ class OcrCacheManager(
         lineGeometries = lineGeometries?.map { lg ->
             chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
         },
+        language = language,
     )
 
     // Legacy methods for backward compatibility during migration

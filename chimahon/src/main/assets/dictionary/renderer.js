@@ -11,10 +11,14 @@
   const MAX_SCAN_CHARS = 24;   // chars to extract forward from tap point
 
   let _lastSelection = '';
+  let _pendingPopupSelection = '';
   let _selectedDictionaries = {}; // entryIndex -> dictName
   let _wordAudioEnabled = true;
+  let _autoplayGuard = false;
   let _listenersInstalled = false;
   let _lastAnkiDupAction = -1; // -1 = unknown/not set
+  let _dictionaryMediaObserver = null;
+  const _prewarmedFontFaces = typeof WeakSet === 'function' ? new WeakSet() : null;
   const HAS_NATIVE_SCOPE = (() => {
     try {
       if (!window.CSS || !CSS.supports) return false;
@@ -62,14 +66,6 @@
   function debugWarn(...args) {
     if (!DEBUG) return;
     console.warn('[DictionaryRenderJS][debug]', args.map(toDebugText).join(' '));
-  }
-
-  function decodeBase64Utf8(base64) {
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-    return new TextDecoder('utf-8').decode(bytes);
   }
 
   function sanitizeDictionaryStyles(cssText, dictName) {
@@ -164,6 +160,23 @@
       .join(', ');
   }
 
+  function combineNestedSelectorList(selectorText, parentSelectors) {
+    const parents = Array.isArray(parentSelectors) ? parentSelectors.filter(Boolean) : [];
+    if (parents.length === 0) return selectorText;
+    return splitSelectorList(selectorText)
+      .flatMap((sel) => {
+        const trimmed = sel.trim();
+        if (!trimmed) return [];
+        return parents.map((parent) => {
+          if (trimmed.includes('&')) {
+            return trimmed.replace(/&/g, parent);
+          }
+          return `${parent} ${trimmed}`;
+        });
+      })
+      .join(', ');
+  }
+
   function getCachedScopedStyle(dictName, css, scopeSelector) {
     const cacheKey = `${dictName}\u0000${css}\u0000${HAS_NATIVE_SCOPE}`;
     if (scopedStyleCache.has(cacheKey)) {
@@ -207,7 +220,72 @@
     return -1;
   }
 
-  function scopeCssBlocks(cssText, scopeSelector) {
+  function findTopLevelChar(text, charToFind, startIndex) {
+    let quote = null;
+    let parenDepth = 0;
+    let bracketDepth = 0;
+
+    for (let i = startIndex; i < text.length; i++) {
+      const ch = text[i];
+      const prev = i > 0 ? text[i - 1] : '';
+
+      if (quote) {
+        if (ch === quote && prev !== '\\') quote = null;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        continue;
+      }
+
+      if (ch === '(') parenDepth++;
+      if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+      if (ch === '[') bracketDepth++;
+      if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+
+      if (ch === charToFind && parenDepth === 0 && bracketDepth === 0) return i;
+    }
+
+    return -1;
+  }
+
+  function splitDeclarationsAndNestedRules(blockContent) {
+    let declarations = '';
+    let nestedRules = '';
+    let i = 0;
+
+    while (i < blockContent.length) {
+      while (i < blockContent.length && /\s/.test(blockContent[i])) i++;
+      if (i >= blockContent.length) break;
+
+      const nextSemi = findTopLevelChar(blockContent, ';', i);
+      const nextBrace = findTopLevelChar(blockContent, '{', i);
+
+      if (nextBrace !== -1 && (nextSemi === -1 || nextBrace < nextSemi)) {
+        const closeBrace = findMatchingBrace(blockContent, nextBrace);
+        if (closeBrace === -1) {
+          declarations += blockContent.slice(i);
+          break;
+        }
+        nestedRules += `${blockContent.slice(i, closeBrace + 1)}\n`;
+        i = closeBrace + 1;
+        continue;
+      }
+
+      if (nextSemi !== -1) {
+        declarations += `${blockContent.slice(i, nextSemi + 1)}\n`;
+        i = nextSemi + 1;
+      } else {
+        declarations += blockContent.slice(i);
+        break;
+      }
+    }
+
+    return {declarations: declarations.trim(), nestedRules: nestedRules.trim()};
+  }
+
+  function scopeCssBlocks(cssText, scopeSelector, parentSelectors) {
     let i = 0;
     let out = '';
 
@@ -249,14 +327,22 @@
       const body = cssText.slice(openBraceIndex + 1, closeBraceIndex);
       if (prelude.startsWith('@')) {
         if (/^@(media|supports|layer|document)\b/i.test(prelude)) {
-          const scopedInner = scopeCssBlocks(body, scopeSelector);
+          const scopedInner = scopeCssBlocks(body, scopeSelector, parentSelectors);
           out += `${prelude} {\n${scopedInner}\n}\n`;
         } else {
           out += `${prelude} {\n${body}\n}\n`;
         }
       } else {
-        const scopedSelectors = prefixSelectorList(prelude, scopeSelector);
-        out += `${scopedSelectors} {\n${body}\n}\n`;
+        const scopedSelectors = parentSelectors && parentSelectors.length > 0
+          ? combineNestedSelectorList(prelude, parentSelectors)
+          : prefixSelectorList(prelude, scopeSelector);
+        const {declarations, nestedRules} = splitDeclarationsAndNestedRules(body);
+        if (declarations) {
+          out += `${scopedSelectors} {\n${declarations}\n}\n`;
+        }
+        if (nestedRules) {
+          out += `${scopeCssBlocks(nestedRules, scopeSelector, splitSelectorList(scopedSelectors))}\n`;
+        }
       }
 
       i = closeBraceIndex + 1;
@@ -279,11 +365,15 @@
       const type = rule.type;
 
       if (type === CSSRule.STYLE_RULE) {
-        const prefixed = rule.selectorText
-          .split(',')
+        const prefixed = splitSelectorList(rule.selectorText)
           .map(s => prefixSelectorForCSSOM(s.trim(), scope))
           .join(', ');
-        out.push(`${prefixed} { ${rule.style.cssText} }`);
+        if (rule.style.cssText.trim()) {
+          out.push(`${prefixed} { ${rule.style.cssText} }`);
+        }
+        if (rule.cssRules && rule.cssRules.length > 0) {
+          processRulesFromCSSOM(rule.cssRules, prefixed, out);
+        }
       } else if (type === CSSRule.MEDIA_RULE) {
         const inner = [];
         processRulesFromCSSOM(rule.cssRules, scope, inner);
@@ -300,6 +390,10 @@
   }
 
   function prefixSelectorForCSSOM(sel, scope) {
+    if (sel.includes('&')) {
+      return combineNestedSelectorList(sel, splitSelectorList(scope));
+    }
+
     // :root / html / body alone → scope selector
     if (/^(:root|html|body)$/i.test(sel)) {
       return scope;
@@ -324,7 +418,7 @@
     }
 
     // Regular selector → [scope] selector
-    return `${scope} ${sel}`;
+    return combineNestedSelectorList(sel, splitSelectorList(scope));
   }
 
   function buildDictionaryScopedStyle(css, scopeSelector) {
@@ -417,7 +511,7 @@
       const css = sanitizeDictionaryStyles(rawCss, dictName);
       if (!dictName || !css) continue;
 
-      const escapedName = dictName.replace(/"/g, '\\"');
+      const escapedName = cssDoubleQuotedContent(dictName);
       const selector = `[data-dictionary="${escapedName}"]`;
       const {value: scoped, cacheHit} = getCachedScopedStyle(dictName, css, selector);
       parts.push(scoped);
@@ -448,6 +542,23 @@
     return value;
   }
 
+  function cssDoubleQuotedContent(value) {
+    return String(value)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\A ')
+      .replace(/\r/g, '');
+  }
+
+  function hashString(value) {
+    const text = String(value);
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    }
+    return `${text.length}:${hash >>> 0}`;
+  }
+
   function applyDataAttributes(node, data) {
     if (!data || typeof data !== 'object') return;
     for (const key of Object.keys(data)) {
@@ -467,14 +578,25 @@
         }
         continue;
       }
-      const attrName = `data-sc-${key}`;
-      // Keep empty-string values to preserve attribute-presence selectors.
-      node.setAttribute(attrName, String(value));
+      let datasetKey = key.length > 0 ? `${key[0].toUpperCase()}${key.substring(1)}` : key;
+      datasetKey = `sc${datasetKey}`;
+      try {
+        // Keep empty-string values to preserve attribute-presence selectors.
+        node.dataset[datasetKey] = String(value);
+      } catch (e) {
+        debugWarn('applyDataAttributes.datasetFailed', {
+          tag: node.tagName,
+          key,
+          datasetKey,
+          error: e.message
+        });
+        continue;
+      }
 
       if (key === 'content' || key === 'headword' || key === 'example' || key === 'meaning') {
         debugLog('applyDataAttributes.attr', {
           tag: node.tagName,
-          attrName,
+          datasetKey,
           value: String(value)
         });
       }
@@ -673,6 +795,7 @@
     if (_tabsEl) return _tabsEl;
     _tabsEl = document.createElement('div');
     _tabsEl.className = 'lookup-tabs';
+    _tabsEl.style.transition = 'transform 0.32s cubic-bezier(0.4,0,0.2,1)';
     return _tabsEl;
   }
 
@@ -688,6 +811,8 @@
     const el = getOrCreateTabsEl();
     el.textContent = '';
     el.className = 'lookup-tabs';
+    el.style.transition = 'transform 0.32s cubic-bezier(0.4,0,0.2,1)';
+    el.style.transform = 'translateY(0)';
 
     if (_navMode === 'stack') {
       if (activeIndex > 0) {
@@ -726,14 +851,16 @@
     if (!el.parentElement) {
       container.insertBefore(el, container.firstChild);
     }
+    container.style.paddingTop = (el.offsetHeight || 40) + 'px';
 
     if (activeIndex >= 0) {
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         const activeBtn = el.querySelector(`[data-tab-index="${activeIndex}"]`);
         if (activeBtn) {
-          activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
+          activeBtn.scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'nearest', inline: 'center' });
         }
-      }, 100);
+      });
     }
   }
 
@@ -750,6 +877,25 @@
       debugLog('navigateTo.saveScroll', {key: scrollKey, y: window.scrollY});
     }
     window.location.href = url;
+  }
+
+  function navigateStructuredLink(href, internal) {
+    if (!href) return;
+    if (internal) {
+      try {
+        const queryStart = href.indexOf('?');
+        const params = queryStart >= 0 ? new URLSearchParams(href.slice(queryStart + 1)) : null;
+        const query = params ? (params.get('query') || params.get('q') || params.get('term')) : null;
+        if (query) {
+          navigateTo(CHIMA_SCHEME + '//lookup?q=' + encodeURIComponent(query));
+          return;
+        }
+      } catch (e) {
+        debugWarn('navigateStructuredLink.internalFailed', {href, error: e.message});
+      }
+      return;
+    }
+    navigateTo(href);
   }
 
   // ── Touch / tap listener (delegated on document) ──────────────────────────
@@ -771,7 +917,7 @@
       // Skip interactive controls — buttons, dict tags, inflection toggles, etc.
       const target = e.target;
       if (!target) return;
-      if (target.closest('button, .anki-add-btn, .lookup-tab, .inflection-toggle, .tag, .dictionary-header')) return;
+      if (target.closest('button, .anki-add-btn, .lookup-tab, .entry-deinflection-row, .tag, .dictionary-header, details, summary, a, .gloss-link, .gloss-sc-a')) return;
 
       const word = extractTextAtPoint(e.clientX, e.clientY);
       if (!word) return;
@@ -783,8 +929,26 @@
       const selection = window.getSelection();
       if (selection && !selection.isCollapsed) {
         _lastSelection = selection.toString();
+      } else {
+        _lastSelection = '';
       }
     });
+  }
+
+  function consumePopupSelection() {
+    const selection = window.getSelection();
+    const current = selection && !selection.isCollapsed ? selection.toString() : '';
+    const value = current || _pendingPopupSelection || _lastSelection || '';
+    _pendingPopupSelection = '';
+    _lastSelection = '';
+    return value;
+  }
+
+  function capturePopupSelectionForButton() {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      _pendingPopupSelection = selection.toString();
+    }
   }
 
   function mediaCandidates(path) {
@@ -814,6 +978,85 @@
       }
     }
     return null;
+  }
+
+  function observeDictionaryMedia(target, load) {
+    if (!target || typeof load !== 'function') return;
+    if (typeof IntersectionObserver !== 'function') {
+      load();
+      return;
+    }
+    if (!_dictionaryMediaObserver) {
+      _dictionaryMediaObserver = new IntersectionObserver((entries, observer) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          observer.unobserve(entry.target);
+          const fn = entry.target._loadDictionaryMedia;
+          delete entry.target._loadDictionaryMedia;
+          fn?.();
+        }
+      }, { root: null, rootMargin: '200px' });
+    }
+    target._loadDictionaryMedia = load;
+    _dictionaryMediaObserver.observe(target);
+  }
+
+  function resetDictionaryMediaObserver() {
+    _dictionaryMediaObserver?.disconnect();
+    _dictionaryMediaObserver = null;
+  }
+
+  function applyMediaToImageLink(link, mediaMap) {
+    if (!link || link.dataset.imageLoadState === 'loaded') return;
+    const path = link.dataset.path || '';
+    const dictName = link.dataset.dictName || '';
+    const src = resolveMediaSrc(mediaMap || {}, dictName, path);
+    if (!src) return;
+
+    observeDictionaryMedia(link, () => {
+      const bg = link.querySelector('.gloss-image-background');
+      if (bg) bg.style.setProperty('--image', `url("${src}")`);
+
+      const img = link.querySelector('img.gloss-image');
+      if (img) img.src = src;
+
+      link.dataset.imageLoadState = 'loaded';
+    });
+  }
+
+  function postContentReady() {
+    requestAnimationFrame(() => {
+      try {
+        if (window.DictionaryReadyBridge && window.DictionaryReadyBridge.contentReady) {
+          window.DictionaryReadyBridge.contentReady();
+        }
+      } catch (e) {
+        console.warn('[DictionaryRenderJS] contentReady bridge failed:', e);
+      }
+    });
+  }
+
+  function prewarmFonts() {
+    if (!document.fonts) return;
+    const loads = [];
+    try {
+      document.fonts.forEach((face) => {
+        if (!face || face.status !== 'unloaded' || typeof face.load !== 'function') return;
+        if (_prewarmedFontFaces) {
+          if (_prewarmedFontFaces.has(face)) return;
+          _prewarmedFontFaces.add(face);
+        }
+        try {
+          loads.push(face.load().catch(() => {}));
+        } catch (e) {
+          // Ignore fonts the browser refuses to load eagerly.
+        }
+      });
+    } catch (e) {
+      return;
+    }
+    if (!loads.length) return;
+    Promise.all(loads).then(postContentReady, postContentReady);
   }
 
   const POS_TAGS = new Set(['n', 'vs', 'vi', 'vt', 'adj-i', 'adj-na', 'adv', 'v1', 'v5k', 'v5s', 'v5m', 'v5n', 'v5r', 'v5t', 'exp', 'int']);
@@ -1167,11 +1410,27 @@
 
   function createLinkNode(node, dictName, mediaMap, language) {
     const href = sanitizeHref(node.href);
-    const internal = href && href.startsWith('?');
+    const internal = href && !/^https?:\/\//i.test(href);
 
     const a = document.createElement('span');
     a.className = 'gloss-link gloss-sc-a';
     a.dataset.external = String(!internal);
+    if (href) {
+      a.dataset.href = href;
+      a.setAttribute('href', href);
+      a.tabIndex = 0;
+      a.setAttribute('role', 'link');
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigateStructuredLink(href, internal);
+      });
+      a.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        navigateStructuredLink(href, internal);
+      });
+    }
     if (typeof node.title === 'string') a.title = node.title;
     if (typeof node.lang === 'string') {
       a.lang = node.lang;
@@ -1193,14 +1452,14 @@
 
   function createImageNode(node, dictName, mediaMap) {
     const path = typeof node.path === 'string' ? node.path : (typeof node.src === 'string' ? node.src : '');
-    const src = resolveMediaSrc(mediaMap, dictName, path) || path;
+    const src = resolveMediaSrc(mediaMap, dictName, path) || (path.startsWith('data:') ? path : '');
 
     if (DEBUG_VERBOSE_NODES) {
       debugLog('createImageNode', {
         dictName,
         path,
         resolved: src,
-        resolvedFromMap: src !== path
+        resolvedFromMap: !!src && src !== path
       });
     }
 
@@ -1228,7 +1487,8 @@
     const link = document.createElement('span');
     link.className = 'gloss-image-link gloss-sc-a';
     link.dataset.path = path;
-    link.dataset.imageLoadState = src && src.startsWith('data:') ? 'loaded' : 'unloaded';
+    link.dataset.dictName = dictName;
+    link.dataset.imageLoadState = 'unloaded';
     link.dataset.hasAspectRatio = 'true';
     link.dataset.imageRendering = imageRendering;
     link.dataset.appearance = typeof node.appearance === 'string' ? node.appearance : 'auto';
@@ -1259,18 +1519,24 @@
 
     const bg = document.createElement('span');
     bg.className = 'gloss-image-background';
-    if (src) bg.style.setProperty('--image', `url("${src}")`);
     container.appendChild(bg);
 
     const img = document.createElement('img');
     img.className = 'gloss-image gloss-sc-img';
-    if (src) img.src = src;
     img.loading = 'lazy';
     img.style.maxWidth = '100%';
     img.decoding = 'async';
     img.style.imageRendering = imageRendering;
     if (typeof node.title === 'string') img.alt = node.title;
     container.appendChild(img);
+
+    if (src) {
+      observeDictionaryMedia(link, () => {
+        bg.style.setProperty('--image', `url("${src}")`);
+        img.src = src;
+        link.dataset.imageLoadState = 'loaded';
+      });
+    }
 
     link.appendChild(container);
     return link;
@@ -1363,17 +1629,14 @@
     return headword;
   }
 
-  function createDeinflectionRow(process, rules) {
+  function createDeinflectionRow(process, rules, ruleTags) {
     if (!process || !Array.isArray(process) || process.length === 0) return null;
 
     const row = document.createElement('div');
     row.className = 'entry-deinflection-row';
 
-    // Clean name only (before ': ') for summary chips
-    const cleanProcess = process.map(p => {
-      const colonIdx = p.indexOf(': ');
-      return colonIdx !== -1 ? p.substring(0, colonIdx) : p;
-    });
+    // Clean name only for summary chips
+    const cleanProcess = process.map(p => p.name);
 
     const label = document.createElement('span');
     label.className = 'deinflection-label';
@@ -1387,28 +1650,25 @@
     details.style.display = 'none';
 
     // Word-class rules chips at the top (e.g. "v5" "adj-i")
-    if (rules) {
-      const ruleSet = [...new Set(rules.split(/\s+/).filter(Boolean))];
-      if (ruleSet.length > 0) {
-        const rulesEl = document.createElement('div');
-        rulesEl.className = 'inflection-rules-row';
-        ruleSet.forEach(r => {
-          const chip = document.createElement('span');
-          chip.className = 'deinflection-tag';
-          chip.textContent = r;
-          rulesEl.appendChild(chip);
-        });
-        details.appendChild(rulesEl);
-      }
+    const ruleSet = Array.isArray(ruleTags) ? ruleTags.filter(Boolean) : (rules ? [...new Set(rules.split(/\s+/).filter(Boolean))] : []);
+    if (ruleSet.length > 0) {
+      const rulesEl = document.createElement('div');
+      rulesEl.className = 'inflection-rules-row';
+      ruleSet.forEach(r => {
+        const chip = document.createElement('span');
+        chip.className = 'deinflection-tag';
+        chip.textContent = r;
+        rulesEl.appendChild(chip);
+      });
+      details.appendChild(rulesEl);
     }
 
     // Each deinflection step as its own card — makes clear where one rule ends
     // and the next begins. Reversed so card 1 = first transformation applied.
     const stepsToShow = [...process].reverse();
     stepsToShow.forEach((p, i) => {
-      const colonIdx = p.indexOf(': ');
-      const name = colonIdx !== -1 ? p.substring(0, colonIdx) : p;
-      const desc = colonIdx !== -1 ? p.substring(colonIdx + 2) : '';
+      const name = p.name;
+      const desc = p.description;
 
       const card = document.createElement('div');
       card.className = 'inflection-step-card';
@@ -1491,7 +1751,65 @@
     return audioBtn;
   }
 
-  function appendDefinitionsSection(body, glossaries, mediaMap, group) {
+  function buildOrderedDictionaryNames(groups, dictionaryOrder) {
+    const groupNames = Array.from(groups.keys());
+    const ordered = [];
+    const seen = new Set();
+    if (Array.isArray(dictionaryOrder)) {
+      for (const name of dictionaryOrder) {
+        if (groups.has(name) && !seen.has(name)) {
+          ordered.push(name);
+          seen.add(name);
+        }
+      }
+    }
+    for (const name of groupNames) {
+      if (!seen.has(name)) ordered.push(name);
+    }
+    return ordered;
+  }
+
+  function computeDictionaryCollapseStates(groups, collapseConfig) {
+    const mode = collapseConfig && collapseConfig.mode ? collapseConfig.mode : 'expand_all';
+    const dictionaryOrder = collapseConfig && Array.isArray(collapseConfig.dictionaryOrder) ? collapseConfig.dictionaryOrder : [];
+    const displayModes = collapseConfig && collapseConfig.displayModes && typeof collapseConfig.displayModes === 'object'
+      ? collapseConfig.displayModes
+      : {};
+    const orderedNames = buildOrderedDictionaryNames(groups, dictionaryOrder);
+    const open = new Set();
+
+    if (mode === 'collapse_all') {
+      return open;
+    }
+
+    if (mode === 'expand_first_available') {
+      if (orderedNames.length > 0) open.add(orderedNames[0]);
+      return open;
+    }
+
+    if (mode === 'custom') {
+      // Cascade: iterate priority order once.
+      // Each dictionary opens iff no preceding non-collapsed dict has already opened.
+      //   always_expanded  → always opens (blocks subsequent fallbacks)
+      //   fallback         → opens only if nothing above it opened yet
+      //   always_collapsed → never opens, does NOT block fallbacks
+      let contentOpened = false;
+      for (const dictName of orderedNames) {
+        const dictMode = displayModes[dictName] || 'fallback';
+        if (dictMode === 'always_collapsed') continue;
+        if (dictMode === 'always_expanded' || !contentOpened) {
+          open.add(dictName);
+          contentOpened = true;
+        }
+      }
+      return open;
+    }
+
+    for (const dictName of orderedNames) open.add(dictName);
+    return open;
+  }
+
+  function appendDefinitionsSection(body, glossaries, mediaMap, group, collapseConfig) {
     if (!glossaries || glossaries.length === 0) return;
 
     const groups = new Map();
@@ -1500,12 +1818,13 @@
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name).push(gloss);
     });
+    const openDictionaries = computeDictionaryCollapseStates(groups, collapseConfig);
 
     for (const [dictName, dictGlossaries] of groups) {
       const dictSection = document.createElement('div');
       dictSection.className = 'dictionary-group';
       dictSection.dataset.dictionary = dictName;
-      dictSection.dataset.collapsed = "false";
+      dictSection.dataset.collapsed = String(!openDictionaries.has(dictName));
 
       const dictHeader = document.createElement('div');
       dictHeader.className = 'dictionary-header';
@@ -1538,12 +1857,15 @@
           const entryArticle = dictSection.closest('article');
           const entryIdx = entryArticle ? entryArticle.dataset.index : null;
           if (entryIdx == null) return;
-          // Deselect all dict headers in this entry
-          entryArticle.querySelectorAll('.dictionary-header').forEach(h => h.classList.remove('selected'));
-          const current = _selectedDictionaries[entryIdx];
-          if (current === dictName) {
+          const prevDictName = _selectedDictionaries[entryIdx];
+          if (prevDictName === dictName) {
             delete _selectedDictionaries[entryIdx];
+            dictHeader.classList.remove('selected');
           } else {
+            if (prevDictName) {
+              const prevHeader = entryArticle.querySelector('.dictionary-header.selected');
+              if (prevHeader) prevHeader.classList.remove('selected');
+            }
             _selectedDictionaries[entryIdx] = dictName;
             dictHeader.classList.add('selected');
           }
@@ -1566,10 +1888,13 @@
         const content = document.createElement('div');
         content.className = 'definition-item-content';
         
-        if (gloss.definitionTags) {
+        const definitionTags = Array.isArray(gloss.definitionTagList)
+          ? gloss.definitionTagList
+          : (gloss.definitionTags ? gloss.definitionTags.split(/\s+/).filter(Boolean) : []);
+        if (definitionTags.length > 0) {
           const tagList = document.createElement('div');
           tagList.className = 'definition-tag-list';
-          gloss.definitionTags.split(/\s+/).forEach(t => {
+          definitionTags.forEach(t => {
             if (t) tagList.appendChild(createTag(t));
           });
           content.appendChild(tagList);
@@ -1589,7 +1914,52 @@
     }
   }
 
-  function appendFrequenciesSection(body, frequencies, showHarmonic) {
+  function collectFrequencyNumbers(frequencies) {
+    const numbers = [];
+    const seen = new Set();
+    for (const group of frequencies) {
+      if (seen.has(group.dictName)) continue;
+      seen.add(group.dictName);
+      const items = Array.isArray(group.frequencies) ? group.frequencies : [];
+      for (const item of items) {
+        if (item && item.value > 0) {
+          numbers.push(item.value);
+          break;
+        }
+      }
+    }
+    return numbers;
+  }
+
+  function formatFrequencyRank(value) {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const rounded = Math.round(value * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
+  function appendAverageFrequencyChip(section, frequencies, averageRank) {
+    let average = Number.isFinite(averageRank) && averageRank > 0 ? averageRank : null;
+    if (average === null) {
+      const numbers = collectFrequencyNumbers(frequencies);
+      if (numbers.length > 0) {
+        average = numbers.reduce((sum, num) => sum + num, 0) / numbers.length;
+      }
+    }
+
+    const averageText = formatFrequencyRank(average);
+    if (averageText !== null) {
+      const tag = createTagWithBody('avg', averageText, 'frequency');
+      tag.classList.add('frequency-group-item');
+      tag.dataset.details = 'Average';
+      const labelEl = tag.querySelector('.tag-label');
+      if (labelEl) {
+        labelEl.dataset.details = 'Average';
+      }
+      section.appendChild(tag);
+    }
+  }
+
+  function appendFrequenciesSection(body, frequencies, showHarmonic, showAverage, harmonicRank, averageRank) {
     if (frequencies.length === 0) return;
 
     const section = document.createElement('div');
@@ -1598,52 +1968,56 @@
 
     // If showHarmonic is true, calculate and display harmonic mean instead of full list
     if (showHarmonic) {
-      const numbers = [];
-      const seen = new Set();
-      for (const group of frequencies) {
-        if (seen.has(group.dictName)) continue;
-        seen.add(group.dictName);
-        const items = Array.isArray(group.frequencies) ? group.frequencies : [];
-        for (const item of items) {
-          if (item && item.value > 0) {
-            numbers.push(item.value);
-            break;
+      let harmonic = Number.isFinite(harmonicRank) && harmonicRank > 0 ? Math.floor(harmonicRank) : null;
+      if (harmonic === null) {
+        const numbers = collectFrequencyNumbers(frequencies);
+        if (numbers.length > 0) {
+          const n = numbers.length;
+          let reciprocalSum = 0;
+          for (const num of numbers) {
+            reciprocalSum += 1 / num;
           }
+          harmonic = Math.floor(n / reciprocalSum);
         }
       }
-      
-      if (numbers.length > 0) {
-        const n = numbers.length;
-        let harmonic = 0;
-        for (const num of numbers) {
-          harmonic += 1 / num;
-        }
-        harmonic = Math.floor(n / harmonic);
 
+      if (harmonic !== null) {
         const tag = createTagWithBody('freq', `harmonic: ${harmonic}`, 'frequency');
         section.appendChild(tag);
+      }
+      if (showAverage) {
+        appendAverageFrequencyChip(section, frequencies, averageRank);
+      }
+      if (section.childElementCount > 0) {
         body.appendChild(section);
       }
       return;
     }
 
+    if (showAverage) {
+      appendAverageFrequencyChip(section, frequencies, averageRank);
+    }
+
     // Default: show compact top-row chips like Yomitan frequency groups.
     for (const group of frequencies) {
       const dictName = String(group.dictName || '').trim();
-      const items = Array.isArray(group.frequencies) ? group.frequencies : [];
-      const values = [];
-      items.forEach((item, idx) => {
-        const value = item && item.displayValue ? item.displayValue : String(item && item.value ? item.value : '');
-        if (value) {
-          values.push(value);
-        }
-      });
+      const displayText = typeof group.displayValueText === 'string'
+        ? group.displayValueText
+        : (() => {
+          const items = Array.isArray(group.frequencies) ? group.frequencies : [];
+          const values = [];
+          items.forEach((item) => {
+            const value = item && item.displayValue ? item.displayValue : String(item && item.value ? item.value : '');
+            if (value) values.push(value);
+          });
+          return values.join(', ');
+        })();
 
-      if (!dictName || values.length === 0) {
+      if (!dictName || !displayText) {
         continue;
       }
 
-      const chip = createTagWithBody(dictName, values.join(', '), 'frequency');
+      const chip = createTagWithBody(dictName, displayText, 'frequency');
       chip.classList.add('frequency-group-item');
       section.appendChild(chip);
     }
@@ -1969,23 +2343,6 @@
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:0.5em;flex-wrap:wrap';
 
-        // [N] downstep notation — always emitted for CSS parity; showNumber
-        // controls whether we also emit the legacy .pitch-number span.
-        const downstepSpan = createDownstepNotation(pos);
-        // Mirror Yomitan: place downstep notation inside a container div
-        const downstepContainer = document.createElement('span');
-        downstepContainer.className = 'pronunciation-downstep-notation-container';
-        downstepContainer.appendChild(downstepSpan);
-        row.appendChild(downstepContainer);
-
-        // Legacy numeric badge (shown when showNumber is true)
-        if (showNumber) {
-          const num = document.createElement('span');
-          num.className = 'pitch-number';
-          num.textContent = `[${pos}]`;
-          row.appendChild(num);
-        }
-
         if (showDiagram && morae.length > 0) {
           row.appendChild(createPitchDiagram(morae, pos));
         }
@@ -1994,10 +2351,30 @@
           row.appendChild(createPitchTextLine(morae, pos, nasalPos, devoicePos));
         }
 
+        // Number notation(s) after kana — [N] downstep notation always emitted
+        // for CSS parity; showNumber controls legacy .pitch-number span.
+        const downstepSpan = createDownstepNotation(pos);
+        const downstepContainer = document.createElement('span');
+        downstepContainer.className = 'pronunciation-downstep-notation-container';
+        downstepContainer.appendChild(downstepSpan);
+        row.appendChild(downstepContainer);
+
+        if (showNumber) {
+          const num = document.createElement('span');
+          num.className = 'pitch-number';
+          num.textContent = `[${pos}]`;
+          row.appendChild(num);
+        }
+
         groupContainer.appendChild(row);
       }
 
       groupList.appendChild(groupContainer);
+    }
+
+    // Compact layout when only one pitch dict: place name beside pattern
+    if (groupList.childElementCount === 1) {
+      section.dataset.compact = 'true';
     }
 
     if (section.childElementCount > 0) {
@@ -2005,16 +2382,21 @@
     }
   }
 
-  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms, ankiDupAction) {
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms, ankiDupAction, collapseConfig) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
     article.dataset.index = String(result.index || 0);
     
-    // Add data-dictionary attribute for scoped CSS
-    const dictName = result.term && result.term.glossaries && result.term.glossaries[0] && result.term.glossaries[0].dictName;
-    if (dictName) {
-      article.dataset.dictionary = dictName;
+    // Add data-dictionary attribute for scoped CSS only when this article
+    // represents a single dictionary (groupTerms=false). When groupTerms=true
+    // the article bundles glossaries from multiple dictionaries, so the
+    // attribute is set on each .dictionary-group div instead.
+    if (!groupTerms) {
+      const dictName = result.term && result.term.glossaries && result.term.glossaries[0] && result.term.glossaries[0].dictName;
+      if (dictName) {
+        article.dataset.dictionary = dictName;
+      }
     }
 
     const body = document.createElement('div');
@@ -2049,13 +2431,14 @@
       ankiBtn.setAttribute('data-index', String(result.index || 0));
       ankiBtn.setAttribute('data-expression', expression);
       ankiBtn.setAttribute('data-glossary', '-1');
+      ankiBtn.addEventListener('pointerdown', capturePopupSelectionForButton);
 
       ankiBtn.onclick = (e) => {
         e.stopPropagation();
         if (typeof AnkiBridge !== 'undefined') {
           const entryIdx = ankiBtn.getAttribute('data-index');
           const selectedDict = _selectedDictionaries[entryIdx] || '';
-          const selection = _lastSelection || window.getSelection().toString();
+          const selection = consumePopupSelection();
           AnkiBridge.addToAnki(entryIdx, '-1', selectedDict, selection);
         }
       };
@@ -2069,12 +2452,13 @@
       bookBtn.innerHTML = ICONS.menu_book;
       bookBtn.title = 'Open in Anki';
       bookBtn.style.display = isAlreadyAdded ? '' : 'none';
+      bookBtn.addEventListener('pointerdown', capturePopupSelectionForButton);
       bookBtn.onclick = (e) => {
         e.stopPropagation();
         if (typeof AnkiBridge !== 'undefined') {
           const entryIdx = ankiBtn.getAttribute('data-index');
           const selectedDict = _selectedDictionaries[entryIdx] || '';
-          const selection = _lastSelection || window.getSelection().toString();
+          const selection = consumePopupSelection();
           AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
         }
       };
@@ -2084,28 +2468,35 @@
     headSection.appendChild(iconGroup);
     body.appendChild(headSection);
 
-    const deinflection = createDeinflectionRow(result.process, result.term ? result.term.rules : '');
+    const deinflection = createDeinflectionRow(result.process, result.term ? result.term.rules : '', result.term ? result.term.ruleTags : null);
     if (deinflection) {
       body.appendChild(deinflection.row);
       body.appendChild(deinflection.details);
     }
 
     const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
-    appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
+    appendFrequenciesSection(
+      body,
+      frequencies,
+      showFrequencyHarmonic,
+      showFrequencyAverage,
+      result.term ? result.term.frequencyHarmonicRank : null,
+      result.term ? result.term.frequencyAverageRank : null
+    );
 
     const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
     appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
 
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
-    appendDefinitionsSection(body, glossaries, mediaMap, groupTerms);
+    appendDefinitionsSection(body, glossaries, mediaMap, groupTerms, collapseConfig);
 
     return article;
   }
 
-  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, ankiDupAction) {
+  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, ankiDupAction, collapseConfig) {
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
     if (glossaries.length === 0) {
-      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction)];
+      return [renderEntry(result, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction, collapseConfig)];
     }
 
     return glossaries.map((gloss) => {
@@ -2114,13 +2505,8 @@
           glossaries: [gloss]
         })
       });
-      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction);
+      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction, collapseConfig);
     });
-  }
-
-  function renderHeader(text) {
-    // Disabled per user request - header will not render
-    return;
   }
 
   function renderFloatingNav() {
@@ -2146,6 +2532,21 @@
     }
   }
 
+  function removeFloatingNav() {
+    const nav = document.getElementById('floating-nav');
+    if (nav) nav.remove();
+  }
+
+  function resetTabBarLayout(container = document.getElementById('entries')) {
+    if (_tabsEl && _tabsEl.parentElement) {
+      _tabsEl.remove();
+    }
+    _tabsEl = null;
+    if (container) {
+      container.style.paddingTop = '';
+    }
+  }
+
   function render(payload) {
     try {
       if (!payload || typeof payload !== 'object') {
@@ -2156,6 +2557,9 @@
       const started = performance.now();
       const root = document.documentElement;
       _wordAudioEnabled = payload.wordAudioEnabled !== false;
+      _autoplayGuard = false;
+      _selectedDictionaries = {};
+      resetDictionaryMediaObserver();
       if (payload.ankiDupAction !== undefined) {
         _lastAnkiDupAction = payload.ankiDupAction;
       }
@@ -2170,15 +2574,16 @@
       if (styleNode) {
         const stylesPayload = Array.isArray(payload.styles) ? payload.styles : [];
 
-        // Create a cache key based on dict names and CSS lengths
+        // Create a cache key based on dict names and CSS content.
         const stylesKey = stylesPayload
-          .map(s => `${s.dictName}:${(s.styles || '').length}`)
+          .map(s => `${s.dictName}:${hashString(s.styles || '')}`)
           .join('|');
 
         if (styleNode.dataset.cacheKey !== stylesKey) {
           const cssText = buildScopedDictionaryCss(stylesPayload);
           styleNode.textContent = cssText;
           styleNode.dataset.cacheKey = stylesKey;
+          prewarmFonts();
           debugLog('render.stylesApplied', {styleTextLength: cssText.length});
         } else {
           debugLog('render.stylesCached', {cacheKey: stylesKey});
@@ -2191,10 +2596,14 @@
       const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
       const navMode = payload.recursiveNavMode;
       const activeIndex = tabs.findIndex(t => t.active);
+      const freshRootLookup = tabs.length <= 1 && activeIndex <= 0;
+      if (freshRootLookup) {
+        _scrollPositions.clear();
+      }
 
       // Save scroll position of the previously active tab
       const oldActiveIndex = _tabs.findIndex(t => t.active);
-      if (oldActiveIndex >= 0) {
+      if (!freshRootLookup && oldActiveIndex >= 0) {
         const oldTab = _tabs[oldActiveIndex];
         const currentY = window.scrollY || document.documentElement.scrollTop || 0;
         const scrollKey = (_navMode || 'tabs') + '-' + oldActiveIndex + '-' + oldTab.label;
@@ -2212,12 +2621,6 @@
       
       // Clear container but preserve the style nodes in head
       container.textContent = '';
-      _lastY = 0; // Reset scroll tracker for the new view
-      if (_tabsEl) {
-        _headerOffset = 0;
-        _tabsEl.style.transition = 'none';
-        _tabsEl.style.transform = 'translateY(0px)';
-      }
       
       
       const mediaMap = payload.mediaDataUris || {};
@@ -2231,61 +2634,39 @@
       if (showTabBar) {
         renderTabBar(tabs, navMode);
         // Note: tabs-container is a separate div now, so no need to insertBefore entries
-      } else if (_tabsEl && _tabsEl.parentElement) {
-        _tabsEl.remove();
+      } else {
+        resetTabBarLayout(container);
       }
       const dictionaryOrder = Array.isArray(payload.dictionaryOrder) ? payload.dictionaryOrder : [];
 
-      if (dictionaryOrder.length > 0) {
-        const priorityMap = new Map();
-        dictionaryOrder.forEach((name, i) => priorityMap.set(name, i));
-        const getPriority = (name) => (priorityMap.has(name) ? priorityMap.get(name) : 999);
-
-        // 1. Sort results (stable sort primarily by matched length, tie-break by dict priority)
-        results.sort((a, b) => {
-          const lenA = (a.matched || '').length;
-          const lenB = (b.matched || '').length;
-          if (lenA !== lenB) return lenB - lenA;
-
-          const prioA = getPriority(a.term?.glossaries?.[0]?.dictName);
-          const prioB = getPriority(b.term?.glossaries?.[0]?.dictName);
-          return prioA - prioB;
-        });
-
-        // 2. Sort nested arrays within each result
-        for (const result of results) {
-          if (result.term) {
-            if (Array.isArray(result.term.glossaries)) {
-              result.term.glossaries.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-            }
-            if (Array.isArray(result.term.frequencies)) {
-              result.term.frequencies.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-            }
-            if (Array.isArray(result.term.pitches)) {
-              result.term.pitches.sort((a, b) => getPriority(a.dictName) - getPriority(b.dictName));
-            }
-          }
-        }
-      }
-
       const existingExpressions = Array.isArray(payload.existingExpressions) ? payload.existingExpressions : [];
       const groupTerms = payload.groupTerms !== false;
+      const collapseConfig = {
+        mode: payload.dictionaryCollapseMode || 'expand_all',
+        dictionaryOrder,
+        displayModes: payload.dictionaryDisplayModes || {}
+      };
 
       if (results.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'chima-empty';
         empty.textContent = payload.placeholder || '';
         container.appendChild(empty);
+        removeFloatingNav();
+        if (freshRootLookup) {
+          window.scrollTo(0, 0);
+        }
       } else {
         const fragment = document.createDocumentFragment();
         for (const result of results) {
           const diagram = payload.showPitchDiagram !== false;
           const number = payload.showPitchNumber !== false;
           const text = payload.showPitchText !== false;
+          const average = payload.showFrequencyAverage === true;
           if (groupTerms) {
-            fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms, payload.ankiDupAction));
+            fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, average, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms, payload.ankiDupAction, collapseConfig));
           } else {
-            const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, payload.ankiDupAction);
+            const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, average, existingExpressions, payload.ankiEnabled, diagram, number, text, payload.ankiDupAction, collapseConfig);
             articles.forEach(a => fragment.appendChild(a));
           }
         }
@@ -2295,8 +2676,7 @@
         if (results.length > 1 && payload.showNavigationButtons !== false) {
           renderFloatingNav();
         } else {
-          const nav = document.getElementById('floating-nav');
-          if (nav) nav.remove();
+          removeFloatingNav();
         }
 
         // Restore scroll position for the newly active tab
@@ -2308,43 +2688,27 @@
           
           if (savedScroll > 0) {
             _isJumping = true;
-            setTimeout(() => {
+            requestAnimationFrame(() => {
               window.scrollTo(0, savedScroll);
-              _lastY = savedScroll;
-              if (_tabsEl) {
-                _headerOffset = 0;
-                _tabsEl.style.transition = 'none';
-                _tabsEl.style.transform = 'translateY(0px)';
-              }
               setTimeout(() => { _isJumping = false; }, 200);
-            }, 100);
+            });
           } else {
             window.scrollTo(0, 0);
-            _lastY = 0;
-            if (_tabsEl) {
-              _headerOffset = 0;
-              _tabsEl.style.transition = 'none';
-              _tabsEl.style.transform = 'translateY(0px)';
-            }
           }
         } else {
           // Fresh lookup — jump to top
           window.scrollTo(0, 0);
-          _lastY = 0;
-          if (_tabsEl) {
-            _headerOffset = 0;
-            _tabsEl.style.transition = 'none';
-            _tabsEl.style.transform = 'translateY(0px)';
-          }
         }
 
-        if (payload.wordAudioAutoplay) {
+        if (payload.wordAudioAutoplay && !_autoplayGuard) {
+          _autoplayGuard = true;
           const firstBtn = container.querySelector('.word-audio-btn');
           if (firstBtn) firstBtn.click();
         }
       }
 
       const elapsed = Math.round(performance.now() - started);
+      postContentReady();
       
       // Ensure recursive lookup tap listener is installed if enabled
       if (_lookupEnabled) {
@@ -2357,10 +2721,16 @@
   }
 
   function clear() {
+    _autoplayGuard = false;
+    resetDictionaryMediaObserver();
     const container = document.getElementById('entries');
-    if (container) container.textContent = '';
-    _tabsEl = null;
+    if (container) {
+      container.textContent = '';
+      container.style.paddingTop = '';
+    }
+    resetTabBarLayout(container);
     _tabs = [];
+    removeFloatingNav();
     const styleNode = document.getElementById('dictionary-styles');
     if (styleNode) {
       styleNode.textContent = '';
@@ -2370,44 +2740,36 @@
 
   window.DictionaryRenderer = {
     render,
-    renderHeader,
     clear,
+    prewarmFonts,
 
-    renderPayloadObject(payload) {
+    replacePopupResults() {
       try {
-        if (!payload) {
-          console.error('[DictionaryRenderJS] renderPayloadObject: no payload');
+        if (typeof PayloadBridge === 'undefined') {
+          console.error('[DictionaryRenderJS] PayloadBridge not available');
           return;
+        }
+        const configJson = PayloadBridge.getPayloadJson();
+        if (!configJson) return;
+        const payload = JSON.parse(configJson);
+
+        // Pull results lazily
+        const results = [];
+        const count = PayloadBridge.getEntryCount();
+        for (let index = 0; index < count; index++) {
+          const entryJson = PayloadBridge.getEntry(index);
+          if (entryJson === null || entryJson === undefined) break;
+          results.push(JSON.parse(entryJson));
+        }
+        payload.results = results;
+
+        _selectedDictionaries = {};
+        if (payload.ankiDupAction !== undefined) {
+          _lastAnkiDupAction = payload.ankiDupAction;
         }
         render(payload);
       } catch (e) {
-        console.error('[DictionaryRenderJS] renderPayloadObject error:', e.message);
-      }
-    },
-
-    renderFromBase64(base64) {
-      const json = decodeBase64Utf8(base64);
-      const payload = JSON.parse(json);
-      render(payload);
-    },
-
-    renderFromBridge() {
-      try {
-        const json = PayloadBridge.getJson();
-        if (!json) return;
-        const payload = JSON.parse(json);
-        render(payload);
-      } catch (e) {
-        console.error('[DictionaryRenderJS] renderFromBridge error:', e.message);
-      }
-    },
-
-    updateTabs(tabsJson) {
-      try {
-        const tabs = JSON.parse(tabsJson);
-        renderTabBar(tabs);
-      } catch (e) {
-        console.error('[DictionaryRenderJS] updateTabs error:', e.message);
+        console.error('[DictionaryRenderJS] replacePopupResults error:', e.message);
       }
     },
 
@@ -2440,10 +2802,11 @@
 
       if (groups[nextIndex]) {
         _isJumping = true;
-        groups[nextIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
+        groups[nextIndex].scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'start' });
         
         // Hide tab bar when using navigation buttons/volume keys as requested
-        if (_tabsEl) _tabsEl.classList.add('tabs-hidden');
+        if (_tabsEl) _hideTabs();
 
         // Reset after the smooth scroll finishes
         setTimeout(() => { 
@@ -2452,9 +2815,11 @@
       }
     },
 
-    updateAnkiStatus(existingExpressionsJson) {
+    updateAnkiStatus(existingExpressionsValue) {
       try {
-        const existing = JSON.parse(existingExpressionsJson);
+        const existing = typeof existingExpressionsValue === 'string'
+          ? JSON.parse(existingExpressionsValue)
+          : existingExpressionsValue;
         const existingSet = Array.isArray(existing) ? new Set(existing) : new Set();
         
         const addButtons = document.querySelectorAll('.anki-add-btn');
@@ -2483,71 +2848,88 @@
       }
     },
 
-    setTabHidden(hidden) {
-      if (_tabsEl) {
-        _maxOffsetCache = _maxOffsetCache || _tabsEl.offsetHeight || 50;
-        _headerOffset = hidden ? _maxOffsetCache : 0;
-        _tabsEl.style.transition = 'transform 0.3s ease';
-        _tabsEl.style.transform = `translateY(-${_headerOffset}px)`;
+    updateMediaDataUris(mediaMap) {
+      try {
+        const map = mediaMap || {};
+        document.querySelectorAll('.gloss-image-link[data-image-load-state="unloaded"]').forEach(link => {
+          applyMediaToImageLink(link, map);
+        });
+        postContentReady();
+      } catch (e) {
+        console.error('[DictionaryRenderJS] updateMediaDataUris error:', e);
       }
     },
 
     onAudioResults: (id, results) => { /* overriden by UI */ }
   };
 
-  // ── Scroll Listener for Hiding Tabs ────────────────────────────────────────
-  let _lastY = 0;
+  // ── Show/hide top bar on scroll ───────────────────────────────────────────
   let _isJumping = false;
-  let _headerOffset = 0;
-  let _snapTimeout = null;
-  let _maxOffsetCache = 0;
-  let _lastScrollDirection = 0; // 1 for down, -1 for up
+  let _lastScrollY = 0;
+
+  const _hideTabs = () => {
+    if (_tabsEl) {
+      _tabsEl.style.transform = 'translateY(-100%)';
+      const entries = document.getElementById('entries');
+      if (entries) entries.style.paddingTop = '4px';
+    }
+  };
+  const _showTabs = () => {
+    if (_tabsEl) {
+      _tabsEl.style.transform = 'translateY(0)';
+      const entries = document.getElementById('entries');
+      if (entries) entries.style.paddingTop = (_tabsEl.offsetHeight || 40) + 'px';
+    }
+  };
 
   window.addEventListener('scroll', () => {
-    const y = Math.max(window.pageYOffset, document.documentElement.scrollTop, document.body.scrollTop, 0);
-    const delta = y - _lastY;
-    _lastY = y;
+    const y = window.scrollY || window.pageYOffset || 0;
+    const dy = y - _lastScrollY;
 
-    if (_isJumping || !_tabsEl) return;
+    if (y <= 0) { _showTabs(); _lastScrollY = y; return; }
+    if (Math.abs(dy) < 4) return;
 
-    if (_maxOffsetCache === 0) {
-      _maxOffsetCache = _tabsEl.offsetHeight || 50;
-      if (_maxOffsetCache <= 0 || _maxOffsetCache > 100) _maxOffsetCache = 50; // Safety bounds
-    }
+    if (dy > 0 && !_isJumping) _hideTabs(); else _showTabs();
+    _lastScrollY = y;
+  }, { passive: true });
 
-    // Always show perfectly at top
-    if (y <= 0) {
-      _headerOffset = 0;
-      _tabsEl.style.transition = 'transform 0.2s ease';
-      _tabsEl.style.transform = `translateY(0px)`;
-      return;
-    }
+  // ── Reduced motion scrolling (paginated scrolling) ──────────────────────
+  const _isPaginatedScrolling = () => document.documentElement.dataset.chimaPaginatedScrolling === 'true';
 
-    if (delta !== 0) {
-      _lastScrollDirection = delta > 0 ? 1 : -1;
-    }
+  const _scrollByPopupHeight = (direction) => {
+    const popupHeight = window.innerHeight;
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - popupHeight);
+    const overlap = Math.round(popupHeight * 0.1);
+    const step = popupHeight - overlap;
+    const target = Math.min(Math.max(0, window.scrollY + step * direction), maxScroll);
 
-    // Accumulate the 1:1 scroll delta
-    _headerOffset += delta;
-    if (_headerOffset < 0) _headerOffset = 0;
-    if (_headerOffset > _maxOffsetCache) _headerOffset = _maxOffsetCache;
+    _isJumping = true;
+    window.scrollTo({ top: target, behavior: 'instant' });
+    setTimeout(() => { _isJumping = false; }, 300);
+  };
 
-    // Apply exact translation matching finger movement
-    _tabsEl.style.transition = 'none';
-    _tabsEl.style.transform = `translateY(-${_headerOffset}px)`;
+  window.addEventListener('wheel', (e) => {
+    if (!_isPaginatedScrolling()) return;
+    _scrollByPopupHeight(e.deltaY > 0 ? 1 : -1);
+    e.preventDefault();
+  }, { passive: false });
 
-    // Snap to top or bottom when scrolling stops based on direction
-    clearTimeout(_snapTimeout);
-    _snapTimeout = setTimeout(() => {
-      if (_headerOffset > 0 && _headerOffset < _maxOffsetCache) {
-        _tabsEl.style.transition = 'transform 0.2s ease';
-        if (_lastScrollDirection === 1) {
-          _headerOffset = _maxOffsetCache; // Snap hidden if scrolling down
-        } else {
-          _headerOffset = 0; // Snap visible if scrolling up
-        }
-        _tabsEl.style.transform = `translateY(-${_headerOffset}px)`;
-      }
-    }, 150);
+  window.addEventListener('touchstart', (e) => {
+    if (!_isPaginatedScrolling() || e.touches.length !== 1) return;
+    _touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!_isPaginatedScrolling()) return;
+    e.preventDefault();
+  }, { passive: false });
+
+  window.addEventListener('touchend', (e) => {
+    if (!_isPaginatedScrolling() || _touchStartY === 0) return;
+    const endY = e.changedTouches[0].clientY;
+    const delta = _touchStartY - endY;
+    _touchStartY = 0;
+    if (Math.abs(delta) < 15) return;
+    _scrollByPopupHeight(delta > 0 ? 1 : -1);
   }, { passive: true });
 })();

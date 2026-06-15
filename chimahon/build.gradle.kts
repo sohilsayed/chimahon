@@ -25,6 +25,7 @@ android {
 
 dependencies {
     implementation(libs.okhttp.core)
+    implementation(libs.image.decoder)
     implementation(androidx.corektx)
     implementation(platform(kotlinx.coroutines.bom))
     implementation(kotlinx.coroutines.core)

@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.RectF
+import chimahon.ocr.OcrBitmapDecoder
 import okio.BufferedSource
 import okio.Buffer
 import tachiyomi.core.common.util.system.logcat
@@ -287,7 +287,7 @@ object OcrCoordinateMapper {
     }
 
     /** Remap blocks so they align with a cropped sub-region of the original image. */
-    private fun remapToCrop(
+    fun remapToCrop(
         blocks: List<OcrTextBlock>,
         cropRect: RectF,
     ): List<OcrTextBlock> {
@@ -345,21 +345,12 @@ object OcrCoordinateMapper {
         return try {
             // Peek so we don't consume the stream
             val bytes = stream.peek().readByteArray()
-            val options = BitmapFactory.Options().apply {
-                // Decode as grayscale (ALPHA_8 is grayscale when inGrayscale=true is unavailable;
-                // use RGB_565 then convert, or simply use the ARGB and read R channel)
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-                // Use a tiny sample size to keep memory manageable but still accurate
-                inSampleSize = 2
+            val bitmap = OcrBitmapDecoder.decode(bytes, sampleSize = 2)
+            try {
+                findBorders(bitmap)
+            } finally {
+                bitmap.recycle()
             }
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                ?: return null
-
-            val rect = findBorders(bitmap)
-            bitmap.recycle()
-
-            if (rect == null) return null
-            rect
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "OcrCoordinateMapper: crop detection failed" }
             null
@@ -423,20 +414,24 @@ object OcrCoordinateMapper {
             else if (isWhitePixel(pixels, width, x, 0)) whitePixels++
         }
 
-        val useWhiteDetect: Boolean = when {
-            whitePixels > filledLimit && blackPixels > filledLimit -> return 0  // mixed
-            blackPixels > filledLimit -> true   // dark border → look for white content
-            else -> false                        // white border → look for black content
-        }
-
-        for (y in 1 until height) {
-            var filledCount = 0
-            for (x in 0 until width step 2) {
-                if (if (useWhiteDetect) isWhitePixel(pixels, width, x, y) else isBlackPixel(pixels, width, x, y)) {
-                    filledCount++
+        if (blackPixels > filledLimit) {
+            // Dark border → look for white content
+            for (y in 1 until height) {
+                var filledCount = 0
+                for (x in 0 until width step 2) {
+                    if (isWhitePixel(pixels, width, x, y)) filledCount++
                 }
+                if (filledCount > filledLimit) return y
             }
-            if (filledCount > filledLimit) return y
+        } else {
+            // White border → look for black content
+            for (y in 1 until height) {
+                var filledCount = 0
+                for (x in 0 until width step 2) {
+                    if (isBlackPixel(pixels, width, x, y)) filledCount++
+                }
+                if (filledCount > filledLimit) return y
+            }
         }
         return 0
     }
@@ -452,20 +447,22 @@ object OcrCoordinateMapper {
             else if (isWhitePixel(pixels, width, x, lastY)) whitePixels++
         }
 
-        val useWhiteDetect: Boolean = when {
-            whitePixels > filledLimit && blackPixels > filledLimit -> return height
-            blackPixels > filledLimit -> true
-            else -> false
-        }
-
-        for (y in height - 2 downTo 1) {
-            var filledCount = 0
-            for (x in 0 until width step 2) {
-                if (if (useWhiteDetect) isWhitePixel(pixels, width, x, y) else isBlackPixel(pixels, width, x, y)) {
-                    filledCount++
+        if (blackPixels > filledLimit) {
+            for (y in height - 2 downTo 1) {
+                var filledCount = 0
+                for (x in 0 until width step 2) {
+                    if (isWhitePixel(pixels, width, x, y)) filledCount++
                 }
+                if (filledCount > filledLimit) return y + 1
             }
-            if (filledCount > filledLimit) return y + 1
+        } else {
+            for (y in height - 2 downTo 1) {
+                var filledCount = 0
+                for (x in 0 until width step 2) {
+                    if (isBlackPixel(pixels, width, x, y)) filledCount++
+                }
+                if (filledCount > filledLimit) return y + 1
+            }
         }
         return height
     }
@@ -482,20 +479,22 @@ object OcrCoordinateMapper {
             else if (isWhitePixel(pixels, width, 0, y)) whitePixels++
         }
 
-        val useWhiteDetect: Boolean = when {
-            whitePixels > filledLimit && blackPixels > filledLimit -> return 0
-            blackPixels > filledLimit -> true
-            else -> false
-        }
-
-        for (x in 1 until width) {
-            var filledCount = 0
-            for (y in top until bottom step 2) {
-                if (if (useWhiteDetect) isWhitePixel(pixels, width, x, y) else isBlackPixel(pixels, width, x, y)) {
-                    filledCount++
+        if (blackPixels > filledLimit) {
+            for (x in 1 until width) {
+                var filledCount = 0
+                for (y in top until bottom step 2) {
+                    if (isWhitePixel(pixels, width, x, y)) filledCount++
                 }
+                if (filledCount > filledLimit) return x
             }
-            if (filledCount > filledLimit) return x
+        } else {
+            for (x in 1 until width) {
+                var filledCount = 0
+                for (y in top until bottom step 2) {
+                    if (isBlackPixel(pixels, width, x, y)) filledCount++
+                }
+                if (filledCount > filledLimit) return x
+            }
         }
         return 0
     }
@@ -513,20 +512,22 @@ object OcrCoordinateMapper {
             else if (isWhitePixel(pixels, width, lastX, y)) whitePixels++
         }
 
-        val useWhiteDetect: Boolean = when {
-            whitePixels > filledLimit && blackPixels > filledLimit -> return width
-            blackPixels > filledLimit -> true
-            else -> false
-        }
-
-        for (x in width - 2 downTo 1) {
-            var filledCount = 0
-            for (y in top until bottom step 2) {
-                if (if (useWhiteDetect) isWhitePixel(pixels, width, x, y) else isBlackPixel(pixels, width, x, y)) {
-                    filledCount++
+        if (blackPixels > filledLimit) {
+            for (x in width - 2 downTo 1) {
+                var filledCount = 0
+                for (y in top until bottom step 2) {
+                    if (isWhitePixel(pixels, width, x, y)) filledCount++
                 }
+                if (filledCount > filledLimit) return x + 1
             }
-            if (filledCount > filledLimit) return x + 1
+        } else {
+            for (x in width - 2 downTo 1) {
+                var filledCount = 0
+                for (y in top until bottom step 2) {
+                    if (isBlackPixel(pixels, width, x, y)) filledCount++
+                }
+                if (filledCount > filledLimit) return x + 1
+            }
         }
         return width
     }

@@ -101,8 +101,8 @@ data class EpubBook(
             text = text.replace("&lt;", "<")
             text = text.replace("&gt;", ">")
 
-            // TTSU character filter (matching Hoshi's regex with \p{Unified_Ideograph})
-            val ttsuRegex = Regex("[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\\p{IsHan}]")
+            // TTSU character filter (matching Hoshi's regex with \p{Unified_Ideograph} and \p{IsHangul})
+            val ttsuRegex = Regex("[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\\p{IsHan}\\p{IsHangul}]")
             val filteredText = text.replace(ttsuRegex, "")
             
             val charCount = filteredText.codePointCount(0, filteredText.length)

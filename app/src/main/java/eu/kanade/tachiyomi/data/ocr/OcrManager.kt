@@ -4,6 +4,7 @@ import android.content.Context
 import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
 import chimahon.ocr.OcrLanguage
+import chimahon.ocr.OcrResult
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -37,6 +38,8 @@ import chimahon.ocr.OcrTextBlock as ChimahonOcrTextBlock
 
 class OcrManager(
     private val context: Context,
+    private val localOcrBridge: LocalOcrBridge? = null,
+    private val modelDownloader: ModelDownloader? = null,
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val chapterRepository: ChapterRepository = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
@@ -348,6 +351,21 @@ class OcrManager(
                 return OcrTaskResult.ERROR
             }
 
+            val dictPrefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+            val profile = dictPrefs.profileResolver.resolve(
+                mangaId = manga.id,
+                sourceId = manga.source,
+                sourceLang = source.lang,
+            )
+            if (!isOcrAllowedForLanguage(source.lang, profile.languageCode)) {
+                logcat { "OcrManager: skipping OCR for source language ${source.lang} and profile language ${profile.languageCode}" }
+                chapterRepository.update(ChapterUpdate(id = chapterId, isOcrReady = false))
+                updateStoredTask(chapterId) { it.copy(status = OcrQueueStatus.COMPLETED) }
+                return OcrTaskResult.SUCCESS
+            }
+            val ocrLang = OcrLanguage.entries.find { it.bcp47.equals(profile.languageCode, ignoreCase = true) }
+                ?: OcrLanguage.JAPANESE
+
             if (stopRequested()) return OcrTaskResult.STOPPED
             if (ocrStore.get(chapterId) == null) return OcrTaskResult.CANCELLED
 
@@ -447,17 +465,25 @@ class OcrManager(
 
                     val blocks = try {
                         val result = retryWithBackoff(times = 3) {
-                            lensClient.getDebugOcrData(
-                                bytes = bytes,
-                                language = OcrLanguage.JAPANESE,
-                            )
+                            recognizePage(bytes = bytes, language = ocrLang)
                         }
-                        result.mergedResults.mapNotNull { r ->
+                        result.mapNotNull { r ->
                             val bbox = r.tightBoundingBox
                             val xmin = bbox.x.toFloat().coerceIn(0f, 1f)
                             val ymin = bbox.y.toFloat().coerceIn(0f, 1f)
                             val xmax = (bbox.x + bbox.width).toFloat().coerceIn(0f, 1f)
                             val ymax = (bbox.y + bbox.height).toFloat().coerceIn(0f, 1f)
+
+                            val lineGeometries = r.constituentBoxes?.map { lineBox ->
+                                OcrLineGeometry(
+                                    xmin = lineBox.x.toFloat().coerceIn(0f, 1f),
+                                    ymin = lineBox.y.toFloat().coerceIn(0f, 1f),
+                                    xmax = (lineBox.x + lineBox.width).toFloat().coerceIn(0f, 1f),
+                                    ymax = (lineBox.y + lineBox.height).toFloat().coerceIn(0f, 1f),
+                                    rotation = (lineBox.rotation ?: 0.0).toFloat(),
+                                )
+                            }
+
                             if (xmax <= xmin || ymax <= ymin) {
                                 null
                             } else {
@@ -468,6 +494,7 @@ class OcrManager(
                                     ymax = ymax,
                                     lines = r.text.split("\n").filter { it.isNotBlank() },
                                     vertical = r.forcedOrientation == "vertical",
+                                    lineGeometries = lineGeometries,
                                 )
                             }
                         }
@@ -493,7 +520,17 @@ class OcrManager(
                             source = source,
                             pageIndex = pageIndex,
                             blocks = blocks.map {
-                                ChimahonOcrTextBlock(it.xmin, it.ymin, it.xmax, it.ymax, it.lines, it.vertical)
+                                ChimahonOcrTextBlock(
+                                    xmin = it.xmin,
+                                    ymin = it.ymin,
+                                    xmax = it.xmax,
+                                    ymax = it.ymax,
+                                    lines = it.lines,
+                                    vertical = it.vertical,
+                                    lineGeometries = it.lineGeometries?.map { lg ->
+                                        chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+                                    }
+                                )
                             },
                             language = OcrLanguage.JAPANESE.bcp47,
                         )
@@ -569,6 +606,14 @@ class OcrManager(
         }
     }
 
+    data class OcrLineGeometry(
+        val xmin: Float,
+        val ymin: Float,
+        val xmax: Float,
+        val ymax: Float,
+        val rotation: Float = 0f,
+    )
+
     data class OcrTextBlock(
         val xmin: Float,
         val ymin: Float,
@@ -576,6 +621,7 @@ class OcrManager(
         val ymax: Float,
         val lines: List<String>,
         val vertical: Boolean = false,
+        val lineGeometries: List<OcrLineGeometry>? = null,
     )
 }
 

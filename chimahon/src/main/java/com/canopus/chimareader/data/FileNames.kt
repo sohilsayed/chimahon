@@ -7,4 +7,6 @@ object FileNames {
     const val statistics = "statistics.json"
     const val sasayakiMatches = "sasayaki_matches.json"
     const val sasayakiPlayback = "sasayaki_playback.json"
+    const val ankiStats = "anki_stats.json"
+    const val mangaStats = "manga_stats.json"
 }

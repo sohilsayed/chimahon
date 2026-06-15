@@ -8,6 +8,7 @@ import android.os.Environment
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -24,13 +25,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.OutlinedButton
@@ -39,9 +42,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.ImportExport
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -50,10 +51,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -74,12 +80,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import chimahon.HoshiDicts
+import chimahon.dictionary.readDictionaryIndex
 import com.canopus.chimareader.data.FontManager
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
+import chimahon.anki.AnkiProfile
+import chimahon.anki.LapisPreset
 import chimahon.anki.Marker
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.tachiyomi.data.dictionary.DictionaryUpdateJob
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryTitle
+import eu.kanade.tachiyomi.ui.dictionary.invalidateDictionaryTitle
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentMap
@@ -90,10 +102,21 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.toMutableStateList
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
+import eu.kanade.tachiyomi.data.ocr.ModelDownloader
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
@@ -103,8 +126,14 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import tachiyomi.i18n.kmk.KMR
 import java.io.File
 import java.util.Collections.emptyList
+import kotlin.math.roundToInt
 
 private const val TAG = "DictionaryImport"
+
+private enum class OcrScaleAxis(val label: String) {
+    X("X"),
+    Y("Y"),
+}
 
 private val _dictionaryNames = MutableStateFlow<List<String>>(emptyList())
 private val dictionaryNames = _dictionaryNames.asStateFlow()
@@ -136,6 +165,8 @@ private val markerSections = listOf(
         listOf(
             Marker.SENTENCE,
             Marker.SENTENCE_BOLD,
+            Marker.SENTENCE_FURIGANA,
+            Marker.SENTENCE_FURIGANA_PLAIN,
             Marker.CLOZE_PREFIX,
             Marker.CLOZE_BODY,
             Marker.CLOZE_BODY_KANA,
@@ -231,18 +262,26 @@ private fun loadDictionaryList(context: Context) {
     Log.d(TAG, "loadDictionaryList: called")
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
     val names = if (dictionariesDir.exists()) {
-        dictionariesDir.listFiles()
-            ?.filter { it.isDirectory }
-            ?.mapNotNull { it.name }
-            .orEmpty()
+        listOf("term", "frequency", "pitch")
+            .flatMap { type ->
+                val typeDir = File(dictionariesDir, type)
+                if (!typeDir.isDirectory) emptyList()
+                else typeDir.listFiles()?.filter { it.isDirectory }?.map { it.name }.orEmpty()
+            }
+            .distinct()
     } else {
         emptyList()
     }
     Log.d(TAG, "loadDictionaryList: found ${names.size} dictionaries: $names")
     _dictionaryNames.value = names
+
+    // One-time cleanup: clear stale migration artifacts from a previous version.
+    Injekt.get<DictionaryPreferences>().clearMigrationArtifacts()
 }
 
 private val _isImporting = kotlinx.coroutines.flow.MutableStateFlow(false)
+private val _isImportingDb = kotlinx.coroutines.flow.MutableStateFlow(false)
+private val _importDbProgress = kotlinx.coroutines.flow.MutableStateFlow(0f)
 
 object SettingsDictionaryScreen : SearchableSettings {
 
@@ -284,12 +323,35 @@ object SettingsDictionaryScreen : SearchableSettings {
         val pickDb = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
                 scope.launch {
+                    _isImportingDb.value = true
+                    _importDbProgress.value = 0f
                     val targetFile = File(context.getExternalFilesDir(null), "word_audio.db")
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            targetFile.outputStream().use { output ->
-                                input.copyTo(output)
+                        var totalSize = 1L
+                        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                totalSize = cursor.getLong(0).coerceAtLeast(1L)
                             }
+                        }
+
+                        val tempFile = File(context.getExternalFilesDir(null), "word_audio.db.tmp")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            tempFile.outputStream().use { output ->
+                                val buffer = ByteArray(2 * 1024 * 1024)
+                                var copied = 0L
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    output.write(buffer, 0, read)
+                                    copied += read
+                                    _importDbProgress.value = copied.toFloat() / totalSize
+                                }
+                                output.fd.sync()
+                            }
+                        }
+                        if (!tempFile.renameTo(targetFile)) {
+                            tempFile.copyTo(targetFile, overwrite = true)
+                            tempFile.delete()
                         }
                     }
                     val db = chimahon.audio.WordAudioDatabase(context)
@@ -302,15 +364,15 @@ object SettingsDictionaryScreen : SearchableSettings {
                         dictionaryPreferences.wordAudioLocalPath().set("")
                     }
                     db.close()
+                    _isImportingDb.value = false
                 }
             }
         }
 
         return listOf(
             getAppearanceGroup(),
-            getImportGroup(importLauncher),
             getAnkiProfileGroup(),
-            getDictionaryListGroup(),
+            getDictionaryListGroup(importLauncher),
             getWordAudioGroup(pickDb),
             getAnkiGroup(),
         )
@@ -329,16 +391,25 @@ object SettingsDictionaryScreen : SearchableSettings {
         val fontSizePref = dictionaryPreferences.fontSize()
         val fontSize by fontSizePref.collectAsState()
 
-        val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
-        val ocrBoxScale by ocrBoxScalePref.collectAsState()
+        val ocrBoxScaleXPref = dictionaryPreferences.ocrBoxScaleX()
+        val ocrBoxScaleX by ocrBoxScaleXPref.collectAsState()
 
-        val amoledPref = dictionaryPreferences.themeDarkAmoled()
-        val amoled by amoledPref.collectAsState()
+        val ocrBoxScaleYPref = dictionaryPreferences.ocrBoxScaleY()
+        val ocrBoxScaleY by ocrBoxScaleYPref.collectAsState()
+
+        val ocrBoxOpacityPref = dictionaryPreferences.ocrBoxOpacity()
+        val ocrBoxOpacity by ocrBoxOpacityPref.collectAsState()
+
+        val themeModePref = dictionaryPreferences.themeMode()
+        val themeMode by themeModePref.collectAsState()
 
         val navigator = LocalNavigator.currentOrThrow
 
         val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
         val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
+
+        val showFreqAveragePref = dictionaryPreferences.showFrequencyAverage()
+        val showFreqAverage by showFreqAveragePref.collectAsState()
 
         val groupTermsPref = dictionaryPreferences.groupTerms()
         val groupTerms by groupTermsPref.collectAsState()
@@ -500,14 +571,102 @@ object SettingsDictionaryScreen : SearchableSettings {
                         fontSizePref.set(newValue)
                     },
                 ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = (ocrBoxScale * 100).toInt(),
+                Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_ocr_box_scale),
-                    subtitle = String.format("%.1fx", ocrBoxScale),
-                    valueRange = 50..200 step 10,
-                    steps = 14,
+                    content = {
+                        var selectedAxis by remember { mutableStateOf(OcrScaleAxis.X) }
+                        val selectedValue = when (selectedAxis) {
+                            OcrScaleAxis.X -> ocrBoxScaleX
+                            OcrScaleAxis.Y -> ocrBoxScaleY
+                        }
+                        val setSelectedValue: (Float) -> Unit = { value ->
+                            val rounded = ((value * 10f).roundToInt() / 10f).coerceIn(0.5f, 3.0f)
+                            when (selectedAxis) {
+                                OcrScaleAxis.X -> ocrBoxScaleXPref.set(rounded)
+                                OcrScaleAxis.Y -> ocrBoxScaleYPref.set(rounded)
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_dict_ocr_box_scale),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(
+                                    onClick = {
+                                        ocrBoxScaleXPref.set(1.0f)
+                                        ocrBoxScaleYPref.set(1.0f)
+                                    },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Refresh,
+                                        contentDescription = "Reset OCR box scale",
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "X ${String.format("%.1fx", ocrBoxScaleX)}  Y ${String.format("%.1fx", ocrBoxScaleY)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                OcrScaleAxis.entries.forEachIndexed { index, axis ->
+                                    SegmentedButton(
+                                        selected = selectedAxis == axis,
+                                        onClick = { selectedAxis = axis },
+                                        shape = SegmentedButtonDefaults.itemShape(index, OcrScaleAxis.entries.size),
+                                    ) {
+                                        Text(axis.label)
+                                    }
+                                }
+                            }
+                            Slider(
+                                value = selectedValue.coerceIn(0.5f, 3.0f),
+                                onValueChange = setSelectedValue,
+                                valueRange = 0.5f..3.0f,
+                                steps = 24,
+                            )
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = (ocrBoxOpacity * 100).toInt(),
+                    title = stringResource(MR.strings.pref_dict_ocr_box_opacity),
+                    subtitle = "${(ocrBoxOpacity * 100).toInt()}%",
+                    valueRange = 0..100 step 5,
+                    steps = 19,
                     onValueChanged = { newValue ->
-                        ocrBoxScalePref.set(newValue / 100f)
+                        ocrBoxOpacityPref.set(newValue / 100f)
+                    },
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.ocrEngine(),
+                    entries = persistentListOf(
+                        "cloud" to "Cloud (Google Lens)",
+                        *if (eu.kanade.tachiyomi.BuildConfig.HAS_LOCAL_OCR) {
+                            arrayOf("local" to "Local (On-Device)")
+                        } else {
+                            emptyArray()
+                        },
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = "OCR Engine",
+                    onValueChanged = { value ->
+                        if (value == "local") {
+                            Injekt.get<ModelDownloader>().triggerDownload()
+                        }
+                        true
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
@@ -518,15 +677,88 @@ object SettingsDictionaryScreen : SearchableSettings {
                         navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
                     },
                 ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = amoledPref,
-                    title = stringResource(MR.strings.pref_dark_theme_pure_black),
-                    enabled = isSystemInDarkTheme(),
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Dictionary theme",
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                text = "Dictionary theme",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                val chips = listOf(
+                                    "system" to stringResource(MR.strings.theme_system),
+                                    "light" to stringResource(MR.strings.theme_light),
+                                    "dark" to stringResource(MR.strings.theme_dark),
+                                    "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
+                                )
+                                chips.forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = themeMode == value,
+                                        onClick = { themeModePref.set(value) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                        }
+                    },
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = showFreqHarmonicPref,
-                    title = stringResource(MR.strings.pref_dict_show_frequency_harmonic),
-                    subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
+                    preference = dictionaryPreferences.eInkMode(),
+                    title = "E-Ink mode",
+                    subtitle = "Removes animations, shadows, and rounded corners for better readability on e-ink displays",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.paginatedScrolling(),
+                    title = "Paginated scrolling",
+                    subtitle = "Scroll by page-sized steps instead of smooth scrolling",
+                ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_dict_frequency_display),
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(MR.strings.pref_dict_frequency_display),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = showFreqHarmonic,
+                                    onClick = { showFreqHarmonicPref.set(!showFreqHarmonic) },
+                                    label = { Text("Harmonic rank") },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                FilterChip(
+                                    selected = showFreqAverage,
+                                    onClick = { showFreqAveragePref.set(!showFreqAverage) },
+                                    label = { Text(stringResource(MR.strings.pref_dict_show_frequency_average)) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.groupPitches(),
+                    title = stringResource(KMR.strings.pref_dict_group_pitches),
+                    subtitle = stringResource(KMR.strings.pref_dict_group_pitches_summary),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = groupTermsPref,
@@ -537,6 +769,15 @@ object SettingsDictionaryScreen : SearchableSettings {
                     preference = dictionaryPreferences.showNavigationButtons(),
                     title = stringResource(KMR.strings.pref_dict_show_navigation_buttons),
                     subtitle = stringResource(KMR.strings.pref_dict_show_navigation_buttons_summary),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.popupMode(),
+                    entries = persistentListOf(
+                        "floating" to "Floating",
+                        "full_width" to "Full-width",
+                        "full_height" to "Full-height",
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = "Popup mode",
                 ),
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_custom_css),
@@ -645,88 +886,10 @@ object SettingsDictionaryScreen : SearchableSettings {
                         }
                     },
                 ),
-            ),
-        )
-    }
-
-    @Composable
-    private fun getImportGroup(
-        importLauncher: androidx.activity.result.ActivityResultLauncher<String>
-    ): Preference.PreferenceGroup {
-        val context = LocalContext.current
-        val scope = rememberCoroutineScope()
-        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
-        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
-        val profileStore = dictionaryPreferences.profileStore
-        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
-
-
-        return Preference.PreferenceGroup(
-            title = stringResource(MR.strings.pref_import_dictionary),
-            preferenceItems = persistentListOf(
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_import_dictionary),
-                    content = {
-                        val isImporting by _isImporting.collectAsState()
-                        if (isImporting) {
-                            AlertDialog(
-                                onDismissRequest = {},
-                                title = { Text(stringResource(MR.strings.pref_import_dictionary)) },
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        androidx.compose.material3.CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                        Spacer(Modifier.width(16.dp))
-                                        Text("Importing dictionary... Please wait.")
-                                    }
-                                },
-                                confirmButton = {}
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .padding(bottom = 8.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        Log.d(TAG, "import button clicked")
-                                        try {
-                                            importLauncher.launch("application/zip")
-                                        } catch (_: ActivityNotFoundException) {
-                                            context.toast(MR.strings.file_picker_error)
-                                        }
-                                    }
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = stringResource(MR.strings.pref_import_dictionary),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                    )
-                                    Text(
-                                        text = stringResource(MR.strings.pref_import_dictionary_summ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Icon(
-                                    imageVector = Icons.Outlined.ImportExport,
-                                    contentDescription = null,
-                                )
-                            }
-                        }
-                    },
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.autoKanaConversion(),
+                    title = stringResource(KMR.strings.pref_dict_auto_kana_conversion),
+                    subtitle = stringResource(KMR.strings.pref_dict_auto_kana_conversion_summary),
                 ),
             ),
         )
@@ -868,6 +1031,47 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     )
                                 }
                             }
+
+                            // Language selector
+                            var langExpanded by remember { mutableStateOf(false) }
+                            val languages = listOf(
+                                "" to "Any (All)",
+                                "ja" to "Japanese",
+                                "ko" to "Korean",
+                                "ar" to "Arabic",
+                                "zh" to "Chinese",
+                                "en" to "English",
+                                "de" to "German",
+                                "fr" to "French",
+                                "ru" to "Russian",
+                                "es" to "Spanish",
+                                "it" to "Italian",
+                            )
+                            val currentLangName = languages.find { it.first == activeProfile.languageCode }?.second ?: activeProfile.languageCode
+
+                            Box(modifier = Modifier.padding(top = 8.dp)) {
+                                OutlinedButton(
+                                    onClick = { langExpanded = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Language: $currentLangName")
+                                    Icon(Icons.Outlined.KeyboardArrowDown, null)
+                                }
+                                DropdownMenu(
+                                    expanded = langExpanded,
+                                    onDismissRequest = { langExpanded = false }
+                                ) {
+                                    languages.forEach { (code, name) ->
+                                        DropdownMenuItem(
+                                            text = { Text(name) },
+                                            onClick = {
+                                                profileStore.updateProfile(profileStore.getActiveProfile().copy(languageCode = code))
+                                                langExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 )
@@ -876,10 +1080,13 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 
     @Composable
-    private fun getDictionaryListGroup(): Preference.PreferenceGroup {
+    private fun getDictionaryListGroup(
+        importLauncher: androidx.activity.result.ActivityResultLauncher<String>? = null,
+    ): Preference.PreferenceGroup {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val isImporting by _isImporting.collectAsState()
 
         val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
         val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
@@ -888,30 +1095,71 @@ object SettingsDictionaryScreen : SearchableSettings {
         val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
         val currentOrder = activeProfile.dictionaryOrder
         val enabledDicts = activeProfile.enabledDictionaries
-
-        val pickDictionary = androidx.activity.compose.rememberLauncherForActivityResult(
-            contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
-        ) { uri ->
-            if (uri != null) {
-                scope.launch {
-                    val (message, success) = importDictionaryFromUri(context, uri, activeProfile)
-                    context.toast(message)
-                    if (success) {
-                        loadDictionaryList(context)
-                    }
-                }
-            }
-        }
+        val collapseMode = activeProfile.dictionaryCollapseMode
+        val dictionaryDisplayModes = activeProfile.dictionaryDisplayModes
 
         var dictToDelete by remember { mutableStateOf<String?>(null) }
 
         val dictionaries by dictionaryNames.collectAsState()
+
+        val dictTypes = remember(dictionaries) {
+            val dir = File(context.getExternalFilesDir(null), "dictionaries")
+            dictionaries.map { name ->
+                name to listOf("term", "frequency", "pitch").filter { type ->
+                    File(dir, "$type/$name").isDirectory
+                }
+            }.toMap()
+        }
 
         val orderedDicts = remember(dictionaries, currentOrder) {
             val ordered = currentOrder.filter { it in dictionaries }
             val remaining = dictionaries.filter { it !in currentOrder }
             ordered + remaining
         }
+
+        var typeFilter by remember { mutableStateOf<String?>(null) }
+        val filteredOrderedDicts = remember(orderedDicts, dictTypes, typeFilter) {
+            if (typeFilter == null) orderedDicts
+            else orderedDicts.filter { name -> dictTypes[name]?.contains(typeFilter) == true }
+        }
+
+        var dictToRename by remember { mutableStateOf<String?>(null) }
+
+        val dictListState = rememberLazyListState()
+        val dictNamesState = remember(filteredOrderedDicts) { filteredOrderedDicts.toMutableStateList() }
+        val reorderableState = rememberReorderableLazyListState(dictListState) { from, to ->
+            val fromIdx = from.index - 3
+            val toIdx = to.index - 3
+            if (fromIdx in dictNamesState.indices && toIdx in dictNamesState.indices) {
+                val item = dictNamesState.removeAt(fromIdx)
+                dictNamesState.add(toIdx, item)
+                profileStore.updateProfile(profileStore.getActiveProfile().copy(dictionaryOrder = dictNamesState.toList()))
+            }
+        }
+
+        LaunchedEffect(filteredOrderedDicts) {
+            if (!reorderableState.isAnyItemDragging) {
+                dictNamesState.clear()
+                dictNamesState.addAll(filteredOrderedDicts)
+            }
+        }
+
+        val collapseModeOptions = listOf(
+            AnkiProfile.DICTIONARY_COLLAPSE_EXPAND_ALL to "Expand all dictionaries",
+            AnkiProfile.DICTIONARY_COLLAPSE_EXPAND_FIRST_AVAILABLE to "Expand first available dictionary",
+            AnkiProfile.DICTIONARY_COLLAPSE_COLLAPSE_ALL to "Collapse all dictionaries",
+            AnkiProfile.DICTIONARY_COLLAPSE_CUSTOM to "Custom",
+        )
+        val customModeOptions = listOf(
+            AnkiProfile.DICTIONARY_DISPLAY_ALWAYS_EXPANDED to "Always expanded",
+            AnkiProfile.DICTIONARY_DISPLAY_FALLBACK to "Fallback",
+            AnkiProfile.DICTIONARY_DISPLAY_ALWAYS_COLLAPSED to "Always collapsed",
+        )
+        val collapseModeLabel = collapseModeOptions.firstOrNull { it.first == collapseMode }?.second
+            ?: collapseModeOptions.first().second
+        fun customModeLabel(mode: String): String =
+            customModeOptions.firstOrNull { it.first == mode }?.second
+                ?: customModeOptions[1].second
 
         dictToDelete?.let { dictName ->
             AlertDialog(
@@ -923,13 +1171,23 @@ object SettingsDictionaryScreen : SearchableSettings {
                         onClick = {
                             Log.d(TAG, "deleting dictionary: $dictName")
                             val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-                            val dictDir = File(dictionariesDir, dictName)
-                            if (dictDir.exists()) {
-                                dictDir.deleteRecursively()
+                            val typeSubdirs = listOf("term", "frequency", "pitch").map { File(dictionariesDir, it) }.filter { it.isDirectory }
+                            for (typeDir in typeSubdirs) {
+                                val dictDir = File(typeDir, dictName)
+                                if (dictDir.exists()) {
+                                    dictDir.deleteRecursively()
+                                }
                             }
                             val newOrder = orderedDicts.filter { d -> d != dictName }
                             val newEnabled = enabledDicts - dictName
-                            profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newOrder, enabledDictionaries = newEnabled))
+                            val newDisplayModes = dictionaryDisplayModes - dictName
+                            profileStore.updateProfile(
+                                profileStore.getActiveProfile().copy(
+                                    dictionaryOrder = newOrder,
+                                    enabledDictionaries = newEnabled,
+                                    dictionaryDisplayModes = newDisplayModes,
+                                ),
+                            )
                             loadDictionaryList(context)
                             dictToDelete = null
                         },
@@ -945,129 +1203,491 @@ object SettingsDictionaryScreen : SearchableSettings {
             )
         }
 
+        dictToRename?.let { dirName ->
+            val currentDisplay = dictionaryPreferences.getDisplayName(dirName)
+            var newName by remember { mutableStateOf(currentDisplay ?: dirName) }
+            AlertDialog(
+                onDismissRequest = { dictToRename = null },
+                title = { Text("Set display name") },
+                text = {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("Display name") },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newName.isNotBlank()) {
+                                val trimmedName = newName.trim()
+                                if (trimmedName != dirName) {
+                                    dictionaryPreferences.setDisplayName(dirName, trimmedName)
+                                } else {
+                                    dictionaryPreferences.setDisplayName(dirName, null)
+                                }
+                                invalidateDictionaryTitle(dirName)
+                                loadDictionaryList(context)
+                                dictToRename = null
+                            }
+                        },
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { dictToRename = null }) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_dict_imported_list),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_imported_list),
                     content = {
-                        if (orderedDicts.isEmpty()) {
-                            Text(
-                                text = stringResource(MR.strings.pref_dict_none_imported),
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium,
+                        if (isImporting) {
+                            AlertDialog(
+                                onDismissRequest = {},
+                                title = { Text(stringResource(MR.strings.pref_import_dictionary)) },
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                        Spacer(Modifier.width(16.dp))
+                                        Text("Importing dictionary... Please wait.")
+                                    }
+                                },
+                                confirmButton = {},
                             )
-                        } else {
-                            Column(
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Import button — always visible at the top
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .clickable {
+                                        try {
+                                            importLauncher?.launch("application/zip")
+                                        } catch (_: ActivityNotFoundException) {
+                                            context.toast(MR.strings.file_picker_error)
+                                        }
+                                    },
                             ) {
-                                orderedDicts.forEachIndexed { index, dictName ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.ImportExport,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = dictName,
+                                            text = stringResource(MR.strings.pref_import_dictionary),
                                             style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.weight(1f),
                                         )
+                                        Text(
+                                            text = stringResource(MR.strings.pref_import_dictionary_summ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Outlined.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+
+                            if (orderedDicts.isEmpty()) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_dict_none_imported),
+                                    modifier = Modifier.padding(16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .heightIn(max = 10000.dp),
+                                    state = dictListState,
+                                    userScrollEnabled = false,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    item(key = "collapse_behavior") {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            Text(
+                                                text = "Collapse behavior",
+                                                style = MaterialTheme.typography.titleSmall,
+                                            )
+                                            Text(
+                                                text = "Controls which dictionary groups open first in lookup results.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+
+                                            var collapseMenuExpanded by remember { mutableStateOf(false) }
+                                            Box {
+                                                OutlinedButton(
+                                                    onClick = { collapseMenuExpanded = true },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                ) {
+                                                    Text(
+                                                        text = collapseModeLabel,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.KeyboardArrowDown,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = collapseMenuExpanded,
+                                                    onDismissRequest = { collapseMenuExpanded = false },
+                                                ) {
+                                                    collapseModeOptions.forEach { (mode, label) ->
+                                                        DropdownMenuItem(
+                                                            text = { Text(label) },
+                                                            onClick = {
+                                                                profileStore.updateProfile(
+                                                                    profileStore.getActiveProfile().copy(dictionaryCollapseMode = mode),
+                                                                )
+                                                                collapseMenuExpanded = false
+                                                            },
+                                                        )
+                                            }
+                                        }
+                                    }
+                                        val autoUpdateEnabled by dictionaryPreferences.autoUpdateEnabled().collectAsState()
+                                        val autoUpdateInterval by dictionaryPreferences.autoUpdateInterval().collectAsState()
+                                        val lastCheckMs by dictionaryPreferences.lastDictUpdateCheck().collectAsState()
+                                        val intervalOptions = listOf(
+                                            1 to "1h", 6 to "6h", 12 to "12h", 24 to "24h", 48 to "48h", 72 to "72h", 168 to "7d",
+                                        )
+                                        var intervalExpanded by remember { mutableStateOf(false) }
                                         Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            IconButton(
-                                                onClick = {
-                                                    val newEnabled = if (enabledDicts.isEmpty()) {
-                                                        orderedDicts.filter { it != dictName }.toSet()
-                                                    } else if (dictName in enabledDicts) {
-                                                        enabledDicts - dictName
-                                                    } else {
-                                                        enabledDicts + dictName
+                                            Box {
+                                                IconButton(
+                                                    onClick = {
+                                                        val newVal = !autoUpdateEnabled
+                                                        dictionaryPreferences.autoUpdateEnabled().set(newVal)
+                                                        if (newVal) {
+                                                            DictionaryUpdateJob.setupTask(context, true, autoUpdateInterval)
+                                                        } else {
+                                                            DictionaryUpdateJob.setupTask(context, false)
+                                                        }
+                                                    },
+                                                    modifier = Modifier.size(28.dp),
+                                                ) {
+                                                    Box {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Sync,
+                                                            contentDescription = if (autoUpdateEnabled) "Disable auto-update" else "Enable auto-update",
+                                                            tint = if (autoUpdateEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(18.dp),
+                                                        )
+                                                        if (!autoUpdateEnabled) {
+                                                            Canvas(modifier = Modifier.matchParentSize()) {
+                                                                val p = androidx.compose.ui.graphics.Path().apply {
+                                                                    moveTo(0f, 0f)
+                                                                    lineTo(size.width, size.height)
+                                                                }
+                                                                drawPath(
+                                                                    p,
+                                                                    color = androidx.compose.ui.graphics.Color.Red.copy(alpha = 0.7f),
+                                                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                        width = 2.5f,
+                                                                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                                                                            floatArrayOf(6f, 4f), 0f,
+                                                                        ),
+                                                                    ),
+                                                                )
+                                                            }
+                                                        }
                                                     }
-                                                    profileStore.updateProfile(activeProfile.copy(enabledDictionaries = newEnabled))
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                val isEnabled = enabledDicts.isEmpty() || dictName in enabledDicts
-                                                Icon(
-                                                    imageVector = if (isEnabled) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                                                    contentDescription = "Toggle visibility",
-                                                    modifier = Modifier.size(16.dp),
-                                                )
+                                                }
                                             }
-                                            IconButton(
-                                                onClick = {
-                                                    if (index > 0) {
-                                                        val newList = orderedDicts.toMutableList()
-                                                        val temp = newList[index]
-                                                        newList[index] = newList[index - 1]
-                                                        newList[index - 1] = temp
-                                                        profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newList))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                text = if (autoUpdateEnabled) "ON" else "OFF",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                                color = if (autoUpdateEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Auto-update",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                                if (lastCheckMs > 0L) {
+                                                    val sdf = remember { java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault()) }
+                                                    Text(
+                                                        text = "Last: ${sdf.format(java.util.Date(lastCheckMs))}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                    )
+                                                }
+                                            }
+                                            Box {
+                                                OutlinedButton(
+                                                    onClick = { intervalExpanded = true },
+                                                    modifier = Modifier.height(28.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                ) {
+                                                    Text(
+                                                        text = intervalOptions.find { it.first == autoUpdateInterval }?.second ?: "24h",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                    )
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.KeyboardArrowDown,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(14.dp),
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = intervalExpanded,
+                                                    onDismissRequest = { intervalExpanded = false },
+                                                ) {
+                                                    intervalOptions.forEach { (hours, label) ->
+                                                        DropdownMenuItem(
+                                                            text = { Text(label) },
+                                                            onClick = {
+                                                                dictionaryPreferences.autoUpdateInterval().set(hours)
+                                                                if (autoUpdateEnabled) {
+                                                                    DictionaryUpdateJob.setupTask(context, true, hours)
+                                                                }
+                                                                intervalExpanded = false
+                                                            },
+                                                        )
                                                     }
-                                                },
-                                                enabled = index > 0,
-                                                modifier = Modifier.size(32.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.KeyboardArrowUp,
-                                                    contentDescription = "Move up",
-                                                    modifier = Modifier.size(16.dp),
-                                                )
+                                                }
                                             }
+                                            Spacer(Modifier.width(4.dp))
                                             IconButton(
-                                                onClick = {
-                                                    if (index < orderedDicts.size - 1) {
-                                                        val newList = orderedDicts.toMutableList()
-                                                        val temp = newList[index]
-                                                        newList[index] = newList[index + 1]
-                                                        newList[index + 1] = temp
-                                                        profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newList))
-                                                    }
-                                                },
-                                                enabled = index < orderedDicts.size - 1,
-                                                modifier = Modifier.size(32.dp),
+                                                onClick = { DictionaryUpdateJob.checkNow(context) },
+                                                modifier = Modifier.size(28.dp),
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Outlined.KeyboardArrowDown,
-                                                    contentDescription = "Move down",
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { dictToDelete = dictName },
-                                                modifier = Modifier.size(32.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Delete,
-                                                    contentDescription = stringResource(MR.strings.pref_dict_delete),
-                                                    tint = MaterialTheme.colorScheme.error,
-                                                    modifier = Modifier.size(16.dp),
+                                                    imageVector = Icons.Outlined.CloudDownload,
+                                                    contentDescription = "Check now",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp),
                                                 )
                                             }
                                         }
                                     }
                                 }
-                                OutlinedButton(
-                                    onClick = { pickDictionary.launch(arrayOf("application/zip", "application/x-zip-compressed")) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Add,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(MR.strings.pref_import_dictionary))
+                            }
+
+                                item(key = "type_filter") {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        tonalElevation = 1.dp,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = "Filter:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            listOf("term" to "term", "frequency" to "freq", "pitch" to "pitch").forEach { (typeVal, label) ->
+                                                val isActive = typeFilter == typeVal
+                                                val chipColor = when (typeVal) {
+                                                    "term" -> if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                                                    "frequency" -> if (isActive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant
+                                                    "pitch" -> if (isActive) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant
+                                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                                }
+                                                val chipTextColor = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = chipColor,
+                                                    modifier = Modifier.clickable {
+                                                        typeFilter = if (isActive) null else typeVal
+                                                    },
+                                                ) {
+                                                    Text(
+                                                        text = label,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = chipTextColor,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
+
+                                item { HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant) }
+
+                                @OptIn(ExperimentalFoundationApi::class)
+                                itemsIndexed(
+                                    items = dictNamesState,
+                                    key = { _, dictName -> dictName },
+                                ) { index, dictName ->
+                                    ReorderableItem(reorderableState, key = dictName) {
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .animateItem()
+                                                .padding(vertical = 4.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            tonalElevation = 1.dp,
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.DragHandle,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.draggableHandle(),
+                                                )
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                                ) {
+                                                    val displayTitle = getDictionaryTitle(context, dictName)
+                                                    Text(
+                                                        text = displayTitle,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        modifier = Modifier.combinedClickable(
+                                                            onClick = {},
+                                                            onLongClick = { dictToRename = dictName },
+                                                        ),
+                                                    )
+                                                    if (collapseMode == AnkiProfile.DICTIONARY_COLLAPSE_CUSTOM) {
+                                                        var dictModeExpanded by remember(dictName) { mutableStateOf(false) }
+                                                        val selectedMode = dictionaryDisplayModes[dictName]
+                                                            ?: AnkiProfile.DICTIONARY_DISPLAY_FALLBACK
+                                                        Box {
+                                                            OutlinedButton(
+                                                                onClick = { dictModeExpanded = true },
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                            ) {
+                                                                Text(
+                                                                    text = customModeLabel(selectedMode),
+                                                                    modifier = Modifier.weight(1f),
+                                                                )
+                                                                Icon(
+                                                                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                                                                    contentDescription = null,
+                                                                    modifier = Modifier.size(18.dp),
+                                                                )
+                                                            }
+                                                            DropdownMenu(
+                                                                expanded = dictModeExpanded,
+                                                                onDismissRequest = { dictModeExpanded = false },
+                                                            ) {
+                                                                customModeOptions.forEach { (mode, label) ->
+                                                                    DropdownMenuItem(
+                                                                        text = { Text(label) },
+                                                                        onClick = {
+                                                                            val currentProfile = profileStore.getActiveProfile()
+                                                                            val newModes = currentProfile.dictionaryDisplayModes + (dictName to mode)
+                                                                            profileStore.updateProfile(
+                                                                                currentProfile.copy(
+                                                                                    dictionaryDisplayModes = newModes,
+                                                                                ),
+                                                                            )
+                                                                            dictModeExpanded = false
+                                                                        },
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            val currentProfile = profileStore.getActiveProfile()
+                                                            val newEnabled = if (currentProfile.enabledDictionaries.isEmpty()) {
+                                                                dictionaries.filter { it != dictName }.toSet()
+                                                            } else if (dictName in currentProfile.enabledDictionaries) {
+                                                                currentProfile.enabledDictionaries - dictName
+                                                            } else {
+                                                                currentProfile.enabledDictionaries + dictName
+                                                            }
+                                                            profileStore.updateProfile(currentProfile.copy(enabledDictionaries = newEnabled))
+                                                        },
+                                                        modifier = Modifier.size(32.dp),
+                                                    ) {
+                                                        val isEnabled = enabledDicts.isEmpty() || dictName in enabledDicts
+                                                        Icon(
+                                                            imageVector = if (isEnabled) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                                                            contentDescription = "Toggle visibility",
+                                                            modifier = Modifier.size(16.dp),
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = { dictToDelete = dictName },
+                                                        modifier = Modifier.size(32.dp),
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Delete,
+                                                            contentDescription = stringResource(MR.strings.pref_dict_delete),
+                                                            tint = MaterialTheme.colorScheme.error,
+                                                            modifier = Modifier.size(16.dp),
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                    }
+                                 }
+
+                                }
+
                             }
                         }
-                    },
+
+                    }
+
+                }
                 ),
             ),
         )
@@ -1166,7 +1786,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         }
 
         // Check AnkiDroid status whenever screen is visible and enabled
-        LaunchedEffect(enabled, selectedModel) {
+        LaunchedEffect(enabled, selectedDeck, selectedModel) {
             if (!enabled) {
                 Log.d("AnkiSettings", "Anki disabled, skipping")
                 return@LaunchedEffect
@@ -1184,12 +1804,45 @@ object SettingsDictionaryScreen : SearchableSettings {
 
             // Must have permission to query
             if (ankiInstalled == true && hasPerm) {
-                if (decks.isEmpty() || models.isEmpty()) {
+                try {
                     isLoading = true
+                    val ensuredDeck = if (selectedDeck.isBlank()) {
+                        bridge.ensureDefaultDeckName()
+                    } else {
+                        selectedDeck
+                    }
+                    // Always ensure Lapis exists in AnkiDroid so it's in the dropdown
+                    val lapisModelName = bridge.ensureLapisModelName()
+                    val ensuredModel = if (selectedModel.isBlank() || LapisPreset.isBundledModelName(selectedModel)) {
+                        lapisModelName
+                    } else {
+                        selectedModel
+                    }
                     decks = bridge.deckNames()
                     models = bridge.modelNames()
-                    isLoading = false
                     Log.d("AnkiSettings", "Loaded decks: ${decks.size}, models: ${models.size}")
+
+                    val current = profileStore.getActiveProfile()
+                    var updated = current
+                    if (current.ankiDeck.isBlank() && ensuredDeck.isNotBlank()) {
+                        updated = updated.copy(ankiDeck = ensuredDeck)
+                    }
+                    if (
+                        (current.ankiModel.isBlank() || LapisPreset.isBundledModelName(current.ankiModel)) &&
+                        ensuredModel.isNotBlank()
+                    ) {
+                        updated = updated.copy(ankiModel = ensuredModel)
+                    }
+                    if (LapisPreset.isBundledModelName(updated.ankiModel) && LapisPreset.isBlankFieldMap(updated.ankiFieldMap)) {
+                        updated = updated.copy(ankiFieldMap = LapisPreset.defaultFieldMapJson)
+                    }
+                    if (updated != current) {
+                        profileStore.updateProfile(updated)
+                    }
+                } catch (e: Exception) {
+                    Log.w("AnkiSettings", "Failed to ensure bundled Lapis", e)
+                } finally {
+                    isLoading = false
                 }
             } else if (ankiInstalled == true && !hasPerm) {
                 Log.w("AnkiSettings", "AnkiDroid installed but no permission!")
@@ -1203,12 +1856,16 @@ object SettingsDictionaryScreen : SearchableSettings {
             if (selectedModel.isNotBlank() && ankiInstalled == true && bridge.hasPermission()) {
                 modelFields = bridge.modelFieldNames(selectedModel)
 
-                // Only auto-detect if field map is empty (first-time setup)
+                // Only auto-map if field map is empty (first-time setup or model switch).
                 if (fieldMapJson.isBlank() || fieldMapJson == "{}") {
-                    val detectedMap = modelFields.mapIndexedNotNull { index, fieldName ->
-                        val marker = Marker.autoDetect(fieldName, index)
-                        if (marker != null) fieldName to "{$marker}" else null
-                    }.toMap()
+                    val detectedMap = if (LapisPreset.isLapisLikeModel(selectedModel, modelFields)) {
+                        LapisPreset.defaultFieldMapFor(modelFields)
+                    } else {
+                        modelFields.mapIndexedNotNull { index, fieldName ->
+                            val marker = Marker.autoDetect(fieldName, index)
+                            if (marker != null) fieldName to "{$marker}" else null
+                        }.toMap()
+                    }
 
                     if (detectedMap.isNotEmpty()) {
                         profileStore.updateProfile(profileStore.getActiveProfile().copy(ankiFieldMap = org.json.JSONObject(detectedMap).toString()))
@@ -1499,6 +2156,22 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         )
                                     }
                                 }
+                            }
+
+                            // Sync on create
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "Sync on card create",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Switch(
+                                    checked = activeProfile.ankiSyncOnCreate,
+                                    onCheckedChange = { updateProfile { copy(ankiSyncOnCreate = it) } },
+                                )
                             }
                         }
                     },
@@ -1822,13 +2495,13 @@ object SettingsDictionaryScreen : SearchableSettings {
         val scope = rememberCoroutineScope()
         val prefs = remember { Injekt.get<DictionaryPreferences>() }
         val json = remember { Injekt.get<kotlinx.serialization.json.Json>() }
-        
+
         val enabled by prefs.wordAudioEnabled().collectAsState()
         val autoplay by prefs.wordAudioAutoplay().collectAsState()
         val localEnabled by prefs.wordAudioLocalEnabled().collectAsState()
         val localPath by prefs.wordAudioLocalPath().collectAsState()
         val rawSources by prefs.wordAudioSources().collectAsState()
-        
+
         val sources = remember(rawSources) {
             try {
                 json.decodeFromString<List<chimahon.audio.WordAudioSource>>(rawSources)
@@ -1836,11 +2509,13 @@ object SettingsDictionaryScreen : SearchableSettings {
                 emptyList()
             }
         }
-        
+
         val updateSources: (List<chimahon.audio.WordAudioSource>) -> Unit = { newSources ->
             prefs.wordAudioSources().set(json.encodeToString(newSources))
         }
 
+        val isImportingDb by _isImportingDb.collectAsState()
+        val importDbProgress by _importDbProgress.collectAsState()
 
         return Preference.PreferenceGroup(
             title = "Word Audio",
@@ -1874,16 +2549,28 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     modifier = Modifier.padding(top = 8.dp)
                                 ) {
                                     OutlinedButton(
-                                        onClick = { 
+                                        onClick = {
                                             try {
-                                                pickDb.launch(arrayOf("*/*")) 
+                                                pickDb.launch(arrayOf("*/*"))
                                             } catch (e: Exception) {
                                                 context.toast("Error launching file picker")
                                                 Log.e(TAG, "pickDb launch error", e)
                                             }
-                                        }
+                                        },
+                                        enabled = !isImportingDb
                                     ) {
-                                        Text("Select Database")
+                                        if (isImportingDb) {
+                                            androidx.compose.material3.CircularProgressIndicator(
+                                                progress = importDbProgress,
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Copying ${(importDbProgress * 100).toInt()}%")
+                                        } else {
+                                            Text("Select Database")
+                                        }
                                     }
 
                                     if (localPath.isNotBlank()) {
@@ -1892,7 +2579,8 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                 val file = java.io.File(localPath)
                                                 if (file.exists()) file.delete()
                                                 prefs.wordAudioLocalPath().set("")
-                                            }
+                                            },
+                                            enabled = !isImportingDb
                                         ) {
                                             Text("Delete Database")
                                         }
@@ -1907,7 +2595,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     content = {
                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                             Text("Online Sources", style = MaterialTheme.typography.titleMedium)
-                            
+
                             // Sources List
                             sources.forEachIndexed { index, source ->
                                 Row(
@@ -1935,11 +2623,11 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     }
                                 }
                             }
-                            
+
                             // Add Source UI
                             var newName by remember { mutableStateOf("") }
                             var newUrl by remember { mutableStateOf("") }
-                            
+
                             Column(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp)) {
                                 Text("Add Source", style = MaterialTheme.typography.labelLarge)
                                 OutlinedTextField(
@@ -1995,53 +2683,86 @@ private suspend fun importDictionaryFromUri(
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
         Log.d(TAG, "importDictionaryFromUri: dictionariesDir=${dictionariesDir.absolutePath}")
 
-        if (!dictionariesDir.exists() && !dictionariesDir.mkdirs()) {
-            Log.e(TAG, "importDictionaryFromUri: failed to create dictionariesDir")
-            return@withContext Pair(
-                context.stringResource(MR.strings.storage_failed_to_create_directory, dictionariesDir.absolutePath),
-                false,
-            )
-        }
-
         val tempZip = File(context.cacheDir, "chimahon_import_${System.currentTimeMillis()}.zip")
-        Log.d(TAG, "importDictionaryFromUri: tempZip=${tempZip.absolutePath}")
+        val tempImportDir = File(context.cacheDir, "dict_import_tmp_${System.currentTimeMillis()}")
 
         try {
+            if (!dictionariesDir.exists() && !dictionariesDir.mkdirs()) {
+                Log.e(TAG, "importDictionaryFromUri: failed to create dictionariesDir")
+                return@withContext Pair(
+                    context.stringResource(MR.strings.storage_failed_to_create_directory, dictionariesDir.absolutePath),
+                    false,
+                )
+            }
+
             context.contentResolver.openInputStream(uri)?.use { input ->
                 tempZip.outputStream().use { output ->
                     input.copyTo(output)
-                    Log.d(TAG, "importDictionaryFromUri: copied zip to temp file, size=${tempZip.length()}")
                 }
             } ?: return@withContext Pair(context.stringResource(MR.strings.file_null_uri_error), false)
 
             Log.d(TAG, "importDictionaryFromUri: calling HoshiDicts.importDictionary...")
+            tempImportDir.mkdirs()
             val result = HoshiDicts.importDictionary(
                 zipPath = tempZip.absolutePath,
-                outputDir = dictionariesDir.absolutePath,
+                outputDir = tempImportDir.absolutePath,
             )
-            Log.d(TAG, "importDictionaryFromUri: HoshiDicts result: success=${result.success} terms=${result.termCount} meta=${result.metaCount} media=${result.mediaCount}")
+            Log.d(TAG, "importDictionaryFromUri: HoshiDicts result: success=${result.success} terms=${result.termCount} freq=${result.freqCount} pitch=${result.pitchCount} media=${result.mediaCount}")
 
             if (!result.success) {
                 Log.e(TAG, "importDictionaryFromUri: import failed")
                 return@withContext Pair(context.stringResource(MR.strings.pref_import_dictionary_failed), false)
             }
 
-            val newDictName = dictionariesDir.listFiles()
-                ?.filter { it.isDirectory }
-                ?.maxByOrNull { it.lastModified() }
-                ?.name
-            Log.d(TAG, "importDictionaryFromUri: newDictName=$newDictName")
-
-            if (newDictName != null) {
-                val orderList = activeProfile.dictionaryOrder.filter { it.isNotBlank() }
-                if (newDictName !in orderList) {
-                    val newOrderList = orderList + newDictName
-                    Log.d(TAG, "importDictionaryFromUri: updating profile order to: $newOrderList")
-                    val prefs = Injekt.get<DictionaryPreferences>()
-                    prefs.profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newOrderList))
-                }
+            val importedDir = tempImportDir.listFiles()?.firstOrNull { it.isDirectory }
+            if (importedDir == null) {
+                Log.e(TAG, "importDictionaryFromUri: no imported dir found")
+                return@withContext Pair("Import succeeded but no dictionary directory found", false)
             }
 
+            val title = if (result.title.isNotBlank()) result.title else importedDir.name
+            Log.d(TAG, "importDictionaryFromUri: imported dict title=$title")
+
+            data class CopyTarget(val type: String, val count: Long)
+            val targets = buildList {
+                if (result.termCount > 0) add(CopyTarget("term", result.termCount))
+                if (result.freqCount > 0) add(CopyTarget("frequency", result.freqCount))
+                if (result.pitchCount > 0) add(CopyTarget("pitch", result.pitchCount))
+            }
+
+            if (targets.isEmpty()) {
+                Log.e(TAG, "importDictionaryFromUri: no term/freq/pitch entries found")
+                return@withContext Pair("Dictionary has no recognizable entries", false)
+            }
+
+            for (target in targets) {
+                val typeDir = File(dictionariesDir, target.type)
+                if (!typeDir.exists()) typeDir.mkdirs()
+                val destDir = File(typeDir, title)
+                if (destDir.exists()) destDir.deleteRecursively()
+                importedDir.copyRecursively(destDir, overwrite = true)
+                Log.d(TAG, "importDictionaryFromUri: copied to ${target.type}/$title")
+            }
+
+            // Add to profile order once (dict name, no type prefix)
+            val prefs = Injekt.get<DictionaryPreferences>()
+            val freshProfile = prefs.profileStore.getActiveProfile()
+            val orderList = freshProfile.dictionaryOrder.filter { it.isNotBlank() }
+            if (title !in orderList) {
+                val newOrderList = orderList + title
+                prefs.profileStore.updateProfile(
+                    freshProfile.copy(
+                        dictionaryOrder = newOrderList,
+                        enabledDictionaries = if (freshProfile.enabledDictionaries.isNotEmpty()) {
+                            freshProfile.enabledDictionaries + title
+                        } else {
+                            freshProfile.enabledDictionaries
+                        },
+                    ),
+                )
+            }
+
+            val typeHints = targets.joinToString(", ") { it.type }
             Pair(
                 context.stringResource(
                     MR.strings.pref_import_dictionary_success,
@@ -2058,10 +2779,8 @@ private suspend fun importDictionaryFromUri(
             Log.e(TAG, "importDictionaryFromUri: exception", e)
             Pair(e.message ?: context.stringResource(MR.strings.unknown_error), false)
         } finally {
-            if (tempZip.exists()) {
-                tempZip.delete()
-                Log.d(TAG, "importDictionaryFromUri: deleted temp file")
-            }
+            if (tempZip.exists()) tempZip.delete()
+            if (tempImportDir.exists()) tempImportDir.deleteRecursively()
         }
     }
 }

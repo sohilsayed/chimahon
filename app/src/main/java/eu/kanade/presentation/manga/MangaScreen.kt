@@ -213,6 +213,8 @@ fun MangaScreen(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
     val context = LocalContext.current
@@ -282,6 +284,8 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onClickDictionaryProfile = onClickDictionaryProfile,
+            onClickMangaStats = onClickMangaStats,
             // KMK <--
         )
     } else {
@@ -344,6 +348,8 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onClickDictionaryProfile = onClickDictionaryProfile,
+            onClickMangaStats = onClickMangaStats,
             // KMK <--
         )
     }
@@ -423,6 +429,8 @@ private fun MangaScreenSmallImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
     val chapterListState = rememberLazyListState()
@@ -516,6 +524,8 @@ private fun MangaScreenSmallImpl(
                 backgroundAlphaProvider = { backgroundAlpha },
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
+                onClickDictionaryProfile = onClickDictionaryProfile,
+                onClickMangaStats = onClickMangaStats,
                 // KMK <--
             )
         },
@@ -887,6 +897,8 @@ private fun MangaScreenLargeImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onClickDictionaryProfile: (() -> Unit)?,
+    onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -971,6 +983,8 @@ private fun MangaScreenLargeImpl(
                 backgroundAlphaProvider = { 1f },
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
+                onClickDictionaryProfile = onClickDictionaryProfile,
+                onClickMangaStats = onClickMangaStats,
                 // KMK <--
             )
         },

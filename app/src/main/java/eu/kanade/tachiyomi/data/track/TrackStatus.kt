@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.data.track.anilist.Anilist
 import eu.kanade.tachiyomi.data.track.bangumi.Bangumi
 import eu.kanade.tachiyomi.data.track.kitsu.Kitsu
 import eu.kanade.tachiyomi.data.track.komga.Komga
+import eu.kanade.tachiyomi.data.track.mangabaka.MangaBaka
 import eu.kanade.tachiyomi.data.track.mangaupdates.MangaUpdates
 import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
 import eu.kanade.tachiyomi.data.track.shikimori.Shikimori
@@ -19,7 +20,8 @@ enum class TrackStatus(val int: Int, val res: StringResource) {
     PAUSED(4, MR.strings.on_hold),
     COMPLETED(5, MR.strings.completed),
     DROPPED(6, MR.strings.dropped),
-    OTHER(7, SYMR.strings.not_tracked),
+    CONSIDERING(7, MR.strings.considering),
+    OTHER(8, SYMR.strings.not_tracked),
     ;
 
     companion object {
@@ -104,6 +106,18 @@ enum class TrackStatus(val int: Int, val res: StringResource) {
                         MangaUpdates.ON_HOLD_LIST -> PAUSED
                         MangaUpdates.WISH_LIST -> PLAN_TO_READ
                         MangaUpdates.UNFINISHED_LIST -> DROPPED
+                        else -> null
+                    }
+                }
+                trackerManager.mangabaka.id -> {
+                    when (status) {
+                        MangaBaka.CONSIDERING -> CONSIDERING
+                        MangaBaka.PLAN_TO_READ -> PLAN_TO_READ
+                        MangaBaka.READING -> READING
+                        MangaBaka.REREADING -> REPEATING
+                        MangaBaka.PAUSED -> PAUSED
+                        MangaBaka.DROPPED -> DROPPED
+                        MangaBaka.COMPLETED -> COMPLETED
                         else -> null
                     }
                 }

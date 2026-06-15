@@ -31,7 +31,9 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -89,6 +91,7 @@ fun BookshelfScreen(
     var isSyncing by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     var showDeleteDialog by remember { mutableStateOf<BookMetadata?>(null) }
+    var showEditDialog by remember { mutableStateOf<BookMetadata?>(null) }
 
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
@@ -229,6 +232,77 @@ fun BookshelfScreen(
             )
         }
 
+        // Edit Details dialog — only metadata (title/author/lang).
+        // Profile override is handled in the NovelLibraryScreen (app module).
+        showEditDialog?.let { book ->
+            var editTitle by remember { mutableStateOf(book.title ?: "") }
+            var editAuthor by remember { mutableStateOf(book.author ?: "") }
+            var editLang by remember { mutableStateOf(book.lang ?: "") }
+
+            AlertDialog(
+                onDismissRequest = { showEditDialog = null },
+                title = { Text("Edit Details") },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TextField(
+                            value = editTitle,
+                            onValueChange = { editTitle = it },
+                            label = { Text("Title") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        TextField(
+                            value = editAuthor,
+                            onValueChange = { editAuthor = it },
+                            label = { Text("Author") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        TextField(
+                            value = editLang,
+                            onValueChange = { editLang = it },
+                            label = { Text("Language (e.g. ja, en)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val updatedBook = book.copy(
+                                    title = editTitle.ifBlank { null },
+                                    author = editAuthor.ifBlank { null },
+                                    lang = editLang.ifBlank { null },
+                                )
+                                withContext(Dispatchers.IO) {
+                                    val root = updatedBook.folder?.let {
+                                        BookStorage.getBookDirectory(context, it)
+                                    }
+                                    if (root != null) {
+                                        BookStorage.saveMetadata(updatedBook, root)
+                                    }
+                                }
+                                loadBooks()
+                                showEditDialog = null
+                            }
+                        },
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditDialog = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
         if (books.isEmpty() && !isImporting) {
             Box(
                 modifier = Modifier
@@ -283,6 +357,7 @@ fun BookshelfScreen(
                                 NovelReaderActivity.launch(context, bookDir)
                             }
                         },
+                        onEdit = { showEditDialog = book },
                         onDelete = { showDeleteDialog = book },
                     )
                 }
@@ -295,6 +370,7 @@ fun BookshelfScreen(
 private fun BookCard(
     book: BookMetadata,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -369,6 +445,16 @@ private fun BookCard(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Edit Details") },
+                        onClick = {
+                            showMenu = false
+                            onEdit()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Edit, contentDescription = null)
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Delete") },
                         onClick = {

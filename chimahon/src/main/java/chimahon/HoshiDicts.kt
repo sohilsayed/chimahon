@@ -2,9 +2,17 @@ package chimahon
 
 data class ImportResult(
     val success: Boolean,
+    val title: String,
     val termCount: Long,
     val metaCount: Long,
+    val freqCount: Long,
+    val pitchCount: Long,
     val mediaCount: Long,
+)
+
+data class TransformGroup(
+    val name: String,
+    val description: String,
 )
 
 data class DictionaryStyle(
@@ -59,7 +67,7 @@ data class TermResult(
 data class LookupResult(
     val matched: String,
     val deinflected: String,
-    val process: Array<String>,
+    val process: Array<TransformGroup>,
     val term: TermResult,
     val preprocessorSteps: Int,
 )
@@ -70,6 +78,7 @@ object HoshiDicts {
     }
 
     external fun importDictionary(zipPath: String, outputDir: String): ImportResult
+    external fun probeEntryTypes(dictPath: String): LongArray
     external fun createLookupObject(): Long
     external fun destroyLookupObject(session: Long)
     external fun rebuildQuery(
@@ -79,7 +88,7 @@ object HoshiDicts {
         pitchPaths: Array<String>,
     )
 
-    external fun lookup(session: Long, text: String, maxResults: Int): Array<LookupResult>
+    external fun lookup(session: Long, text: String, maxResults: Int, scanLength: Int): Array<LookupResult>
     external fun query(session: Long, text: String): Array<TermResult>
     external fun getStyles(session: Long): Array<DictionaryStyle>
     external fun getMediaFile(session: Long, dictName: String, mediaPath: String): ByteArray?

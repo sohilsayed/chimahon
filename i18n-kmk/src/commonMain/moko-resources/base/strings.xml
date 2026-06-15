@@ -241,4 +241,8 @@
     <string name="pref_discord_show_discord_button_summary">Displays a button to join the Discord server</string>
     <string name="pref_dict_show_navigation_buttons">Show navigation buttons</string>
     <string name="pref_dict_show_navigation_buttons_summary">Show floating up/down arrows in the dictionary popup</string>
+    <string name="pref_dict_auto_kana_conversion">Auto kana input</string>
+    <string name="pref_dict_auto_kana_conversion_summary">Convert romaji to kana while typing (like Yomitan)</string>
+    <string name="pref_dict_group_pitches">Group pitches</string>
+    <string name="pref_dict_group_pitches_summary">Deduplicate and merge pitches across dictionaries</string>
 </resources>

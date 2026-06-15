@@ -12,8 +12,11 @@
 
     <!-- Models -->
     <string name="name">Name</string>
-    <string name="categories">Categories</string>
+    <string name="categories">Manga categories</string>
+    <string name="label_novel_categories">Novel categories</string>
     <string name="manga">Library entries</string>
+    <string name="manga_singular">Manga</string>
+    <string name="novel_singular">Novel</string>
     <string name="chapters">Chapters</string>
     <string name="track">Tracking</string>
     <string name="delete_downloaded">Delete downloaded</string>
@@ -24,7 +27,7 @@
     <string name="label_more">More</string>
     <string name="label_settings">Settings</string>
     <string name="label_download_queue">Download queue</string>
-    <string name="label_library">Library</string>
+    <string name="label_library">Manga</string>
     <string name="label_recent_updates">Updates</string>
     <string name="label_upcoming">Upcoming</string>
     <string name="label_recent_manga">History</string>
@@ -47,8 +50,12 @@
     <string name="action_mark_as_unseen">Mark as unseen</string>
     <string name="action_play">Play</string>
     <string name="novel_missing_file">Missing File — tap to import</string>
+    <string name="imported_n_books">Imported %1$d books</string>
+    <string name="imported_n_books_with_errors">Imported %1$d books (%2$d failed)</string>
+    <string name="action_reset_reading_progress">Reset reading progress</string>
     <string name="backup_option_novels">Novel progress &amp; stats</string>
     <string name="label_stats">Statistics</string>
+    <string name="action_manga_stats">Statistics</string>
     <string name="label_migration">Migrate</string>
     <string name="label_extensions">Extensions</string>
     <string name="label_anime_extensions">Anime Extensions</string>
@@ -104,6 +111,8 @@
     <string name="action_remove_bookmark">Unbookmark chapter</string>
     <string name="action_enable_ocr">Enable OCR</string>
     <string name="action_disable_ocr">Disable OCR</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_open_settings">Open settings</string>
     <string name="action_delete">Delete</string>
     <string name="action_update_library">Update library</string>
     <string name="action_enable_all">Enable all</string>
@@ -113,7 +122,8 @@
     <string name="action_update_category">Update category</string>
     <string name="action_open_random_manga">Open random entry</string>
     <string name="action_add_category">Add category</string>
-    <string name="action_edit_categories">Edit categories</string>
+    <string name="action_edit_categories">Edit manga categories</string>
+    <string name="action_edit_novel_categories">Edit novel categories</string>
     <string name="action_rename_category">Rename category</string>
     <string name="action_move_category">Set categories</string>
     <string name="delete_category_confirmation">Do you wish to delete the category \"%s\"?</string>
@@ -350,9 +360,14 @@
     <string name="pref_dict_popup_font_size">Popup font size</string>
     <string name="pref_dict_show_frequency_harmonic">Show frequency as harmonic rank</string>
     <string name="pref_dict_show_frequency_harmonic_summary">Display harmonic rank instead of full frequency list in dictionary popup</string>
+    <string name="pref_dict_frequency_display">Frequency display</string>
+    <string name="pref_dict_show_frequency_average">Average freq</string>
     <string name="pref_dict_group_terms">Group dictionary definitions</string>
     <string name="pref_dict_group_terms_summary">Show multiple dictionary definitions under one headword</string>
     <string name="pref_dict_custom_css">Custom CSS</string>
+    <string name="pref_dict_profile_override_manga">Set dictionary profile</string>
+    <string name="pref_dict_profile_override_source">Dictionary profile for this source</string>
+    <string name="pref_dict_profile_auto">Auto (use cascading default)</string>
     <string name="pref_dict_custom_css_summary">Inject custom CSS into the dictionary renderer</string>
     <string name="pref_dict_invalid_width">Enter a number between 200 and 1920</string>
     <string name="pref_dict_invalid_height">Enter a number between 100 and 1080</string>
@@ -368,6 +383,7 @@
     <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>
     <string name="pref_ocr_auto_on_download_summary">Automatically OCR chapters when downloading</string>
     <string name="pref_dict_ocr_box_scale">OCR box scale</string>
+    <string name="pref_dict_ocr_box_opacity">OCR box opacity</string>
     <string name="pref_ocr_cache_size">OCR cache size</string>
     <string name="pref_ocr_clear_cache">Clear OCR cache</string>
     <string name="ocr_ready">OCR ready</string>
@@ -382,6 +398,20 @@
     <string name="ocr_status_pending">Pending</string>
     <string name="ocr_status_processing">Processing</string>
     <string name="ocr_status_error">Error</string>
+    <string name="screen_lookup_title">Screen lookup</string>
+    <string name="screen_lookup_more_summary">OCR text from other apps with a floating capture button</string>
+    <string name="screen_lookup_enable_title">Enable screen lookup</string>
+    <string name="screen_lookup_enable_summary">Chimahon needs permission to show a small capture button over other apps. Android will ask for screen capture permission after that.</string>
+    <string name="screen_lookup_notification_title">Screen lookup is on</string>
+    <string name="screen_lookup_notification_text">Tap the floating button to OCR the current screen.</string>
+    <string name="screen_lookup_capture_button">Capture screen for lookup</string>
+    <string name="screen_lookup_overlay_required">Overlay permission is required for screen lookup.</string>
+    <string name="screen_lookup_unavailable">Screen capture is not available on this device.</string>
+    <string name="screen_lookup_capture_denied">Screen capture permission was not granted.</string>
+    <string name="screen_lookup_capture_failed">Could not capture the screen.</string>
+    <string name="screen_lookup_finding_text">Finding text…</string>
+    <string name="screen_lookup_no_text">No text found</string>
+    <string name="screen_lookup_tap_text">Tap highlighted text to look it up</string>
 
       <!-- General section -->
     <string name="pref_category_theme">Theme</string>
@@ -403,6 +433,7 @@
     <string name="theme_yotsuba">Yotsuba</string>
     <string name="theme_tidalwave">Tidal Wave</string>
     <string name="pref_dark_theme_pure_black">Pure black dark mode</string>
+    <string name="pref_dict_theme_pure_black">Pure black</string>
     <string name="pref_relative_format">Relative timestamps</string>
     <!-- "Today" instead of "2023-12-31" -->
     <string name="pref_relative_format_summary">\"%1$s\" instead of \"%2$s\"</string>
@@ -583,6 +614,7 @@
     <string name="filter_mode_lighten">Dodge / Lighten</string>
     <string name="filter_mode_darken">Burn / Darken</string>
     <string name="pref_keep_screen_on">Keep screen on</string>
+    <string name="pref_reader_startup_delay">Startup delay</string>
     <string name="pref_show_ocr_outlines">Show OCR outlines</string>
     <string name="pref_skip_read_chapters">Skip chapters marked read</string>
     <string name="pref_skip_filtered_chapters">Skip filtered chapters</string>
@@ -712,8 +744,8 @@
     <string name="pref_import_dictionary_summ">Import a Yomitan dictionary ZIP file</string>
     <string name="pref_import_dictionary_success">Dictionary imported (%1$d terms, %2$d metadata, %3$d media)</string>
     <string name="pref_import_dictionary_failed">Dictionary import failed</string>
-    <string name="pref_anki">Anki</string>
-    <string name="pref_anki_summary">Configure AnkiDroid card creation</string>
+    <string name="pref_anki">Dictionary Profiles</string>
+    <string name="pref_anki_summary">Configure dictionaries, language, and Anki integration</string>
     <string name="pref_anki_enable">Enable Anki integration</string>
     <string name="pref_anki_deck">Default deck</string>
     <string name="pref_anki_model">Note type</string>
@@ -730,7 +762,7 @@
     <string name="pref_anki_select_deck">Select deck</string>
     <string name="pref_anki_select_model">Select note type</string>
     <string name="pref_anki_loading">Loading…</string>
-    <string name="pref_anki_profiles">Anki profiles</string>
+    <string name="pref_anki_profiles">Dictionary profiles</string>
     <string name="pref_anki_profile_new">New profile</string>
     <string name="pref_anki_profile_rename">Rename profile</string>
     <string name="pref_anki_profile_delete">Delete profile</string>
@@ -999,6 +1031,7 @@
     <string name="on_hold">On hold</string>
     <string name="paused">Paused</string>
     <string name="plan_to_read">Plan to read</string>
+    <string name="considering">Considering</string>
     <string name="repeating">Rereading</string>
     <string name="reading_list">Reading List</string>
     <string name="wish_list">Wish List</string>
@@ -1203,6 +1236,7 @@
     <string name="channel_app_updates">App updates</string>
     <string name="channel_ext_updates">Extension updates</string>
     <string name="channel_anime_ext_updates">Anime extension updates</string>
+    <string name="channel_dictionary_update">Dictionary updates</string>
 
     <!-- S Pen actions -->
     <string name="spen_previous_page">Previous page</string>
@@ -1320,4 +1354,9 @@
     <string name="player_sleep_timer_active">Sleep Timer (%1$s)</string>
     <string name="player_sleep_timer_minutes">%1$d minutes</string>
     <string name="player_screenshot">Screenshot</string>
+    <!-- Dictionary auto-update -->
+    <string name="dict_update_progress_title">Updating dictionaries…</string>
+    <string name="dict_update_complete_title">Dictionary updates complete</string>
+    <string name="dict_update_complete_text">%d dictionary(ies) updated</string>
+    <string name="dict_update_error_title">Dictionary update failed</string>
 </resources>

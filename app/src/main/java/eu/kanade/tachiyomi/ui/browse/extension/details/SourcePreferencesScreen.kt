@@ -5,12 +5,23 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -38,10 +49,14 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.SharedPreferencesDataStore
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.sourcePreferences
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.widget.TachiyomiTextInputEditText.Companion.setIncognito
 import exh.source.EnhancedHttpSource
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -67,13 +82,102 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
                 )
             },
         ) { contentPadding ->
-            FragmentContainer(
-                fragmentManager = (context as FragmentActivity).supportFragmentManager,
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(contentPadding),
             ) {
-                add(it, SourcePreferencesFragment.getInstance(sourceId), null)
+                SourceDictionaryProfilePicker(
+                    sourceId = sourceId,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
+                )
+                FragmentContainer(
+                    fragmentManager = (context as FragmentActivity).supportFragmentManager,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    add(it, SourcePreferencesFragment.getInstance(sourceId), null)
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun SourceDictionaryProfilePicker(
+        sourceId: Long,
+        modifier: Modifier = Modifier,
+    ) {
+        val prefs = remember { Injekt.get<DictionaryPreferences>() }
+        val profiles = remember { prefs.profileStore.getProfiles() }
+        val overrideKey = remember {
+            chimahon.dictionary.DictionaryProfileResolver.sourceOverrideKey(sourceId)
+        }
+
+        // Current selection: empty string = Auto
+        var selectedId by remember {
+            mutableStateOf(prefs.rawProfileOverride(overrideKey).get())
+        }
+        var expanded by remember { mutableStateOf(false) }
+
+        val resolvedAutoProfile = remember(sourceId) {
+            val source = Injekt.get<SourceManager>().getOrStub(sourceId)
+            prefs.profileResolver.resolve(
+                sourceId = 0L,
+                sourceLang = source.lang,
+            )
+        }
+        val autoLabel = "Auto (${resolvedAutoProfile.name})"
+
+        // Label shown in the field
+        val selectedLabel = if (selectedId.isEmpty()) {
+            autoLabel
+        } else {
+            profiles.firstOrNull { it.id == selectedId }?.name ?: autoLabel
+        }
+
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+            modifier = modifier,
+        ) {
+            OutlinedTextField(
+                value = selectedLabel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(stringResource(MR.strings.pref_dict_profile_override_source)) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                // Auto (clear override)
+                DropdownMenuItem(
+                    text = { Text(autoLabel) },
+                    onClick = {
+                        selectedId = ""
+                        prefs.rawProfileOverride(overrideKey).delete()
+                        expanded = false
+                    },
+                )
+                profiles.forEach { profile ->
+                    DropdownMenuItem(
+                        text = { Text(profile.name) },
+                        onClick = {
+                            selectedId = profile.id
+                            prefs.rawProfileOverride(overrideKey).set(profile.id)
+                            expanded = false
+                        },
+                    )
+                }
             }
         }
     }
@@ -117,6 +221,7 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
         method.isAccessible = true
         method.invoke(this, view)
     }
+
 }
 
 class SourcePreferencesFragment : PreferenceFragmentCompat() {

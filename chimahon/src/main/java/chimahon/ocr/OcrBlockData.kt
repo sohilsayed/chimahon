@@ -20,6 +20,7 @@ data class OcrBlockData(
     val lines: List<String>,
     val vertical: Boolean,
     val lineGeometries: List<OcrLineGeometry>? = null,
+    val language: String = "",
 )
 
 @Serializable
@@ -38,4 +39,5 @@ data class OcrTextBlock(
     val lines: List<String>,
     val vertical: Boolean = false,
     val lineGeometries: List<OcrLineGeometry>? = null,
+    val language: String = "",
 )

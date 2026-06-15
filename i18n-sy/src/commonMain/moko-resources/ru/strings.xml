@@ -224,7 +224,7 @@
     <string name="sync_on_chapter_open">Синхронизовать при открытии главы</string>
     <string name="sync_on_app_start">Синхронизовать при запуске приложения</string>
     <string name="sync_on_app_resume">Синхронизовать при возвращении в приложение</string>
-    <string name="sync_library">Синхронизировать библиотеку</string>
+    <string name="sync_library">Синхронизировать TTSU</string>
     <!-- Security settings -->
     <string name="biometric_lock_times">Биометрическое время блокировки</string>
     <string name="action_edit_biometric_lock_times">Изменить биометрическое время блокировки</string>

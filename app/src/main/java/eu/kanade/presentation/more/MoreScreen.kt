@@ -42,9 +42,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import eu.kanade.domain.ui.model.NavTabLayout
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
-import eu.kanade.domain.ui.model.NavTabLayout
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.more.DownloadQueueState
@@ -69,6 +69,8 @@ fun MoreScreen(
     onDownloadedOnlyChange: (Boolean) -> Unit,
     incognitoMode: Boolean,
     onIncognitoModeChange: (Boolean) -> Unit,
+    screenLookupActive: Boolean,
+    onScreenLookupChange: (Boolean) -> Unit,
     // SY -->
     moreTabKeys: List<String>,
     // SY <--
@@ -78,6 +80,7 @@ fun MoreScreen(
     onClickDataAndStorage: () -> Unit,
     onClickSettings: () -> Unit,
     onClickAbout: () -> Unit,
+    onClickNovelCategories: () -> Unit,
     onClickBatchAdd: () -> Unit,
     onClickUpdates: () -> Unit,
     onClickHistory: () -> Unit,
@@ -123,6 +126,15 @@ fun MoreScreen(
                     onCheckedChanged = onIncognitoModeChange,
                 )
             }
+            item {
+                SwitchPreferenceWidget(
+                    title = stringResource(MR.strings.screen_lookup_title),
+                    subtitle = stringResource(MR.strings.screen_lookup_more_summary),
+                    icon = Icons.Outlined.Search,
+                    checked = screenLookupActive,
+                    onCheckedChanged = onScreenLookupChange,
+                )
+            }
 
             item { HorizontalDivider() }
 
@@ -160,6 +172,13 @@ fun MoreScreen(
                     title = stringResource(MR.strings.categories),
                     icon = Icons.AutoMirrored.Outlined.Label,
                     onPreferenceClick = onClickCategories,
+                )
+            }
+            item {
+                TextPreferenceWidget(
+                    title = stringResource(MR.strings.label_novel_categories),
+                    icon = Icons.AutoMirrored.Outlined.Label,
+                    onPreferenceClick = onClickNovelCategories,
                 )
             }
             item {

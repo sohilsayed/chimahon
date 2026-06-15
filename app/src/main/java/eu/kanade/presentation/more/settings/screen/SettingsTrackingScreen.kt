@@ -104,6 +104,12 @@ object SettingsTrackingScreen : SearchableSettings {
                         onDismissRequest = { dialog = null },
                     )
                 }
+                is MangaBakaLoginDialog -> {
+                    MangaBakaLoginDialog(
+                        tracker = tracker,
+                        onDismissRequest = { dialog = null },
+                    )
+                }
                 is LogoutDialog -> {
                     TrackingLogoutDialog(
                         tracker = tracker,
@@ -190,6 +196,11 @@ object SettingsTrackingScreen : SearchableSettings {
                         login = { context.openInBrowser(BangumiApi.authUrl(), forceDefaultBrowser = true) },
                         logout = { dialog = LogoutDialog(trackerManager.bangumi) },
                     ),
+                    Preference.PreferenceItem.TrackerPreference(
+                        tracker = trackerManager.mangabaka,
+                        login = { dialog = MangaBakaLoginDialog(trackerManager.mangabaka) },
+                        logout = { dialog = LogoutDialog(trackerManager.mangabaka) },
+                    ),
                     Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.tracking_info)),
                 ),
             ),
@@ -206,6 +217,96 @@ object SettingsTrackingScreen : SearchableSettings {
                         } + listOf(Preference.PreferenceItem.InfoPreference(enhancedTrackerInfo))
                     ).toImmutableList(),
             ),
+        )
+    }
+
+    @Composable
+    private fun MangaBakaLoginDialog(
+        tracker: Tracker,
+        onDismissRequest: () -> Unit,
+    ) {
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+
+        var apiKey by remember { mutableStateOf(TextFieldValue(tracker.getPassword())) }
+        var processing by remember { mutableStateOf(false) }
+        var inputError by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = onDismissRequest,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(MR.strings.login_title, tracker.name),
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onDismissRequest) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = stringResource(MR.strings.action_close),
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    var hideKey by remember { mutableStateOf(true) }
+                    OutlinedTextField(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentType = ContentType.Password },
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        label = { Text("API Key") },
+                        trailingIcon = {
+                            IconButton(onClick = { hideKey = !hideKey }) {
+                                Icon(
+                                    imageVector = if (hideKey) {
+                                        Icons.Filled.Visibility
+                                    } else {
+                                        Icons.Filled.VisibilityOff
+                                    },
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        visualTransformation = if (hideKey) {
+                            PasswordVisualTransformation()
+                        } else {
+                            VisualTransformation.None
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                        ),
+                        singleLine = true,
+                        isError = inputError && !processing,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !processing && apiKey.text.isNotBlank(),
+                    onClick = {
+                        scope.launchIO {
+                            processing = true
+                            val result = checkLogin(
+                                context = context,
+                                tracker = tracker,
+                                username = "",
+                                password = apiKey.text,
+                            )
+                            inputError = !result
+                            if (result) onDismissRequest()
+                            processing = false
+                        }
+                    },
+                ) {
+                    val id = if (processing) MR.strings.logging_in else MR.strings.login
+                    Text(text = stringResource(id))
+                }
+            },
         )
     }
 
@@ -379,5 +480,9 @@ private data class LoginDialog(
 )
 
 private data class LogoutDialog(
+    val tracker: Tracker,
+)
+
+private data class MangaBakaLoginDialog(
     val tracker: Tracker,
 )

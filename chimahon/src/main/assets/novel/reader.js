@@ -1,7 +1,9 @@
 window.hoshiReader = {
     isRtl: false,
     continuousMode: false,
-    ttuRegexNegated: /[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\p{Radical}\p{Unified_Ideograph}]+/gimu,
+    // Character counting regex: keeps alphanumeric and CJK scripts (Japanese, Chinese, Korean).
+    // Added \p{Script=Hangul} to support Korean and clarified the CJK ideograph property.
+    ttuRegexNegated: /[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\p{Radical}\p{Unified_Ideograph}\p{Script=Hangul}]+/gimu,
 
     isVertical: function() {
         return window.getComputedStyle(document.body).writingMode === "vertical-rl";
@@ -24,6 +26,20 @@ window.hoshiReader = {
         var pw = window.innerWidth;
         var vOver = el.scrollHeight - ph > 1;
         var hOver = el.scrollWidth - pw > 1;
+
+        if (!this.continuousMode && !this.isVertical()) {
+            var x = window.scrollX;
+            var maxX = el.scrollWidth - pw;
+            if (direction === 'forward' && x + pw <= maxX + 1) {
+                window.scrollTo(x + pw, 0);
+                return 'scrolled';
+            }
+            if (direction === 'backward' && x > 1) {
+                window.scrollTo(Math.max(0, x - pw), 0);
+                return 'scrolled';
+            }
+            return 'limit';
+        }
 
         if (!this._logged) {
             this._logged = true;
@@ -250,7 +266,7 @@ window.hoshiReader = {
 
         const text = node.textContent;
         const caret = range.startOffset;
-        
+
         // Try precise hit, then slight left/right offsets to handle character edges
         for (const offset of [caret, caret - 1]) {
             if (offset < 0 || offset >= text.length) continue;
@@ -343,28 +359,32 @@ window.hoshiReader = {
 
         const container = this.findParagraph(hit.node) || document.body;
         const walker = this.createWalker(container);
-        const maxLength = 40;
 
         let word = '';
         let node = hit.node;
         let offset = hit.offset;
         let ranges = [];
+        let reachedSentenceBreak = false;
 
         walker.currentNode = node;
-        while (word.length < maxLength && node) {
+        while (!reachedSentenceBreak && node) {
             const content = node.textContent;
             let start = offset;
-            while (offset < content.length && word.length < maxLength) {
+            while (offset < content.length) {
                 const char = content[offset];
-                if (this.isScanBoundary(char)) break;
+                if (this.sentenceDelimiters.includes(char)) {
+                    reachedSentenceBreak = true;
+                    break;
+                }
                 word += char;
                 offset++;
             }
             if (offset > start) ranges.push({ node: node, start: start, end: offset });
-            if (offset < content.length || word.length >= maxLength) break;
+            if (reachedSentenceBreak || offset < content.length) break;
             node = walker.nextNode();
             offset = 0;
         }
+        word = word.trim();
 
         if (word.length > 0) {
             this.clearSelection();
@@ -381,11 +401,11 @@ window.hoshiReader = {
                 const range = document.createRange();
                 range.setStart(first.node, first.start);
                 range.setEnd(first.node, first.start + 1); // Only 1 character
-                
+
                 const rects = Array.from(range.getClientRects());
-                const rect = rects.find(r => clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) 
+                const rect = rects.find(r => clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom)
                             || range.getBoundingClientRect();
-                
+
                 minX = rect.left;
                 minY = rect.top;
                 maxX = rect.right;
@@ -393,18 +413,7 @@ window.hoshiReader = {
             }
 
             if (window.HoshiAndroid && window.HoshiAndroid.onTextSelected) {
-                window.HoshiAndroid.onTextSelected(word, '', minX, minY, maxX - minX, maxY - minY);
-
-                const capturedNode = hit.node;
-                const capturedOffset = hit.offset;
-                const self = this;
-                setTimeout(function() {
-                    if (window.HoshiAndroid && window.HoshiAndroid.onSentenceReady) {
-                        const sentence = self.getSentence(capturedNode, capturedOffset);
-                        window.HoshiAndroid.onSentenceReady(sentence);
-                    }
-                }, 0);
-
+                window.HoshiAndroid.onTextSelected(word, sentence, minX, minY, maxX - minX, maxY - minY);
                 return true;
             }
         }
@@ -435,6 +444,62 @@ window.hoshiReader = {
             highlights.push(range);
         }
         CSS.highlights.set('hoshi-selection', new Highlight(...highlights));
+    },
+
+    /**
+     * Return selection rects as JSON array [{x,y,width,height}, ...]
+     * for painting in a native Compose overlay.  Falls back to CSS.highlight
+     * if the bridge is not available.
+     */
+    getSelectionRects: function(charCount, startOffset) {
+        if (!this.selectionRanges || !this.selectionRanges.length) return [];
+        if (startOffset === undefined) startOffset = 0;
+        var remaining = startOffset;
+        var skipRange = -1;
+        var skipEnd = 0;
+
+        // Skip `startOffset` characters through the ranges
+        for (var i = 0; i < this.selectionRanges.length; i++) {
+            var r = this.selectionRanges[i];
+            var avail = r.end - r.start;
+            if (remaining < avail) {
+                skipRange = i;
+                skipEnd = r.start + remaining;
+                break;
+            }
+            remaining -= avail;
+        }
+        if (skipRange < 0) return [];
+
+        // Now build ranges from the skip point, limited to charCount
+        var ranges = [];
+        remaining = charCount;
+        for (var i = skipRange; i < this.selectionRanges.length; i++) {
+            var r = this.selectionRanges[i];
+            if (remaining <= 0) break;
+            var start = (i === skipRange) ? skipEnd : r.start;
+            var end = start;
+            while (end < r.end && remaining > 0) {
+                var ch = String.fromCodePoint(r.node.textContent.codePointAt(end));
+                end += ch.length;
+                remaining--;
+            }
+            var range = document.createRange();
+            range.setStart(r.node, start);
+            range.setEnd(r.node, end);
+            ranges.push(range);
+        }
+
+        var rects = [];
+        for (var ri = 0; ri < ranges.length; ri++) {
+            var clientRects = ranges[ri].getClientRects();
+            for (var ci = 0; ci < clientRects.length; ci++) {
+                var cr = clientRects[ci];
+                rects.push({x: cr.x, y: cr.y, width: cr.width, height: cr.height});
+            }
+        }
+
+        return rects;
     },
 
     clearSelection: function() {

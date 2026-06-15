@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.common.io.Files.append
 import kotlinx.coroutines.delay
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
 
@@ -49,6 +51,7 @@ fun ReaderWebView(
     onSentenceReady: (sentence: String) -> Unit = {},
     onDismissPopupRequested: () -> Unit = {},
     onInternalLinkClicked: (url: String) -> Unit = {},
+    onSelectionRectsReceived: ((String) -> Unit)? = null,
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -61,7 +64,10 @@ fun ReaderWebView(
 
     val isFirstContinuous = remember { mutableStateOf(true) }
     LaunchedEffect(continuousMode) {
-        if (isFirstContinuous.value) { isFirstContinuous.value = false; return@LaunchedEffect }
+        if (isFirstContinuous.value) {
+            isFirstContinuous.value = false
+            return@LaunchedEffect
+        }
         bridge.chapterUrl?.let { url ->
             bridge.send(WebViewCommand.LoadChapter(url, bridge.progress))
         }
@@ -104,6 +110,7 @@ fun ReaderWebView(
                 onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
             ).apply {
+                setSelectionRectsCallback(onSelectionRectsReceived)
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
                 settings.allowFileAccessFromFileURLs = true
@@ -179,8 +186,11 @@ fun ReaderWebView(
                         view: WebView?,
                         detail: android.webkit.RenderProcessGoneDetail?,
                     ): Boolean {
-                        val reason = if (detail?.didCrash() == true) "WebView crashed"
-                        else "WebView killed by system (OOM)"
+                        val reason = if (detail?.didCrash() == true) {
+                            "WebView crashed"
+                        } else {
+                            "WebView killed by system (OOM)"
+                        }
                         Log.e("ReaderWebView", "onRenderProcessGone: $reason")
                         post {
                             onLoadFailed("Renderer died ($reason). Try disabling hardware acceleration or 'Avoid page breaks'.")
@@ -208,6 +218,7 @@ fun ReaderWebView(
             v.readerSettings = readerSettings
             v.focusMode = focusMode
             v.isPopupActive = isPopupActive
+            v.setSelectionRectsCallback(onSelectionRectsReceived)
             v.setBackgroundColor(readerSettings.backgroundColor)
 
             if (pendingCommands.isEmpty()) return@AndroidView
@@ -271,6 +282,27 @@ fun ReaderWebView(
                     is WebViewCommand.HighlightSelection -> {
                         v.evaluateJavascript("if(window.hoshiReader && window.hoshiReader.highlightSelection) { window.hoshiReader.highlightSelection(${command.charCount}); }", null)
                     }
+                    is WebViewCommand.GetSelectionRects -> {
+                        v.evaluateJavascript("(function() { try { return window.hoshiReader.getSelectionRects(${command.charCount}, ${command.startOffset}); } catch(e) { return []; } })()") { result ->
+                            val json = result ?: "[]"
+                            try {
+                                val loc = IntArray(2)
+                                v.getLocationOnScreen(loc)
+                                val scale = v.scale.coerceAtLeast(0.1f)
+                                val arr = org.json.JSONArray(json)
+                                for (i in 0 until arr.length()) {
+                                    val obj = arr.getJSONObject(i)
+                                    obj.put("x", obj.getDouble("x") * scale + loc[0])
+                                    obj.put("y", obj.getDouble("y") * scale + loc[1])
+                                    obj.put("width", obj.getDouble("width") * scale)
+                                    obj.put("height", obj.getDouble("height") * scale)
+                                }
+                                onSelectionRectsReceived?.invoke(arr.toString())
+                            } catch (_: Exception) {
+                                onSelectionRectsReceived?.invoke(json)
+                            }
+                        }
+                    }
                     else -> {}
                 }
             }
@@ -328,11 +360,11 @@ private class ReaderAndroidWebView(
 
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
         super.onScrollChanged(l, t, oldl, oldt)
-        
+
         if (isPopupActive) {
             onDismissPopupRequested()
         }
-        
+
         if (continuousMode && !isImageOnly) {
             val now = System.currentTimeMillis()
             if (now - lastProgressReportTime > 1000L) {
@@ -428,8 +460,13 @@ private class ReaderAndroidWebView(
         setBackgroundColor(readerSettings.backgroundColor)
     }
 
+    /** Set callback for selection rects from JS (used by Compose highlight overlay). */
+    fun setSelectionRectsCallback(callback: ((String) -> Unit)?) {
+        jsBridge.onSelectionRectsCallback = callback
+    }
+
     fun loadChapter(url: String) {
-        Log.d("ReaderWebView", "loadChapter: url=$url size=${width}x${height}")
+        Log.d("ReaderWebView", "loadChapter: url=$url size=${width}x$height")
         currentUrl = url
 
         if (width <= 0 || height <= 0) {
@@ -456,8 +493,9 @@ private class ReaderAndroidWebView(
         try {
             if (url.startsWith("file://") || !url.contains("://")) {
                 val file = File(url.removePrefix("file://"))
-                if (file.exists()) loadUrl(url)
-                else {
+                if (file.exists()) {
+                    loadUrl(url)
+                } else {
                     Log.e("ReaderWebView", "File not found: $url")
                     onLoadFailed("File not found: $url")
                 }
@@ -491,16 +529,12 @@ private class ReaderAndroidWebView(
             appendLine("html, body { writing-mode: horizontal-tb !important; }")
         }
 
+        appendLine("html, body { margin: 0 !important; padding: 0 !important; }")
         appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
         appendLine("p { margin-block-start: 0 !important; margin-block-end: ${readerSettings.paragraphSpacing}em !important; }")
         appendLine("body * { font-family: inherit !important; }")
-        appendLine("img.hoshi-image-block, svg.hoshi-image-block { position: static !important; }")
+        appendLine("img.block-img, svg.block-img { position: static !important; }")
     }
-
-    // Safe fallback for inline / gaiji images — keeps them from overflowing their container
-    // but doesn't fight the per-mode block-img rules injected below.
-    private fun buildImageCSS(): String =
-        "img { max-width: 100% !important; height: auto !important; }"
 
     private fun paragraphSpacingJS(settings: ReaderSettings): String = """
         var paragraphStyle = document.getElementById('hoshi-paragraph-spacing-style');
@@ -513,7 +547,7 @@ private class ReaderAndroidWebView(
     """.trimIndent()
 
     fun injectReader() {
-        Log.d("ReaderWebView", "injectReader: ${width}x${height} continuous=$continuousMode imageOnly=$isImageOnly")
+        Log.d("ReaderWebView", "injectReader: ${width}x$height continuous=$continuousMode imageOnly=$isImageOnly")
 
         if (height <= 0 || width <= 0) {
             post { injectReader() }
@@ -643,13 +677,13 @@ private class ReaderAndroidWebView(
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
-                // Usable content area inside the padded wrapper.
-                // Images are constrained to at most one viewport's worth of content area
-                // so they don't dominate the scroll and overflow the padding.
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad);
-                document.documentElement.style.setProperty('--hoshi-image-max-width', contentW + 'px');
-                document.documentElement.style.setProperty('--hoshi-image-max-height', contentH + 'px');
+                // Image max dimensions at 90vw.
+                // Height is full viewport (no vertical padding subtracted from images).
+                var imgMaxW = iw;
+                var imgMaxH = Math.max(1, ih);
+                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
+                document.documentElement.style.setProperty('--reader-h-pad', hPad + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -658,34 +692,42 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Continuous-mode image rules:
-                // .hoshi-image-block  → large images: block-level, centered, constrained
-                // everything else     → inline images: stay in text flow, just capped at max-width
-                var contImgStyle = document.getElementById('hoshi-cont-img-style');
+                // Full-page image rules:
+                var contImgStyle = document.getElementById('reader-cont-img-style');
                 if (contImgStyle) contImgStyle.remove();
                 contImgStyle = document.createElement('style');
-                contImgStyle.id = 'hoshi-cont-img-style';
+                contImgStyle.id = 'reader-cont-img-style';
                 contImgStyle.textContent = [
-                    'img.hoshi-image-block, svg.hoshi-image-block {',
-                    '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
-                    '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
+                    '#hoshi-content-wrapper .block-img-container {',
+                    '  margin-left: calc(-1 * var(--reader-h-pad, 0px)) !important;',
+                    '  margin-right: calc(-1 * var(--reader-h-pad, 0px)) !important;',
+                    '  width: var(--reader-image-max-width, 95vw) !important;',
+                    '  text-align: center !important;',
+                    '}',
+                    'img.block-img, svg.block-img {',
+                    '  max-width: var(--reader-image-max-width, 95vw) !important;',
+                    '  max-height: var(--reader-image-max-height, 95vh) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  display: block !important;',
-                    '  margin-left: auto !important;',
-                    '  margin-right: auto !important;',
-                    '  margin-top: 12px !important;',
-                    '  margin-bottom: 12px !important;',
+                    '  margin: 0 auto !important;',
                     '  object-fit: contain !important;',
                     '}',
-                    'img:not(.hoshi-image-block), svg:not(.hoshi-image-block) {',
-                    '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
+                    'img:not(.block-img), svg:not(.block-img) {',
+                    '  max-width: min(var(--reader-image-max-width, 95vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  min-width: 1em !important;',
                     '  vertical-align: middle !important;',
                     '  display: inline-block !important;',
-                    '}'
+                    '}',
+                    'img.gaiji, img.gaiji-line {',
+                    '  height: 1em !important;',
+                    '  width: auto !important;',
+                    '  vertical-align: baseline !important;',
+                    '  margin: 0 !important;',
+                    '  padding: 0 !important;',
+                    '}',
                 ].join(' ');
                 document.head.appendChild(contImgStyle);
 
@@ -707,13 +749,18 @@ private class ReaderAndroidWebView(
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
+                b.style.setProperty('margin', '0', 'important');
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
                 ${paragraphSpacingJS(readerSettings)}
-                ${if (readerSettings.layoutAdvanced) """
+                ${if (readerSettings.layoutAdvanced) {
+            """
                 wrapper.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
-                """ else ""}
+                """
+        } else {
+            ""
+        }}
                 wrapper.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
 
                 ${fontJS(readerSettings, "wrapper")}
@@ -739,7 +786,7 @@ private class ReaderAndroidWebView(
                 window.hoshiReader.registerCopyText();
                 window.hoshiReader.continuousMode = true;
 
-                // Classify images as .hoshi-image-block (large, standalone) or leave inline.
+                // Classify large non-gaiji media as block images.
                 // Wait for all images to finish loading before classifying and restoring progress —
                 // late-loading images shift element positions and cause scrollIntoView() to land
                 // at the wrong offset.
@@ -752,22 +799,18 @@ private class ReaderAndroidWebView(
                             if (!isGaiji) {
                                 var isLarge = false;
                                 if (tag === 'img') {
-                                    isLarge = el.naturalWidth > 300 || el.naturalHeight > 300;
+                                    isLarge = el.naturalWidth > 256 || el.naturalHeight > 256;
                                 } else if (tag === 'svg') {
                                     var vb = el.viewBox && el.viewBox.baseVal;
                                     var w = vb ? vb.width : (el.width ? el.width.baseVal.value : 0);
                                     var h = vb ? vb.height : (el.height ? el.height.baseVal.value : 0);
-                                    isLarge = w > 300 || h > 300;
+                                    isLarge = w > 256 || h > 256;
                                 }
                                 if (isLarge) {
-                                    // Only block-promote if no text siblings in parent
-                                    var isInlineContext = Array.from(el.parentElement?.childNodes || []).some(function(n) {
-                                        return n !== el &&
-                                            ((n.nodeType === 3 && n.textContent.trim().length > 0) ||
-                                             (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
-                                              n.textContent.trim().length > 0));
-                                    });
-                                    if (!isInlineContext) el.classList.add('hoshi-image-block');
+                                    el.classList.add('block-img');
+                                    if (el.parentElement) {
+                                        el.parentElement.classList.add('block-img-container');
+                                    }
                                 }
                             }
                             resolve();
@@ -823,17 +866,12 @@ private class ReaderAndroidWebView(
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
-                // Usable content area inside the padded wrapper.
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad);
-
-                // Image sizing: constrained to the usable content area.
-                // bottomOverlap reserves trailing-edge space so the image doesn't
-                // bleed into the next column (matches Hoshi's bottomOverlapPx).
-                var imageMaxW = Math.max(1, contentW);
-                var imageMaxH = Math.max(1, contentH - $bottomOverlapPx);
-                document.documentElement.style.setProperty('--hoshi-image-max-width', imageMaxW + 'px');
-                document.documentElement.style.setProperty('--hoshi-image-max-height', imageMaxH + 'px');
+                // Image max dimensions at 90vw.
+                // Height is viewport less bottomOverlap (for vertical-rl column bleed).
+                var imgMaxW = iw;
+                var imgMaxH = Math.max(1, ih - $bottomOverlapPx);
+                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -842,31 +880,37 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Block-image rules: large images/SVGs classified as .hoshi-image-block by JS below.
-                var blockImgStyle = document.getElementById('hoshi-block-img-style');
+                var blockImgStyle = document.getElementById('reader-block-img-style');
                 if (blockImgStyle) blockImgStyle.remove();
                 blockImgStyle = document.createElement('style');
-                blockImgStyle.id = 'hoshi-block-img-style';
+                blockImgStyle.id = 'reader-block-img-style';
                 blockImgStyle.textContent = [
-                    'img.hoshi-image-block, svg.hoshi-image-block {',
-                    '  max-width: var(--hoshi-image-max-width, 95vw) !important;',
-                    '  max-height: var(--hoshi-image-max-height, 95vh) !important;',
+                    'img.block-img, svg.block-img {',
+                    '  max-width: var(--reader-image-max-width, 95vw) !important;',
+                    '  max-height: var(--reader-image-max-height, 95vh) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  display: block !important;',
-                    '  margin: auto !important;',
+                    '  margin: 0 auto !important;',
                     '  break-inside: avoid !important;',
                     '  -webkit-column-break-inside: avoid !important;',
                     '  object-fit: contain !important;',
                     '}',
-                    'img:not(.hoshi-image-block), svg:not(.hoshi-image-block) {',
-                    '  max-width: min(var(--hoshi-image-max-width, 95vw), 100%) !important;',
+                    'img:not(.block-img), svg:not(.block-img) {',
+                    '  max-width: min(var(--reader-image-max-width, 95vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  min-width: 1em !important;',
                     '  vertical-align: middle !important;',
                     '  display: inline-block !important;',
-                    '}'
+                    '}',
+                    'img.gaiji, img.gaiji-line {',
+                    '  height: 1em !important;',
+                    '  width: auto !important;',
+                    '  vertical-align: baseline !important;',
+                    '  margin: 0 !important;',
+                    '  padding: 0 !important;',
+                    '}',
                 ].join(' ');
                 document.head.appendChild(blockImgStyle);
 
@@ -888,16 +932,22 @@ private class ReaderAndroidWebView(
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
+                b.style.setProperty('margin', '0', 'important');
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
-                ${paragraphSpacingJS(readerSettings)}
-                ${if (readerSettings.layoutAdvanced) """
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
+                ${paragraphSpacingJS(readerSettings)}
+                ${if (readerSettings.layoutAdvanced) {
+            """
                 wrapper.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
-                """ else ""}
+                """
+        } else {
+            ""
+        }}
                 wrapper.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
 
-                ${if (readerSettings.avoidPageBreak) """
+                ${if (readerSettings.avoidPageBreak) {
+            """
                 var abStyle = document.createElement('style');
                 abStyle.textContent = [
                     'img, svg, figure, table, tr, td, th,',
@@ -908,7 +958,10 @@ private class ReaderAndroidWebView(
                     '}'
                 ].join(' ');
                 document.head.appendChild(abStyle);
-                """ else ""}
+                """
+        } else {
+            ""
+        }}
 
                 ${fontJS(readerSettings, "wrapper")}
                 ${themeJS(bg, tc)}
@@ -945,7 +998,7 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader.registerCopyText();
 
-                // Classify images and SVGs as .hoshi-image-block if large (naturalWidth/Height > 300).
+                // Treat images/SVGs over 256px as block media.
                 // Gaiji inline glyphs are explicitly excluded. Classification happens after images
                 // load so naturalWidth is available. Then a 50ms settle lets column layout stabilise
                 // before restoreProgress() snaps to the correct page.
@@ -958,22 +1011,18 @@ private class ReaderAndroidWebView(
                             if (!isGaiji) {
                                 var isLarge = false;
                                 if (tag === 'img') {
-                                    isLarge = el.naturalWidth > 300 || el.naturalHeight > 300;
+                                    isLarge = el.naturalWidth > 256 || el.naturalHeight > 256;
                                 } else if (tag === 'svg') {
                                     var vb = el.viewBox && el.viewBox.baseVal;
                                     var w = vb ? vb.width : (el.width ? el.width.baseVal.value : 0);
                                     var h = vb ? vb.height : (el.height ? el.height.baseVal.value : 0);
-                                    isLarge = w > 300 || h > 300;
+                                    isLarge = w > 256 || h > 256;
                                 }
                                 if (isLarge) {
-                                    // Only block-promote if no text siblings in parent
-                                    var isInlineContext = Array.from(el.parentElement?.childNodes || []).some(function(n) {
-                                        return n !== el &&
-                                            ((n.nodeType === 3 && n.textContent.trim().length > 0) ||
-                                             (n.nodeType === 1 && !['BR','WBR'].includes(n.tagName) &&
-                                              n.textContent.trim().length > 0));
-                                    });
-                                    if (!isInlineContext) el.classList.add('hoshi-image-block');
+                                    el.classList.add('block-img');
+                                    if (el.parentElement) {
+                                        el.parentElement.classList.add('block-img-container');
+                                    }
                                 }
                             }
                             resolve();
@@ -987,7 +1036,19 @@ private class ReaderAndroidWebView(
                     });
                 });
                 Promise.all(imagePromises)
-                    .then(function() { return new Promise(function(r) { setTimeout(r, 50); }); })
+                    .then(function() {
+                        // If page has only block images (no text), remove horizontal padding
+                        // so images center cleanly without multicol clipping.
+                        var hasBlockImg = wrapper.querySelector('.block-img-container') !== null;
+                        var hasText = wrapper.innerText.trim().length > 0;
+                        if (hasBlockImg && !hasText) {
+                            wrapper.style.setProperty('padding', '0', 'important');
+                            wrapper.style.setProperty('display', 'flex', 'important');
+                            wrapper.style.setProperty('align-items', 'center', 'important');
+                            wrapper.style.setProperty('justify-content', 'center', 'important');
+                        }
+                        return new Promise(function(r) { setTimeout(r, 50); });
+                    })
                     .then(function() {
                         window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
                     });
@@ -1032,15 +1093,20 @@ private class ReaderAndroidWebView(
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
+                b.style.setProperty('margin', '0', 'important');
 
                 wrapper.style.setProperty('font-size', '${settings.fontSize}px', 'important');
                 b.style.setProperty('font-size', '${settings.fontSize}px', 'important');
 
                 wrapper.style.setProperty('line-height', '${settings.lineHeight}', 'important');
                 ${paragraphSpacingJS(settings)}
-                ${if (settings.layoutAdvanced) """
+                ${if (settings.layoutAdvanced) {
+            """
                 wrapper.style.setProperty('letter-spacing', '${settings.characterSpacing}em', 'important');
-                """ else ""}
+                """
+        } else {
+            ""
+        }}
 
                 wrapper.style.setProperty('text-align', ${if (settings.justifyText) "'justify'" else "'left'"}, 'important');
 
@@ -1193,6 +1259,9 @@ private class ReaderJavascriptBridge(
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
 ) {
+    /** Callback for selection rects from JS. Set by the hosting Activity. */
+    var onSelectionRectsCallback: ((String) -> Unit)? = null
+
     @JavascriptInterface
     fun restoreCompleted() {
         onRestoreCompleted()
@@ -1211,6 +1280,11 @@ private class ReaderJavascriptBridge(
     @JavascriptInterface
     fun onSentenceReady(sentence: String) {
         onSentenceReadyCallback.invoke(sentence)
+    }
+
+    @JavascriptInterface
+    fun onSelectionRects(json: String) {
+        onSelectionRectsCallback?.invoke(json)
     }
 }
 
@@ -1246,18 +1320,23 @@ private fun jsEscape(value: String): String = value
 private fun fontJS(settings: ReaderSettings, wrapperVar: String): String = buildString {
     val fontUrl = settings.fontUrl
     if (!fontUrl.isNullOrBlank()) {
-        appendLine("""
+        appendLine(
+            """
             var fontFace = document.createElement('style');
             fontFace.textContent = "@font-face { font-family: 'HoshiCustomFont'; src: url('${jsEscape(fontUrl)}'); }";
             document.head.appendChild(fontFace);
             document.fonts.ready.then(function() {
                 $wrapperVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
             });
-        """.trimIndent())
+            """.trimIndent(),
+        )
     } else {
         var ff = settings.selectedFont
-        if (ff == "System Serif") ff = "serif"
-        else if (ff == "System Sans-Serif") ff = "sans-serif"
+        if (ff == "System Serif") {
+            ff = "serif"
+        } else if (ff == "System Sans-Serif") {
+            ff = "sans-serif"
+        }
         appendLine("$wrapperVar.style.setProperty('font-family', '${jsEscape(ff)}', 'important');")
     }
 }
@@ -1268,7 +1347,8 @@ private fun themeJS(bg: String, tc: String): String = """
     document.documentElement.style.setProperty('background-color', '$bg', 'important');
 """.trimIndent()
 
-private fun furiganaJS(settings: ReaderSettings): String = if (settings.hideFurigana) """
+private fun furiganaJS(settings: ReaderSettings): String = if (settings.hideFurigana) {
+    """
     var furiganaStyle = document.getElementById('hoshi-furigana-style');
     if (!furiganaStyle) {
         furiganaStyle = document.createElement('style');
@@ -1276,21 +1356,24 @@ private fun furiganaJS(settings: ReaderSettings): String = if (settings.hideFuri
         furiganaStyle.textContent = 'rt { display: none !important; }';
         document.head.appendChild(furiganaStyle);
     }
-""".trimIndent() else """
+    """.trimIndent()
+} else {
+    """
     var furiganaStyle = document.getElementById('hoshi-furigana-style');
     if (furiganaStyle) furiganaStyle.remove();
-""".trimIndent()
+    """.trimIndent()
+}
 
 private fun ReaderSettings.resolvedBgHex(): String = when (theme) {
-    "dark"  -> "#1a1a1a"
+    "dark" -> "#1a1a1a"
     "sepia" -> "#f4ecd8"
     "light" -> "#ffffff"
-    else    -> "#${String.format("%06X", 0xFFFFFF and backgroundColor)}"
+    else -> "#${String.format("%06X", 0xFFFFFF and backgroundColor)}"
 }
 
 private fun ReaderSettings.resolvedTextHex(): String = when (theme) {
-    "dark"  -> "#ffffff"
+    "dark" -> "#ffffff"
     "sepia" -> "#5b4636"
     "light" -> "#000000"
-    else    -> "#${String.format("%06X", 0xFFFFFF and textColor)}"
+    else -> "#${String.format("%06X", 0xFFFFFF and textColor)}"
 }

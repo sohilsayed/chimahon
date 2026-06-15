@@ -7,23 +7,35 @@
 
 [![GitHub downloads](https://img.shields.io/github/downloads/sohilsayed/chimahon/latest/total?label=Latest%20Downloads&labelColor=27303D&color=0D1111&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/sohilsayed/chimahon/releases/latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/sohilsayed/chimahon/total?label=Total%20Downloads&labelColor=27303D&color=0D1111&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/sohilsayed/chimahon/releases)
-[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white&label=)](https://discord.gg/jr4VEZTtpM)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white&label=)](https://discord.gg/Ak2sW9Nvr9)
 
 ---
 
 Chimahon is a specialized Android reader designed for language learners and immersion enthusiasts. It extends the powerful core of **Mihon/Komikku** with integrated tools for dictionary lookup, OCR-assisted text capture, and seamless flashcard creation for vocabulary mining.
+
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="./.github/readme-images/novel.png" width="32%" />
+  <img src="./.github/readme-images/popup-manga.png" width="32%" />
+  <img src="./.github/readme-images/dict-tab.png" width="32%" />
+</p>
 
 ## 🚀 Key Immersion Features
 
 ### 📖 Novel & Manga Support
 - **Novel Reader**: Dedicated reader for e-books with integrated dictionary lookup. Based on [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader).
 - **Manga Reader**: Native reading experience with support for all major online and local sources.
+- **Local OCR**: High-performance, on-device text recognition — no internet connection required.
 - **.mokuro Support**: Native integration for reading `.mokuro` formatted manga files with pre-rendered OCR overlays.
 
 ### 🔍 Native Dictionary Lookup
 - **Dictionary Tab**: Import and manage multiple dictionary files directly in-app.
-- **Recursive Lookups**: Search within definitions to clarify complex terms.
-- **Pitch Accent**: Native support for visualizing pitch accent patterns.
+- **Multi-Language Support**: Full support for Japanese, Chinese, Korean, and more.
+- **Recursive Lookups**: Effortlessly search within definitions to clarify complex terms.
+- **Slick Dictionary Popup**: A modern, customizable lookup interface with support for custom fonts, themes, and recursive searches.
+- **E-Ink Optimized**: High-contrast mode designed specifically for e-paper devices.
+- **Pitch Accent**: Native support for visualizing Japanese pitch accent patterns.
 
 ### 🎴 Anki Integration
 - **Direct Mining**: Create Anki cards instantly from lookup results while reading.
@@ -36,6 +48,10 @@ Chimahon is a specialized Android reader designed for language learners and imme
 ## 🛠️ Core Features (Inherited from Upstream)
 
 Chimahon retains all the features of **Komikku** and **Mihon**:
+
+<p align="center">
+  <img src="./.github/readme-images/screens.png" alt="komikku Screenshots" width="100%"/>
+</p>
 
 - **Massive Source Support**: Access thousands of manga via community-made extensions.
 - **Suggestions**: Discover related titles directly within the app.
@@ -57,7 +73,7 @@ Chimahon retains all the features of **Komikku** and **Mihon**:
 ## 🤝 Contributing & Support
 
 - **Bugs/Requests**: Please check the [Changelog](./CHANGELOG.md) and open an [Issue](https://github.com/sohilsayed/chimahon/issues).
-- **Discord**: Join our community for help and discussion: [Join Discord](https://discord.gg/jr4VEZTtpM)
+- **Discord**: Join our community for help and discussion: [Join Discord](https://discord.gg/Ak2sW9Nvr9)
 - **Contributing**: Pull requests are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 ### Credits & Acknowledgments

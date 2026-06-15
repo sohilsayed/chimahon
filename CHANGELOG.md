@@ -4,6 +4,254 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.9.3]
+
+### Fixed
+- OCR popup positioning on edge-to-edge displays
+- Japanese punctuation alignment in vertical OCR text
+- MangaBaka API rate limiting and retry logic for 429 errors
+- Anki pitch accent export CSS override conflict
+- Android 16 compatibility for screen capture
+
+## [v1.9.2]
+
+### Added
+- Batch tracker add flow in library
+- Screen lookup tile (Quick Settings) for OCR
+- Expanded Yomitan Anki export markers (dynamic frequency, part-of-speech, pitch-accent-graphs)
+- E-Ink mode in reader
+
+### Fixed
+- Fix OOM during OCR model downloads
+- Novel reader horizontal padding and gaiji image rendering
+- Yomitan Anki export markers and media alignment
+- Error 500 in mangabaka tracker
+- Improved dictionary structured content display for Yomitan dictionaries
+- Dictionary CSS style isolation and recursive lookup exclusions
+
+## [v1.9.1]
+
+### Added
+- Screen overlay and context menu text lookup
+- Sentence-furigana Anki markers
+- Average frequency display in dictionary popup
+- Two-finger OCR toggle gesture
+- Mokuro support in downloads
+- Novel reader custom theme management
+- TTU sync
+- Lapis as default Anki note type
+
+### Changed
+- Separate OCR box scale axes
+- Strip justify alignment from imported EPUB CSS
+- Skip OCR for mismatched source languages
+- Bring back OCR outline border
+- Increased zero opacity text visibility
+- Novel tracking indicator location
+### Fixed
+- decoder for Anki screenshots
+- Dictionary header selection toggle
+- Accidental OCR selection panel trigger on swipe
+- Korean deinflection jamo mismatches
+- Dictionary CSS scope leak
+- Image sizing
+- Mokuro CBZ page matching
+
+## [v1.9.0]
+
+### Added
+- OCR selection panel triggered with long-press to select and copy text
+- OCR progress HUD
+- Configurable OCR box opacity for inactive text blocks
+- Support for more image formats in OCR: AVIF, HEIF, HEIC, JXL
+
+### Changed
+- Dictionary popup WebView warming refactored for lighter reader startup
+- Improved dictionary popup rendering performance
+- MangaBaka API updated with improved date-time formatting
+
+### Fixed
+- Clipped webtoon page rendering
+- Novel category assignments lost during sync merge
+
+## [v1.8.5]
+
+### Added
+- E-Ink swipe: instant page transitions
+
+### Changed
+- Replaced async OCR prefetch with structured scan and page-ready guard
+- Updated hoshidicts (normalization processors, freq sorting)
+
+### Fixed
+- Reader crash and startup workaround
+- Deduplicate manga page stats to prevent recount on back-navigation
+- Preserve novel category assignments during sync merge
+- Revert problematic NPE reader fixes
+- General reader bug fixes (page viewer, Webtoon viewer)
+
+## [v1.8.3]
+
+### Added
+- Per-manga stats sheet with session/today/all-time tracking
+- Lower sensitivity swipe setting for E-ink
+
+### Changed
+- Separate paginated scrolling from e-ink mode in dictionary popup
+
+### Fixed
+- Prevent NPE on reader startup (Android 16 dispatchAttachedToWindow)
+- Correct manga sentence export offset in Anki export
+- Fix furigana spacing in Anki export
+- Remove inline style overrides on table elements in Anki export
+
+## [v1.8.2]
+
+### Fixed
+- Dictionary Reorder
+
+## [v1.8.1]
+
+### Added
+- Mangabaka tracker integration
+- Dictionary display name update
+- Per-dictionary update notifications
+
+### Changed
+- Dictionary now uses directory names as stable keys
+
+### Fixed
+- Dictionary import UI
+- Yomitan glossary HTML structure: always `<ol><li>`
+## [v1.8.0]
+
+### Added
+- Dictionary auto-update 
+- Dictionary type categorization.
+- Paginated scrolling and improved E‑Ink border for the popup.
+- Local OCR engine integration.
+- Multi-file EPUB import support for novels.
+- Arrow-key navigation and HUD/system-bar parity in the novel reader.
+- Refactor and improve novel stats.
+
+### Changed
+- Novel categories aligned with manga categories.
+- Faster word-audio database import.
+- Pass OCR language locale to the manga text box for correct CJK rendering.
+
+### Fixed
+- Defer viewer visibility to avoid NPE crashes.
+- Prevent the WebView from closing the keyboard on the Dictionary tab.
+- Fix {selected-glossary} CSS for E‑Ink.
+
+## [v1.7.7]
+
+### Added
+- popup theme setting
+- novel and manga library parity — pull-to-refresh, debounce, multi-category
+
+### Changed
+
+- Novel library UI aligned with manga library.
+- Lookup performance optimizations.
+
+### Fixed
+- popup not clearing old lookups.
+- fix manga stats
+
+## [v1.7.6]
+
+### Fixed
+- Word audio continuing to play after dictionary popup is dismissed.
+- Word audio playing twice on lookup with autoplay enabled.
+
+
+## [v1.7.5]
+
+### Added
+- AnkiDroid sync trigger on card creation.
+
+### Changed
+- Novel library UI aligned with manga library.
+- Improved popup E-Ink mode.
+- Lookup performance optimizations.
+
+### Fixed
+- Dictionary popup flicker and scroll delay.
+- Edge-to-edge text at 0% padding in novel reader.
+- Black background crop detection.
+- Pitch accent ordering in popup and Anki exports.
+- Glossary fallback when no dictionary selected.
+- EPUB line-height stripping in CSS cleaning.
+- Paged horizontal margins respecting line-height setting.
+
+
+## [v1.7.3]
+
+### Fixed
+- Korean text handling for TTSU and dictionary deinflection.
+
+
+## [v1.7.1]
+
+### Added
+- High-contrast E-ink mode for the dictionary popup.
+- Active profile selection in the Dictionary tab.
+- Advanced collapsible dictionary behavior in lookups.
+- Ability to rename dictionaries.
+
+### Changed
+- Reorderable dictionary list via drag-and-drop.
+- Refined dictionary popup positioning logic.
+
+### Fixed
+- Lookups for non-Japanese languages.
+- Dictionary profile overrides in the Novel Reader.
+
+
+## [v1.7.2]
+
+### Added
+- Statistics screen for novel/manga reading stats.
+- Pitch accent deduplication option.
+
+### Changed
+- Make dictionary list draggable by a handle.
+- System bar handling in Novel UI.
+- Updated hoshidicts native library.
+
+### Fixed
+- Fix: horizontal paged reader behaviour.
+- Revert OCR merge value regressions.
+- Novel sync and language detection during import.
+- Cascade fallback dictionaries in custom collapse mode.
+- Korean deinflector text assembly bug.
+
+
+
+## [v1.7.0]
+
+### Added
+- Cascading profiles that cascade from global down to per-reader context.
+- Dictionary language support for Korean, English, and more.
+- Auto kana input in dictionary search.
+- Revamped novel library tab.
+- Add button in the browse tab for importing local files.
+- Popup position modes: Floating, Full-width, and Full-height.
+
+### Changed
+- Revamped popup positioning with priority-based floating (Below→Above→Right→Left).
+- More sidecar formats (.mokuro) now supported — RAR, 7z, EPUB.
+- OCR vowels displayed vertically for vertical text.
+- Reader tap zones disabled by default.
+- Renamed library tab to Manga.
+
+### Fixed
+- OCR text reconstruction for downloaded chapters — reading order is now correct and unrelated text bubbles are no longer merged together.
+- Double-tap zoom now takes priority over single-tap actions.
+- Improved popup margins for pitch accent and structured content.
+- Anki `{SelectionText}` marker now preserves line breaks properly.
+- Popup selection text not being cleared between lookups.
 
 ## [v1.6.2]
 

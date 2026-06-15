@@ -13,6 +13,7 @@ import chimahon.audio.WordAudioService
 import chimahon.audio.WordAudioPreferences
 import chimahon.DictionaryRepository
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import com.canopus.chimareader.data.NovelCategoryStorage
 import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.BackupRestoreStatus
@@ -29,6 +30,8 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.download.MokuroSidecarCopier
+import eu.kanade.tachiyomi.data.ocr.LocalOcrBridge
+import eu.kanade.tachiyomi.data.ocr.ModelDownloader
 import eu.kanade.tachiyomi.data.ocr.OcrManager
 import eu.kanade.tachiyomi.data.ocr.OcrStore
 import eu.kanade.tachiyomi.data.saver.ImageSaver
@@ -60,6 +63,7 @@ import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
+import tachiyomi.data.Reading_sessions
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
@@ -146,6 +150,8 @@ class AppModule(val app: Application) : InjektModule {
                 animesAdapter = Animes.Adapter(
                     genreAdapter = StringListColumnAdapter,
                     update_strategyAdapter = AnimeUpdateStrategyColumnAdapter,
+                reading_sessionsAdapter = Reading_sessions.Adapter(
+                    read_atAdapter = DateColumnAdapter,
                 ),
             )
         }
@@ -198,7 +204,9 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { OcrCacheManager(app, get(), get()) }
         addSingletonFactory { OcrStore(app) }
-        addSingletonFactory { OcrManager(app) }
+        addSingletonFactory { ModelDownloader(app, get<NetworkHelper>().client) }
+        addSingletonFactory { LocalOcrBridge(app) }
+        addSingletonFactory { OcrManager(app, get(), get()) }
 
         addSingletonFactory { TrackerManager() }
         addSingletonFactory { DelayedTrackingStore(app) }
@@ -246,5 +254,10 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory<WordAudioPreferences> { get<DictionaryPreferences>() }
 
         addSingletonFactory { GoogleDriveService(app) }
+        addSingletonFactory { NovelCategoryStorage(app) }
+
+        addSingletonFactory { com.canopus.chimareader.ttusync.TtuOAuthManager(app) }
+        addSingletonFactory { com.canopus.chimareader.ttusync.SyncSettingsRepository(app) }
+        addSingletonFactory { com.canopus.chimareader.ttusync.TtuSyncManager(app, get(), get()) }
     }
 }
