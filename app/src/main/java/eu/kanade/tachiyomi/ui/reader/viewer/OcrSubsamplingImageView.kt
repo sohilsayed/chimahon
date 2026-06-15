@@ -37,6 +37,12 @@ import kotlin.math.roundToInt
  * - Source pixels (sWidth × sHeight): SSIV's image pixel space
  * - View/Screen pixels: current screen position after zoom/pan transformation
  */
+private val JP_VERTICAL_PUNCT = setOf(
+    '、', '。', '！', '？', '，', '．', '：', '；',
+    '」', '』', '）', '】', '〉', '》', '］', '｝',
+    '﹂', '﹄', '︶', '﹈', '︼', '︾', '﹀', '…', '‥',
+)
+
 class OcrSubsamplingImageView(
     context: Context,
 ) : SubsamplingScaleImageView(context) {
@@ -388,6 +394,10 @@ class OcrSubsamplingImageView(
         return result
     }
 
+    private fun verticalCenter(rowTop: Float, i: Int, rowStep: Float, ch: Char): Float =
+        if (ch in JP_VERTICAL_PUNCT) rowTop + rowStep * (i + 1f) - rowStep * 0.15f
+        else rowTop + rowStep * (i + 0.5f)
+
     private fun drawHorizontalLineText(
         canvas: Canvas,
         text: String,
@@ -494,7 +504,7 @@ class OcrSubsamplingImageView(
         val matchedEnd = matchedStart + host.activeOcrMatchedCount
 
         text.forEachIndexed { i, ch ->
-            val yCenter = rect.top + rowStep * (i + 0.5f)
+            val yCenter = verticalCenter(rect.top, i, rowStep, ch)
 
             if (highlightMatches && host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
                 canvas.drawRect(
@@ -546,7 +556,7 @@ class OcrSubsamplingImageView(
             val matchedEnd = matchedStart + host.activeOcrMatchedCount
 
             text.forEachIndexed { charIndex, ch ->
-                val yCenter = contentTop + rowStep * (charIndex + 0.5f)
+                val yCenter = verticalCenter(contentTop, charIndex, rowStep, ch)
 
                 if (highlightMatches && host.activeOcrMatchedCount > 0 && charIndex in matchedStart until matchedEnd) {
                     canvas.drawRect(

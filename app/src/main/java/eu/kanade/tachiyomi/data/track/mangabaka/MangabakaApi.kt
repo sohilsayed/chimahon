@@ -17,12 +17,16 @@ import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.PUT
 import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.network.interceptor.rateLimitHost
 import eu.kanade.tachiyomi.network.parseAs
 import eu.kanade.tachiyomi.util.lang.toLocalDate
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlin.time.Duration.Companion.seconds
 import okhttp3.Headers.Companion.headersOf
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
@@ -44,29 +48,41 @@ class MangaBakaApi(
 
     private val json: Json by injectLazy()
 
-    private val client = baseClient.newBuilder().addInterceptor {
-        it.request().newBuilder()
-            .header(
-                "User-Agent",
-                buildString {
-                    append("${MR.strings.app_name}/v${BuildConfig.VERSION_NAME} ")
-                    append("(${BuildConfig.APPLICATION_ID} ${BuildConfig.COMMIT_SHA}) ")
-                    append("(Android) (https://github.com/mihonapp/mihon)")
-                },
-            )
-            .build()
-            .let(it::proceed)
-    }.build()
+    private val userAgentInterceptor = Interceptor { chain ->
+        chain.proceed(
+            chain.request().newBuilder()
+                .header(
+                    "User-Agent",
+                    buildString {
+                        append("${MR.strings.app_name}/v${BuildConfig.VERSION_NAME} ")
+                        append("(${BuildConfig.APPLICATION_ID} ${BuildConfig.COMMIT_SHA}) ")
+                        append("(Android) (https://github.com/sohilsayed/chimahon)")
+                    },
+                )
+                .build(),
+        )
+    }
 
-    private val authClient = client.newBuilder().addInterceptor(interceptor).build()
+    private val client = baseClient.newBuilder()
+        .addInterceptor(userAgentInterceptor)
+        .rateLimitHost("https://api.mangabaka.org", permits = 1, period = 2.seconds)
+        .build()
+
+    private val authClient = baseClient.newBuilder()
+        .addInterceptor(userAgentInterceptor)
+        .addInterceptor(interceptor)
+        .rateLimitHost("https://api.mangabaka.org", permits = 1, period = 1.seconds)
+        .build()
 
     suspend fun getProfile(): MangaBakaUserProfile {
         return withIOContext {
             with(json) {
-                authClient.newCall(GET("$API_BASE_URL/v1/my/profile"))
-                    .awaitSuccess()
-                    .parseAs<MangaBakaUserProfileResponse>()
-                    .data
+                retryOn429 {
+                    authClient.newCall(GET("$API_BASE_URL/v1/my/profile"))
+                        .awaitSuccess()
+                        .parseAs<MangaBakaUserProfileResponse>()
+                        .data
+                }
             }
         }
     }
@@ -93,9 +109,11 @@ class MangaBakaApi(
                 .toString()
                 .toRequestBody()
 
-            authClient
-                .newCall(POST(url, body = body, headers = headersOf("Content-Type", APP_JSON)))
-                .awaitSuccess()
+            retryOn429 {
+                authClient
+                    .newCall(POST(url, body = body, headers = headersOf("Content-Type", APP_JSON)))
+                    .awaitSuccess()
+            }
 
             track
         }
@@ -103,9 +121,11 @@ class MangaBakaApi(
 
     suspend fun deleteLibManga(track: DomainTrack) {
         withIOContext {
-            authClient
-                .newCall(DELETE("$LIBRARY_API_URL/${track.remoteId}"))
-                .awaitSuccess()
+            retryOn429 {
+                authClient
+                    .newCall(DELETE("$LIBRARY_API_URL/${track.remoteId}"))
+                    .awaitSuccess()
+            }
         }
     }
 
@@ -113,15 +133,19 @@ class MangaBakaApi(
         return withIOContext {
             with(json) {
                 try {
-                    val userData = authClient.newCall(GET("$LIBRARY_API_URL/${track.remote_id}"))
-                        .awaitSuccess()
-                        .parseAs<MangaBakaListResult>()
-                        .data
+                    val userData = retryOn429 {
+                        authClient.newCall(GET("$LIBRARY_API_URL/${track.remote_id}"))
+                            .awaitSuccess()
+                            .parseAs<MangaBakaListResult>()
+                            .data
+                    }
 
-                    val additionalData = authClient.newCall(GET("$API_BASE_URL/v1/series/${track.remote_id}"))
-                        .awaitSuccess()
-                        .parseAs<MangaBakaItemResult>()
-                        .data
+                    val additionalData = retryOn429 {
+                        authClient.newCall(GET("$API_BASE_URL/v1/series/${track.remote_id}"))
+                            .awaitSuccess()
+                            .parseAs<MangaBakaItemResult>()
+                            .data
+                    }
 
                     Track.create(TrackerManager.MANGABAKA).apply {
                         remote_id = track.remote_id
@@ -166,9 +190,11 @@ class MangaBakaApi(
                 .toString()
                 .toRequestBody()
 
-            authClient
-                .newCall(PUT(url, body = body, headers = headersOf("Content-Type", APP_JSON)))
-                .awaitSuccess()
+            retryOn429 {
+                authClient
+                    .newCall(PUT(url, body = body, headers = headersOf("Content-Type", APP_JSON)))
+                    .awaitSuccess()
+            }
 
             track
         }
@@ -181,11 +207,13 @@ class MangaBakaApi(
                 .appendQueryParameter("type_not", "novel")
                 .build()
             with(json) {
-                client.newCall(GET(url.toString()))
-                    .awaitSuccess()
-                    .parseAs<MangaBakaSearchResult>()
-                    .data
-                    .map { parseSearchItem(it) }
+                retryOn429 {
+                    client.newCall(GET(url.toString()))
+                        .awaitSuccess()
+                        .parseAs<MangaBakaSearchResult>()
+                        .data
+                        .map { parseSearchItem(it) }
+                }
             }
         }
     }
@@ -213,17 +241,31 @@ class MangaBakaApi(
             val url = "$API_BASE_URL/v1/series/$id"
             with(json) {
                 try {
-                    authClient.newCall(GET(url))
-                        .awaitSuccess()
-                        .parseAs<MangaBakaItemResult>()
-                        .data
-                        .let { parseSearchItem(it) }
+                    retryOn429 {
+                        authClient.newCall(GET(url))
+                            .awaitSuccess()
+                            .parseAs<MangaBakaItemResult>()
+                            .data
+                            .let { parseSearchItem(it) }
+                    }
                 } catch (e: HttpException) {
                     if (e.code == 404) {
                         return@with null
                     }
                     throw e
                 }
+            }
+        }
+    }
+
+    private suspend fun <T> retryOn429(block: suspend () -> T): T {
+        var attempts = 0
+        while (true) {
+            try {
+                return block()
+            } catch (e: HttpException) {
+                if (e.code != 429 || ++attempts >= 3) throw e
+                delay(5000L)
             }
         }
     }

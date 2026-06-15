@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Bitmap
+import android.os.Build
 import android.util.Log
 import android.webkit.WebView
 import androidx.compose.foundation.clickable
@@ -31,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -144,7 +144,6 @@ fun OcrLookupPopup(
     var lookupGeneration by remember { mutableIntStateOf(0) }
 
 
-    val configuration = LocalConfiguration.current
     val density = LocalDensity.current
 
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
@@ -358,11 +357,26 @@ fun OcrLookupPopup(
     }
     val recursiveNavMode by dictionaryPreferences.recursiveLookupMode().collectAsState()
 
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val windowManager = context.getSystemService(android.view.WindowManager::class.java)!!
+    val (screenWidthPx, screenHeightPx) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val bounds = windowManager.currentWindowMetrics.bounds
+        Pair(bounds.width().toFloat(), bounds.height().toFloat())
+    } else {
+        @Suppress("DEPRECATION")
+        val point = android.graphics.Point()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealSize(point)
+        Pair(point.x.toFloat(), point.y.toFloat())
+    }
 
-    val maxWidthDp = popupWidthPref.dp.coerceIn(280.dp, configuration.screenWidthDp.dp * 0.9f)
-    val maxHeightDp = popupHeightPref.dp.coerceIn(200.dp, configuration.screenHeightDp.dp * 0.8f)
+    val (maxWidthDp, maxHeightDp) = with(density) {
+        val sw = screenWidthPx.toDp()
+        val sh = screenHeightPx.toDp()
+        Pair(
+            popupWidthPref.dp.coerceIn(280.dp, sw * 0.9f),
+            popupHeightPref.dp.coerceIn(200.dp, sh * 0.8f),
+        )
+    }
 
     val popupWidthPx = with(density) { maxWidthDp.toPx() }
     val popupHeightPx = with(density) { maxHeightDp.toPx() }

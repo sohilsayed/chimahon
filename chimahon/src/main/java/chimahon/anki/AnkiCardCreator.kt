@@ -1915,6 +1915,8 @@ object AnkiCardCreator {
                 lineStyle.add("height:0")
                 lineStyle.add("border-top-width:0.1em")
                 lineStyle.add("border-top-style:solid")
+            } else {
+                lineStyle.add("display:none")
             }
             if (highPitch && !highPitchNext) {
                 lineStyle.add("right:-0.1em")
@@ -1922,7 +1924,7 @@ object AnkiCardCreator {
                 lineStyle.add("border-right-width:0.1em")
                 lineStyle.add("border-right-style:solid")
             }
-            sb.append("""<span class="pronunciation-mora-line" style="${lineStyle.joinToString(";")}"></span>""")
+            sb.append("""<span style="${lineStyle.joinToString(";")}"></span>""")
             sb.append("</span>")
         }
         sb.append("</span>")

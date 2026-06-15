@@ -4,6 +4,15 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.9.3]
+
+### Fixed
+- OCR popup positioning on edge-to-edge displays
+- Japanese punctuation alignment in vertical OCR text
+- MangaBaka API rate limiting and retry logic for 429 errors
+- Anki pitch accent export CSS override conflict
+- Android 16 compatibility for screen capture
+
 ## [v1.9.2]
 
 ### Added

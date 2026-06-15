@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
+import android.view.Display
 import android.hardware.display.VirtualDisplay
 import android.media.Image
 import android.media.ImageReader
@@ -416,11 +417,16 @@ class ScreenLookupService : Service() {
     private fun captureSize(): CaptureSize {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                val wm = createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-                    .getSystemService<WindowManager>()
-                val bounds = wm?.currentWindowMetrics?.bounds
-                if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
-                    return CaptureSize(bounds.width(), bounds.height())
+                val display = getSystemService<DisplayManager>()
+                    ?.getDisplay(Display.DEFAULT_DISPLAY)
+                if (display != null) {
+                    val wm = createDisplayContext(display)
+                        .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+                        .getSystemService<WindowManager>()
+                    val bounds = wm?.currentWindowMetrics?.bounds
+                    if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
+                        return CaptureSize(bounds.width(), bounds.height())
+                    }
                 }
             } catch (_: Exception) {}
         }
