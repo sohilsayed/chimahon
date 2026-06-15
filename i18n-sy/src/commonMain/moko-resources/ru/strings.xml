@@ -694,4 +694,6 @@
     <string name="file_extension">Расширение файла</string>
     <string name="base_url">Главный URL</string>
     <string name="final_chapter">Последняя глава</string>
+    <string name="stats_all_profiles">Все профили</string>
+    <string name="stats_profile_filter_label">Профиль: %1$s</string>
 </resources>

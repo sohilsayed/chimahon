@@ -7,6 +7,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.Statistics
+import chimahon.anki.AnkiProfile
 import eu.kanade.core.util.fastCountNot
 import eu.kanade.presentation.more.stats.StatsDateScale
 import eu.kanade.presentation.more.stats.StatsScreenState
@@ -15,6 +16,8 @@ import eu.kanade.presentation.more.stats.data.StatsType
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import tachiyomi.domain.source.service.SourceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -58,6 +61,8 @@ class StatsScreenModel(
     private val trackerManager: TrackerManager = Injekt.get(),
     private val getReadMangaNotInLibraryView: GetReadMangaNotInLibraryView = Injekt.get(),
     private val context: Application = Injekt.get(),
+    private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
+    private val sourceManager: SourceManager = Injekt.get(),
 ) : StateScreenModel<StatsScreenState>(StatsScreenState.Loading) {
 
     private val loggedInTrackers by lazy { trackerManager.loggedInTrackers() }
@@ -74,8 +79,45 @@ class StatsScreenModel(
     private val _statsType = MutableStateFlow(StatsType.All)
     val statsType = _statsType.asStateFlow()
 
+    private val _activeProfileId = MutableStateFlow<String?>(null)
+    val activeProfileId = _activeProfileId.asStateFlow()
+
+    private val _profiles = MutableStateFlow<List<AnkiProfile>>(emptyList())
+    val profiles = _profiles.asStateFlow()
+
+    fun setProfileFilter(profileId: String?) {
+        _activeProfileId.value = profileId
+    }
+
+    private data class CombinedFilters(
+        val allRead: Boolean,
+        val dateScale: StatsDateScale,
+        val dateOffset: Int,
+        val statsType: StatsType,
+        val activeProfileId: String?,
+    )
+
     init {
-        combine(_allRead, _dateScale, _dateOffset, _statsType) { allRead, dateScale, dateOffset, statsType ->
+        val combinedFlow = combine(
+            _allRead,
+            _dateScale,
+            _dateOffset,
+            _statsType,
+            _activeProfileId
+        ) { allRead, dateScale, dateOffset, statsType, activeProfileId ->
+            CombinedFilters(allRead, dateScale, dateOffset, statsType, activeProfileId)
+        }
+
+        combine(
+            combinedFlow,
+            dictionaryPreferences.rawProfiles().changes()
+        ) { tuple, rawProfilesJson ->
+            val allRead = tuple.allRead
+            val dateScale = tuple.dateScale
+            val dateOffset = tuple.dateOffset
+            val statsType = tuple.statsType
+            val activeProfileId = tuple.activeProfileId
+
             val libraryManga = getLibraryManga.await() + if (allRead) {
                 getReadMangaNotInLibraryView.await()
             } else {
@@ -90,29 +132,66 @@ class StatsScreenModel(
                 StatsType.Novels -> emptyList()
             }
 
+            val profilesList = dictionaryPreferences.profileStore.getProfiles()
+            _profiles.value = profilesList
+
+            // Build dynamic resolver map for manga
+            val allMangaStats = com.canopus.chimareader.data.MangaStatsStorage.loadAll(context)
+            val uniqueMangaIds = allMangaStats.map { it.mangaId }.distinct()
+            val resolver = dictionaryPreferences.profileResolver
+            val mangaProfileMap = uniqueMangaIds.associateWith { mangaId ->
+                if (mangaId == 0L) {
+                    ""
+                } else {
+                    val dbManga = distinctLibraryManga.find { it.id == mangaId }?.manga
+                    val source = dbManga?.source?.let { sourceManager.getOrStub(it) }
+                    resolver.resolve(
+                        mangaId = mangaId,
+                        sourceId = dbManga?.source ?: 0L,
+                        sourceLang = source?.lang ?: "",
+                    ).id
+                }
+            }
+
+            // Filter manga stats by profile
+            val profileFilteredMangaStats = if (activeProfileId != null) {
+                allMangaStats.filter { mangaProfileMap[it.mangaId] == activeProfileId }
+            } else {
+                allMangaStats
+            }
+
+            val libraryMangaIds = distinctLibraryManga.map { it.id }.toSet()
+            val libraryFilteredMangaStats = if (allRead) profileFilteredMangaStats else profileFilteredMangaStats.filter { it.mangaId in libraryMangaIds || it.mangaId == 0L }
+            val filteredMangaStats = filterMangaStatsByScale(libraryFilteredMangaStats, dateScale, dateOffset)
+
+            // Load and filter novels
             val allNovels = if (statsType == StatsType.All || statsType == StatsType.Novels) {
                 BookStorage.loadAllBooks(context)
             } else {
                 emptyList()
             }
             
+            // Build dynamic resolver map for novels
+            val novelProfileMap = allNovels.associate { novel ->
+                novel.id to resolver.resolve(novelId = novel.id).id
+            }
+
             val novelStats = allNovels.associate { novel ->
                 val bookDir = BookStorage.getBookDirectory(context, novel.id)
                 novel.id to (BookStorage.loadStatistics(bookDir) ?: emptyList())
             }
+
+            // Filter novel stats by profile
+            val profileFilteredNovelStatsMap = if (activeProfileId != null) {
+                novelStats.filter { (novelId, _) -> novelProfileMap[novelId] == activeProfileId }
+            } else {
+                novelStats
+            }
             
-            val allNovelStatsList = novelStats.values.flatten()
+            val allNovelStatsList = profileFilteredNovelStatsMap.values.flatten()
             val filteredNovelStats = filterNovelStatsByScale(allNovelStatsList, dateScale, dateOffset)
 
-            val allMangaStats = com.canopus.chimareader.data.MangaStatsStorage.loadAll(context)
-            val libraryMangaIds = distinctLibraryManga.map { it.id }.toSet()
-            val libraryFilteredMangaStats = if (allRead) allMangaStats else allMangaStats.filter { it.mangaId in libraryMangaIds || it.mangaId == 0L }
-            val filteredMangaStats = filterMangaStatsByScale(libraryFilteredMangaStats, dateScale, dateOffset)
-
-            val mangaChars = filteredMangaStats.sumOf { it.charactersRead }
-            val mangaTimeMs = filteredMangaStats.sumOf { it.readingTime }
-            
-            val mangaReadDuration = mangaTimeMs
+            val mangaReadDuration = filteredMangaStats.sumOf { it.readingTime }
             val novelReadDurationSeconds = filteredNovelStats.sumOf { it.readingTime }
             val novelReadDurationMs = (novelReadDurationSeconds * 1000).toLong()
             
@@ -122,6 +201,9 @@ class StatsScreenModel(
                 StatsType.Novels -> novelReadDurationMs
             }
 
+            val mangaChars = filteredMangaStats.sumOf { it.charactersRead }
+            val mangaTimeMs = filteredMangaStats.sumOf { it.readingTime }
+            
             val novelChars = filteredNovelStats.sumOf { it.charactersRead }
             val novelTimeMs = novelReadDurationMs
 
@@ -185,11 +267,13 @@ class StatsScreenModel(
             var novelReadChapters = 0
             if (statsType == StatsType.All || statsType == StatsType.Novels) {
                 allNovels.forEach { novel ->
-                    val bookDir = BookStorage.getBookDirectory(context, novel.id)
-                    val info = BookStorage.loadBookInfo(bookDir)
-                    val bookmark = BookStorage.loadBookmark(bookDir)
-                    novelTotalChapters += info?.chapterInfo?.size ?: 0
-                    novelReadChapters += bookmark?.chapterIndex ?: 0
+                    if (activeProfileId == null || novelProfileMap[novel.id] == activeProfileId) {
+                        val bookDir = BookStorage.getBookDirectory(context, novel.id)
+                        val info = BookStorage.loadBookInfo(bookDir)
+                        val bookmark = BookStorage.loadBookmark(bookDir)
+                        novelTotalChapters += info?.chapterInfo?.size ?: 0
+                        novelReadChapters += bookmark?.chapterIndex ?: 0
+                    }
                 }
             }
 
@@ -229,6 +313,8 @@ class StatsScreenModel(
                     dateScale = dateScale,
                     dateOffset = dateOffset,
                     statsType = statsType,
+                    activeProfileId = activeProfileId,
+                    profiles = profilesList,
                 )
             }
         }.onEach { }.launchIn(screenModelScope)

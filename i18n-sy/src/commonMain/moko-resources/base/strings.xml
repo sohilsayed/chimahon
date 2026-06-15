@@ -761,6 +761,8 @@
     <string name="stats_characters_read">Characters read</string>
     <string name="stats_avg_speed">Avg speed</string>
     <string name="stats_reading_time">Reading time</string>
+    <string name="stats_all_profiles">All profiles</string>
+    <string name="stats_profile_filter_label">Profile: %1$s</string>
 
     <!-- Humanize time -->
     <string name="humanize_fallback">moments ago</string>

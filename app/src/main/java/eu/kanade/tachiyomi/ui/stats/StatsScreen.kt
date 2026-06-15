@@ -64,6 +64,7 @@ class StatsScreen : Screen() {
                 onDateScaleSelect = screenModel::setDateScale,
                 onDateOffsetChange = screenModel::setDateOffset,
                 onStatsTypeSelect = screenModel::setStatsType,
+                onProfileSelect = screenModel::setProfileFilter,
                 allRead = allRead,
             )
         }

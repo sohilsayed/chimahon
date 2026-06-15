@@ -79,6 +79,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import chimahon.anki.AnkiProfile
 import eu.kanade.presentation.more.stats.data.StatsData
 import eu.kanade.presentation.more.stats.data.StatsType
 import tachiyomi.i18n.MR
@@ -100,6 +101,7 @@ fun StatsScreenContent(
     onDateScaleSelect: (StatsDateScale) -> Unit,
     onDateOffsetChange: (Int) -> Unit,
     onStatsTypeSelect: (StatsType) -> Unit,
+    onProfileSelect: (String?) -> Unit,
     allRead: Boolean = false,
 ) {
     LazyColumn(
@@ -113,6 +115,9 @@ fun StatsScreenContent(
                 onStatsTypeSelect = onStatsTypeSelect,
                 dateScale = state.dateScale,
                 onDateScaleSelect = onDateScaleSelect,
+                activeProfileId = state.activeProfileId,
+                profiles = state.profiles,
+                onProfileSelect = onProfileSelect,
             )
         }
 
@@ -143,6 +148,9 @@ private fun FiltersRow(
     onStatsTypeSelect: (StatsType) -> Unit,
     dateScale: StatsDateScale,
     onDateScaleSelect: (StatsDateScale) -> Unit,
+    activeProfileId: String?,
+    profiles: List<AnkiProfile>,
+    onProfileSelect: (String?) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -198,6 +206,59 @@ private fun FiltersRow(
                         onClick = {
                             onDateScaleSelect(scale)
                             showMenu = false
+                        },
+                    )
+                }
+            }
+        }
+
+        var showProfileMenu by remember { mutableStateOf(false) }
+        val activeProfile = remember(activeProfileId, profiles) {
+            profiles.find { it.id == activeProfileId }
+        }
+        val isProfileSelected = activeProfileId != null
+        val profileLabel = if (activeProfile != null) {
+            stringResource(SYMR.strings.stats_profile_filter_label, activeProfile.name)
+        } else {
+            stringResource(SYMR.strings.stats_all_profiles)
+        }
+
+        Box {
+            FilterChip(
+                selected = isProfileSelected,
+                onClick = { showProfileMenu = true },
+                label = { Text(profileLabel) },
+                trailingIcon = { Icon(Icons.Outlined.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isProfileSelected,
+                    borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    selectedBorderColor = Color.Transparent,
+                    borderWidth = 1.dp,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            )
+            DropdownMenu(
+                expanded = showProfileMenu,
+                onDismissRequest = { showProfileMenu = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(SYMR.strings.stats_all_profiles)) },
+                    onClick = {
+                        onProfileSelect(null)
+                        showProfileMenu = false
+                    },
+                )
+                profiles.forEach { profile ->
+                    DropdownMenuItem(
+                        text = { Text(profile.name) },
+                        onClick = {
+                            onProfileSelect(profile.id)
+                            showProfileMenu = false
                         },
                     )
                 }
