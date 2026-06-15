@@ -90,14 +90,6 @@ class StatsScreenModel(
                 StatsType.Novels -> emptyList()
             }
 
-            val allMangaHistory = getAllHistory.await()
-            val allSessions = if (allRead) {
-                historyRepository.getAllSessions()
-            } else {
-                historyRepository.getLibrarySessions()
-            }
-            val filteredSessions = filterSessionsByScale(allSessions, dateScale, dateOffset)
-            
             val allNovels = if (statsType == StatsType.All || statsType == StatsType.Novels) {
                 BookStorage.loadAllBooks(context)
             } else {
@@ -112,7 +104,15 @@ class StatsScreenModel(
             val allNovelStatsList = novelStats.values.flatten()
             val filteredNovelStats = filterNovelStatsByScale(allNovelStatsList, dateScale, dateOffset)
 
-            val mangaReadDuration = filteredSessions.sumOf { it.duration }
+            val allMangaStats = com.canopus.chimareader.data.MangaStatsStorage.loadAll(context)
+            val libraryMangaIds = distinctLibraryManga.map { it.id }.toSet()
+            val libraryFilteredMangaStats = if (allRead) allMangaStats else allMangaStats.filter { it.mangaId in libraryMangaIds || it.mangaId == 0L }
+            val filteredMangaStats = filterMangaStatsByScale(libraryFilteredMangaStats, dateScale, dateOffset)
+
+            val mangaChars = filteredMangaStats.sumOf { it.charactersRead }
+            val mangaTimeMs = filteredMangaStats.sumOf { it.readingTime }
+            
+            val mangaReadDuration = mangaTimeMs
             val novelReadDurationSeconds = filteredNovelStats.sumOf { it.readingTime }
             val novelReadDurationMs = (novelReadDurationSeconds * 1000).toLong()
             
@@ -122,14 +122,6 @@ class StatsScreenModel(
                 StatsType.Novels -> novelReadDurationMs
             }
 
-            val allMangaStats = com.canopus.chimareader.data.MangaStatsStorage.loadAll(context)
-            val libraryMangaIds = distinctLibraryManga.map { it.id }.toSet()
-            val libraryFilteredMangaStats = if (allRead) allMangaStats else allMangaStats.filter { it.mangaId in libraryMangaIds || it.mangaId == 0L }
-            val filteredMangaStats = filterMangaStatsByScale(libraryFilteredMangaStats, dateScale, dateOffset)
-
-            val mangaChars = filteredMangaStats.sumOf { it.charactersRead }
-            val mangaTimeMs = filteredMangaStats.sumOf { it.readingTime }
-            
             val novelChars = filteredNovelStats.sumOf { it.charactersRead }
             val novelTimeMs = novelReadDurationMs
 
@@ -149,8 +141,8 @@ class StatsScreenModel(
                 (totalChars.toDouble() / (totalTimeMs / 3600000.0)).toInt()
             } else null
 
-            val streak = calculateStreak(allMangaHistory, allNovelStatsList)
-            val historyPoints = calculateHistoryPoints(allSessions, allNovelStatsList, dateScale, dateOffset)
+            val streak = calculateStreak(libraryFilteredMangaStats, allNovelStatsList)
+            val historyPoints = calculateHistoryPoints(libraryFilteredMangaStats, allNovelStatsList, dateScale, dateOffset)
             
             // Calculate avg per day
             val avgDurationPerDay = if (dateScale != StatsDateScale.Day && dateScale != StatsDateScale.AllTime) {
@@ -308,8 +300,10 @@ class StatsScreenModel(
         return stats.filter { it.dateKey in startStr..endStr }
     }
 
-    private fun calculateStreak(mangaHistory: List<History>, novelStats: List<Statistics>): Int {
-        val mangaDays = mangaHistory.mapNotNull { it.readAt?.toInstant()?.atZone(ZoneId.systemDefault())?.toLocalDate() }.toSet()
+    private fun calculateStreak(mangaStats: List<com.canopus.chimareader.data.MangaStats>, novelStats: List<Statistics>): Int {
+        val mangaDays = mangaStats.mapNotNull { 
+            try { LocalDate.parse(it.dateKey) } catch (e: Exception) { null }
+        }.toSet()
         val novelDays = novelStats.mapNotNull { 
             try { LocalDate.parse(it.dateKey) } catch (e: Exception) { null }
         }.toSet()
@@ -411,7 +405,7 @@ class StatsScreenModel(
     }
 
     private fun calculateHistoryPoints(
-        mangaSessions: List<ReadingSession>,
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
         novelStats: List<Statistics>,
         scale: StatsDateScale,
         offset: Int,
@@ -426,7 +420,7 @@ class StatsScreenModel(
                 (0..6).map { daysIntoWeek ->
                     val date = weekStart.plusDays(daysIntoWeek.toLong())
                     val label = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
-                    val value = aggregateForDate(date, mangaSessions, novelStats)
+                    val value = aggregateForDate(date, mangaStats, novelStats)
                     val pOffset = ChronoUnit.DAYS.between(now, date).toInt()
                     StatsData.HistoryPoint(label, value, pOffset)
                 }
@@ -446,7 +440,7 @@ class StatsScreenModel(
                     val wStart = firstMonday.plusWeeks(weeksIntoMonth.toLong())
                     val wEnd = wStart.plusDays(6)
                     val label = "W${wStart.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR)}"
-                    val value = aggregateForRange(wStart, wEnd, mangaSessions, novelStats)
+                    val value = aggregateForRange(wStart, wEnd, mangaStats, novelStats)
                     val pOffset = ChronoUnit.WEEKS.between(
                         now.with(DayOfWeek.MONDAY),
                         wStart
@@ -460,7 +454,7 @@ class StatsScreenModel(
                 (0..11).map { monthsIntoYear ->
                     val mDate = yearStart.plusMonths(monthsIntoYear.toLong())
                     val label = mDate.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())
-                    val value = aggregateForMonth(mDate, mangaSessions, novelStats)
+                    val value = aggregateForMonth(mDate, mangaStats, novelStats)
                     val pOffset = ChronoUnit.MONTHS.between(
                         now.withDayOfMonth(1),
                         mDate.withDayOfMonth(1)
@@ -474,7 +468,7 @@ class StatsScreenModel(
                     val label = yDate.year.toString()
                     val yStart = yDate.withDayOfYear(1)
                     val yEnd = yDate.withDayOfYear(yDate.lengthOfYear())
-                    val value = aggregateForRange(yStart, yEnd, mangaSessions, novelStats)
+                    val value = aggregateForRange(yStart, yEnd, mangaStats, novelStats)
                     val pOffset = -yearsAgo
                     StatsData.HistoryPoint(label, value, pOffset)
                 }
@@ -484,17 +478,14 @@ class StatsScreenModel(
 
     private fun aggregateForDate(
         date: LocalDate,
-        mangaSessions: List<ReadingSession>,
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
         novelStats: List<Statistics>,
     ): Long {
-        val startMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endMillis = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-        val mangaValue = mangaSessions
-            .filter { it.readAt.time in startMillis until endMillis }
-            .sumOf { it.duration }
-
         val dateKey = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val mangaValue = mangaStats
+            .filter { it.dateKey == dateKey }
+            .sumOf { it.readingTime }
+
         val novelValue = novelStats
             .filter { it.dateKey == dateKey }
             .sumOf { (it.readingTime * 1000).toLong() }
@@ -505,18 +496,16 @@ class StatsScreenModel(
     private fun aggregateForRange(
         start: LocalDate,
         end: LocalDate,
-        mangaSessions: List<ReadingSession>,
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
         novelStats: List<Statistics>,
     ): Long {
-        val startMillis = start.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endMillis = end.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-        val mangaValue = mangaSessions
-            .filter { it.readAt.time in startMillis until endMillis }
-            .sumOf { it.duration }
-
         val startStr = start.toString()
         val endStr = end.toString()
+        
+        val mangaValue = mangaStats
+            .filter { it.dateKey in startStr..endStr }
+            .sumOf { it.readingTime }
+
         val novelValue = novelStats
             .filter { it.dateKey in startStr..endStr }
             .sumOf { (it.readingTime * 1000).toLong() }
@@ -526,13 +515,21 @@ class StatsScreenModel(
 
     private fun aggregateForMonth(
         monthDate: LocalDate,
-        mangaSessions: List<ReadingSession>,
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
         novelStats: List<Statistics>,
     ): Long {
         val yearMonth = YearMonth.from(monthDate)
-        val mangaValue = mangaSessions
-            .filter { YearMonth.from(it.readAt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()) == yearMonth }
-            .sumOf { it.duration }
+        
+        val mangaValue = mangaStats
+            .filter { s ->
+                try {
+                    val entryDate = LocalDate.parse(s.dateKey)
+                    YearMonth.from(entryDate) == yearMonth
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            .sumOf { it.readingTime }
 
         val novelValue = novelStats
             .filter { s ->

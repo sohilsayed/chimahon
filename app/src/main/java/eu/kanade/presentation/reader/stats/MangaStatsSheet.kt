@@ -51,6 +51,8 @@ data class MangaStatsDisplay(
 data class MangaStatsEstimate(
     val remainingBookCharacters: Int = 0,
     val remainingChapterCharacters: Int = 0,
+    val remainingBookSeconds: Double = 0.0,
+    val remainingChapterSeconds: Double = 0.0,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -120,19 +122,21 @@ fun MangaStatsSheet(
                 }
             }
 
-            Section(title = "Session") {
-                val speed = sessionSpeed(sessionCharacters, sessionTimeMs)
-                StatRow("Characters Read", sessionCharacters.toString())
-                StatRow("Reading Speed", "$speed /h")
-                StatRow("Reading Time", formatDuration(sessionTimeMs / 1000))
-                StatRow(
-                    "Time to finish Book",
-                    formatDurationSeconds(secondsRemaining(estimate.remainingBookCharacters, speed)),
-                )
-                StatRow(
-                    "Time to finish Chapter",
-                    formatDurationSeconds(secondsRemaining(estimate.remainingChapterCharacters, speed)),
-                )
+            if (onToggleTracking != null) {
+                Section(title = "Session") {
+                    val speed = sessionSpeed(sessionCharacters, sessionTimeMs)
+                    StatRow("Characters Read", sessionCharacters.toString())
+                    StatRow("Reading Speed", "$speed /h")
+                    StatRow("Reading Time", formatDuration(sessionTimeMs / 1000))
+                    StatRow(
+                        "Time to finish Book",
+                        formatDurationSeconds(estimate.remainingBookSeconds),
+                    )
+                    StatRow(
+                        "Time to finish Chapter",
+                        formatDurationSeconds(estimate.remainingChapterSeconds),
+                    )
+                }
             }
 
             Section(title = "Today") {

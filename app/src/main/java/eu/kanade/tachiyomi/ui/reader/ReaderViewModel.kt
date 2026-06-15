@@ -2499,18 +2499,18 @@ class ReaderViewModel @JvmOverloads constructor(
             consumedMangaStatsPages.add(prevPage.index)
             viewModelScope.launchIO {
                 val blocks = getCachedOcrBlocks(prevPage)
-                if (blocks.isNotEmpty()) {
-                    val chars = blocks.sumOf { block -> block.fullText.length }
-                    if (chars > 0) {
-                        com.canopus.chimareader.data.MangaStatsStorage.addStats(application, chars, timeSpent, manga?.id ?: 0)
-                        if (mangaStatsTracking) {
-                            mangaStatsSessionCharacters += chars
-                            mangaStatsSessionTimeMs += timeSpent
-                        }
-                        if (showMangaStats) {
-                            refreshMangaStatsEstimate()
-                        }
-                    }
+                val chars = if (blocks.isNotEmpty()) {
+                    blocks.sumOf { block -> block.fullText.length }
+                } else {
+                    0
+                }
+                com.canopus.chimareader.data.MangaStatsStorage.addStats(application, chars, timeSpent, manga?.id ?: 0)
+                if (mangaStatsTracking) {
+                    mangaStatsSessionCharacters += chars
+                    mangaStatsSessionTimeMs += timeSpent
+                }
+                if (showMangaStats) {
+                    refreshMangaStatsEstimate()
                 }
             }
         }
@@ -2571,9 +2571,26 @@ class ReaderViewModel @JvmOverloads constructor(
         val remainingBookCharacters = remainingChapterCharacters +
             (remainingFuturePages * averageCharsPerPage).toInt()
 
+        // Page-based estimation calculation
+        val remainingChapterPages = (currentPages.size - currentPageIndex).coerceAtLeast(0)
+        val remainingBookPages = remainingChapterPages + remainingFuturePages
+
+        val sessionPagesRead = consumedMangaStatsPages.size
+        val avgTimePerPageMs = if (sessionPagesRead > 0 && mangaStatsSessionTimeMs > 0) {
+            val calculatedAvg = mangaStatsSessionTimeMs.toDouble() / sessionPagesRead.toDouble()
+            calculatedAvg.coerceIn(5000.0, 120000.0) // Clamp between 5s and 120s
+        } else {
+            20000.0 // Default fallback of 20 seconds per page
+        }
+
+        val remainingChapterSeconds = (remainingChapterPages * avgTimePerPageMs) / 1000.0
+        val remainingBookSeconds = (remainingBookPages * avgTimePerPageMs) / 1000.0
+
         return MangaStatsEstimate(
             remainingBookCharacters = remainingBookCharacters,
             remainingChapterCharacters = remainingChapterCharacters,
+            remainingBookSeconds = remainingBookSeconds,
+            remainingChapterSeconds = remainingChapterSeconds,
         )
     }
 
@@ -2588,7 +2605,8 @@ class ReaderViewModel @JvmOverloads constructor(
                 .sumOf { block -> block.fullText.length }
                 .takeIf { it > 0 }
         }
-        return knownPageCharacters.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        val avg = knownPageCharacters.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        return if (avg > 0.0) avg else 100.0
     }
 
     private suspend fun estimateMangaPageCharacters(
