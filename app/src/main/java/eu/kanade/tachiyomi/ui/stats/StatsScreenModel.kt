@@ -67,7 +67,7 @@ class StatsScreenModel(
 
     private val loggedInTrackers by lazy { trackerManager.loggedInTrackers() }
 
-    private val _allRead = MutableStateFlow(false)
+    private val _allRead = MutableStateFlow(true)
     val allRead = _allRead.asStateFlow()
 
     private val _dateScale = MutableStateFlow(StatsDateScale.Day)
