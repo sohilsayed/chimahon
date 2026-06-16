@@ -1359,4 +1359,290 @@
     <string name="dict_update_complete_title">Dictionary updates complete</string>
     <string name="dict_update_complete_text">%d dictionary(ies) updated</string>
     <string name="dict_update_error_title">Dictionary update failed</string>
+
+    <!-- Player -->
+    <string name="pref_player_subtitle">Subtitles</string>
+    <string name="pref_player_subtitle_summary">Preferred languages, whitelist, blacklist</string>
+    <string name="pref_player_subtitle_lang">Preferred languages</string>
+    <string name="pref_player_subtitle_lang_info">Subtitle language(s) to be selected by default on a video with multiple subtitles. Two- or three-letter language codes work. Multiple values can be delimited by a comma.</string>
+    <string name="pref_player_subtitle_whitelist">Whitelist</string>
+    <string name="pref_player_subtitle_whitelist_info">Whitelist for subtitles. If a whitelist is defined, the first subtitle that contains a whitelisted word will be used. Multiple values can be delimited by a comma.</string>
+    <string name="pref_player_subtitle_blacklist">Blacklist</string>
+    <string name="pref_player_subtitle_blacklist_info">Blacklist for subtitles. If a blacklist is defined, all subtitles that contain a blacklisted word will be filtered out. Multiple values can be delimited by a comma.</string>
+    <string name="pref_audio_channels">Audio channels</string>
+    <string name="pref_player_audio_channels_auto">Auto</string>
+    <string name="pref_player_audio_channels_auto_safe">Auto-safe</string>
+    <string name="pref_player_audio_channels_mono">Mono</string>
+    <string name="pref_player_audio_channels_stereo">Stereo</string>
+    <string name="pref_player_audio_channels_reverse_stereo">Reverse stereo</string>
+    <string name="pref_audio_pitch_correction_title">Enable audio pitch correction</string>
+    <string name="pref_audio_pitch_correction_summary">Prevents the audio from becoming high-pitched at faster speeds and low-pitched at slower speeds</string>
+    <string name="player_sheets_tracks_off">Off</string>
+    <string name="player_sheets_stats_page_chip">Page %d</string>
+    <string name="player_sheets_custom_buttons_title">Custom buttons</string>
+    <string name="player_sheets_speed_slider_label">Speed</string>
+    <string name="player_sheets_speed_make_default">Make default speed</string>
+    <string name="player_sheets_qualities_title">Qualities</string>
+    <string name="player_hoster_tap_to_load">Tap to load videos</string>
+    <string name="player_hoster_failed">Failed to load videos</string>
+    <string name="player_sheets_track_palette">Palette</string>
+    <string name="player_sheets_track_delay">Delay</string>
+    <string name="player_sheets_add_ext_sub">Add external subtitles</string>
+    <string name="player_sheets_subtitles_footer_secondary_sid_no_styles">Secondary subtitles will have no ASS/SSA Styling.</string>
+    <string name="timer_picker_pick_time">Pick duration</string>
+    <string name="timer_picker_enter_timer">Enter duration</string>
+    <string name="timer_cancel_timer">Cancel current timer</string>
+
+    <!-- Nav bar -->
+    <string name="pref_bottom_nav_no_updates">Move Updates to More</string>
+    <string name="pref_bottom_nav_no_history">Move History to More</string>
+    <string name="pref_bottom_nav_no_browse">Move Browse to More</string>
+    <string name="ic_updates_outline_24dp"/>
+
+    <!-- Episode actions -->
+    <string name="action_next_episode">Next episode</string>
+    <string name="action_previous_episode">Previous episode</string>
+    <string name="episodes">Episodes</string>
+    <string name="action_mark_as_seen">Mark as seen</string>
+
+    <!-- Player settings strings -->
+    <string name="label_player_settings">Player settings</string>
+    <string name="pref_player_internal">Player</string>
+    <string name="pref_player_internal_summary">Choose internal player engine</string>
+    <string name="pref_always_use_external_player">Always use external player</string>
+    <string name="pref_external_player_preference">External player</string>
+    <string name="pref_enable_pip">Enable PiP</string>
+    <string name="pref_pip_episode_toasts">PiP episode toasts</string>
+    <string name="pref_pip_on_exit">PiP on exit</string>
+    <string name="pref_pip_replace_with_previous">Replace previous with PiP</string>
+    <string name="pref_preserve_watching_position">Preserve watching position</string>
+    <string name="pref_progress_mark_as_seen">Mark as seen progress</string>
+    <string name="pref_progress_100">100%%</string>
+    <string name="pref_progress_95">95%%</string>
+    <string name="pref_progress_90">90%%</string>
+    <string name="pref_progress_85">85%%</string>
+    <string name="pref_progress_80">80%%</string>
+    <string name="pref_progress_75">75%%</string>
+    <string name="pref_progress_70">70%%</string>
+    <string name="pref_reduce_motion">Reduce motion</string>
+    <string name="pref_remember_brightness">Remember brightness</string>
+    <string name="pref_remember_volume">Remember volume</string>
+    <string name="pref_show_system_bar">Show system bar</string>
+    <string name="pref_player_hide_controls">Hide controls</string>
+    <string name="pref_player_time_to_disappear">Controls hide delay</string>
+    <string name="pref_player_time_to_disappear_summary">Time before controls are hidden</string>
+    <string name="pref_panel_opacity">Panel opacity</string>
+    <string name="pref_category_player_orientation">Orientation</string>
+    <string name="pref_category_controls">Controls</string>
+    <string name="pref_category_double_tap">Double tap</string>
+    <string name="pref_category_external_player">External player</string>
+    <string name="pref_category_intro_skip">Intro skip</string>
+    <string name="pref_category_media_controls">Media controls</string>
+    <string name="pref_category_pip">Picture-in-Picture</string>
+    <string name="pref_category_player_aniskip_info">AniSkip info</string>
+    <string name="pref_category_player_seeking">Seeking</string>
+    <string name="pref_category_player_sliders">Sliders</string>
+    <string name="pref_controls_allow_gestures_in_panels">Allow gestures in panels</string>
+    <string name="pref_controls_display_volume_percentage">Show volume percentage</string>
+    <string name="pref_controls_show_chapter_indicator">Show chapter indicator</string>
+    <string name="pref_controls_show_chapter_indicator_info">Show current chapter info</string>
+    <string name="pref_controls_show_loading">Show loading indicator</string>
+    <string name="pref_controls_swap_vol_brightness">Swap volume and brightness</string>
+    <string name="pref_center_double_tap">Center double tap</string>
+    <string name="pref_left_double_tap">Left double tap</string>
+    <string name="pref_right_double_tap">Right double tap</string>
+    <string name="pref_double_tap_info">Double tap to seek</string>
+    <string name="pref_hosters">Hosters</string>
+    <string name="pref_hosters_show_empty">Show empty hosters</string>
+    <string name="pref_hosters_show_failure">Show failed hosters</string>
+    <string name="pref_skip_10">Skip 10s</string>
+    <string name="pref_skip_5">Skip 5s</string>
+    <string name="pref_skip_3">Skip 3s</string>
+    <string name="pref_skip_20">Skip 20s</string>
+    <string name="pref_skip_30">Skip 30s</string>
+    <string name="pref_skip_disable">Disabled</string>
+    <string name="pref_skip_length">Skip length</string>
+    <string name="pref_try_hw">Try hardware decoding</string>
+    <string name="pref_debanding_title">Debanding</string>
+    <string name="pref_use_yuv420p_title">Force YUV420P</string>
+    <string name="pref_use_yuv420p_subtitle">Force YUV420P for subtitles</string>
+    <string name="pref_gpu_next_title">GPU Next</string>
+    <string name="pref_gpu_next_subtitle">Use GPU-next renderer</string>
+    <string name="pref_enable_intro_skip">Enable skip intro</string>
+    <string name="pref_enable_netflix_style_aniskip">Netflix-style skip button</string>
+    <string name="pref_enable_auto_skip_ani_skip">Auto-skip intros</string>
+    <string name="pref_enable_aniskip">Enable AniSkip</string>
+    <string name="pref_disable_aniskip_chapter">Disable AniSkip on chapters</string>
+    <string name="pref_waiting_time_aniskip">Skip button display time</string>
+    <string name="pref_waiting_time_aniskip_5">5 seconds</string>
+    <string name="pref_waiting_time_aniskip_6">6 seconds</string>
+    <string name="pref_waiting_time_aniskip_7">7 seconds</string>
+    <string name="pref_waiting_time_aniskip_8">8 seconds</string>
+    <string name="pref_waiting_time_aniskip_9">9 seconds</string>
+    <string name="pref_waiting_time_aniskip_10">10 seconds</string>
+    <string name="pref_default_intro_length">Default intro length</string>
+    <string name="pref_intro_length">Intro length</string>
+    <string name="pref_media_info">Info</string>
+    <string name="pref_media_next">Next</string>
+    <string name="pref_media_playpause">Play/Pause</string>
+    <string name="pref_media_previous">Previous</string>
+    <string name="pref_mpv_conf">mpv.conf</string>
+    <string name="pref_mpv_input">input.conf</string>
+    <string name="pref_mpv_scripts">Scripts</string>
+    <string name="pref_mpv_scripts_summary">MPV Lua scripts</string>
+    <string name="pref_player_advanced_summary">Advanced player settings</string>
+    <string name="pref_player_audio_boost_cap">Volume boost cap</string>
+    <string name="pref_player_audio_lang">Preferred audio language</string>
+    <string name="pref_player_audio_lang_info">Audio language info</string>
+    <string name="pref_player_audio_pitch_correction">Pitch correction</string>
+    <string name="pref_player_audio_pitch_correction_summary">Correct pitch when changing speed</string>
+    <string name="pref_player_audio_summary">Audio settings</string>
+    <string name="pref_player_custom_button">Custom button</string>
+    <string name="pref_player_custom_button_add">Add custom button</string>
+    <string name="pref_player_custom_button_content">Content</string>
+    <string name="pref_player_custom_button_content_long">Long content</string>
+    <string name="pref_player_custom_button_delete">Delete</string>
+    <string name="pref_player_custom_button_delete_confirm">Delete custom button?</string>
+    <string name="pref_player_custom_button_edit">Edit</string>
+    <string name="pref_player_custom_button_empty">No custom buttons</string>
+    <string name="pref_player_custom_button_error_exists">Button already exists</string>
+    <string name="pref_player_custom_button_guide">Custom button guide</string>
+    <string name="pref_player_custom_button_header">Custom Button</string>
+    <string name="pref_player_custom_button_id">ID</string>
+    <string name="pref_player_custom_button_optional">Optional</string>
+    <string name="pref_player_custom_button_startup">Run on startup</string>
+    <string name="pref_player_custom_button_summary">Custom button settings</string>
+    <string name="pref_player_custom_button_title">Title</string>
+    <string name="pref_player_decoder">Decoder</string>
+    <string name="pref_player_decoder_summary">Select video decoder</string>
+    <string name="pref_player_editor">Editor</string>
+    <string name="pref_player_editor_script">Script</string>
+    <string name="pref_player_editor_script_opts">Script options</string>
+    <string name="pref_player_editor_summary">Script editor settings</string>
+    <string name="pref_player_gestures_summary">Gesture settings</string>
+    <string name="pref_player_no_items">No items</string>
+    <string name="pref_auto_update_anime_restrictions">Auto-update restrictions</string>
+
+    <!-- Editor -->
+    <string name="editor_action_delete">Delete</string>
+    <string name="editor_action_rename">Rename</string>
+    <string name="editor_create_error">Error creating file</string>
+    <string name="editor_create_file">Create file</string>
+    <string name="editor_delete_error">Error deleting file</string>
+    <string name="editor_delete_file">Delete file</string>
+    <string name="editor_delete_file_confirmation">Are you sure you want to delete this file?</string>
+    <string name="editor_edit_file">Edit file</string>
+    <string name="editor_file_already_exists">File already exists</string>
+    <string name="editor_filename">Filename</string>
+    <string name="editor_invalid_filename">Invalid filename</string>
+    <string name="editor_rename_error">Error renaming file</string>
+    <string name="editor_save_error">Error saving file</string>
+    <string name="editor_save_success">File saved</string>
+    <string name="editor_unsaved_progress">Unsaved progress</string>
+
+    <!-- Anime specific -->
+    <string name="delete_downloads_for_anime">Delete downloaded episodes?</string>
+    <string name="no_episodes_error">No episodes found</string>
+    <string name="episode_settings_updated">Episode settings updated</string>
+    <string name="snack_add_to_anime_library">Add to library?</string>
+    <string name="confirm_tracker_update_anime">Update trackers to episode %d?</string>
+    <string name="trackers_updated_summary_anime">Trackers updated</string>
+
+    <!-- Player strings -->
+    <string name="no_available_videos">No available videos</string>
+    <string name="no_episode_loaded">No episode loaded</string>
+    <string name="no_hosters">No hosters</string>
+    <string name="no_next_episode">No next episode</string>
+    <string name="no_prev_episode">No previous episode</string>
+    <string name="select_hoster_from_empty_list">Select hoster</string>
+    <string name="enable_auto_play">Enable autoplay</string>
+    <string name="disable_auto_play">Disable autoplay</string>
+    <string name="toast_sleep_timer_ended">Sleep timer ended</string>
+    <string name="timer_remaining">Time remaining</string>
+    <string name="timer_title">Timer</string>
+    <string name="share_screenshot_info">Screenshot: %1$s</string>
+    <string name="display_mode_episode">Episode %1$s</string>
+    <string name="player_gesture_seek_indicator">%1$s / %2$s</string>
+    <string name="player_generic_unit_ms">ms</string>
+    <string name="player_hwdec_mode">HW Decoder</string>
+    <string name="player_sheets_add_ext_audio">Add external audio</string>
+    <string name="player_sheets_audio_delay_title">Audio Delay</string>
+    <string name="player_sheets_delay_set_as_default">Set as default</string>
+    <string name="player_sheets_filters_brightness">Brightness</string>
+    <string name="player_sheets_filters_contrast">Contrast</string>
+    <string name="player_sheets_filters_gamma">Gamma</string>
+    <string name="player_sheets_filters_hue">Hue</string>
+    <string name="player_sheets_filters_Saturation">Saturation</string>
+    <string name="player_sheets_filters_title">Video Filters</string>
+    <string name="player_sheets_filters_warning">Filters may affect performance</string>
+    <string name="player_sheets_more_title">More</string>
+    <string name="player_sheets_stats_page_title">Statistics</string>
+    <string name="player_sheets_sub_color_alpha">Alpha</string>
+    <string name="player_sheets_sub_color_blue">Blue</string>
+    <string name="player_sheets_sub_color_green">Green</string>
+    <string name="player_sheets_sub_color_red">Red</string>
+    <string name="player_sheets_sub_colors_title">Colors</string>
+    <string name="player_sheets_sub_delay_audio_sound_heard">I hear the sound at</string>
+    <string name="player_sheets_sub_delay_delay">Delay</string>
+    <string name="player_sheets_sub_delay_sound_sound_spotted">I spotted the sound at</string>
+    <string name="player_sheets_sub_delay_speed">Speed</string>
+    <string name="player_sheets_sub_delay_subtitle_text_seen">I see the text at</string>
+    <string name="player_sheets_sub_delay_subtitle_type_primary">Primary</string>
+    <string name="player_sheets_sub_delay_subtitle_type_primary_and_secondary">Both</string>
+    <string name="player_sheets_sub_delay_subtitle_type_secondary">Secondary</string>
+    <string name="player_sheets_sub_delay_subtitle_voice_heard">I hear the voice at</string>
+    <string name="player_sheets_sub_delay_title">Subtitle Delay</string>
+    <string name="player_sheets_sub_misc_title">Miscellaneous</string>
+    <string name="player_sheets_sub_override_ass">Override ASS styles</string>
+    <string name="player_sheets_sub_position">Position</string>
+    <string name="player_sheets_sub_scale">Scale</string>
+    <string name="player_sheets_sub_typography_border_size">Border size</string>
+    <string name="player_sheets_sub_typography_border_style">Border style</string>
+    <string name="player_sheets_sub_typography_font">Font</string>
+    <string name="player_sheets_sub_typography_font_size">Font size</string>
+    <string name="player_sheets_sub_typography_title">Typography</string>
+    <string name="player_sheets_subtitles_border_style_background_box">Background box</string>
+    <string name="player_sheets_subtitles_border_style_opaque_box">Opaque box</string>
+    <string name="player_sheets_subtitles_border_style_outline_and_shadow">Outline and shadow</string>
+    <string name="player_sheets_subtitles_color_background">Background</string>
+    <string name="player_sheets_subtitles_color_border">Border</string>
+    <string name="player_sheets_subtitles_color_text">Text</string>
+    <string name="player_sheets_subtitles_settings_title">Subtitle Settings</string>
+    <string name="player_sheets_subtitles_shadow_offset">Shadow offset</string>
+    <string name="player_sheets_track_lang_wo_title">%1$d. %2$s</string>
+    <string name="player_sheets_track_title_w_lang">%1$d. %2$s (%3$s)</string>
+    <string name="single_action_custom">Custom</string>
+    <string name="single_action_none">None</string>
+    <string name="single_action_playpause">Play/Pause</string>
+    <string name="single_action_seek">Seek</string>
+    <string name="single_action_switch">Switch</string>
+    <string name="rotation_reverse_landscape">Reverse landscape</string>
+    <string name="rotation_sensor_landscape">Sensor landscape</string>
+    <string name="rotation_sensor_portrait">Sensor portrait</string>
+    <string name="rotation_video">Follow video</string>
+    <string name="video_crop_screen">Crop screen</string>
+    <string name="video_fit_screen">Fit screen</string>
+    <string name="video_stretch_screen">Stretch screen</string>
+    <string name="numeric_chooser_value_too_big">Value too big (max: %1$d)</string>
+    <string name="numeric_chooser_value_too_small">Value too small (min: %1$d)</string>
+    <string name="app_cast_id" translatable="false">00000000-0000-0000-0000-000000000000</string>
+    <string name="media_route_menu_item" translatable="false">@string/mr_media_route_menu_item</string>
+    <string name="expanded_controller" translatable="false">@string/mr_expanded_controller</string>
+    <string name="mpv_media_title">MPV Media</string>
+
+    <!-- Animation strings -->
+    <string name="anim_play_to_pause" translatable="false">anim_play_to_pause</string>
+    <string name="fade_in" translatable="false">fade_in</string>
+    <string name="slide_in_up" translatable="false">slide_in_up</string>
+    <string name="slide_out_down" translatable="false">slide_out_down</string>
+    <string name="slide_out_up" translatable="false">slide_out_up</string>
+    <string name="player_fade_out" translatable="false">player_fade_out</string>
+
+    <!-- Drawable/Icon descriptions -->
+    <string name="sharp_shadow_24" translatable="false">sharp_shadow_24</string>
+    <string name="outline_brand_family_24" translatable="false">outline_brand_family_24</string>
+    <string name="ic_forward_10_24dp" translatable="false">Forward 10s</string>
+    <string name="enable_volume_brightness_gestures">Volume and brightness gestures</string>
+    <string name="enable_horizontal_seek_gesture">Horizontal seek gesture</string>
+    <string name="pref_show_seekbar">Seekbar</string>
 </resources>

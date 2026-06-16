@@ -1,6 +1,6 @@
 package tachiyomi.data.anime
 
-import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.library.model.LibraryAnime
 
@@ -25,7 +25,7 @@ object AnimeLibraryMapper {
         episodeFlags: Long,
         coverLastModified: Long,
         dateAdded: Long,
-        updateStrategy: AnimeUpdateStrategy,
+        updateStrategy: UpdateStrategy,
         calculateInterval: Long,
         lastModifiedAt: Long,
         favoriteModifiedAt: Long?,
@@ -53,13 +53,13 @@ object AnimeLibraryMapper {
             episodeFlags = episodeFlags,
             coverLastModified = coverLastModified,
             url = url,
-            title = title,
-            artist = artist,
-            author = author,
-            thumbnailUrl = thumbnailUrl,
-            description = description,
-            genre = genre,
-            status = status,
+            ogTitle = title,
+            ogArtist = artist,
+            ogAuthor = author,
+            ogThumbnailUrl = thumbnailUrl,
+            ogDescription = description,
+            ogGenre = genre,
+            ogStatus = status,
             updateStrategy = updateStrategy,
             initialized = initialized,
             lastModifiedAt = lastModifiedAt,

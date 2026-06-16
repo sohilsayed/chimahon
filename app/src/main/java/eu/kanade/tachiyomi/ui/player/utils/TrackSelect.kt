@@ -1,9 +1,9 @@
 package eu.kanade.tachiyomi.ui.player.utils
 
 import androidx.core.os.LocaleListCompat
-import eu.kanade.tachiyomi.ui.player.mpv.MPVView
-import eu.kanade.tachiyomi.ui.player.setting.AudioPreferences
-import eu.kanade.tachiyomi.ui.player.setting.SubtitlePreferences
+import eu.kanade.tachiyomi.ui.player.PlayerViewModel.VideoTrack
+import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
+import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.Locale
@@ -13,40 +13,53 @@ class TrackSelect(
     private val audioPreferences: AudioPreferences = Injekt.get(),
 ) {
 
-    fun getPreferredSubTrack(tracks: List<MPVView.Track>): MPVView.Track? {
-        return getPreferredTrack(tracks, subtitlePreferences.preferredSubLanguages().get())
-    }
+    fun getPreferredTrackIndex(tracks: List<VideoTrack>, subtitle: Boolean = true): VideoTrack? {
+        val prefLangs = if (subtitle) {
+            subtitlePreferences.preferredSubLanguages().get()
+        } else {
+            audioPreferences.preferredAudioLanguages().get()
+        }.split(",").filter { it.isNotEmpty() }
 
-    fun getPreferredAudioTrack(tracks: List<MPVView.Track>): MPVView.Track? {
-        return getPreferredTrack(tracks, audioPreferences.preferredAudioLanguages().get())
-    }
+        val whitelist = if (subtitle) {
+            subtitlePreferences.subtitleWhitelist().get()
+        } else {
+            ""
+        }.split(",").filter { it.isNotEmpty() }
 
-    private fun getPreferredTrack(tracks: List<MPVView.Track>, prefLangsStr: String): MPVView.Track? {
-        if (tracks.isEmpty()) return null
+        val blacklist = if (subtitle) {
+            subtitlePreferences.subtitleBlacklist().get()
+        } else {
+            ""
+        }.split(",").filter { it.isNotEmpty() }
 
-        val prefLangs = prefLangsStr.split(",").filter { it.isNotEmpty() }
-        val locales = prefLangs.map { Locale(it) }.ifEmpty {
-            listOf(LocaleListCompat.getDefault()[0] ?: Locale.getDefault())
+        val locales = prefLangs.map(::Locale).ifEmpty {
+            listOf(LocaleListCompat.getDefault()[0]!!)
         }
 
-        val matchers = locales.mapNotNull { locale ->
-            if (locale.language.isNullOrEmpty()) return@mapNotNull null
-            val englishName = locale.getDisplayName(Locale.ENGLISH).substringBefore(" (")
-            val iso3 = try { locale.isO3Language } catch (_: Exception) { null }
-            val pattern = listOfNotNull(iso3, locale.language).joinToString("|")
-            val langRegex = Regex("""\b$pattern\b""", RegexOption.IGNORE_CASE)
-            Triple(locale, englishName, langRegex)
-        }
-
-        val chosen = matchers.firstOrNull { (_, name, regex) ->
-            tracks.any { matchesLang(it, name, regex) }
+        val chosenLocale = locales.firstOrNull { locale ->
+            tracks.any { t -> containsLang(t, locale) }
         } ?: return null
 
-        return tracks.firstOrNull { matchesLang(it, chosen.second, chosen.third) }
+        val filtered = tracks.withIndex()
+            .filterNot { (_, track) ->
+                blacklist.any { track.name.contains(it, true) }
+            }
+            .filter { (_, track) ->
+                containsLang(track, chosenLocale)
+            }
+
+        return filtered.firstOrNull { (_, track) ->
+            whitelist.any { track.name.contains(it, true) }
+        }?.value ?: filtered.getOrNull(0)?.value
     }
 
-    private fun matchesLang(track: MPVView.Track, englishName: String, langRegex: Regex): Boolean {
-        return track.name.contains(englishName, ignoreCase = true) ||
-            track.language?.let { langRegex.containsMatchIn(it) } == true
+    private fun containsLang(track: VideoTrack, locale: Locale): Boolean {
+        val localName = locale.getDisplayName(locale)
+        val englishName = locale.getDisplayName(Locale.ENGLISH).substringBefore(" (")
+        val langRegex = Regex("""\b${locale.isO3Language}|${locale.language}\b""", RegexOption.IGNORE_CASE)
+
+        return track.name.contains(localName, true) ||
+            track.name.contains(englishName, true) ||
+            track.language?.let { langRegex.find(it) != null } == true
     }
 }

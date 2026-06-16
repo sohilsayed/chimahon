@@ -54,6 +54,7 @@ class DownloadManager(
      */
     private val downloader = Downloader(context, provider, cache)
     private val ocrManager: OcrManager by lazy { Injekt.get() }
+    private val animeDownloadManager: eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager by lazy { Injekt.get() }
 
     val isRunning: Boolean
         get() = downloader.isRunning
@@ -588,6 +589,59 @@ class DownloadManager(
                 queueState.value.filter { download -> download.status == Download.State.DOWNLOADING }.asFlow(),
             )
         }
+
+    // Anime download methods delegated to AnimeDownloadManager
+    fun isEpisodeDownloaded(
+        episodeName: String,
+        episodeScanlator: String?,
+        animeTitle: String,
+        sourceId: Long,
+        skipCache: Boolean = false,
+    ): Boolean {
+        return if (skipCache) {
+            val cache: eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache = Injekt.get()
+            cache.isEpisodeDownloaded(episodeName, episodeScanlator, animeTitle, sourceId, true)
+        } else {
+            animeDownloadManager.isEpisodeDownloaded(episodeName, episodeScanlator, animeTitle, sourceId)
+        }
+    }
+
+    fun downloadEpisodes(
+        anime: tachiyomi.domain.anime.model.Anime,
+        episodes: List<tachiyomi.domain.episode.model.Episode>,
+    ) {
+        animeDownloadManager.downloadEpisodes(anime, episodes, emptyList(), false)
+    }
+
+    fun enqueueEpisodesToDelete(
+        episodes: List<tachiyomi.domain.episode.model.Episode>,
+        anime: tachiyomi.domain.anime.model.Anime,
+    ) {
+        animeDownloadManager.pendingDeleter.enqueueEpisodesToDelete(episodes, anime)
+    }
+
+    fun deletePendingEpisodes() {
+        tachiyomi.core.common.util.lang.launchIO {
+            val sourceManager: tachiyomi.domain.source.service.SourceManager = Injekt.get()
+            val getAnime: tachiyomi.domain.anime.interactor.GetAnime = Injekt.get()
+            val pendingDeleter = animeDownloadManager.pendingDeleter
+            for (animeId in pendingDeleter.getAllAnimeIds()) {
+                val anime = getAnime.await(animeId) ?: continue
+                val source = sourceManager.get(anime.source) as? eu.kanade.tachiyomi.animesource.AnimeSource ?: continue
+                val episodes = pendingDeleter.getPendingEpisodes(anime)
+                animeDownloadManager.deleteEpisodes(episodes, anime, source)
+                pendingDeleter.removePendingDelete(anime)
+            }
+        }
+    }
+
+    fun buildVideo(
+        source: eu.kanade.tachiyomi.source.Source,
+        anime: tachiyomi.domain.anime.model.Anime,
+        episode: tachiyomi.domain.episode.model.Episode,
+    ): eu.kanade.tachiyomi.animesource.model.Video? {
+        return animeDownloadManager.buildVideoForPlayer(anime, episode, source as eu.kanade.tachiyomi.animesource.AnimeSource)
+    }
 
     fun progressFlow(): Flow<Download> = queueState
         .flatMapLatest { downloads ->

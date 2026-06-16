@@ -221,6 +221,9 @@ dependencies {
     }
 
     implementation(projects.i18n)
+    // ANK -->
+    implementation(projects.i18nAnk)
+    // ANK <--
     // KMK -->
     implementation(projects.i18nKmk)
     // KMK <--
@@ -248,6 +251,7 @@ dependencies {
     debugImplementation(compose.ui.tooling)
     implementation(compose.ui.tooling.preview)
     implementation(compose.ui.util)
+    implementation(compose.constraintlayout)
 
     implementation(androidx.interpolator)
 
@@ -369,6 +373,7 @@ dependencies {
     implementation(libs.mediasession)
     implementation(libs.truetypeparser)
     implementation(libs.torrentserver)
+    implementation(libs.nanohttpd)
     implementation(libs.media.router)
     implementation(libs.cast.play.services)
 

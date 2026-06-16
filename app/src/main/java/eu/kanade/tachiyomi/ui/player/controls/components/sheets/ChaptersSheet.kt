@@ -1,3 +1,20 @@
+/*
+ * Copyright 2024 Abdallah Mehiz
+ * https://github.com/abdallahmehiz/mpvKt
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package eu.kanade.tachiyomi.ui.player.controls.components.sheets
 
 import androidx.compose.foundation.clickable
@@ -13,8 +30,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import dev.vivvvek.seeker.Segment
-import eu.kanade.tachiyomi.ui.player.controls.components.IndexedSegment
-import eu.kanade.tachiyomi.ui.player.formatTime
+import `is`.xyz.mpv.Utils
 import kotlinx.collections.immutable.ImmutableList
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
@@ -22,10 +38,11 @@ import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
 fun ChaptersSheet(
-    chapters: ImmutableList<IndexedSegment>,
-    currentChapter: IndexedSegment?,
-    onClick: (IndexedSegment) -> Unit,
+    chapters: ImmutableList<Segment>,
+    currentChapter: Segment,
+    onClick: (Segment) -> Unit,
     onDismissRequest: () -> Unit,
+    dismissSheet: Boolean,
     modifier: Modifier = Modifier,
 ) {
     GenericTracksSheet(
@@ -36,22 +53,23 @@ fun ChaptersSheet(
                 modifier = modifier.padding(top = MaterialTheme.padding.small),
             )
         },
-        track = { chapter ->
+        track = {
             ChapterTrack(
-                chapter = chapter,
-                index = chapters.indexOf(chapter),
-                selected = currentChapter == chapter,
-                onClick = { onClick(chapter) },
+                chapter = it,
+                index = chapters.indexOf(it),
+                selected = currentChapter == it,
+                onClick = { onClick(it) },
             )
         },
         onDismissRequest = onDismissRequest,
+        dismissEvent = dismissSheet,
         modifier = modifier,
     )
 }
 
 @Composable
 fun ChapterTrack(
-    chapter: IndexedSegment,
+    chapter: Segment,
     index: Int,
     selected: Boolean,
     onClick: () -> Unit,
@@ -65,7 +83,7 @@ fun ChapterTrack(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            "${index + 1}. ${chapter.name}",
+            stringResource(MR.strings.player_sheets_track_title_wo_lang, index + 1, chapter.name),
             fontStyle = if (selected) FontStyle.Italic else FontStyle.Normal,
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
             maxLines = 1,
@@ -73,7 +91,7 @@ fun ChapterTrack(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            formatTime(chapter.start.toLong()),
+            Utils.prettyTime(chapter.start.toInt()),
             fontStyle = if (selected) FontStyle.Italic else FontStyle.Normal,
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
         )

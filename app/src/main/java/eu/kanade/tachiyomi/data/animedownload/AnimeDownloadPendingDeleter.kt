@@ -45,6 +45,10 @@ class AnimeDownloadPendingDeleter(
         }
     }
 
+    fun getAllAnimeIds(): List<Long> {
+        return preferences.all.keys.mapNotNull { it.toLongOrNull() }
+    }
+
     private fun decodeEntry(string: String): Entry? {
         return try {
             json.decodeFromString<Entry>(string)

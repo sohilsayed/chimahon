@@ -1,4 +1,4 @@
-import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy;
+import eu.kanade.tachiyomi.source.model.UpdateStrategy;
 import kotlin.collections.List;
 import kotlin.Boolean;
 import kotlin.String;
@@ -22,7 +22,8 @@ CREATE TABLE animes(
     episode_flags INTEGER NOT NULL,
     cover_last_modified INTEGER NOT NULL,
     date_added INTEGER NOT NULL,
-    update_strategy INTEGER AS AnimeUpdateStrategy NOT NULL DEFAULT 0,
+    filtered_scanlators TEXT,
+    update_strategy INTEGER AS UpdateStrategy NOT NULL DEFAULT 0,
     calculate_interval INTEGER DEFAULT 0 NOT NULL,
     last_modified_at INTEGER NOT NULL DEFAULT 0,
     favorite_modified_at INTEGER,
@@ -32,9 +33,8 @@ CREATE TABLE animes(
 
 CREATE INDEX library_favorite_anime_index ON animes(favorite) WHERE favorite = 1;
 CREATE INDEX animes_url_index ON animes(url);
-CREATE INDEX animes_source_index ON animes(source);
 
-CREATE TRIGGER update_last_favorited_at_animes
+CREATE TRIGGER update_last_favorite_at_animes
 AFTER UPDATE OF favorite ON animes
 BEGIN
   UPDATE animes
@@ -66,6 +66,7 @@ SELECT *
 FROM animes
 WHERE _id = :id;
 
+-- TODO: this should ideally never really have more than 1 result
 getAnimeByUrlAndSource:
 SELECT *
 FROM animes
@@ -78,27 +79,87 @@ SELECT *
 FROM animes
 WHERE favorite = 1;
 
+getSeenAnimeNotInLibrary:
+SELECT *
+FROM animes
+WHERE favorite = 0 AND _id IN (
+    SELECT DISTINCT episodes.anime_id
+    FROM episodes
+    WHERE seen = 1 OR last_second_seen != 0
+);
+
+getAllAnime:
+SELECT *
+FROM animes;
+
+getAllAnimeSourceAndUrl:
+SELECT source, url
+FROM animes;
+
+getAnimesWithFavoriteTimestamp:
+SELECT *
+FROM animes
+WHERE favorite_modified_at IS NOT NULL;
+
+getSourceIdWithFavoriteCount:
+SELECT
+source,
+count(*)
+FROM animes
+WHERE favorite = 1
+GROUP BY source;
+
 getFavoriteBySourceId:
 SELECT *
 FROM animes
 WHERE favorite = 1
 AND source = :sourceId;
 
-getAllAnime:
-SELECT *
-FROM animes;
-
 getDuplicateLibraryAnime:
 SELECT *
 FROM animes
 WHERE favorite = 1
-AND lower(title) = :title
+AND LOWER(title) = :title
 AND _id != :id;
+
+getUpcomingAnime:
+SELECT *
+FROM animes
+WHERE next_update >= :startOfDay
+AND favorite = 1
+AND status IN :statuses
+ORDER BY next_update ASC;
+
+resetViewerFlags:
+UPDATE animes
+SET viewer = 0;
 
 resetIsSyncing:
 UPDATE animes
 SET is_syncing = 0
 WHERE is_syncing = 1;
+
+getSourceIdsWithNonLibraryAnime:
+SELECT source, COUNT(*) AS anime_count
+FROM animes
+WHERE favorite = 0
+GROUP BY source;
+
+deleteAnimesNotInLibraryBySourceIds:
+DELETE FROM animes
+WHERE favorite = 0
+AND source IN :sourceIds
+AND _id NOT IN (
+    SELECT anime_id FROM merged_anime WHERE anime_id != merge_id
+);
+
+deleteAnimesNotInLibraryAndNotSeenBySourceIds:
+DELETE FROM animes
+WHERE favorite = 0 AND source IN :sourceIdsAND AND _id NOT IN (
+    SELECT anime_id FROM merged_anime WHERE anime_id != merge_id
+) AND _id NOT IN (
+    SELECT anime_id FROM episodes WHERE seen = 1 OR last_second_seen != 0
+);
 
 insert:
 INSERT INTO animes(source, url, artist, author, description, genre, title, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, episode_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, version)
@@ -132,5 +193,21 @@ WHERE _id = :animeId;
 selectLastInsertedRowId:
 SELECT last_insert_rowid();
 
+getBySource:
+SELECT * FROM animes WHERE source = :sourceId;
+
+getAll:
+SELECT * FROM animes;
+
 deleteById:
 DELETE FROM animes WHERE _id = :id;
+
+selectLastInsertRow:
+SELECT *
+FROM animes
+WHERE _id = last_insert_rowid();
+
+getIdByUrlAndSource:
+SELECT _id
+FROM animes
+WHERE url = :url AND source = :source;

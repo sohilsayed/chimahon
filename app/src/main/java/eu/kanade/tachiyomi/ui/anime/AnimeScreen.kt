@@ -11,6 +11,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import android.content.Intent
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import eu.kanade.presentation.anime.AnimeScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -31,7 +32,15 @@ class AnimeScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
-        val screenModel = rememberScreenModel { AnimeScreenModel(animeId = animeId) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val screenModel = rememberScreenModel {
+            AnimeScreenModel(
+                context = context,
+                lifecycle = lifecycleOwner.lifecycle,
+                animeId = animeId,
+                isFromSource = false,
+            )
+        }
         val state by screenModel.state.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
         val isTabletUi = LocalConfiguration.current.isTabletUi()
@@ -58,7 +67,7 @@ class AnimeScreen(
                         )
                     },
                     onAddToLibraryClicked = { screenModel.toggleFavorite() },
-                    onAddToLibraryAnywayClicked = { screenModel.toggleFavorite(checkDuplicate = false) },
+                    onAddToLibraryAnywayClicked = { screenModel.toggleFavorite(checkDuplicate = false, onRemoved = {}) },
                     onTagSearch = { tag -> navigator.push(GlobalAnimeSearchScreen(tag)) },
                     onFilterButtonClicked = {
                         screenModel.showDialog(AnimeScreenModel.Dialog.SettingsSheet)
@@ -89,14 +98,14 @@ class AnimeScreen(
                     },
                     onRefresh = screenModel::refreshEpisodes,
                     onDeleteClicked = {
-                        screenModel.showDialog(AnimeScreenModel.Dialog.ConfirmDelete)
+                        screenModel.showDialog(AnimeScreenModel.Dialog.ConfirmDelete(emptyList()))
                     },
                     onDismissDialog = screenModel::dismissDialog,
                     onConfirmDelete = {
                         screenModel.deleteAnime()
                         navigator.pop()
                     },
-                    onDownloadEpisode = { item -> screenModel.startDownload(item.episode) },
+                    onDownloadEpisode = { item -> screenModel.downloadEpisodes(listOf(item.episode)) },
                     onDeleteEpisodeDownload = { item -> screenModel.deleteEpisodeDownload(item.episode) },
                     onConfirmDownloadQuality = screenModel::confirmDownload,
                     onUnseenFilterChanged = screenModel::setUnseenFilter,

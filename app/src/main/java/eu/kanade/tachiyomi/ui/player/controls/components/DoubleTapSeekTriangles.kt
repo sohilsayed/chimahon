@@ -48,7 +48,9 @@ fun DoubleTapSeekTriangles(isForward: Boolean) {
 }
 
 @Composable
-private fun DoubleTapArrow(alpha: Float) {
+private fun DoubleTapArrow(
+    alpha: Float,
+) {
     Icon(
         painter = painterResource(R.drawable.ic_play_seek_triangle),
         contentDescription = null,

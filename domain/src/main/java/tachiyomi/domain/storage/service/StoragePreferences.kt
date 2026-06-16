@@ -11,4 +11,6 @@ class StoragePreferences(
 
     // Storing URI of the directory (either file:/// or storage://
     fun baseStorageDirectory() = preferenceStore.getString(Preference.appStateKey("storage_dir"), folderProvider.path())
+
+    fun showEpisodeFileSize() = preferenceStore.getBoolean(Preference.appStateKey("show_episode_file_size"), false)
 }

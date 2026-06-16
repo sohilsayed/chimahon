@@ -242,6 +242,15 @@ fun AnimeScreen(
                 },
             )
         }
+        is AnimeScreenModel.Dialog.ChangeAnimeSkipIntro -> {}
+        is AnimeScreenModel.Dialog.ChangeCategory -> {}
+        is AnimeScreenModel.Dialog.DeleteEpisodes -> {}
+        is AnimeScreenModel.Dialog.EditAnimeInfo -> {}
+        is AnimeScreenModel.Dialog.FullCover -> {}
+        is AnimeScreenModel.Dialog.Migrate -> {}
+        is AnimeScreenModel.Dialog.SetAnimeFetchInterval -> {}
+        is AnimeScreenModel.Dialog.ShowQualities -> {}
+        is AnimeScreenModel.Dialog.TrackSheet -> {}
         null -> {}
     }
 }

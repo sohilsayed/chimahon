@@ -1,7 +1,8 @@
 package tachiyomi.data.anime
 
-import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.library.model.LibraryAnime
 
 object AnimeMapper {
     fun mapAnime(
@@ -23,7 +24,11 @@ object AnimeMapper {
         episodeFlags: Long,
         coverLastModified: Long,
         dateAdded: Long,
-        updateStrategy: AnimeUpdateStrategy,
+        // SY -->
+        @Suppress("UNUSED_PARAMETER")
+        filteredScanlators: String?,
+        // SY <--
+        updateStrategy: UpdateStrategy,
         calculateInterval: Long,
         lastModifiedAt: Long,
         favoriteModifiedAt: Long?,
@@ -42,17 +47,100 @@ object AnimeMapper {
         episodeFlags = episodeFlags,
         coverLastModified = coverLastModified,
         url = url,
-        title = title,
-        artist = artist,
-        author = author,
-        thumbnailUrl = thumbnailUrl,
-        description = description,
-        genre = genre,
-        status = status,
+        // SY -->
+        ogTitle = title,
+        ogArtist = artist,
+        ogAuthor = author,
+        ogThumbnailUrl = thumbnailUrl,
+        ogDescription = description,
+        ogGenre = genre,
+        ogStatus = status,
+        // SY <--
         updateStrategy = updateStrategy,
         initialized = initialized,
         lastModifiedAt = lastModifiedAt,
         favoriteModifiedAt = favoriteModifiedAt,
         version = version,
+    )
+
+    fun mapLibraryAnime(
+        id: Long,
+        source: Long,
+        url: String,
+        artist: String?,
+        author: String?,
+        description: String?,
+        genre: List<String>?,
+        title: String,
+        status: Long,
+        thumbnailUrl: String?,
+        favorite: Boolean,
+        lastUpdate: Long?,
+        nextUpdate: Long?,
+        initialized: Boolean,
+        viewerFlags: Long,
+        episodeFlags: Long,
+        coverLastModified: Long,
+        dateAdded: Long,
+        // SY -->
+        @Suppress("UNUSED_PARAMETER")
+        filteredScanlators: String?,
+        // SY <--
+        updateStrategy: UpdateStrategy,
+        calculateInterval: Long,
+        lastModifiedAt: Long,
+        favoriteModifiedAt: Long?,
+        version: Long,
+        isSyncing: Long,
+        totalCount: Long,
+        seenCount: Double,
+        latestUpload: Long,
+        episodeFetchedAt: Long,
+        lastSeen: Long,
+        bookmarkCount: Double,
+        // AM (FILLERMARK) -->
+        fillermarkCount: Double,
+        // <-- AM (FILLERMARK)
+        category: Long,
+    ): LibraryAnime = LibraryAnime(
+        anime = mapAnime(
+            id,
+            source,
+            url,
+            artist,
+            author,
+            description,
+            genre,
+            title,
+            status,
+            thumbnailUrl,
+            favorite,
+            lastUpdate,
+            nextUpdate,
+            initialized,
+            viewerFlags,
+            episodeFlags,
+            coverLastModified,
+            dateAdded,
+            // SY -->
+            null,
+            // SY <--
+            updateStrategy,
+            calculateInterval,
+            lastModifiedAt,
+            favoriteModifiedAt,
+            version,
+            isSyncing,
+        ),
+        categories = listOf(category),
+        totalEpisodes = totalCount,
+        seenCount = seenCount.toLong(),
+        bookmarkCount = bookmarkCount.toLong(),
+        // AM (FILLERMARK) -->
+        fillermarkCount = fillermarkCount.toLong(),
+        // <-- AM (FILLERMARK)
+        latestUpload = latestUpload,
+        episodeFetchedAt = episodeFetchedAt,
+        lastSeen = lastSeen,
     )
 }

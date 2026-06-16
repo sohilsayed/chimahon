@@ -50,6 +50,9 @@ include(":core:common")
 include(":data")
 include(":domain")
 include(":i18n")
+// ANK -->
+include(":i18n-ank")
+// ANK <--
 // KMK -->
 include(":i18n-kmk")
 include(":flagkit")

@@ -34,6 +34,7 @@ import tachiyomi.core.metadata.comicinfo.ComicInfoPublishingStatus
 import tachiyomi.core.metadata.comicinfo.copyFromComicInfo
 import tachiyomi.core.metadata.comicinfo.getComicInfo
 import tachiyomi.core.metadata.tachiyomi.MangaDetails
+import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.chapter.service.ChapterRecognition
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
@@ -466,6 +467,8 @@ actual class LocalSource(
         private val LATEST_THRESHOLD = 7.days.inWholeMilliseconds
     }
 }
+
+fun Anime.isLocal(): Boolean = source == LocalSource.ID
 
 fun Manga.isLocal(): Boolean = source == LocalSource.ID
 

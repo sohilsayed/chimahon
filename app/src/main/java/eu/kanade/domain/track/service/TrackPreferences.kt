@@ -58,4 +58,6 @@ class TrackPreferences(
     // KMK <--
 
     fun mangabakaScoreType() = preferenceStore.getString("mangabaka_score_type", MangaBaka.STEP_10)
+
+    fun showNextEpisodeAiringTime() = preferenceStore.getBoolean("pref_show_next_episode_airing_time", false)
 }

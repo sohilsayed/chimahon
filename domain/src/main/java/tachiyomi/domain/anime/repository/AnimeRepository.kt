@@ -9,7 +9,7 @@ interface AnimeRepository {
 
     suspend fun getAnimeById(id: Long): Anime
 
-    fun getAnimeByIdAsFlow(id: Long): Flow<Anime>
+    suspend fun getAnimeByIdAsFlow(id: Long): Flow<Anime>
 
     suspend fun getAnimeByUrlAndSourceId(url: String, sourceId: Long): Anime?
 
@@ -17,23 +17,35 @@ interface AnimeRepository {
 
     suspend fun getFavorites(): List<Anime>
 
-    fun getFavoritesBySourceId(sourceId: Long): Flow<List<Anime>>
+    suspend fun getSeenAnimeNotInLibrary(): List<Anime>
 
     suspend fun getLibraryAnime(): List<LibraryAnime>
 
     fun getLibraryAnimeAsFlow(): Flow<List<LibraryAnime>>
 
+    fun getFavoritesBySourceId(sourceId: Long): Flow<List<Anime>>
+
+    suspend fun getDuplicateLibraryAnime(id: Long, title: String): List<Anime>
+
+    suspend fun getUpcomingAnime(statuses: Set<Long>): Flow<List<Anime>>
+
+    suspend fun resetViewerFlags(): Boolean
+
     suspend fun setAnimeCategories(animeId: Long, categoryIds: List<Long>)
+
+    suspend fun insert(anime: Anime): Long?
 
     suspend fun update(update: AnimeUpdate): Boolean
 
     suspend fun updateAll(animeUpdates: List<AnimeUpdate>): Boolean
 
-    suspend fun insert(anime: Anime): Long
-
-    suspend fun deleteAnime(animeId: Long)
+    // SY -->
+    suspend fun getAnimeBySourceId(sourceId: Long): List<Anime>
 
     suspend fun getAll(): List<Anime>
 
-    suspend fun getDuplicateLibraryAnime(id: Long, title: String): List<Anime>
+    suspend fun deleteAnime(animeId: Long)
+
+    suspend fun getSeenAnimeNotInLibraryView(): List<LibraryAnime>
+    // SY <--
 }

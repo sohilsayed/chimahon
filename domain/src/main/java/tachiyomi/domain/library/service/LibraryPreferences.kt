@@ -8,6 +8,7 @@ import tachiyomi.domain.library.model.GroupLibraryMode
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryGroup
 import tachiyomi.domain.library.model.LibrarySort
+import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.manga.model.Manga
 
 class LibraryPreferences(
@@ -70,6 +71,13 @@ class LibraryPreferences(
             MANGA_NON_COMPLETED,
             MANGA_NON_READ,
             MANGA_OUTSIDE_RELEASE_PERIOD,
+        ),
+    )
+
+    fun autoUpdateAnimeRestrictions() = preferenceStore.getStringSet(
+        "library_update_anime_restriction",
+        setOf(
+            ANIME_OUTSIDE_RELEASE_PERIOD,
         ),
     )
 
@@ -234,6 +242,56 @@ class LibraryPreferences(
 
     fun hideMissingChapters() = preferenceStore.getBoolean("pref_hide_missing_chapter_indicators", false)
 
+    // AM (FILLERMARK) -->
+    fun filterEpisodeBySeen() = preferenceStore.getLong(
+        "default_episode_filter_by_seen",
+        Anime.SHOW_ALL,
+    )
+
+    fun filterEpisodeByDownloaded() = preferenceStore.getLong(
+        "default_episode_filter_by_downloaded",
+        Anime.SHOW_ALL,
+    )
+
+    fun filterEpisodeByBookmarked() = preferenceStore.getLong(
+        "default_episode_filter_by_bookmarked",
+        Anime.SHOW_ALL,
+    )
+
+    fun filterEpisodeByFillermarked() =
+        preferenceStore.getLong("default_episode_filter_by_fillermarked", Anime.SHOW_ALL)
+    // <-- AM (FILLERMARK)
+
+    // and upload date
+    fun sortEpisodeBySourceOrNumber() = preferenceStore.getLong(
+        "default_episode_sort_by_source_or_number",
+        Anime.EPISODE_SORTING_SOURCE,
+    )
+
+    fun displayEpisodeByNameOrNumber() = preferenceStore.getLong(
+        "default_chapter_display_by_name_or_number",
+        Anime.EPISODE_DISPLAY_NAME,
+    )
+
+    fun sortEpisodeByAscendingOrDescending() = preferenceStore.getLong(
+        "default_chapter_sort_by_ascending_or_descending",
+        Anime.EPISODE_SORT_DESC,
+    )
+
+    fun setEpisodeSettingsDefault(anime: Anime) {
+        filterEpisodeBySeen().set(anime.unseenFilterRaw)
+        filterEpisodeByDownloaded().set(anime.downloadedFilterRaw)
+        filterEpisodeByBookmarked().set(anime.bookmarkedFilterRaw)
+        // AM (FILLERMARK) -->
+        filterEpisodeByFillermarked().set(anime.fillermarkedFilterRaw)
+        // <-- AM (FILLERMARK)
+        sortEpisodeBySourceOrNumber().set(anime.sorting)
+        displayEpisodeByNameOrNumber().set(anime.displayMode)
+        sortEpisodeByAscendingOrDescending().set(
+            if (anime.sortDescending()) Anime.EPISODE_SORT_DESC else Anime.EPISODE_SORT_ASC,
+        )
+    }
+
     // KMK -->
     fun showEmptyCategoriesSearch() = preferenceStore.getBoolean("show_empty_categories_search", false)
     // KMK <--
@@ -253,12 +311,29 @@ class LibraryPreferences(
 
     fun updateMangaTitles() = preferenceStore.getBoolean("pref_update_library_manga_titles", false)
 
+    fun swipeEpisodeStartAction() = preferenceStore.getEnum(
+        "pref_episode_swipe_end_action",
+        EpisodeSwipeAction.ToggleSeen,
+    )
+
+    fun swipeEpisodeEndAction() = preferenceStore.getEnum(
+        "pref_episode_swipe_start_action",
+        EpisodeSwipeAction.ToggleSeen,
+    )
+
     fun disallowNonAsciiFilenames() = preferenceStore.getBoolean("disallow_non_ascii_filenames", false)
 
     // endregion
 
     enum class ChapterSwipeAction {
         ToggleRead,
+        ToggleBookmark,
+        Download,
+        Disabled,
+    }
+
+    enum class EpisodeSwipeAction {
+        ToggleSeen,
         ToggleBookmark,
         Download,
         Disabled,
@@ -283,6 +358,7 @@ class LibraryPreferences(
         const val MANGA_HAS_UNREAD = "manga_fully_read"
         const val MANGA_NON_READ = "manga_started"
         const val MANGA_OUTSIDE_RELEASE_PERIOD = "manga_outside_release_period"
+        const val ANIME_OUTSIDE_RELEASE_PERIOD = "anime_outside_release_period"
 
         const val MARK_DUPLICATE_CHAPTER_READ_NEW = "new"
         const val MARK_DUPLICATE_CHAPTER_READ_EXISTING = "existing"

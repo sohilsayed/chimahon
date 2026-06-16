@@ -191,6 +191,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.player.cast.ExpandedControlsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Tachiyomi" />
+
         <service
             android:name=".data.torrentServer.service.TorrentServerService"
             android:exported="false"
@@ -199,6 +204,8 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="eu.kanade.tachiyomi.ui.player.cast.CastOptionsProvider" />
+
+        <activity
             android:name=".ui.dictionary.ProcessTextLookupActivity"
             android:excludeFromRecents="true"
             android:exported="true"
