@@ -660,8 +660,8 @@ data object DictionaryTab : Tab {
 
     private class DictionarySessionManager {
         private companion object {
-            private const val MAX_PRELOADED_MEDIA_ITEMS = 4
-            private const val MAX_PRELOADED_MEDIA_BYTES = 64 * 1024
+            private const val MAX_PRELOADED_MEDIA_ITEMS = 20
+            private const val MAX_PRELOADED_MEDIA_BYTES = 256 * 1024
         }
 
         private var session: Long? = null

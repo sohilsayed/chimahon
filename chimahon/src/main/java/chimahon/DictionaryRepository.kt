@@ -252,8 +252,8 @@ class DictionaryRepository(
     )
 
     companion object {
-        private const val MAX_PRELOADED_MEDIA_ITEMS = 2
-        private const val MAX_PRELOADED_MEDIA_BYTES = 64 * 1024
+        private const val MAX_PRELOADED_MEDIA_ITEMS = 20
+        private const val MAX_PRELOADED_MEDIA_BYTES = 256 * 1024
 
         private val TYPE_SUBDIRS = listOf("term", "frequency", "pitch")
 
