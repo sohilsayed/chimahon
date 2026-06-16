@@ -469,10 +469,38 @@ table {
 
 .gloss-image-link {
   color: inherit; text-decoration: none; display: inline-block; max-width: 100%;
+  vertical-align: middle;
+  align-self: center;
+  line-height: 1;
 }
 
 .gloss-image-container {
-  position: relative; display: inline-block; max-width: min(100%, 36em); font-size: 1px; overflow: hidden;
+  position: relative; display: inline-block; max-width: 100%; font-size: calc(1em / var(--font-size-no-units, 14)); overflow: hidden;
+  vertical-align: top;
+  line-height: 0;
+}
+
+.gloss-image-container-overlay {
+  position: absolute; inset: 0;
+  font-size: calc(1em * var(--font-size-no-units, 14));
+  line-height: var(--line-height);
+  display: table;
+  table-layout: fixed;
+  white-space: normal;
+  color: var(--text-color-light3);
+}
+
+.gloss-image-link[data-size-units=em] .gloss-image-container {
+  font-size: 1em;
+}
+
+.gloss-image-link[data-size-units=em] .gloss-image-container-overlay {
+  font-size: 1em;
+}
+
+.gloss-image-link[data-size-units=em]:not([data-appearance=monochrome]) .gloss-image-background {
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 .gloss-image-sizer { display: block; width: 100%; }
@@ -496,7 +524,7 @@ table {
 }
 
 .gloss-image {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; max-height: 8em;
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
 }
 
 .gloss-image-link[data-background="false"] .gloss-image-background { display: none; }

@@ -1474,7 +1474,7 @@
 
     const units = typeof node.sizeUnits === 'string'
       ? node.sizeUnits
-      : (node.data && typeof node.data.sizeUnits === 'string' ? node.data.sizeUnits : 'px');
+      : (node.data && typeof node.data.sizeUnits === 'string' ? node.data.sizeUnits : 'em');
 
     const usedWidth = Number.isFinite(preferredWidth) && preferredWidth > 0
       ? preferredWidth
@@ -1493,9 +1493,15 @@
     link.dataset.imageRendering = imageRendering;
     link.dataset.appearance = typeof node.appearance === 'string' ? node.appearance : 'auto';
     link.dataset.background = String(node.background !== false);
+    const explicitSizeUnits = typeof node.sizeUnits === 'string'
+      ? node.sizeUnits
+      : (node.data && typeof node.data.sizeUnits === 'string' ? node.data.sizeUnits : null);
+    if (explicitSizeUnits) {
+      link.dataset.sizeUnits = explicitSizeUnits;
+    }
     
-    // Apply layout styles
-    link.style.width = `${usedWidth}${units}`;
+    // Width is driven by the container (which uses em units with reduced font-size).
+    // Do NOT set width on the link — let the container dictate sizing, matching Yomitan/Hoshi.
     link.style.maxWidth = '100%';
     if (typeof node.verticalAlign === 'string') {
       link.dataset.verticalAlign = node.verticalAlign;
@@ -1884,6 +1890,7 @@
       dictGlossaries.forEach((gloss) => {
         const li = document.createElement('li');
         li.className = 'definition-item';
+        li.dataset.dictionary = dictName;
         
         const content = document.createElement('div');
         content.className = 'definition-item-content';
