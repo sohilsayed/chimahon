@@ -48,7 +48,7 @@ object AnimeHistoryMapper {
             animeId = animeId,
             sourceId = sourceId,
             isAnimeFavorite = isFavorite,
-            url = thumbnailUrl,
+            ogUrl = thumbnailUrl,
             lastModified = coverLastModified,
         ),
     )

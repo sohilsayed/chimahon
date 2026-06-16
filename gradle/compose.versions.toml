@@ -1,5 +1,6 @@
 [versions]
 compose-bom = "2026.02.00"
+constraint-layout = "1.1.1"
 
 [libraries]
 activity = "androidx.activity:activity-compose:1.12.4"
@@ -15,6 +16,8 @@ ui-util = { module = "androidx.compose.ui:ui-util" }
 
 material3-core = { module = "androidx.compose.material3:material3" }
 material-icons = { module = "androidx.compose.material:material-icons-extended" }
+
+constraintlayout = { module = "androidx.constraintlayout:constraintlayout-compose", version.ref = "constraint-layout" }
 
 glance = "androidx.glance:glance-appwidget:1.1.1"
 colorpicker = {module = "com.github.skydoves:colorpicker-compose", version = "1.1.3"}

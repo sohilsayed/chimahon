@@ -18,7 +18,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.torrentServer.TorrentServerApi
 import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import eu.kanade.tachiyomi.source.isSourceForTorrents
-import eu.kanade.tachiyomi.ui.player.PlayerViewModel
+import eu.kanade.tachiyomi.ui.player.isTorrentUrl
 import eu.kanade.tachiyomi.network.ProgressListener
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.toFFmpegString
@@ -274,7 +274,7 @@ class AnimeDownloader(
         try {
             DiskUtil.createNoMediaFile(tmpDir, context)
 
-            if (PlayerViewModel.isTorrentUrl(videoUrl)) {
+            if (isTorrentUrl(videoUrl)) {
                 resolveTorrentVideo(video)
             }
 

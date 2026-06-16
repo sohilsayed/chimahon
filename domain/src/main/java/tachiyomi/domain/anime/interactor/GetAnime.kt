@@ -19,7 +19,7 @@ class GetAnime(
         }
     }
 
-    fun subscribe(id: Long): Flow<Anime> {
+    suspend fun subscribe(id: Long): Flow<Anime> {
         return animeRepository.getAnimeByIdAsFlow(id)
     }
 
@@ -27,7 +27,9 @@ class GetAnime(
         return animeRepository.getAnimeByUrlAndSourceIdAsFlow(url, sourceId)
     }
 
+    // SY -->
     suspend fun await(url: String, sourceId: Long): Anime? {
         return animeRepository.getAnimeByUrlAndSourceId(url, sourceId)
     }
+    // SY <--
 }

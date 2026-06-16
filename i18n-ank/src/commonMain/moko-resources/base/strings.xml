@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pref_app_icon">App icon</string>
+    <string name="pref_app_icon_toast">App icon changed to %s</string>
+    <string name="episode_progress_short">%1$s/%2$s</string>
+
+    <!-- Torrent -->
+    <string name="install_amnis">Amnis Player needs to be installed</string>
+    <string name="pref_category_torrentserver">TorrentServer Preferences</string>
+    <string name="pref_torrentserver_port">TorrentServer Port</string>
+    <string name="torrentserver_is_running">Torrent Server is running</string>
+    <string name="pref_torrent_trackers">Torrent Trackers</string>
+    <string name="pref_reset_torrent_trackers_string">Reset default torrent trackers string</string>
+
+    <!-- FlareSolverr -->
+    <string name="flare_solver_user_agent_update_success">FlareSolverr is working. User agent updated. Please restart the app</string>
+    <string name="flare_solver_update_user_agent_failed">FlareSolverr is not working. User agent not updated. Please check your settings</string>
+    <string name= "flare_solver_error">Error contacting FlareSolverr</string>
+    <string name="flare_solver_error_webview">Error resolving with WebView</string>
+    <string name="pref_enable_flare_solverr">Enable FlareSolverr</string>
+    <string name="pref_enable_flare_solverr_summary">Use FlareSolverr to bypass Cloudflare\'s anti-bot protection</string>
+    <string name="pref_flare_solverr_url">FlareSolverr URL</string>
+    <string name="pref_flare_solverr_url_summary">URL of the FlareSolverr instance to use for example http://192.168.1.202:8191/v1</string>
+    <string name="pref_test_flare_solverr_and_update_user_agent">Test FlareSolverr and update user agent</string>
+    <string name="pref_test_flare_solverr_and_update_user_agent_summary">Test FlareSolverr to update the user agent. Only required once; then toggle as needed.</string>
+
+    <!-- Cast -->
+    <string name="media_route_menu_title">EXTEND</string>
+    <string name="pref_category_cast">Cast Settings</string>
+    <string name="pref_enable_cast">Enable or disable Cast</string>
+    <string name="action_cast">Send to Cast</string>
+    <string name="title_cast_quality">Choose Cast Quality/Provider</string>
+    <string name="cast_not_connected">Cast not connected</string>
+    <string name="cast_error_loading">Error loading video from Cast</string>
+    <string name="server_local_notification_casting">The local server is running. Tap to stop it.</string>
+    <string name="server_local_notification_channel_description">Local server notification channel</string>
+    <string name="pref_category_castserver">Cast Server</string>
+    <string name="pref_cast_server_port">Cast Server Port</string>
+
+    <!-- Cast Queue Management -->
+    <string name="cast_queue_title">Playback Queue</string>
+    <string name="action_clear_queue">Clear Queue</string>
+    <string name="cast_video_added_to_queue">Video added to queue</string>
+    <string name="queue">Queue</string>
+    <string name="cast_remove_from_queue">Remove from queue</string>
+    <string name="empty_queue">Queue is empty</string>
+    <string name="move_to_top">Move to Top</string>
+    <string name="move_to_bottom">Move to Bottom</string>
+    <string name="move_to_position">Move to Position</string>
+    <string name="position">Position</string>
+    <string name="select_position">Select Position</string>
+    <string name="remove_from_queue_confirmation">Remove from Queue?</string>
+    <string name="clear_queue_confirmation">Clear Queue</string>
+    <string name="clear_queue_confirmation_message">Are you sure you want to clear the entire queue?</string>
+    <string name="action_end_session">End Cast Session</string>
+    <string name="cast_end_session_message">Are you sure you want to end the current cast session?</string>
+    <string name="cast_end_session_confirm">End Session</string>
+    <string name="cast_end_session_cancel">Cancel</string>
+
+    <!-- Cast device picker -->
+    <string name="cast_available_devices">Available Devices</string>
+    <string name="cast_media_info">Media Info</string>
+    <string name="cast_previous_video">Previous Video</string>
+    <string name="cast_next_video">Next Video</string>
+    <string name="cast_play">Play</string>
+    <string name="cast_pause">Pause</string>
+    <string name="cast_rewind_30s">Rewind 30s</string>
+    <string name="cast_forward_30s">Forward 30s</string>
+    <string name="playback_speed">Playback Speed</string>
+    <string name="cast_volume">Volume</string>
+    <string name="cast_end_session">End Cast Session</string>
+
+    <!-- Cast Subtitle Settings -->
+    <string name="cast_subtitle_settings">Subtitle Settings</string>
+    <string name="cast_subtitle_font_size">Font Size</string>
+    <string name="cast_subtitle_text_color">Text Color</string>
+    <string name="cast_subtitle_background">Background</string>
+    <string name="cast_subtitle_shadow">Shadow</string>
+    <string name="cast_subtitle_apply">Apply</string>
+    <string name="cast_subtitle_reset">Reset to Default</string>
+    <string name="cast_subtitle_shadow_None">None</string>
+    <string name="cast_subtitle_shadow_Light">Light</string>
+    <string name="cast_subtitle_shadow_Medium">Medium</string>
+    <string name="cast_subtitle_shadow_Strong">Strong</string>
+    <string name="cast_subtitle_preview">Preview Text</string>
+    <string name="cast_tracks">Select Subtitle/Audio Track</string>
+    <string name="cast_volume_down">Volume Down</string>
+    <string name="cast_volume_up">Volume Up</string>
+    <string name="cast_subtitles">Subtitles</string>
+    <string name="cast_audio_tracks">Audio Tracks</string>
+    <string name="cast_no_subtitles">No Subtitles</string>
+    <string name="cast_close">Close</string>
+    <string name="cast_subtitle_font_family">Font Family</string>
+    <string name="cast_subtitle_border_style">Border Style</string>
+    <string name="cast_subtitle_border_none">None</string>
+    <string name="cast_subtitle_border_outline">Outline</string>
+    <string name="cast_subtitle_border_drop_shadow">Drop Shadow</string>
+    <string name="cast_subtitle_border_drop_shadow_soft">Soft Drop Shadow</string>
+    <string name="cast_subtitle_border_raised">Raised</string>
+    <string name="cast_subtitle_border_depressed">Depressed</string>
+    <string name="cast_connection_error">Connection Error</string>
+    <string name="login_failed">Failed to login</string>
+
+    <!-- Animiru -->
+    <string name="tag">Tags</string>
+    <string name="action_filter_fillermarked">Fillermarked</string>
+    <string name="action_fillermark_episode">Fillermark episode</string>
+    <string name="action_remove_fillermark_episode">Unfillermark episode</string>
+    <string name="pref_not_download_fillermarked_items">Deny downloading of fillermarked episodes</string>
+    <string name="pref_show_downloaded_episode_file_size">Show downloaded episode file size</string>
+
+    <!-- Mihon -->
+    <string name="pref_security">Security</string>
+    <string name="onboarding_permission_crashlytics">Send crash logs</string>
+    <string name="onboarding_permission_crashlytics_description">Send anonymized crash logs to the developers.</string>
+    <string name="pref_firebase">Analytics and Crash logs</string>
+    <string name="firebase_summary">Sending crash logs and analytics will allow us to identify and fix issues, improve performance, and make future updates more relevant to your needs</string>
+    <string name="label_auto">Auto</string>
+    <string name="pref_library_items_per_row">Items per row</string>
+    <string name="pref_library_items_per_screen">Items per screen</string>
+    <string name="theme_monochrome">Monochrome</string>
+    <string name="tracked_privately">Tracked privately</string>
+    <string name="action_toggle_private_on">Track privately</string>
+    <string name="action_toggle_private_off">Track publicly</string>
+    <string name="export">Export</string>
+    <string name="library_list">Library List</string>
+    <string name="library_exported">Library Exported</string>
+    <string name="author">Author</string>
+    <string name="artist">Artist</string>
+    <string name="action_notes">Notes</string>
+    <string name="action_edit_notes">Edit notes</string>
+    <string name="notes_placeholder">Enjoyed the part where…</string>
+    <string name="possible_duplicates_title">Possible duplicates</string>
+    <string name="possible_duplicates_summary">You have entries in your library with a similar name.\n\nSelect an entry to migrate or add anyway.</string>
+    <string name="clear_database_text">You’re about to remove entries from the database</string>
+    <string name="clear_database_seen_history_warning">Seen episodes and progress of non-library entries will be lost</string>
+    <string name="clear_db_exclude_seen">Keep entries with seen episodes</string>
+    <string name="logging_in">Logging in…</string>
+    <string name="storage_failed_to_create_download_directory">Failed to create download directory</string>
+    <string name="storage_failed_to_create_directory">Failed to create directory: %s</string>
+    <string name="pref_display_images_description_anime">Render images in anime descriptions</string>
+
+    <!-- Mihon, Aniyomi, Komikku & SY which need to replace manga => anime -->
+        <!-- Mihon -->
+    <string name="action_sort_last_update_check">Last update check</string>
+    <string name="action_display_show_continue_watching_button">Continue watching button</string>
+    <string name="non_library_watched_settings">All watched entries</string>
+    <string name="channel_new_episodes">Episode updates</string>
+    <string name="pref_incognito_watching_mode_extension_summary">Pause watching history for extension</string>
+    <string name="pref_library_update_show_tab_badge_unseen">Show unseen count on Updates icon</string>
+    <string name="pref_mark_duplicate_seen_episode_seen">Mark duplicate seen episode as seen</string>
+    <string name="pref_mark_duplicate_seen_episode_seen_existing">After watching a episode</string>
+    <string name="pref_mark_duplicate_seen_episode_seen_new">After fetching new episode</string>
+    <string name="action_display_unseen_badge">Unseen episodes</string>
+    <string name="pref_update_library_anime_titles">Update library anime titles to match source</string>
+    <string name="pref_update_library_anime_titles_summary">Warning: if an anime is renamed, it will be removed from the download queue (if present).</string>
+    <string name="pref_hide_missing_episode_indicators">Hide missing episode indicators</string>
+
+        <!-- SY -->
+    <string name="sync_on_episode_seen">Sync on Episode Seen</string>
+    <string name="sync_on_episode_open">Sync on Episode Open</string>
+    <string name="include_all_seen_entries">Include all seen entries</string>
+    <string name="only_show_updated_entries_episodes">Only show entries with new episodes</string>
+    <string name="use_most_episodes">Use source with the most episodes (slower)</string>
+    <string name="dedupe_most_episodes">Show source with most episodes</string>
+    <string name="dedupe_highest_episode">Show source with highest episode number</string>
+    <string name="episode_updates_merged_entry">Toggle episode updates</string>
+    <string name="episode_updates_merged_entry_desc">Toggling this will disable or enable episode updates for this merged entry</string>
+    <string name="merged_episode_updates_error">Toggle episode updates error</string>
+    <string name="fetch_episode_updates">Fetch episode updates</string>
+    <string name="merged_toggle_download_episodes_error">Toggle download episodes error</string>
+    <string name="download_merged_anime_entry">Toggle new episode downloads</string>
+    <string name="download_merged_anime_entry_desc">Toggling this will disable or enable episode downloads for this merged entry</string>
+
+        <!-- Komikku -->
+    <string name="sync_progress_from_trackers_up_to_episode">Sync progress from Trackers up to episode %d</string>
+    <string name="download_cache_renew_interval_info_anime">If set to "manual", either refresh each anime or using the "Reindex downloads" action in "Advanced"</string>
+    <string name="pref_top_align_cover_summary_anime">Show the cover aligned to the top alongside anime info</string>
+    <string name="pref_anime_info">Anime Info</string>
+
+        <!-- Discord section -->
+    <string name="discord_download_button_anime">Watch on %s</string>
+    <string name="discord_app_description_anime">Anikku - an anime watching app</string>
+    <string name="show_episodes_titles_title">Show Episodes Titles</string>
+    <string name="show_episodes_titles_subtitle">Show the title of the episode you are watching</string>
+    <string name="video">Video</string>
+    <string name="pref_discord_show_progress_summary_episode">Display the current episode progress</string>
+    <string name="pref_discord_show_timestamp_summary_episode">Display elapsed/remaining time</string>
+
+        <!-- Aniyomi -->
+    <string name="pref_library_summary_episode">Categories, global update, episode swipe</string>
+    <string name="pref_category_delete_episodes">Delete episodes</string>
+    <string name="pref_remove_bookmarked_episodes">Allow deleting bookmarked episodes</string>
+    <string name="pref_remove_after_marked_as_seen">After manually marked as seen</string>
+    <string name="pref_remove_after_watching">After watching automatically delete</string>
+    <string name="pref_auto_update_anime_sync">Update progress after watching</string>
+    <string name="pref_auto_update_anime_on_mark_seen">Update progress when marked as watched</string>
+    <string name="pref_skip_seen_episodes">Skip episodes marked seen</string>
+    <string name="pref_skip_filtered_episodes">Skip filtered episodes</string>
+    <string name="pref_skip_dupe_episodes">Skip duplicate episodes</string>
+    <string name="pref_reset_player_flags">Reset per-series player settings</string>
+    <string name="pref_reset_player_flags_summary">Resets skip intro length &amp; next episode airing of all series</string>
+    <string name="pref_reset_player_flags_success">All player settings reset</string>
+    <string name="pref_reset_player_flags_error">Couldn\'t reset player settings</string>
+    <string name="pref_storage_location_info_anime">Used for automatic backups, episode downloads, and local source.</string>
+    <string name="tracking_info_anime">One-way sync to update the episode progress in external tracker services. Set up tracking for individual entries from their tracking button.</string>
+    <string name="pref_create_folder_per_anime">Save screenshots into separate folders</string>
+
+    <!-- Advanced Settings -->
+    <string name="clean_up_downloaded_episodes">Clean up downloaded episodes</string>
+    <string name="delete_unused_episodes">Delete non-existent, partially downloaded, and seen episodes folders</string>
+    <string name="clean_seen_downloads">Clean seen</string>
+
+    <string name="pref_invalidate_episode_download_cache_summary">Force app to recheck downloaded episodes</string>
+    <string name="pref_update_only_completely_seen">With unseen episode(s)</string>
+    <string name="pref_library_update_show_tab_badge_episode">Show unseen count on Updates icon</string>
+
+    <string name="last_seen_episode">Last seen episode</string>
+    <string name="second_to_last_episode">Second to last seen episode</string>
+    <string name="third_to_last_episode">Third to last seen episode</string>
+    <string name="fourth_to_last_episode">Fourth to last seen episode</string>
+    <string name="fifth_to_last_episode">Fifth to last seen episode</string>
+
+    <string name="skipped_reason_not_caught_up_episode">Skipped because there are unseen episodes</string>
+    <string name="skipped_reason_not_started_episode">Skipped because no episodes are seen</string>
+
+    <string name="action_clear_anime">Clear anime</string>
+    <string name="episodes_from_database">Episodes &amp; History from Database</string>
+</resources>

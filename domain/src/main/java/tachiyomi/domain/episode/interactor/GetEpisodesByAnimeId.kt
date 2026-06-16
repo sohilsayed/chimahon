@@ -1,6 +1,5 @@
 package tachiyomi.domain.episode.interactor
 
-import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.episode.model.Episode
@@ -10,16 +9,12 @@ class GetEpisodesByAnimeId(
     private val episodeRepository: EpisodeRepository,
 ) {
 
-    suspend fun await(animeId: Long): List<Episode> {
+    suspend fun await(animeId: Long, applyScanlatorFilter: Boolean = false): List<Episode> {
         return try {
-            episodeRepository.getEpisodesByAnimeId(animeId)
+            episodeRepository.getEpisodeByAnimeId(animeId, applyScanlatorFilter)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()
         }
-    }
-
-    fun subscribe(animeId: Long): Flow<List<Episode>> {
-        return episodeRepository.getEpisodesByAnimeIdAsFlow(animeId)
     }
 }

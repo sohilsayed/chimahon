@@ -47,6 +47,7 @@ import eu.kanade.presentation.more.settings.screen.about.AboutScreen
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsMainScreen
 import exh.assets.EhAssets
 import exh.assets.ehassets.EhLogo
 import exh.assets.ehassets.MangadexLogo
@@ -207,7 +208,7 @@ object SettingsMainScreen : Screen() {
             titleRes = MR.strings.pref_category_player,
             subtitleRes = MR.strings.pref_player_summary,
             icon = Icons.Outlined.OndemandVideo,
-            screen = SettingsPlayerScreen,
+            screen = PlayerSettingsMainScreen,
         ),
         Item(
             titleRes = MR.strings.pref_category_downloads,

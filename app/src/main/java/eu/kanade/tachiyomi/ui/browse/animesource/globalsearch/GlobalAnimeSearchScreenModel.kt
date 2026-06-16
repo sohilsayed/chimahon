@@ -102,16 +102,16 @@ class GlobalAnimeSearchScreenModel(
             val anime = Anime.create().copy(
                 source = sourceId,
                 url = sAnime.url,
-                title = sAnime.title,
-                artist = sAnime.artist,
-                author = sAnime.author,
-                description = sAnime.description,
-                genre = sAnime.getGenres(),
-                thumbnailUrl = sAnime.thumbnail_url,
-                status = sAnime.status.toLong(),
+                ogTitle = sAnime.title,
+                ogArtist = sAnime.artist,
+                ogAuthor = sAnime.author,
+                ogDescription = sAnime.description,
+                ogGenre = sAnime.getGenres(),
+                ogThumbnailUrl = sAnime.thumbnail_url,
+                ogStatus = sAnime.status.toLong(),
                 initialized = true,
             )
-            val id = animeRepository.insert(anime)
+            val id = animeRepository.insert(anime)!!
             withUIContext { onAdded(id) }
         }
     }

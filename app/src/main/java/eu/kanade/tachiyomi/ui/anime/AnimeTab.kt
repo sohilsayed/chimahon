@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.anime
 
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,7 +38,6 @@ import eu.kanade.presentation.anime.library.AnimeLibrarySettingsDialog
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.anime.library.AnimeLibraryScreenModel
-import eu.kanade.tachiyomi.ui.player.PlayerActivity
 import kotlinx.coroutines.launch
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.AnimeLibraryPreferences
@@ -87,7 +87,7 @@ data object AnimeTab : Tab {
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
-                context.startActivity(PlayerActivity.newIntent(context, uri.toString()))
+                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
             }
         }
 
@@ -180,7 +180,7 @@ data object AnimeTab : Tab {
                 onDismiss = { showOpenVideoDialog = false },
                 onOpenUrl = { url ->
                     showOpenVideoDialog = false
-                    context.startActivity(PlayerActivity.newIntent(context, url))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 },
                 onPickFile = {
                     showOpenVideoDialog = false

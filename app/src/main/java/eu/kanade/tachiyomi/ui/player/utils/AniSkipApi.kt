@@ -18,6 +18,7 @@ class AniSkipApi {
     private val client = OkHttpClient()
     private val json: Json by injectLazy()
 
+    // credits: https://github.com/saikou-app/saikou/blob/main/app/src/main/java/ani/saikou/others/AniSkip.kt
     fun getResult(malId: Int, episodeNumber: Int, episodeLength: Long): List<TimeStamp>? {
         val url =
             "https://api.aniskip.com/v2/skip-times/$malId/$episodeNumber?types[]=ed" +
@@ -47,7 +48,7 @@ class AniSkipApi {
                 query{
                 Media(id:$id){idMal}
                 }
-        """.trimIndent()
+        """.trimMargin()
         val response = try {
             client.newCall(
                 POST(
@@ -88,10 +89,7 @@ enum class SkipType {
     RECAP,
 
     @SerialName("mixed-op")
-    MIXED_OP,
-
-    @SerialName("mixed-ed")
-    MIXED_ED, ;
+    MIXED_OP, ;
 
     fun getString(): String {
         return when (this) {
@@ -99,7 +97,6 @@ enum class SkipType {
             ED -> "Ending"
             RECAP -> "Recap"
             MIXED_OP -> "Mixed-op"
-            MIXED_ED -> "Mixed-ed"
         }
     }
 
@@ -109,7 +106,6 @@ enum class SkipType {
             ED -> ChapterType.Ending
             RECAP -> ChapterType.Recap
             MIXED_OP -> ChapterType.MixedOp
-            MIXED_ED -> ChapterType.MixedEd
         }
     }
 }

@@ -92,6 +92,7 @@ media-router = "androidx.mediarouter:mediarouter:1.8.1"
 cast-play-services = "com.google.android.gms:play-services-cast-framework:22.1.0"
 ffmpeg-kit = { module = "com.github.jmir1:ffmpeg-kit", version.ref = "ffmpeg-kit" }
 smart-exception-java = "com.arthenica:smart-exception-java:0.2.1"
+nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "2.3.1" }
 
 
 swipe = "me.saket.swipe:swipe:1.3.0"

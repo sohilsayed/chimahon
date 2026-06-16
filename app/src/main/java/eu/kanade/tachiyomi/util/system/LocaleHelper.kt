@@ -83,6 +83,13 @@ object LocaleHelper {
     }
 
     /**
+     * Returns the simple display name of the device locale
+     */
+    fun getSimpleLocaleDisplayName(): String {
+        return Locale.getDefault().displayName.split(" ").first()
+    }
+
+    /**
      * Return the default languages enabled for the sources.
      */
     fun getDefaultEnabledLanguages(): Set<String> {

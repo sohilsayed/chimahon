@@ -1,5 +1,6 @@
 package eu.kanade.domain
 
+import eu.kanade.domain.anime.interactor.SetAnimeViewerFlags
 import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionLanguages
 import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionSources
 import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionsByType
@@ -29,6 +30,7 @@ import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
+import eu.kanade.tachiyomi.ui.player.utils.TrackSelect
 import mihon.data.repository.AnimeExtensionRepoRepositoryImpl
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.domain.animeextensionrepo.interactor.CreateAnimeExtensionRepo
@@ -109,6 +111,14 @@ import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.interactor.GetSourcesWithNonLibraryManga
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.repository.StubSourceRepository
+import tachiyomi.data.custombutton.CustomButtonRepositoryImpl
+import tachiyomi.domain.custombuttons.interactor.CreateCustomButton
+import tachiyomi.domain.custombuttons.interactor.DeleteCustomButton
+import tachiyomi.domain.custombuttons.interactor.GetCustomButtons
+import tachiyomi.domain.custombuttons.interactor.ReorderCustomButton
+import tachiyomi.domain.custombuttons.interactor.ToggleFavoriteCustomButton
+import tachiyomi.domain.custombuttons.interactor.UpdateCustomButton
+import tachiyomi.domain.custombuttons.repository.CustomButtonRepository
 import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.GetTracksPerManga
@@ -203,6 +213,18 @@ class DomainModule : InjektModule {
 
         addFactory { DeleteDownload(get(), get()) }
         addFactory { DeleteAnimeDownload(get(), get()) }
+
+        addSingletonFactory<CustomButtonRepository> { CustomButtonRepositoryImpl(get()) }
+        addFactory { CreateCustomButton(get()) }
+        addFactory { DeleteCustomButton(get()) }
+        addFactory { GetCustomButtons(get()) }
+        addFactory { UpdateCustomButton(get()) }
+        addFactory { ReorderCustomButton(get()) }
+        addFactory { ToggleFavoriteCustomButton(get()) }
+
+        addFactory { SetAnimeViewerFlags(get()) }
+
+        addFactory { TrackSelect(get(), get()) }
 
         addFactory { GetExtensionsByType(get(), get()) }
         addFactory { GetExtensionSources(get()) }

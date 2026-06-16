@@ -2,6 +2,7 @@
 
 package eu.kanade.tachiyomi.animesource.model
 
+import eu.kanade.tachiyomi.animesource.model.FetchType
 import java.io.Serializable
 
 interface SAnime : Serializable {
@@ -22,6 +23,10 @@ interface SAnime : Serializable {
 
     var thumbnail_url: String?
 
+    var background_url: String?
+
+    var fetch_type: FetchType
+
     var update_strategy: AnimeUpdateStrategy
 
     var initialized: Boolean
@@ -40,6 +45,8 @@ interface SAnime : Serializable {
         it.genre = genre
         it.status = status
         it.thumbnail_url = thumbnail_url
+        it.background_url = background_url
+        it.fetch_type = fetch_type
         it.update_strategy = update_strategy
         it.initialized = initialized
     }

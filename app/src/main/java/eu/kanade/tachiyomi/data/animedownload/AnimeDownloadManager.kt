@@ -29,7 +29,7 @@ class AnimeDownloadManager(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloader = AnimeDownloader(context, provider, cache)
-    private val pendingDeleter = AnimeDownloadPendingDeleter(context)
+    val pendingDeleter = AnimeDownloadPendingDeleter(context)
 
     val isRunning: Boolean
         get() = downloader.isRunning

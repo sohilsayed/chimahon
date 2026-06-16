@@ -1,6 +1,6 @@
 package tachiyomi.domain.anime.model
 
-import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 
 data class AnimeUpdate(
     val id: Long,
@@ -21,9 +21,12 @@ data class AnimeUpdate(
     val genre: List<String>? = null,
     val status: Long? = null,
     val thumbnailUrl: String? = null,
-    val updateStrategy: AnimeUpdateStrategy? = null,
+    val updateStrategy: UpdateStrategy? = null,
     val initialized: Boolean? = null,
     val version: Long? = null,
+    // SY -->
+    val filteredScanlators: List<String>? = null,
+    // SY <--
 )
 
 fun Anime.toAnimeUpdate(): AnimeUpdate {
@@ -39,13 +42,15 @@ fun Anime.toAnimeUpdate(): AnimeUpdate {
         episodeFlags = episodeFlags,
         coverLastModified = coverLastModified,
         url = url,
-        title = title,
-        artist = artist,
-        author = author,
-        thumbnailUrl = thumbnailUrl,
-        description = description,
-        genre = genre,
-        status = status,
+        // SY -->
+        title = ogTitle,
+        artist = ogArtist,
+        author = ogAuthor,
+        thumbnailUrl = ogThumbnailUrl,
+        description = ogDescription,
+        genre = ogGenre,
+        status = ogStatus,
+        // SY <--
         updateStrategy = updateStrategy,
         initialized = initialized,
         version = version,

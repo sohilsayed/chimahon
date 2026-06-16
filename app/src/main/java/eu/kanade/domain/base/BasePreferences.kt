@@ -35,4 +35,9 @@ class BasePreferences(
     fun hardwareBitmapThreshold() = preferenceStore.getInt("pref_hardware_bitmap_threshold", GLUtil.SAFE_TEXTURE_LIMIT)
 
     fun alwaysDecodeLongStripWithSSIV() = preferenceStore.getBoolean("pref_always_decode_long_strip_with_ssiv", false)
+
+    fun deviceHasPip(): Boolean {
+        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N &&
+            context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
 }

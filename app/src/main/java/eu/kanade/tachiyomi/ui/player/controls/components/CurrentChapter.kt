@@ -1,3 +1,20 @@
+/*
+ * Copyright 2024 Abdallah Mehiz
+ * https://github.com/abdallahmehiz/mpvKt
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package eu.kanade.tachiyomi.ui.player.controls.components
 
 import androidx.compose.animation.AnimatedContent
@@ -28,12 +45,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import eu.kanade.tachiyomi.ui.player.formatTime
+import dev.vivvvek.seeker.Segment
+import `is`.xyz.mpv.Utils
 import tachiyomi.presentation.core.components.material.padding
 
 @Composable
 fun CurrentChapter(
-    chapter: IndexedSegment,
+    chapter: Segment,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
 ) {
@@ -42,7 +60,7 @@ fun CurrentChapter(
             .clip(RoundedCornerShape(25))
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.6F))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = MaterialTheme.padding.small),
+            .padding(horizontal = MaterialTheme.padding.mediumSmall, vertical = MaterialTheme.padding.small),
     ) {
         AnimatedContent(
             targetState = chapter,
@@ -72,14 +90,14 @@ fun CurrentChapter(
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
                 Text(
-                    text = formatTime(currentChapter.start.toLong()),
+                    text = Utils.prettyTime(currentChapter.start.toInt()),
                     fontWeight = FontWeight.ExtraBold,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     color = MaterialTheme.colorScheme.tertiary,
                 )
-                if (currentChapter.name.isNotEmpty()) {
+                currentChapter.name.let {
                     Text(
                         text = Typography.bullet.toString(),
                         textAlign = TextAlign.Center,
@@ -89,7 +107,7 @@ fun CurrentChapter(
                         overflow = TextOverflow.Clip,
                     )
                     Text(
-                        text = currentChapter.name,
+                        text = it,
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,

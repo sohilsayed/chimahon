@@ -1,13 +1,23 @@
 package eu.kanade.tachiyomi.ui.player.utils
 
 import androidx.compose.ui.graphics.Color
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.animesource.model.ChapterType
 import eu.kanade.tachiyomi.animesource.model.TimeStamp
 import eu.kanade.tachiyomi.ui.player.controls.components.IndexedSegment
+import tachiyomi.i18n.MR
 import kotlin.math.abs
 
 class ChapterUtils {
     companion object {
+        fun ChapterType.getStringRes(): StringResource? = when (this) {
+            ChapterType.Opening -> MR.strings.player_chapter_type_opening
+            ChapterType.Ending -> MR.strings.player_chapter_type_ending
+            ChapterType.Recap -> MR.strings.player_chapter_type_recap
+            ChapterType.MixedOp -> MR.strings.player_chapter_type_mixedop
+            ChapterType.Other -> null
+        }
+
         fun mergeChapters(
             currentChapters: List<IndexedSegment>,
             stamps: List<TimeStamp>,
@@ -21,7 +31,7 @@ class ChapterUtils {
                     it.start
                 }
                 val startChapter = IndexedSegment(
-                    index = -2,
+                    index = -2, // Index -2 is used to indicate that this is an external chapter
                     name = it.name,
                     start = startTime.toFloat(),
                     color = if (it.type == ChapterType.Other) Color.Unspecified else Color(0xFFD8BBDF),
@@ -81,6 +91,7 @@ class ChapterUtils {
 
             val combined = (startChapter + playerChapters + filteredChapters).sortedBy { it.start }
 
+            // Remove any adjacent "empty" chapters
             return combined.filterIndexed { index, segment ->
                 if (index == 0) {
                     true

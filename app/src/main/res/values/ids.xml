@@ -2,4 +2,5 @@
 <resources>
     <item name="reader_pager" type="id"/>
     <item name="chima_webview_warm" type="id"/>
+    <item name="media_route_menu_item" type="id"/>
 </resources>

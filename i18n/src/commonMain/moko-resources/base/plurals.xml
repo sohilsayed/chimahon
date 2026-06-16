@@ -109,4 +109,12 @@
         <item quantity="one">An entry was skipped</item>
         <item quantity="other">%1$d entries were skipped</item>
     </plurals>
+    <plurals name="hoster_video_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d videos</item>
+    </plurals>
+    <plurals name="seconds">
+        <item quantity="one">%d second</item>
+        <item quantity="other">%d seconds</item>
+    </plurals>
 </resources>

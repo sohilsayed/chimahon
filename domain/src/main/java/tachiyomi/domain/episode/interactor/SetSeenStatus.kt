@@ -46,7 +46,7 @@ class SetSeenStatus(
         await(
             seen = seen,
             episodes = episodeRepository
-                .getEpisodesByAnimeId(animeId)
+                .getEpisodeByAnimeId(animeId)
                 .toTypedArray(),
         )
     }

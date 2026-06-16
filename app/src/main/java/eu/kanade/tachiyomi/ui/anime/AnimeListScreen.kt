@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.anime
 
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -37,8 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import eu.kanade.tachiyomi.ui.player.PlayerActivity
-import eu.kanade.tachiyomi.ui.player.buildProgressString
+import eu.kanade.tachiyomi.util.buildProgressString
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
@@ -65,7 +65,7 @@ fun AnimeListScreen(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
-            context.startActivity(PlayerActivity.newIntent(context, uri.toString()))
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
         }
     }
 
@@ -124,7 +124,7 @@ fun AnimeListScreen(
             onDismiss = { showDialog = false },
             onOpenUrl = { url ->
                 showDialog = false
-                context.startActivity(PlayerActivity.newIntent(context, url))
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             },
             onPickFile = {
                 showDialog = false
