@@ -275,11 +275,10 @@ object AnkiCardCreator {
         }
         return try {
             val effectiveDeck = deck.ifBlank { bridge.ensureDefaultDeckName() }
-            val requestedModel = model.ifBlank { LapisPreset.MODEL_NAME }
-            val effectiveModel = if (LapisPreset.isBundledModelName(requestedModel)) {
+            val effectiveModel = if (model.isBlank()) {
                 bridge.ensureLapisModelName()
             } else {
-                requestedModel
+                model
             }
             val effectiveFieldMapJson = if (
                 LapisPreset.isBundledModelName(effectiveModel) &&

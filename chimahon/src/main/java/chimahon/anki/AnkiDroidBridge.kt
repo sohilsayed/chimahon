@@ -178,27 +178,12 @@ class AnkiDroidBridge(private val context: Context) {
         if (!hasPermission()) return@withContext ""
 
         val models = readModelInfos()
-        val exact = models.firstOrNull { it.name == LapisPreset.MODEL_NAME }
-        if (exact != null && LapisPreset.hasAllFields(exact.fields)) {
-            return@withContext exact.name
-        }
-
-        val completeFallback = models.firstOrNull {
-            it.name.equals(LapisPreset.FALLBACK_MODEL_NAME, ignoreCase = true) &&
-                LapisPreset.hasAllFields(it.fields)
-        }
-        if (completeFallback != null) {
-            return@withContext completeFallback.name
-        }
-
-        val targetName = if (exact == null) {
+        if (models.any { it.name == LapisPreset.MODEL_NAME }) {
             LapisPreset.MODEL_NAME
         } else {
-            nextAvailableLapisFallbackName(models)
+            createLapisModel(LapisPreset.MODEL_NAME)
+            LapisPreset.MODEL_NAME
         }
-
-        createLapisModel(targetName)
-        targetName
     }
 
     suspend fun getDeckId(deckName: String): Long = withContext(Dispatchers.IO) {
@@ -499,20 +484,6 @@ class AnkiDroidBridge(private val context: Context) {
             Log.e(TAG, "readModelInfos failed", e)
         }
         return models
-    }
-
-    private fun nextAvailableLapisFallbackName(models: List<ModelInfo>): String {
-        val existingNames = models.map { it.name.lowercase() }.toSet()
-        if (LapisPreset.FALLBACK_MODEL_NAME.lowercase() !in existingNames) {
-            return LapisPreset.FALLBACK_MODEL_NAME
-        }
-
-        var index = 2
-        while (true) {
-            val candidate = "Lapis (Chimahon $index)"
-            if (candidate.lowercase() !in existingNames) return candidate
-            index += 1
-        }
     }
 
     private fun createLapisModel(modelName: String): Long {

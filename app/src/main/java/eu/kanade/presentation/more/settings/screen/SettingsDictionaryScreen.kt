@@ -1812,9 +1812,9 @@ object SettingsDictionaryScreen : SearchableSettings {
                         selectedDeck
                     }
                     // Always ensure Lapis exists in AnkiDroid so it's in the dropdown
-                    val lapisModelName = bridge.ensureLapisModelName()
-                    val ensuredModel = if (selectedModel.isBlank() || LapisPreset.isBundledModelName(selectedModel)) {
-                        lapisModelName
+                    bridge.ensureLapisModelName()
+                    val ensuredModel = if (selectedModel.isBlank()) {
+                        LapisPreset.MODEL_NAME
                     } else {
                         selectedModel
                     }
@@ -1827,10 +1827,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     if (current.ankiDeck.isBlank() && ensuredDeck.isNotBlank()) {
                         updated = updated.copy(ankiDeck = ensuredDeck)
                     }
-                    if (
-                        (current.ankiModel.isBlank() || LapisPreset.isBundledModelName(current.ankiModel)) &&
-                        ensuredModel.isNotBlank()
-                    ) {
+                    if (current.ankiModel.isBlank() && ensuredModel.isNotBlank()) {
                         updated = updated.copy(ankiModel = ensuredModel)
                     }
                     if (LapisPreset.isBundledModelName(updated.ankiModel) && LapisPreset.isBlankFieldMap(updated.ankiFieldMap)) {
