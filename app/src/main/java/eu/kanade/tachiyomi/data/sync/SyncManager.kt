@@ -182,14 +182,6 @@ class SyncManager(
             return
         }
 
-        // Check if it's first sync based on lastSyncTimestamp
-        if (syncPreferences.lastSyncTimestamp().get() == 0L && databaseManga.isNotEmpty()) {
-            // It's first sync no need to restore data. (just update remote data)
-            syncPreferences.lastSyncTimestamp().set(Date().time)
-            notifier.showSyncSuccess("Updated remote data successfully")
-            return
-        }
-
         val (filteredFavorites, nonFavorites) = filterFavoritesAndNonFavorites(remoteBackup)
         updateNonFavorites(nonFavorites)
 
