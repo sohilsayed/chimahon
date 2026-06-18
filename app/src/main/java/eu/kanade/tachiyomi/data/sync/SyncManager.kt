@@ -123,6 +123,8 @@ class SyncManager(
             // Chimahon -->
             backupNovels = backupCreator.backupNovels(backupOptions),
             backupNovelCategories = backupCreator.backupNovelCategories(backupOptions),
+            backupMangaStats = backupCreator.backupMangaStats(backupOptions),
+            backupAnkiStats = backupCreator.backupAnkiStats(backupOptions),
             // Chimahon <--
         )
         logcat(LogPriority.DEBUG) { "End create backup" }
@@ -203,6 +205,8 @@ class SyncManager(
             // Chimahon -->
             backupNovels = remoteBackup.backupNovels,
             backupNovelCategories = remoteBackup.backupNovelCategories,
+            backupMangaStats = remoteBackup.backupMangaStats,
+            backupAnkiStats = remoteBackup.backupAnkiStats,
             // Chimahon <--
         )
 
@@ -229,7 +233,7 @@ class SyncManager(
                     savedSearchesFeeds = syncOptions.savedSearchesFeeds,
                     sourceSettings = syncOptions.sourceSettings,
                     // Chimahon -->
-                    novels = true,
+                    novels = syncOptions.novels,
                     // Chimahon <--
                 ),
             )

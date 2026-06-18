@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.data.sync.service
 
 import android.content.Context
+import com.canopus.chimareader.data.AnkiStats
+import com.canopus.chimareader.data.MangaStats
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.md5Hex
 import eu.kanade.domain.sync.SyncPreferences
@@ -80,6 +82,14 @@ abstract class SyncService(
             remoteSyncData.backup?.backupNovelCategories ?: emptyList(),
             mergedNovelCategoriesList,
         )
+        val mergedMangaStatsList = mergeMangaStatsLists(
+            localSyncData.backup?.backupMangaStats,
+            remoteSyncData.backup?.backupMangaStats,
+        )
+        val mergedAnkiStatsList = mergeAnkiStatsLists(
+            localSyncData.backup?.backupAnkiStats,
+            remoteSyncData.backup?.backupAnkiStats,
+        )
         // Chimahon <--
 
         // Create the merged Backup object
@@ -97,6 +107,8 @@ abstract class SyncService(
             // Chimahon -->
             backupNovels = mergedNovelsList,
             backupNovelCategories = mergedNovelCategoriesList,
+            backupMangaStats = mergedMangaStatsList,
+            backupAnkiStats = mergedAnkiStatsList,
             // Chimahon <--
         )
 
@@ -632,13 +644,27 @@ abstract class SyncService(
         val localNovelMap = canonicalNovelMap(localNovelsSafe, localCategoriesById)
         val remoteNovelMap = canonicalNovelMap(remoteNovelsSafe, remoteCategoriesById)
 
+        val lastSyncTime = syncPreferences.lastSyncTimestamp().get().milliseconds.inWholeSeconds
+
         val mergedList = (localNovelMap.keys + remoteNovelMap.keys).distinct().mapNotNull { id ->
             val local = localNovelMap[id]
             val remote = remoteNovelMap[id]
 
             when {
-                local != null && remote == null -> local
-                local == null && remote != null -> remote
+                local != null && remote == null -> {
+                    if (lastSyncTime == 0L || local.lastModified.milliseconds.inWholeSeconds > lastSyncTime) {
+                        local
+                    } else {
+                        null
+                    }
+                }
+                local == null && remote != null -> {
+                    if (lastSyncTime == 0L || remote.lastModified.milliseconds.inWholeSeconds > lastSyncTime) {
+                        remote
+                    } else {
+                        null
+                    }
+                }
                 local != null && remote != null -> mergeNovelData(local, remote)
                 else -> null
             }
@@ -719,6 +745,58 @@ abstract class SyncService(
 
     private fun categoryKey(name: String): String {
         return name.trim().lowercase()
+    }
+
+    private fun mergeMangaStatsLists(
+        localStats: List<MangaStats>?,
+        remoteStats: List<MangaStats>?,
+    ): List<MangaStats> {
+        if (localStats == null) return remoteStats ?: emptyList()
+        if (remoteStats == null) return localStats
+
+        fun statsKey(stat: MangaStats): String = "${stat.dateKey}|${stat.mangaId}"
+
+        val localMap = localStats.associateBy { statsKey(it) }
+        val remoteMap = remoteStats.associateBy { statsKey(it) }
+
+        return (localMap.keys + remoteMap.keys).distinct().mapNotNull { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local != null && remote == null -> local
+                local == null && remote != null -> remote
+                local != null && remote != null -> {
+                    if (local.readingTime >= remote.readingTime) local else remote
+                }
+                else -> null
+            }
+        }
+    }
+
+    private fun mergeAnkiStatsLists(
+        localStats: List<AnkiStats>?,
+        remoteStats: List<AnkiStats>?,
+    ): List<AnkiStats> {
+        if (localStats == null) return remoteStats ?: emptyList()
+        if (remoteStats == null) return localStats
+
+        fun statsKey(stat: AnkiStats): String = "${stat.dateKey}|${stat.profileId}|${stat.titleId.orEmpty()}"
+
+        val localMap = localStats.associateBy { statsKey(it) }
+        val remoteMap = remoteStats.associateBy { statsKey(it) }
+
+        return (localMap.keys + remoteMap.keys).distinct().mapNotNull { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local != null && remote == null -> local
+                local == null && remote != null -> remote
+                local != null && remote != null -> {
+                    if ((local.mangaCards + local.novelCards) >= (remote.mangaCards + remote.novelCards)) local else remote
+                }
+                else -> null
+            }
+        }
     }
     // Chimahon <--
 }
