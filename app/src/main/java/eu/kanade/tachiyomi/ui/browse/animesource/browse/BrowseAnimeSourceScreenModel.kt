@@ -5,6 +5,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
+import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
@@ -32,25 +33,46 @@ class BrowseAnimeSourceScreenModel(
     @Volatile
     private var currentQuery: String? = null
     @Volatile
+    private var currentListing = Listing.Feed
+    private var currentFilters = AnimeFilterList()
+    @Volatile
     private var isLoadingMore = false
 
     private var browseJob: Job? = null
 
-    fun loadPopular() {
+    fun loadFeed() {
+        loadPopular()
+    }
+
+    fun loadSourceFeed() {
         browseJob?.cancel()
         browseJob = screenModelScope.launchIO {
-            mutableState.value = State(isLoading = true)
+            mutableState.value = state.value.copy(isLoading = true, error = false)
             try {
                 val source = source ?: run {
                     mutableState.value = State(error = true)
                     return@launchIO
                 }
-                val result = source.getPopularAnime(1)
+                val filters = source.getFilterList()
+                currentFilters = filters
+                currentListing = Listing.Feed
                 currentPage = 1
                 currentQuery = null
+
+                val latest = if (source.supportsLatest) {
+                    runCatching { source.getLatestUpdates(1).animes }.getOrDefault(emptyList())
+                } else {
+                    emptyList()
+                }
+                val popular = runCatching { source.getPopularAnime(1).animes }.getOrDefault(emptyList())
+
                 mutableState.value = State(
-                    items = result.animes,
-                    hasNextPage = result.hasNextPage,
+                    listing = Listing.Feed,
+                    latestItems = latest,
+                    popularItems = popular,
+                    filters = filters,
+                    supportsLatest = source.supportsLatest,
+                    error = latest.isEmpty() && popular.isEmpty(),
                 )
             } catch (e: Exception) {
                 mutableState.value = State(error = true)
@@ -58,29 +80,84 @@ class BrowseAnimeSourceScreenModel(
         }
     }
 
-    fun search(query: String) {
-        if (query.isBlank()) {
-            loadPopular()
-            return
-        }
+    fun loadPopular() {
+        loadListing(Listing.Popular)
+    }
+
+    fun loadLatest() {
+        loadListing(Listing.Latest)
+    }
+
+    fun search(query: String, filters: AnimeFilterList = state.value.filters) {
+        loadListing(Listing.Search, query.trim(), filters)
+    }
+
+    private fun loadListing(
+        listing: Listing,
+        query: String? = null,
+        filters: AnimeFilterList = AnimeFilterList(),
+    ) {
         browseJob?.cancel()
         browseJob = screenModelScope.launchIO {
-            mutableState.value = State(isLoading = true)
+            mutableState.value = state.value.copy(
+                isLoading = true,
+                error = false,
+                listing = listing,
+                items = emptyList(),
+                hasNextPage = false,
+            )
             try {
                 val source = source ?: run {
                     mutableState.value = State(error = true)
                     return@launchIO
                 }
-                val result = source.getSearchAnime(1, query, AnimeFilterList())
+                val result = source.loadPage(listing, 1, query, filters)
                 currentPage = 1
-                currentQuery = query
-                mutableState.value = State(
-                    items = result.animes,
-                    hasNextPage = result.hasNextPage,
-                )
+                currentQuery = query?.takeIf { it.isNotBlank() }
+                currentListing = listing
+                currentFilters = filters
+                mutableState.update {
+                    it.copy(
+                        isLoading = false,
+                        listing = listing,
+                        items = result.animes,
+                        hasNextPage = result.hasNextPage,
+                        filters = filters,
+                        supportsLatest = source.supportsLatest,
+                    )
+                }
             } catch (e: Exception) {
                 mutableState.value = State(error = true)
             }
+        }
+    }
+
+    fun resetFilters() {
+        val source = source ?: return
+        setFilters(source.getFilterList())
+    }
+
+    fun setFilters(filters: AnimeFilterList) {
+        currentFilters = filters
+        mutableState.update { it.copy(filters = filters) }
+    }
+
+    fun applyFilters() {
+        loadListing(Listing.Search, currentQuery.orEmpty(), state.value.filters)
+    }
+
+    private suspend fun AnimeCatalogueSource.loadPage(
+        listing: Listing,
+        page: Int,
+        query: String?,
+        filters: AnimeFilterList,
+    ): AnimesPage {
+        return when (listing) {
+            Listing.Feed,
+            Listing.Popular,
+            -> getPopularAnime(page)
+            Listing.Latest -> getLatestUpdates(page)
+            Listing.Search -> getSearchAnime(page, query.orEmpty(), filters)
         }
     }
 
@@ -93,12 +170,12 @@ class BrowseAnimeSourceScreenModel(
             try {
                 val source = source ?: return@launchIO
                 val nextPage = currentPage + 1
-                val query = currentQuery
-                val result = if (query != null) {
-                    source.getSearchAnime(nextPage, query, AnimeFilterList())
-                } else {
-                    source.getPopularAnime(nextPage)
-                }
+                val result = source.loadPage(
+                    listing = currentListing,
+                    page = nextPage,
+                    query = currentQuery,
+                    filters = currentFilters,
+                )
                 currentPage = nextPage
                 mutableState.update {
                     it.copy(
@@ -138,11 +215,26 @@ class BrowseAnimeSourceScreenModel(
         }
     }
 
+    enum class Listing {
+        Feed,
+        Popular,
+        Latest,
+        Search,
+    }
+
     @Immutable
     data class State(
         val isLoading: Boolean = false,
+        val listing: Listing = Listing.Feed,
+        val latestItems: List<SAnime> = emptyList(),
+        val popularItems: List<SAnime> = emptyList(),
         val items: List<SAnime> = emptyList(),
         val hasNextPage: Boolean = false,
+        val filters: AnimeFilterList = AnimeFilterList(),
+        val supportsLatest: Boolean = false,
         val error: Boolean = false,
-    )
+    ) {
+        val hasFilters: Boolean
+            get() = filters.isNotEmpty()
+    }
 }

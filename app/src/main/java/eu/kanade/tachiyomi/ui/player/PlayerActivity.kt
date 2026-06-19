@@ -63,15 +63,18 @@ import eu.kanade.tachiyomi.animesource.model.ChapterType
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.SerializableHoster.Companion.serialize
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
 import eu.kanade.tachiyomi.databinding.PlayerLayoutBinding
 import eu.kanade.tachiyomi.network.NetworkPreferences
-import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.torrentServer.TorrentServerApi
 import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupPermissionActivity
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupService
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupServiceState
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControls
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
@@ -109,6 +112,8 @@ import java.io.OutputStream
 import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.floor
+
+private const val COMPLETED_RESUME_GRACE_MS = 1_500L
 
 class PlayerActivity : BaseActivity() {
     private val viewModel by viewModels<PlayerViewModel>(factoryProducer = { PlayerViewModelProviderFactory(this) })
@@ -152,6 +157,9 @@ class PlayerActivity : BaseActivity() {
     }
 
     companion object {
+        private const val EXTRA_STANDALONE_VIDEO_URL = "standaloneVideoUrl"
+        private const val EXTRA_STANDALONE_VIDEO_TITLE = "standaloneVideoTitle"
+
         fun newIntent(
             context: Context,
             animeId: Long?,
@@ -169,6 +177,20 @@ class PlayerActivity : BaseActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
+
+        fun newStandaloneIntent(
+            context: Context,
+            uri: Uri,
+            title: String? = null,
+        ): Intent {
+            return Intent(context, PlayerActivity::class.java).apply {
+                data = uri
+                putExtra(EXTRA_STANDALONE_VIDEO_URL, uri.toString())
+                title?.let { putExtra(EXTRA_STANDALONE_VIDEO_TITLE, it) }
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
+        }
     }
 
 
@@ -182,6 +204,12 @@ class PlayerActivity : BaseActivity() {
         val hostIndex = intent.extras?.getInt("hostIndex") ?: -1
         val vidIndex = intent.extras?.getInt("vidIndex") ?: -1
         if (animeId == -1L || episodeId == -1L) {
+            val standaloneVideo = intent.toStandaloneVideo()
+            if (standaloneVideo != null) {
+                viewModel.loadStandaloneVideo(standaloneVideo)
+                setIntent(intent)
+                return
+            }
             finish()
             return
         }
@@ -220,6 +248,24 @@ class PlayerActivity : BaseActivity() {
         }
 
         setIntent(intent)
+    }
+
+    private fun Intent.toStandaloneVideo(): Video? {
+        val uriString = getStringExtra(EXTRA_STANDALONE_VIDEO_URL)
+            ?: data?.toString()
+            ?: return null
+        val title = getStringExtra(EXTRA_STANDALONE_VIDEO_TITLE)
+            ?: data?.let { uri ->
+                runCatching { uri.getFileName(this@PlayerActivity) }.getOrNull()
+                    ?: uri.lastPathSegment
+            }
+            ?: uriString.substringAfterLast('/').substringBefore('?')
+
+        return Video(
+            videoUrl = uriString,
+            videoTitle = title,
+            initialized = true,
+        )
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -681,6 +727,14 @@ class PlayerActivity : BaseActivity() {
         runOnUiThread { toast(message) }
     }
 
+    fun openScreenLookup() {
+        if (ScreenLookupServiceState.isRunning.value) {
+            ScreenLookupService.capture(this)
+        } else {
+            startActivity(Intent(this, ScreenLookupPermissionActivity::class.java))
+        }
+    }
+
     // A bunch of observers
 
     internal fun onObserverEvent(property: String, value: Long) {
@@ -758,6 +812,7 @@ class PlayerActivity : BaseActivity() {
             "secondary-sid" -> trackId(value)?.let {
                 viewModel.updateSubtitle(viewModel.selectedSubtitles.value.first, it)
             }
+            "sub-text" -> viewModel.updateSubtitleText(value)
             "hwdec", "hwdec-current" -> viewModel.getDecoder()
             "user-data/aniyomi" -> viewModel.handleLuaInvocation(property, value)
         }
@@ -1115,7 +1170,13 @@ class PlayerActivity : BaseActivity() {
                     } else {
                         episode.last_second_seen
                     }
-                MPVLib.command(arrayOf("set", "start", "${resumePosition / 1000F}"))
+                MPVLib.command(
+                    arrayOf(
+                        "set",
+                        "start",
+                        "${resumePosition.resetIfCompleted(episode.total_seconds) / 1000F}",
+                    ),
+                )
             }
         } else {
             player.timePos?.let {
@@ -1186,7 +1247,7 @@ class PlayerActivity : BaseActivity() {
 
     private fun setHttpOptions(video: Video) {
         if (viewModel.isEpisodeOnline() != true) return
-        val source = viewModel.currentSource.value as? HttpSource ?: return
+        val source = viewModel.currentSource.value as? AnimeHttpSource ?: return
 
         val headers = (video.headers ?: source.headers)
             .toMultimap()
@@ -1203,6 +1264,11 @@ class PlayerActivity : BaseActivity() {
         // MPVLib.setOptionString("cache-on-disk", "yes")
         // val cacheDir = File(applicationContext.filesDir, "media").path
         // MPVLib.setOptionString("cache-dir", cacheDir)
+    }
+
+    private fun Long.resetIfCompleted(total: Long): Long {
+        if (this <= 0L || total <= 0L) return this.coerceAtLeast(0L)
+        return if (this >= total - COMPLETED_RESUME_GRACE_MS) 0L else this
     }
 
     /**
@@ -1261,6 +1327,7 @@ class PlayerActivity : BaseActivity() {
         setupPlayerOrientation()
         setupChapters()
         setupTracks()
+        viewModel.autoLoadJimakuSubtitlesOnVideoOpen()
 
         // aniSkip stuff
         viewModel.waitingSkipIntro = playerPreferences.waitingTimeIntroSkip().get()

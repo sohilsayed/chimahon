@@ -78,6 +78,8 @@ fun GestureHandler(
     viewModel: PlayerViewModel,
     interactionSource: MutableInteractionSource,
     modifier: Modifier = Modifier,
+    onSubtitleTap: (x: Float, y: Float, width: Int, height: Int) -> Boolean = { _, _, _, _ -> false },
+    onSubtitleLongPress: (x: Float, y: Float, width: Int, height: Int) -> Boolean = { _, _, _, _ -> false },
 ) {
     val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
     val gesturePreferences = remember { Injekt.get<GesturePreferences>() }
@@ -122,6 +124,9 @@ fun GestureHandler(
                 val originalSpeed = viewModel.playbackSpeed.value
                 detectTapGestures(
                     onTap = {
+                        if (onSubtitleTap(it.x, it.y, size.width, size.height)) {
+                            return@detectTapGestures
+                        }
                         if (controlsShown) viewModel.hideControls() else viewModel.showControls()
                     },
                     onDoubleTap = {
@@ -171,6 +176,9 @@ fun GestureHandler(
                         if (areControlsLocked) return@detectTapGestures
                         if (!isLongPressing) {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (onSubtitleLongPress(it.x, it.y, size.width, size.height)) {
+                                return@detectTapGestures
+                            }
                             isLongPressing = true
                             viewModel.pause()
                             viewModel.sheetShown.update { Sheets.Screenshot }

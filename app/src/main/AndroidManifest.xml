@@ -188,6 +188,10 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="video/*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/x-matroska" />
+                <data android:mimeType="application/vnd.apple.mpegurl" />
+                <data android:mimeType="application/x-mpegURL" />
             </intent-filter>
         </activity>
 

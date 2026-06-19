@@ -219,6 +219,7 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
 
         "sid" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
         "secondary-sid" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
+        "sub-text" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
         "aid" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
 
         "speed" to MPVLib.mpvFormat.MPV_FORMAT_DOUBLE,
@@ -274,12 +275,15 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
         MPVLib.setOptionString("sub-bold", if (subtitlePreferences.boldSubtitles().get()) "yes" else "no")
         MPVLib.setOptionString("sub-italic", if (subtitlePreferences.italicSubtitles().get()) "yes" else "no")
         MPVLib.setOptionString("sub-justify", subtitlePreferences.subtitleJustification().get().value)
-        MPVLib.setOptionString("sub-color", subtitlePreferences.textColorSubtitles().get().toColorHexString())
+        // Subtitle text is rendered by the Compose player overlay so lookup/highlight can use
+        // exact TextLayoutResult glyph bounds. Keep MPV's subtitle track active for timing and
+        // sub-text updates, but make MPV's own draw layer transparent.
+        MPVLib.setOptionString("sub-color", "#00FFFFFF")
         MPVLib.setOptionString(
             "sub-back-color",
-            subtitlePreferences.backgroundColorSubtitles().get().toColorHexString(),
+            "#00000000",
         )
-        MPVLib.setOptionString("sub-border-color", subtitlePreferences.borderColorSubtitles().get().toColorHexString())
+        MPVLib.setOptionString("sub-border-color", "#00000000")
         MPVLib.setOptionString("sub-border-size", subtitlePreferences.subtitleBorderSize().get().toString())
         MPVLib.setOptionString("sub-border-style", subtitlePreferences.borderStyleSubtitles().get().value)
         MPVLib.setOptionString("sub-shadow-offset", subtitlePreferences.shadowOffsetSubtitles().get().toString())

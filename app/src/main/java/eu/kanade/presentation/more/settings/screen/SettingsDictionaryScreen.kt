@@ -400,6 +400,9 @@ object SettingsDictionaryScreen : SearchableSettings {
         val ocrBoxOpacityPref = dictionaryPreferences.ocrBoxOpacity()
         val ocrBoxOpacity by ocrBoxOpacityPref.collectAsState()
 
+        val videoOcrAudioPaddingPref = dictionaryPreferences.videoOcrSentenceAudioPaddingSeconds()
+        val videoOcrAudioPadding by videoOcrAudioPaddingPref.collectAsState()
+
         val themeModePref = dictionaryPreferences.themeMode()
         val themeMode by themeModePref.collectAsState()
 
@@ -667,6 +670,16 @@ object SettingsDictionaryScreen : SearchableSettings {
                             Injekt.get<ModelDownloader>().triggerDownload()
                         }
                         true
+                    },
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = videoOcrAudioPadding,
+                    title = "Video OCR sentence audio padding",
+                    subtitle = "${videoOcrAudioPadding}s before and after the current video time",
+                    valueRange = 1..15,
+                    steps = 13,
+                    onValueChanged = { newValue ->
+                        videoOcrAudioPaddingPref.set(newValue)
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(

@@ -18,6 +18,8 @@ class SubtitlePreferences(
     fun preferredSubLanguages() = preferenceStore.getString("pref_subtitle_lang", "")
     fun subtitleWhitelist() = preferenceStore.getString("pref_subtitle_whitelist", "")
     fun subtitleBlacklist() = preferenceStore.getString("pref_subtitle_blacklist", "")
+    fun jimakuApiKey() = preferenceStore.getString("pref_jimaku_api_key", "")
+    fun jimakuTitle() = preferenceStore.getString("pref_jimaku_title", "")
 
     // Non-preferences
 
@@ -49,8 +51,22 @@ class SubtitlePreferences(
     fun overrideSubsASS() = preferenceStore.getBoolean("pref_override_subtitles_ass", false)
 
     fun subtitlesDelay() = preferenceStore.getInt("pref_subtitles_delay", 0)
+    fun subtitlesDelayForAnime(animeId: Long?) = animeId
+        ?.takeIf { it > 0 }
+        ?.let { preferenceStore.getInt("pref_subtitles_delay_anime_$it", subtitlesDelay().get()) }
+        ?: subtitlesDelay()
+
     fun subtitlesSpeed() = preferenceStore.getFloat("pref_subtitles_speed", 1f)
     fun subtitlesSecondaryDelay() = preferenceStore.getInt("pref_subtitles_secondary_delay", 0)
+    fun subtitlesSecondaryDelayForAnime(animeId: Long?) = animeId
+        ?.takeIf { it > 0 }
+        ?.let {
+            preferenceStore.getInt(
+                "pref_subtitles_secondary_delay_anime_$it",
+                subtitlesSecondaryDelay().get(),
+            )
+        }
+        ?: subtitlesSecondaryDelay()
 }
 
 enum class SubtitleJustification(

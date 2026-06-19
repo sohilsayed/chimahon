@@ -25,12 +25,17 @@ package eu.kanade.tachiyomi.ui.player
 import android.app.Application
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.Immutable
+import com.arthenica.ffmpegkit.FFmpegKitConfig
+import com.arthenica.ffmpegkit.FFmpegSession
+import com.arthenica.ffmpegkit.ReturnCode
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -64,6 +69,7 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.anilist.Anilist
 import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.player.controls.components.IndexedSegment
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.HosterState
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.getChangedAt
@@ -71,8 +77,12 @@ import eu.kanade.tachiyomi.ui.player.loader.EpisodeLoader
 import eu.kanade.tachiyomi.ui.player.loader.HosterLoader
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
+import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
 import eu.kanade.tachiyomi.ui.player.utils.AniSkipApi
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils.Companion.getStringRes
+import eu.kanade.tachiyomi.ui.player.utils.JimakuApi
+import eu.kanade.tachiyomi.ui.player.utils.JimakuEntry
+import eu.kanade.tachiyomi.ui.player.utils.JimakuFile
 import eu.kanade.tachiyomi.ui.player.utils.TrackSelect
 import eu.kanade.tachiyomi.ui.reader.SaveImageNotifier
 import eu.kanade.tachiyomi.util.editCover
@@ -81,6 +91,7 @@ import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.lang.takeBytes
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
+import eu.kanade.tachiyomi.util.storage.toFFmpegString
 import eu.kanade.tachiyomi.util.system.toast
 import `is`.xyz.mpv.MPVLib
 import `is`.xyz.mpv.Utils
@@ -127,10 +138,29 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.io.InputStream
+import java.util.Locale
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 
+private val jimakuEpisodeRegexes = listOf(
+    Regex("""(?i)\bS\d{1,3}E(\d{1,4})\b"""),
+    Regex("""(?i)\b(\d{1,3})x(\d{1,4})\b"""),
+    Regex("""(?i)\b(?:ep|episode|e)\.?\s*(\d{1,4})\b"""),
+    Regex("""\u7b2c\s*(\d{1,4})\s*\u8a71"""),
+    Regex("""(\d{1,4})\s*\u8a71"""),
+    Regex("""第\s*(\d{1,4})\s*話"""),
+    Regex("""(\d{1,4})\s*話"""),
+)
+private val jimakuStandaloneEpisodeRegex = Regex("""(?<![A-Za-z0-9])(\d{1,4})(?![A-Za-z0-9]|p|P)""")
+private val jimakuEpisodeCleanupRegex = Regex(
+    """(?i)\bS\d{1,3}E\d{1,4}\b|\b\d{1,3}x\d{1,4}\b|\b(?:ep|episode|e)\.?\s*\d{1,4}\b|第\s*\d{1,4}\s*話|\d{1,4}\s*話""",
+)
+private val jimakuFilenameJunkRegex = Regex(
+    """(?i)\b(?:480p|720p|1080p|2160p|x264|x265|h264|h265|hevc|web[- ]?dl|webrip|bluray|aac|flac|multi|proper|repack)\b|\[[^\]]*]|\([^)]*\)""",
+)
+private val jimakuIgnoredNumbers = setOf(480, 720, 1080, 2160, 264, 265, 10)
+private const val MAX_SUBTITLE_HISTORY = 120
 class PlayerViewModelProviderFactory(
     private val activity: PlayerActivity,
 ) : ViewModelProvider.Factory {
@@ -158,9 +188,12 @@ class PlayerViewModel @JvmOverloads constructor(
     private val setAnimeViewerFlags: SetAnimeViewerFlags = Injekt.get(),
     internal val playerPreferences: PlayerPreferences = Injekt.get(),
     internal val gesturePreferences: GesturePreferences = Injekt.get(),
+    internal val subtitlePreferences: SubtitlePreferences = Injekt.get(),
+    private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
     private val basePreferences: BasePreferences = Injekt.get(),
     private val getCustomButtons: GetCustomButtons = Injekt.get(),
     private val trackSelect: TrackSelect = Injekt.get(),
+    private val jimakuApi: JimakuApi = JimakuApi(),
     uiPreferences: UiPreferences = Injekt.get(),
 ) : ViewModel() {
 
@@ -201,6 +234,20 @@ class PlayerViewModel @JvmOverloads constructor(
     val subtitleTracks = _subtitleTracks.asStateFlow()
     private val _selectedSubtitles = MutableStateFlow(Pair(-1, -1))
     val selectedSubtitles = _selectedSubtitles.asStateFlow()
+    private val _jimakuState = MutableStateFlow<JimakuState>(JimakuState.Idle)
+    val jimakuState = _jimakuState.asStateFlow()
+    private val _currentSubtitleText = MutableStateFlow("")
+    val currentSubtitleText = _currentSubtitleText.asStateFlow()
+    private val _subtitleHistory = MutableStateFlow<List<SubtitleCue>>(emptyList())
+    val subtitleHistory = _subtitleHistory.asStateFlow()
+    private val _activeSubtitleCueIndex = MutableStateFlow<Int?>(null)
+    val activeSubtitleCueIndex = _activeSubtitleCueIndex.asStateFlow()
+    private var lastSubtitleHistoryText = ""
+    private var nextSubtitleCueIndex = 0
+    private val parsedSubtitleCuesByTrackId = mutableMapOf<Int, List<SubtitleCue>>()
+    private val parsedSubtitleCuesByTitle = mutableMapOf<String, List<SubtitleCue>>()
+    private var showingParsedSubtitleTrackId: Int? = null
+    private var lastAutoJimakuKey: String? = null
 
     private val _audioTracks = MutableStateFlow<List<VideoTrack>>(emptyList())
     val audioTracks = _audioTracks.asStateFlow()
@@ -388,6 +435,14 @@ class PlayerViewModel @JvmOverloads constructor(
     val getTrackType: (Int) -> String? = {
         MPVLib.getPropertyString("track-list/$it/type")
     }
+    val getTrackExternalFilename: (Int) -> String? = {
+        if (it != -1) {
+            MPVLib.getPropertyString("track-list/$it/external-filename")
+                ?.takeIf { filename -> filename.isNotBlank() }
+        } else {
+            null
+        }
+    }
 
     private var trackLoadingJob: Job? = null
     fun loadTracks() {
@@ -404,7 +459,16 @@ class PlayerViewModel @JvmOverloads constructor(
                     val type = getTrackType(i)
                     if (!possibleTrackTypes.contains(type) || type == null) continue
                     when (type) {
-                        "sub" -> subTracks.add(VideoTrack(getTrackMPVId(i), getTrackTitle(i), getTrackLanguage(i)))
+                        "sub" -> {
+                            val track = VideoTrack(
+                                id = getTrackMPVId(i),
+                                name = getTrackTitle(i),
+                                language = getTrackLanguage(i),
+                                externalFilename = getTrackExternalFilename(i),
+                            )
+                            subTracks.add(track)
+                            rememberParsedSubtitleTrack(track)
+                        }
                         "audio" -> audioTracks.add(VideoTrack(getTrackMPVId(i), getTrackTitle(i), getTrackLanguage(i)))
                         else -> error("Unrecognized track type")
                     }
@@ -415,6 +479,7 @@ class PlayerViewModel @JvmOverloads constructor(
             }
             _subtitleTracks.update { subTracks }
             _audioTracks.update { audioTracks }
+            applyParsedSubtitleCuesForSelectedTrack()
 
             if (!isLoadingTracks.value) {
                 onFinishLoadingTracks()
@@ -431,6 +496,7 @@ class PlayerViewModel @JvmOverloads constructor(
         (preferredSubtitle ?: subtitleTracks.value.firstOrNull())?.let {
             activity.player.sid = it.id
             activity.player.secondarySid = -1
+            applyParsedSubtitleCuesForTrack(it.id)
         }
 
         val preferredAudio = trackSelect.getPreferredTrackIndex(audioTracks.value, subtitle = false)
@@ -448,6 +514,30 @@ class PlayerViewModel @JvmOverloads constructor(
         val id: Int,
         val name: String,
         val language: String?,
+        val externalFilename: String? = null,
+    )
+
+    @Immutable
+    data class SubtitleCue(
+        val index: Int,
+        val text: String,
+        val positionSeconds: Int,
+        val endPositionSeconds: Int = positionSeconds + 5,
+    )
+
+    sealed interface JimakuState {
+        data object Idle : JimakuState
+        data class Searching(val title: String) : JimakuState
+        data class EntryResults(val title: String, val entries: List<JimakuEntry>) : JimakuState
+        data class LoadingFiles(val entry: JimakuEntry) : JimakuState
+        data class FileResults(val entry: JimakuEntry, val files: List<JimakuFile>) : JimakuState
+        data class Downloading(val file: JimakuFile) : JimakuState
+        data class Error(val message: String) : JimakuState
+    }
+
+    private data class JimakuMediaGuess(
+        val title: String,
+        val episode: Int?,
     )
 
     fun loadChapters() {
@@ -508,11 +598,658 @@ class PlayerViewModel @JvmOverloads constructor(
         val path = (if (isContentUri) uri.openContentFd(activity) else url)
             ?: return
         val name = if (isContentUri) uri.getFileName(activity) else null
+        val parsedCues = parseSubtitleUriOrPath(uri, path, name)
         if (name == null) {
             MPVLib.command(arrayOf("sub-add", path, "cached"))
         } else {
             MPVLib.command(arrayOf("sub-add", path, "cached", name))
         }
+        rememberParsedSubtitleCues(name ?: subtitleTitleFromUriOrPath(uri, path), parsedCues)
+        loadTracks()
+    }
+
+    fun dismissJimakuDialog() {
+        _jimakuState.update { JimakuState.Idle }
+    }
+
+    fun updateJimakuTitle(title: String) {
+        subtitlePreferences.jimakuTitle().set(title.trim())
+    }
+
+    fun getCurrentJimakuTitle(): String {
+        return guessCurrentJimakuMedia().title
+    }
+
+    fun searchJimakuSubtitles() {
+        val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
+        if (apiKey.isBlank()) {
+            activity.toast("Add your Jimaku API key in player subtitle settings first")
+            return
+        }
+
+        val guess = guessCurrentJimakuMedia()
+        if (guess.title.isBlank()) {
+            activity.toast("Set a Jimaku title before searching")
+            return
+        }
+
+        loadJimakuSubtitles(apiKey, guess, showFeedback = true)
+    }
+
+    fun autoLoadJimakuSubtitlesOnVideoOpen() {
+        val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
+        if (apiKey.isBlank()) return
+
+        val guess = guessCurrentJimakuMedia()
+        if (guess.title.isBlank()) return
+
+        val key = listOf(
+            currentEpisode.value?.id?.toString().orEmpty(),
+            currentVideo.value?.videoUrl.orEmpty(),
+            guess.title,
+            guess.episode?.toString().orEmpty(),
+        ).joinToString("|")
+        if (lastAutoJimakuKey == key) return
+        lastAutoJimakuKey = key
+
+        loadJimakuSubtitles(apiKey, guess, showFeedback = false)
+    }
+
+    private fun loadJimakuSubtitles(apiKey: String, guess: JimakuMediaGuess, showFeedback: Boolean) {
+        _jimakuState.update { JimakuState.Searching(guess.displayName()) }
+        viewModelScope.launchIO {
+            try {
+                val entries = jimakuApi.searchEntries(apiKey, guess.title)
+                if (entries.isEmpty()) {
+                    updateJimakuFailure("No Jimaku entries found for \"${guess.title}\"", showFeedback)
+                    return@launchIO
+                }
+
+                val entry = selectBestJimakuEntry(entries, guess.title)
+                    ?: entries.first()
+
+                _jimakuState.update { JimakuState.LoadingFiles(entry) }
+                val files = jimakuApi.getFiles(apiKey, entry.id, guess.episode)
+                    .matchedSrtFiles(guess, episodeFiltered = guess.episode != null)
+                    .ifEmpty {
+                        if (guess.episode == null) {
+                            emptyList()
+                        } else {
+                            jimakuApi.getFiles(apiKey, entry.id, null)
+                                .matchedSrtFiles(guess, episodeFiltered = false)
+                        }
+                    }
+                    .distinctBy { it.url }
+
+                if (files.isEmpty()) {
+                    val episodeText = guess.episode?.let { " episode $it" }.orEmpty()
+                    updateJimakuFailure("No matching SRT Jimaku subtitles found for ${entry.name}$episodeText", showFeedback)
+                    return@launchIO
+                }
+
+                downloadJimakuSubtitles(apiKey, files, showFeedback)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e)
+                updateJimakuFailure(e.message ?: "Jimaku search failed", showFeedback)
+            }
+        }
+    }
+
+    fun loadJimakuFiles(entry: JimakuEntry) {
+        val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
+        val guess = guessCurrentJimakuMedia()
+        val episode = guess.episode
+
+        _jimakuState.update { JimakuState.LoadingFiles(entry) }
+        viewModelScope.launchIO {
+            try {
+                val files = jimakuApi.getFiles(apiKey, entry.id, episode)
+                    .matchedSrtFiles(guess, episodeFiltered = episode != null)
+                _jimakuState.update {
+                    if (files.isEmpty()) {
+                        JimakuState.Error("No matching SRT Jimaku subtitles found for ${entry.name}")
+                    } else {
+                        JimakuState.FileResults(entry, files)
+                    }
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e)
+                _jimakuState.update { JimakuState.Error(e.message ?: "Failed to load Jimaku subtitles") }
+            }
+        }
+    }
+
+    fun downloadJimakuSubtitle(file: JimakuFile) {
+        val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
+        viewModelScope.launchIO {
+            downloadJimakuSubtitles(apiKey, listOf(file), showFeedback = true)
+        }
+    }
+
+    private suspend fun downloadJimakuSubtitles(apiKey: String, files: List<JimakuFile>, showFeedback: Boolean) {
+        val outputDir = File(activity.cacheDir, "jimaku_subtitles")
+        var added = 0
+        try {
+            files.forEach { file ->
+                _jimakuState.update { JimakuState.Downloading(file) }
+                val subtitleFile = jimakuApi.downloadFile(apiKey, file, outputDir)
+                rememberParsedSubtitleFile(subtitleFile, file.name)
+                withUIContext {
+                    MPVLib.command(arrayOf("sub-add", subtitleFile.absolutePath, "cached", file.name))
+                }
+                added += 1
+            }
+            withUIContext {
+                selectFirstJimakuSubtitle(files)
+                loadTracks()
+                _jimakuState.update { JimakuState.Idle }
+                if (showFeedback) {
+                    activity.toast(
+                        if (added == 1) {
+                            "Jimaku subtitle added"
+                        } else {
+                            "Added $added Jimaku subtitles"
+                        },
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            updateJimakuFailure(e.message ?: "Failed to download Jimaku subtitle", showFeedback)
+        }
+    }
+
+    private fun selectFirstJimakuSubtitle(files: List<JimakuFile>) {
+        val fileNames = files.map { it.name }.toSet()
+        runCatching {
+            val tracksCount = MPVLib.getPropertyInt("track-list/count") ?: 0
+            for (i in 0..<tracksCount) {
+                if (getTrackType(i) != "sub") continue
+                if (getTrackTitle(i) in fileNames) {
+                    activity.player.sid = getTrackMPVId(i)
+                    return
+                }
+            }
+        }.onFailure { logcat(LogPriority.ERROR, it) }
+    }
+
+    private fun updateJimakuFailure(message: String, showFeedback: Boolean) {
+        _jimakuState.update {
+            if (showFeedback) {
+                JimakuState.Error(message)
+            } else {
+                JimakuState.Idle
+            }
+        }
+    }
+
+    private fun guessCurrentJimakuMedia(): JimakuMediaGuess {
+        val overrideTitle = subtitlePreferences.jimakuTitle().get().trim()
+        val candidates = listOfNotNull(
+            currentAnime.value?.title,
+            animeTitle.value.takeIf { it.isNotBlank() },
+            mediaTitle.value.takeIf { it.isNotBlank() },
+            currentVideo.value?.videoTitle?.takeIf { it.isNotBlank() },
+        )
+        val parsed = candidates.mapNotNull { guessitLite(it) }.firstOrNull()
+        val title = overrideTitle
+            .ifBlank { currentAnime.value?.title.orEmpty() }
+            .ifBlank { parsed?.title.orEmpty() }
+            .ifBlank { animeTitle.value }
+            .ifBlank { mediaTitle.value }
+        val episode = currentEpisode.value?.episode_number
+            ?.takeIf { it >= 0f }
+            ?.toInt()
+            ?: parsed?.episode
+
+        return JimakuMediaGuess(title.trim(), episode)
+    }
+
+    private fun guessitLite(value: String): JimakuMediaGuess? {
+        val withoutExtension = value.substringBeforeLast('.', value)
+        val episode = jimakuEpisodeRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(withoutExtension)?.groupValues?.lastOrNull()?.toIntOrNull()
+        } ?: jimakuStandaloneEpisodeRegex.findAll(withoutExtension)
+            .mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }
+            .filterNot { it in jimakuIgnoredNumbers }
+            .lastOrNull()
+
+        val title = withoutExtension
+            .replace(Regex("""\u7b2c\s*\d{1,4}\s*\u8a71|\d{1,4}\s*\u8a71"""), " ")
+            .replace(jimakuEpisodeCleanupRegex, " ")
+            .replace(jimakuFilenameJunkRegex, " ")
+            .replace(Regex("""[._-]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
+        return title.takeIf { it.isNotBlank() }?.let { JimakuMediaGuess(it, episode) }
+    }
+
+    private fun selectBestJimakuEntry(entries: List<JimakuEntry>, title: String): JimakuEntry? {
+        if (entries.size == 1) return entries.first()
+
+        val target = title.normalizedJimakuText()
+        entries.firstOrNull { entry ->
+            listOf(entry.name, entry.englishName.orEmpty(), entry.japaneseName.orEmpty())
+                .any { it.normalizedJimakuText() == target }
+        }?.let { return it }
+
+        val ranked = entries
+            .map { it to jimakuEntryScore(it, title) }
+            .sortedByDescending { it.second }
+
+        return ranked.firstOrNull()?.first
+    }
+
+    private fun jimakuEntryScore(entry: JimakuEntry, title: String): Int {
+        val target = title.normalizedJimakuText()
+        return listOf(entry.name, entry.englishName.orEmpty(), entry.japaneseName.orEmpty())
+            .filter { it.isNotBlank() }
+            .maxOfOrNull { candidate ->
+                val normalized = candidate.normalizedJimakuText()
+                when {
+                    normalized == target -> 100
+                    normalized.contains(target) || target.contains(normalized) -> 90
+                    else -> {
+                        val targetTokens = target.split(" ").filter { it.isNotBlank() }.toSet()
+                        val candidateTokens = normalized.split(" ").filter { it.isNotBlank() }.toSet()
+                        if (targetTokens.isEmpty() || candidateTokens.isEmpty()) {
+                            0
+                        } else {
+                            (targetTokens.intersect(candidateTokens).size * 100) /
+                                maxOf(targetTokens.size, candidateTokens.size)
+                        }
+                    }
+                }
+            } ?: 0
+    }
+
+    private fun selectBestJimakuFile(files: List<JimakuFile>, guess: JimakuMediaGuess): JimakuFile? {
+        if (files.size == 1) return files.first()
+
+        val ranked = files
+            .map { it to jimakuFileScore(it, guess) }
+            .sortedByDescending { it.second }
+        val best = ranked.firstOrNull() ?: return null
+        val second = ranked.getOrNull(1)?.second ?: Int.MIN_VALUE
+
+        return best.first.takeIf { best.second >= 80 && best.second - second >= 10 }
+    }
+
+    private fun jimakuFileScore(file: JimakuFile, guess: JimakuMediaGuess): Int {
+        val parsed = guessitLite(file.name)
+        val parsedEpisode = parsed?.episode
+        var score = 0
+
+        if (guess.episode != null) {
+            score += when (parsedEpisode) {
+                guess.episode -> 100
+                null -> 20
+                else -> -80
+            }
+        }
+
+        val fileTitle = parsed?.title?.normalizedJimakuText().orEmpty()
+        val targetTitle = guess.title.normalizedJimakuText()
+        if (fileTitle.isNotBlank() && targetTitle.isNotBlank()) {
+            if (fileTitle.contains(targetTitle) || targetTitle.contains(fileTitle)) {
+                score += 25
+            }
+        }
+
+        val lowerName = file.name.lowercase()
+        if (lowerName.contains("ja-jp") || lowerName.contains("japanese") || lowerName.contains(".ja.")) {
+            score += 25
+        }
+        if (lowerName.endsWith(".ass") || lowerName.endsWith(".srt") || lowerName.endsWith(".ssa")) {
+            score += 10
+        }
+
+        return score
+    }
+
+    private fun List<JimakuFile>.matchedSrtFiles(guess: JimakuMediaGuess, episodeFiltered: Boolean): List<JimakuFile> {
+        return filter { file -> file.name.lowercase().endsWith(".srt") }
+            .filter { file ->
+                val parsedEpisode = guessitLite(file.name)?.episode
+                guess.episode == null ||
+                    parsedEpisode == guess.episode ||
+                    (episodeFiltered && parsedEpisode == null)
+            }
+            .sortedWith(
+                compareByDescending<JimakuFile> { jimakuFileScore(it, guess) }
+                    .thenBy { it.name },
+            )
+    }
+
+    private fun JimakuMediaGuess.displayName(): String {
+        return if (episode == null) title else "$title episode $episode"
+    }
+
+    private fun String.normalizedJimakuText(): String {
+        var lastWasSpace = true
+        return buildString {
+            for (char in lowercase()) {
+                if (char.isLetterOrDigit()) {
+                    append(char)
+                    lastWasSpace = false
+                } else if (!lastWasSpace) {
+                    append(' ')
+                    lastWasSpace = true
+                }
+            }
+        }.trim()
+    }
+
+    private fun String.cleanMpvSubtitleText(): String {
+        return stripDelimitedBlocks('{', '}')
+            .replace("""\N""", "\n")
+            .replace("""\n""", "\n")
+            .replace("""\h""", " ")
+            .stripDelimitedBlocks('<', '>')
+            .lines()
+            .map { it.trim() }
+            .map { it.collapseHorizontalWhitespace() }
+            .filter { line -> line.isNotBlank() && line.any { it.isLetterOrDigit() } }
+            .joinToString("\n")
+    }
+
+    private fun String.stripDelimitedBlocks(open: Char, close: Char): String {
+        var depth = 0
+        return buildString(length) {
+            for (char in this@stripDelimitedBlocks) {
+                when {
+                    char == open -> depth++
+                    char == close && depth > 0 -> depth--
+                    depth == 0 -> append(char)
+                }
+            }
+        }
+    }
+
+    private fun String.collapseHorizontalWhitespace(): String {
+        var lastWasSpace = false
+        return buildString(length) {
+            for (char in this@collapseHorizontalWhitespace) {
+                if (char == ' ' || char == '\t') {
+                    if (!lastWasSpace) append(' ')
+                    lastWasSpace = true
+                } else {
+                    append(char)
+                    lastWasSpace = false
+                }
+            }
+        }.trim()
+    }
+
+    private fun rememberParsedSubtitleTrack(track: VideoTrack) {
+        if (track.id == -1) return
+
+        parsedSubtitleCuesByTrackId[track.id]?.let {
+            rememberParsedSubtitleCues(track.name, it)
+            return
+        }
+
+        val cues = track.externalFilename
+            ?.let { File(it) }
+            ?.takeIf { it.exists() }
+            ?.let { parseSubtitleFile(it) }
+            .orEmpty()
+            .ifEmpty {
+                parsedSubtitleCuesByTitle[track.name]
+                    ?: parsedSubtitleCuesByTitle[File(track.name).name]
+                    ?: track.externalFilename
+                        ?.let { parsedSubtitleCuesByTitle[File(it).name] }
+                        .orEmpty()
+            }
+
+        if (cues.isNotEmpty()) {
+            parsedSubtitleCuesByTrackId[track.id] = cues
+            rememberParsedSubtitleCues(track.name, cues)
+        }
+    }
+
+    private fun rememberParsedSubtitleFile(file: File, title: String) {
+        rememberParsedSubtitleCues(title, parseSubtitleFile(file))
+    }
+
+    private fun rememberParsedSubtitleCues(title: String, cues: List<SubtitleCue>) {
+        if (title.isBlank() || cues.isEmpty()) return
+
+        val indexedCues = cues.mapIndexed { index, cue -> cue.copy(index = index) }
+        parsedSubtitleCuesByTitle[title] = indexedCues
+        File(title).name
+            .takeIf { it.isNotBlank() && it != title }
+            ?.let { parsedSubtitleCuesByTitle[it] = indexedCues }
+
+        val matchingTrack = subtitleTracks.value.firstOrNull { track ->
+            track.name == title ||
+                File(track.name).name == File(title).name ||
+                track.externalFilename?.let { File(it).name == File(title).name } == true
+        }
+        if (matchingTrack != null) {
+            parsedSubtitleCuesByTrackId[matchingTrack.id] = indexedCues
+            if (selectedSubtitles.value.first == matchingTrack.id) {
+                applyParsedSubtitleCuesForTrack(matchingTrack.id)
+            }
+        }
+    }
+
+    private fun applyParsedSubtitleCuesForSelectedTrack() {
+        applyParsedSubtitleCuesForTrack(selectedSubtitles.value.first)
+    }
+
+    private fun applyParsedSubtitleCuesForTrack(trackId: Int) {
+        if (trackId == -1) {
+            showingParsedSubtitleTrackId = null
+            _subtitleHistory.update { emptyList() }
+            _activeSubtitleCueIndex.update { null }
+            return
+        }
+
+        val track = subtitleTracks.value.firstOrNull { it.id == trackId }
+        val cues = parsedSubtitleCuesByTrackId[trackId]
+            ?: track?.name?.let { parsedSubtitleCuesByTitle[it] }
+            ?: track?.name?.let { parsedSubtitleCuesByTitle[File(it).name] }
+            ?: track?.externalFilename?.let { parsedSubtitleCuesByTitle[File(it).name] }
+
+        if (cues.isNullOrEmpty()) {
+            if (showingParsedSubtitleTrackId != null) {
+                showingParsedSubtitleTrackId = null
+                _subtitleHistory.update { emptyList() }
+                _activeSubtitleCueIndex.update { null }
+                lastSubtitleHistoryText = ""
+                nextSubtitleCueIndex = 0
+            }
+            return
+        }
+
+        showingParsedSubtitleTrackId = trackId
+        lastSubtitleHistoryText = ""
+        nextSubtitleCueIndex = cues.maxOfOrNull { it.index + 1 } ?: 0
+        _subtitleHistory.update { cues }
+        updateActiveSubtitleCueFromPosition(pos.value.toInt())
+    }
+
+    private fun updateActiveSubtitleCueFromPosition(positionSeconds: Int, text: String = currentSubtitleText.value) {
+        val cues = subtitleHistory.value
+        if (cues.isEmpty()) {
+            _activeSubtitleCueIndex.update { null }
+            return
+        }
+
+        val cueByTime = cues.lastOrNull {
+            positionSeconds >= it.positionSeconds && positionSeconds <= it.endPositionSeconds
+        }
+        val cueByText = text.takeIf { it.isNotBlank() }?.let { cleanedText ->
+            val normalizedText = cleanedText.normalizedSubtitleCueText()
+            cues
+                .filter { it.text.normalizedSubtitleCueText() == normalizedText }
+                .minByOrNull { kotlin.math.abs(it.positionSeconds - positionSeconds) }
+        }
+
+        _activeSubtitleCueIndex.update { cueByTime?.index ?: cueByText?.index }
+    }
+
+    private fun String.normalizedSubtitleCueText(): String {
+        return cleanMpvSubtitleText()
+            .replace("\n", "")
+            .collapseHorizontalWhitespace()
+    }
+
+    private fun parseSubtitleUriOrPath(uri: Uri, path: String, name: String?): List<SubtitleCue> {
+        val title = name ?: subtitleTitleFromUriOrPath(uri, path)
+        return runCatching {
+            when {
+                uri.scheme == "content" -> {
+                    activity.contentResolver.openInputStream(uri)?.use { input ->
+                        parseSubtitleContent(title, input.bufferedReader().readText())
+                    }.orEmpty()
+                }
+                uri.scheme == "file" -> uri.path
+                    ?.let { File(it) }
+                    ?.let { parseSubtitleFile(it) }
+                    .orEmpty()
+                path.startsWith("file://") -> Uri.parse(path).path
+                    ?.let { File(it) }
+                    ?.let { parseSubtitleFile(it) }
+                    .orEmpty()
+                path.startsWith("fd://") || path.startsWith("http://") || path.startsWith("https://") -> emptyList()
+                else -> parseSubtitleFile(File(path))
+            }
+        }.getOrElse {
+            logcat(LogPriority.ERROR, it)
+            emptyList()
+        }
+    }
+
+    private fun subtitleTitleFromUriOrPath(uri: Uri, path: String): String {
+        return uri.lastPathSegment
+            ?: Uri.parse(path).lastPathSegment
+            ?: File(path).name
+    }
+
+    private fun parseSubtitleFile(file: File): List<SubtitleCue> {
+        if (!file.exists() || !file.isFile) return emptyList()
+        return runCatching {
+            parseSubtitleContent(file.name, file.readText())
+        }.getOrElse {
+            logcat(LogPriority.ERROR, it)
+            emptyList()
+        }
+    }
+
+    private fun parseSubtitleContent(fileName: String, content: String): List<SubtitleCue> {
+        val normalized = content
+            .removePrefix("\uFEFF")
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+        val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+        val cues = when {
+            extension == "ass" || extension == "ssa" || normalized.contains("[Events]", ignoreCase = true) -> {
+                parseAssSubtitleContent(normalized)
+            }
+            else -> parseSrtOrVttSubtitleContent(normalized)
+        }
+        return cues.mapIndexed { index, cue -> cue.copy(index = index) }
+    }
+
+    private fun parseSrtOrVttSubtitleContent(content: String): List<SubtitleCue> {
+        val cues = mutableListOf<SubtitleCue>()
+        content
+            .split(Regex("\n{2,}"))
+            .forEach { block ->
+                val lines = block.lines()
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() && it != "WEBVTT" }
+                val timeIndex = lines.indexOfFirst { it.contains("-->") }
+                if (timeIndex == -1) return@forEach
+
+                val timeParts = lines[timeIndex].split("-->", limit = 2)
+                val start = timeParts.getOrNull(0)?.let { parseSubtitleTimestampSeconds(it) } ?: return@forEach
+                val end = timeParts.getOrNull(1)?.let { parseSubtitleTimestampSeconds(it) } ?: (start + 5.0)
+                val text = lines.drop(timeIndex + 1)
+                    .joinToString("\n")
+                    .cleanMpvSubtitleText()
+
+                if (text.isNotBlank()) {
+                    val startSecond = start.toInt()
+                    cues += SubtitleCue(
+                        index = cues.size,
+                        text = text,
+                        positionSeconds = startSecond,
+                        endPositionSeconds = end.toInt().coerceAtLeast(startSecond + 1),
+                    )
+                }
+            }
+        return cues
+    }
+
+    private fun parseAssSubtitleContent(content: String): List<SubtitleCue> {
+        val cues = mutableListOf<SubtitleCue>()
+        var inEvents = false
+        var format = listOf("layer", "start", "end", "style", "name", "marginl", "marginr", "marginv", "effect", "text")
+
+        content.lineSequence().forEach { rawLine ->
+            val line = rawLine.trim()
+            when {
+                line.equals("[Events]", ignoreCase = true) -> {
+                    inEvents = true
+                    return@forEach
+                }
+                line.startsWith("[") && !line.equals("[Events]", ignoreCase = true) -> {
+                    inEvents = false
+                    return@forEach
+                }
+                !inEvents -> return@forEach
+                line.startsWith("Format:", ignoreCase = true) -> {
+                    format = line.substringAfter(':')
+                        .split(',')
+                        .map { it.trim().lowercase() }
+                    return@forEach
+                }
+                !line.startsWith("Dialogue:", ignoreCase = true) -> return@forEach
+            }
+
+            val startIndex = format.indexOf("start")
+            val endIndex = format.indexOf("end")
+            val textIndex = format.indexOf("text")
+            if (startIndex == -1 || endIndex == -1 || textIndex == -1 || format.isEmpty()) return@forEach
+
+            val values = line.substringAfter(':')
+                .trimStart()
+                .split(",", limit = format.size)
+            if (values.size <= maxOf(startIndex, endIndex, textIndex)) return@forEach
+
+            val start = parseSubtitleTimestampSeconds(values[startIndex]) ?: return@forEach
+            val end = parseSubtitleTimestampSeconds(values[endIndex]) ?: (start + 5.0)
+            val text = values[textIndex].cleanMpvSubtitleText()
+            if (text.isBlank()) return@forEach
+
+            val startSecond = start.toInt()
+            cues += SubtitleCue(
+                index = cues.size,
+                text = text,
+                positionSeconds = startSecond,
+                endPositionSeconds = end.toInt().coerceAtLeast(startSecond + 1),
+            )
+        }
+        return cues
+    }
+
+    private fun parseSubtitleTimestampSeconds(raw: String): Double? {
+        val token = raw
+            .trim()
+            .substringBefore(' ')
+            .substringBefore('\t')
+            .replace(',', '.')
+        val parts = token.split(':')
+        if (parts.size < 2) return null
+
+        val seconds = parts.lastOrNull()?.toDoubleOrNull() ?: return null
+        val minutes = parts.getOrNull(parts.size - 2)?.toIntOrNull() ?: return null
+        val hours = parts.getOrNull(parts.size - 3)?.toIntOrNull() ?: 0
+        return hours * 3600.0 + minutes * 60.0 + seconds
     }
 
     fun selectSub(id: Int) {
@@ -532,15 +1269,58 @@ class PlayerViewModel @JvmOverloads constructor(
         }
         activity.player.secondarySid = _selectedSubtitles.value.second
         activity.player.sid = _selectedSubtitles.value.first
+        applyParsedSubtitleCuesForSelectedTrack()
     }
 
     fun updateSubtitle(sid: Int, secondarySid: Int) {
         _selectedSubtitles.update { Pair(sid, secondarySid) }
+        applyParsedSubtitleCuesForTrack(sid)
+    }
+
+    fun updateSubtitleText(text: String?) {
+        val cleaned = text.orEmpty().cleanMpvSubtitleText()
+        _currentSubtitleText.update { cleaned }
+        if (showingParsedSubtitleTrackId != null) {
+            updateActiveSubtitleCueFromPosition(pos.value.toInt(), cleaned)
+            return
+        }
+        updateSubtitleHistory(cleaned)
+    }
+
+    private fun updateSubtitleHistory(text: String) {
+        if (text.isBlank()) {
+            _activeSubtitleCueIndex.update { null }
+            return
+        }
+
+        val existing = subtitleHistory.value.lastOrNull { it.text == text }
+        if (existing != null && text == lastSubtitleHistoryText) {
+            _activeSubtitleCueIndex.update { existing.index }
+            return
+        }
+
+        lastSubtitleHistoryText = text
+        val cue = SubtitleCue(
+            index = nextSubtitleCueIndex++,
+            text = text,
+            positionSeconds = pos.value.toInt(),
+        )
+        _subtitleHistory.update { cues -> (cues + cue).takeLast(MAX_SUBTITLE_HISTORY) }
+        _activeSubtitleCueIndex.update { cue.index }
+    }
+
+    fun selectSubtitleCue(index: Int) {
+        val cue = subtitleHistory.value.firstOrNull { it.index == index } ?: return
+        seekTo(cue.positionSeconds.coerceAtLeast(0))
+        _activeSubtitleCueIndex.update { cue.index }
     }
 
     fun updatePlayBackPos(pos: Float) {
         onSecondReached(pos.toInt(), duration.value.toInt())
         _pos.update { pos }
+        if (showingParsedSubtitleTrackId != null) {
+            updateActiveSubtitleCueFromPosition(pos.toInt())
+        }
     }
 
     fun updateReadAhead(value: Long) {
@@ -582,6 +1362,8 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun unpause() {
+        restartIfAtEnd()
+        clearEndOfFileState()
         activity.player.paused = false
         _paused.update { false }
     }
@@ -665,12 +1447,31 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun seekBy(offset: Int, precise: Boolean = false) {
+        clearEndOfFileState()
         MPVLib.command(arrayOf("seek", offset.toString(), if (precise) "relative+exact" else "relative"))
     }
 
     fun seekTo(position: Int, precise: Boolean = true) {
-        if (position !in 0..(activity.player.duration ?: 0)) return
-        MPVLib.command(arrayOf("seek", position.toString(), if (precise) "absolute" else "absolute+keyframes"))
+        val duration = activity.player.duration ?: 0
+        if (position !in 0..duration) return
+        val target = if (duration > 0 && position >= duration) duration - 1 else position
+        clearEndOfFileState()
+        MPVLib.command(arrayOf("seek", target.coerceAtLeast(0).toString(), if (precise) "absolute" else "absolute+keyframes"))
+    }
+
+    private fun clearEndOfFileState() {
+        runCatching {
+            if (MPVLib.getPropertyBoolean("eof-reached") == true) {
+                MPVLib.setPropertyBoolean("eof-reached", false)
+            }
+        }
+    }
+
+    private fun restartIfAtEnd() {
+        val durationSeconds = activity.player.duration ?: duration.value.toInt()
+        if (durationSeconds > 0 && pos.value >= durationSeconds - 0.5f) {
+            seekTo(0)
+        }
     }
 
     fun changeBrightnessTo(
@@ -1183,6 +1984,33 @@ class PlayerViewModel @JvmOverloads constructor(
         val stringResource: StringResource,
     ) : Exception(message)
 
+    fun loadStandaloneVideo(video: Video) {
+        currentHosterList = null
+        qualityIndex = Pair(-1, -1)
+
+        _currentAnime.update { null }
+        _currentEpisode.update { null }
+        _currentSource.update { null }
+        _currentPlaylist.update { emptyList() }
+        _hosterList.update { emptyList() }
+        _hosterState.update { emptyList() }
+        _hosterExpandedList.update { emptyList() }
+        _selectedHosterVideoIndex.update { Pair(-1, -1) }
+        _currentVideo.update { video }
+        _isEpisodeOnline.update { false }
+        _hasPreviousEpisode.update { false }
+        _hasNextEpisode.update { false }
+        updateIsLoadingEpisode(false)
+        updateIsLoadingHosters(false)
+        isLoading.update { false }
+
+        val title = video.videoTitle.ifBlank { video.videoUrl.substringAfterLast('/').substringBefore('?') }
+        animeTitle.update { title }
+        mediaTitle.update { title }
+        MPVLib.setPropertyString("user-data/current-anime/anime-title", title)
+        activity.setVideo(video, position = 0L)
+    }
+
     suspend fun init(
         animeId: Long,
         initialEpisodeId: Long,
@@ -1218,6 +2046,7 @@ class PlayerViewModel @JvmOverloads constructor(
                 // Write to mpv table
                 MPVLib.setPropertyString("user-data/current-anime/anime-title", anime.title)
                 MPVLib.setPropertyInt("user-data/current-anime/intro-length", getAnimeSkipIntroLength())
+                applySubtitleDelayForAnime(anime.id)
                 MPVLib.setPropertyString(
                     "user-data/current-anime/category",
                     getAnimeCategories.await(anime.id).joinToString {
@@ -1514,6 +2343,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
         _currentEpisode.update { _ -> chosenEpisode }
         updateEpisode(chosenEpisode)
+        applySubtitleDelayForAnime(anime.id)
 
         return withIOContext {
             try {
@@ -1537,6 +2367,17 @@ class PlayerViewModel @JvmOverloads constructor(
                 source = source,
             )
         }
+    }
+
+    private fun applySubtitleDelayForAnime(animeId: Long) {
+        MPVLib.setPropertyDouble(
+            "sub-delay",
+            subtitlePreferences.subtitlesDelayForAnime(animeId).get() / 1000.0,
+        )
+        MPVLib.setPropertyDouble(
+            "secondary-sub-delay",
+            subtitlePreferences.subtitlesSecondaryDelayForAnime(animeId).get() / 1000.0,
+        )
     }
 
     /**
@@ -1703,6 +2544,100 @@ class PlayerViewModel @JvmOverloads constructor(
         newFile.delete()
         tempFile.renameTo(newFile)
         return newFile.takeIf { it.exists() }?.inputStream()
+    }
+
+    suspend fun captureVideoFrameForOcr(): Bitmap? {
+        val file = File(cachePath, "${System.currentTimeMillis()}_mpv_ocr_frame.png")
+        return runCatching {
+            withUIContext {
+                file.delete()
+                MPVLib.command(arrayOf("screenshot-to-file", file.absolutePath, "video"))
+            }
+            withIOContext {
+                repeat(20) {
+                    if (file.exists() && file.length() > 0L) {
+                        return@withIOContext BitmapFactory.decodeFile(file.absolutePath)
+                    }
+                    Thread.sleep(25L)
+                }
+                file.takeIf { it.exists() && it.length() > 0L }
+                    ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+            }
+        }.onFailure {
+            logcat(LogPriority.ERROR, it)
+        }.getOrNull().also {
+            file.delete()
+        }
+    }
+
+    suspend fun captureSubtitleAudioForAnki(startSeconds: Double?, endSeconds: Double?): ByteArray? {
+        val start = startSeconds ?: return null
+        val end = endSeconds ?: return null
+        if (end <= start) return null
+
+        val video = currentVideo.value ?: return null
+        val output = File(activity.cacheDir, "chimahon_sentence_audio_${System.currentTimeMillis()}.m4a")
+        return runCatching {
+            withIOContext {
+                output.delete()
+                val rawInput = MPVLib.getPropertyString("path")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: video.videoUrl
+                val input = when {
+                    video.videoUrl.startsWith("content://") -> Uri.parse(video.videoUrl).toFFmpegString(activity)
+                    rawInput.startsWith("file://") -> Uri.parse(rawInput).path ?: rawInput
+                    else -> rawInput
+                }.replace("\"", "\\\"")
+
+                val source = currentSource.value as? AnimeHttpSource
+                val headers = video.headers ?: source?.headers
+                val headerOptions = if (rawInput.startsWith("http") && headers != null) {
+                    headers.joinToString("", "-headers '", "'") {
+                        "${it.first}: ${it.second.replace("'", "'\\''")}\r\n"
+                    }
+                } else {
+                    ""
+                }
+                val duration = (end - start).coerceIn(0.25, 30.0)
+                val command = listOf(
+                    headerOptions,
+                    "-ss ${start.coerceAtLeast(0.0).formatSeconds()}",
+                    "-t ${duration.formatSeconds()}",
+                    "-i \"$input\"",
+                    "-vn",
+                    "-map 0:a:0",
+                    "-ac 2",
+                    "-ar 44100",
+                    "-c:a aac",
+                    "-b:a 128k",
+                    "\"${output.absolutePath.replace("\"", "\\\"")}\"",
+                    "-y",
+                )
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+                val session = FFmpegSession.create(FFmpegKitConfig.parseArguments(command))
+                FFmpegKitConfig.ffmpegExecute(session)
+                if (ReturnCode.isSuccess(session.returnCode) && output.exists() && output.length() > 0L) {
+                    output.readBytes()
+                } else {
+                    session.failStackTrace?.let { logcat(LogPriority.WARN) { it } }
+                    null
+                }
+            }
+        }.onFailure {
+            logcat(LogPriority.WARN, it) { "Failed to capture subtitle sentence audio" }
+        }.getOrNull().also {
+            output.delete()
+        }
+    }
+
+    suspend fun captureVideoOcrAudioForAnki(): ByteArray? {
+        val centerSeconds = activity.player.timePos?.toDouble() ?: pos.value.toDouble()
+        val paddingSeconds = dictionaryPreferences.videoOcrSentenceAudioPaddingSeconds().get().toDouble()
+        return captureSubtitleAudioForAnki(
+            startSeconds = centerSeconds - paddingSeconds,
+            endSeconds = centerSeconds + paddingSeconds,
+        )
     }
 
     /**
@@ -2035,4 +2970,8 @@ fun CustomButton.executeLongPress() {
 
 fun Float.normalize(inMin: Float, inMax: Float, outMin: Float, outMax: Float): Float {
     return (this - inMin) * (outMax - outMin) / (inMax - inMin) + outMin
+}
+
+private fun Double.formatSeconds(): String {
+    return String.format(Locale.US, "%.3f", this)
 }

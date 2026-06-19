@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.model.ScreenModel
@@ -26,6 +27,7 @@ import logcat.LogPriority
 import logcat.logcat
 import soup.compose.material.motion.animation.materialSharedAxisX
 import soup.compose.material.motion.animation.rememberSlideDistance
+import java.util.UUID
 
 /**
  * For invoking back press to the parent activity
@@ -83,6 +85,7 @@ fun ScreenTransition(
     modifier: Modifier = Modifier,
     content: ScreenTransitionContent = { it.Content() },
 ) {
+    val transitionKey = remember(navigator) { UUID.randomUUID().toString() }
     AnimatedContent(
         targetState = navigator.lastItem,
         transitionSpec = transition,
@@ -92,7 +95,7 @@ fun ScreenTransition(
         if (isPreviewBuildType) {
             logcat(LogPriority.ERROR) { "ScreenTransition: ${screen.key}" }
         }
-        navigator.saveableState("screen-transition-${screen.key}", screen) {
+        navigator.saveableState("$transitionKey-screen-transition-${screen.key}", screen) {
             content(screen)
         }
     }

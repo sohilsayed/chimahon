@@ -105,7 +105,8 @@ fun OcrLookupPopup(
     type: String = "manga",
     mediaInfo: MediaInfo? = null,
     screenshot: Bitmap? = null,
-    onRequestScreenshot: (() -> Bitmap?)? = null,
+    onRequestScreenshot: (suspend () -> Bitmap?)? = null,
+    onRequestSentenceAudio: (suspend () -> ByteArray?)? = null,
     onCropTriggered: ((Long, Int?) -> Unit)? = null,
     initialLookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
     usePopup: Boolean = true,
@@ -397,6 +398,18 @@ fun OcrLookupPopup(
         }
     }
 
+    val sentenceAudioFieldMapped = remember(ankiFieldMap) {
+        try {
+            val fieldMap = org.json.JSONObject(ankiFieldMap)
+            fieldMap.keys().asSequence().any { key ->
+                val value = fieldMap.getString(key)
+                value.contains(chimahon.anki.Marker.SENTENCE_AUDIO)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun performAnkiLookup(
         index: Int,
         glossaryIndex: Int?,
@@ -422,6 +435,11 @@ fun OcrLookupPopup(
 
         if (shouldUseCropMode) {
             scope.launch {
+                val sentenceAudioBytes = if (sentenceAudioFieldMapped) {
+                    onRequestSentenceAudio?.invoke()
+                } else {
+                    null
+                }
                 val ankiResult = AnkiCardCreator.addToAnki(
                     context = context,
                     result = result,
@@ -435,6 +453,7 @@ fun OcrLookupPopup(
                     sentence = fullText,
                     offset = fullText.indexOf(result.matched).let { if (it >= 0) it else charOffset },
                     media = mediaInfo,
+                    sentenceAudioBytes = sentenceAudioBytes,
                     glossaryIndex = glossaryIndex,
                     selection = result.matched,
                     selectedDict = selectedDict,
@@ -469,7 +488,16 @@ fun OcrLookupPopup(
             }
         } else {
             scope.launch {
-                val encoding = onRequestScreenshot?.invoke()?.let { ImageEncoder.encode(it) }
+                val encoding = if (screenshotFieldMapped) {
+                    onRequestScreenshot?.invoke()?.let { ImageEncoder.encode(it) }
+                } else {
+                    null
+                }
+                val sentenceAudioBytes = if (sentenceAudioFieldMapped) {
+                    onRequestSentenceAudio?.invoke()
+                } else {
+                    null
+                }
                 val ankiResult = AnkiCardCreator.addToAnki(
                     context = context,
                     result = result,
@@ -485,6 +513,7 @@ fun OcrLookupPopup(
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
                     screenshotBytes = encoding?.bytes,
+                    sentenceAudioBytes = sentenceAudioBytes,
                     selection = result.matched,
                     selectedDict = selectedDict,
                     popupSelection = popupSelection,

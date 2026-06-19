@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import eu.kanade.tachiyomi.ui.player.PlayerActivity
 import eu.kanade.tachiyomi.util.buildProgressString
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Badge
@@ -65,7 +66,7 @@ fun AnimeListScreen(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            context.startActivity(PlayerActivity.newStandaloneIntent(context, uri))
         }
     }
 
@@ -124,7 +125,7 @@ fun AnimeListScreen(
             onDismiss = { showDialog = false },
             onOpenUrl = { url ->
                 showDialog = false
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                context.startActivity(PlayerActivity.newStandaloneIntent(context, Uri.parse(url)))
             },
             onPickFile = {
                 showDialog = false

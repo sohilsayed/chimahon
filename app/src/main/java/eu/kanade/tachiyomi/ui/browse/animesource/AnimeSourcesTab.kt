@@ -1,15 +1,15 @@
 package eu.kanade.tachiyomi.ui.browse.animesource
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PlayCircleOutline
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,8 +25,11 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.browse.components.BaseBrowseItem
+import eu.kanade.presentation.browse.components.AnimeExtensionIcon
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel.AnimeSourceUiModel
 import eu.kanade.tachiyomi.ui.browse.animesource.browse.BrowseAnimeSourceScreen
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.persistentListOf
@@ -71,7 +74,7 @@ fun Screen.animeSourcesTab(): TabContent {
 
 @Composable
 private fun AnimeSourcesList(
-    items: Map<String, List<AnimeCatalogueSource>>,
+    items: Map<String, List<AnimeSourceUiModel>>,
     contentPadding: PaddingValues,
     onClickSource: (AnimeCatalogueSource) -> Unit,
 ) {
@@ -89,7 +92,7 @@ private fun AnimeSourcesList(
                     Text(
                         text = LocaleHelper.getSourceDisplayName(lang, context),
                         modifier = Modifier
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = MaterialTheme.padding.small)
                             .weight(1f),
                         style = MaterialTheme.typography.header,
                     )
@@ -98,11 +101,11 @@ private fun AnimeSourcesList(
 
             items(
                 items = sources,
-                key = { "anime-source-${it.id}" },
-            ) { source ->
+                key = { "anime-source-${it.source.id}" },
+            ) { item ->
                 AnimeSourceItem(
-                    source = source,
-                    onClick = { onClickSource(source) },
+                    item = item,
+                    onClick = { onClickSource(item.source) },
                 )
             }
         }
@@ -111,43 +114,55 @@ private fun AnimeSourcesList(
 
 @Composable
 private fun AnimeSourceItem(
-    source: AnimeCatalogueSource,
+    item: AnimeSourceUiModel,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = MaterialTheme.padding.medium,
-                vertical = MaterialTheme.padding.small,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.PlayCircleOutline,
-            contentDescription = null,
-            modifier = Modifier.size(40.dp),
-            tint = MaterialTheme.colorScheme.primary,
-        )
+    BaseBrowseItem(
+        onClickItem = onClick,
+        icon = {
+            val iconModifier = Modifier
+                .height(40.dp)
+                .aspectRatio(1f)
+            if (item.extension != null) {
+                AnimeExtensionIcon(
+                    extension = item.extension,
+                    modifier = iconModifier,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.PlayCircle,
+                    contentDescription = null,
+                    modifier = iconModifier,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        content = {
+            AnimeSourceItemContent(item.source)
+        },
+    )
+}
 
-        Column(
-            modifier = Modifier
-                .padding(start = MaterialTheme.padding.medium)
-                .weight(1f),
-        ) {
-            Text(
-                text = source.name,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = LocaleHelper.getSourceDisplayName(source.lang, LocalContext.current),
-                modifier = Modifier.secondaryItemAlpha(),
-                maxLines = 1,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+@Composable
+private fun RowScope.AnimeSourceItemContent(source: AnimeCatalogueSource) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .padding(horizontal = MaterialTheme.padding.medium)
+            .weight(1f),
+    ) {
+        Text(
+            text = source.name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = LocaleHelper.getSourceDisplayName(source.lang, context),
+            modifier = Modifier.secondaryItemAlpha(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }

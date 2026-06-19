@@ -73,6 +73,7 @@ import kotlin.math.roundToInt
 
 @Composable
 fun SubtitleDelayPanel(
+    animeId: Long?,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -127,7 +128,8 @@ fun SubtitleDelayPanel(
             affectedSubtitle = affectedSubtitle,
             onTypeChange = { affectedSubtitle = it },
             onApply = {
-                preferences.subtitlesDelay().set(delay)
+                preferences.subtitlesDelayForAnime(animeId).set(delay)
+                preferences.subtitlesSecondaryDelayForAnime(animeId).set(secondaryDelay)
                 if (speed in 0.1f..10f) preferences.subtitlesSpeed().set(speed)
             },
             onReset = {
