@@ -1042,6 +1042,8 @@ class PlayerViewModel @JvmOverloads constructor(
     private fun applyParsedSubtitleCuesForTrack(trackId: Int) {
         if (trackId == -1) {
             showingParsedSubtitleTrackId = null
+            lastSubtitleHistoryText = ""
+            _currentSubtitleText.update { "" }
             _subtitleHistory.update { emptyList() }
             _activeSubtitleCueIndex.update { null }
             return
@@ -1289,6 +1291,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
     private fun updateSubtitleHistory(text: String) {
         if (text.isBlank()) {
+            lastSubtitleHistoryText = ""
             _activeSubtitleCueIndex.update { null }
             return
         }
@@ -2008,6 +2011,7 @@ class PlayerViewModel @JvmOverloads constructor(
         animeTitle.update { title }
         mediaTitle.update { title }
         MPVLib.setPropertyString("user-data/current-anime/anime-title", title)
+
         activity.setVideo(video, position = 0L)
     }
 

@@ -84,10 +84,12 @@ data object AnimeTab : Tab {
             contract = ActivityResultContracts.OpenDocument(),
         ) { uri ->
             if (uri != null) {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                }
                 context.startActivity(PlayerActivity.newStandaloneIntent(context, uri))
             }
         }

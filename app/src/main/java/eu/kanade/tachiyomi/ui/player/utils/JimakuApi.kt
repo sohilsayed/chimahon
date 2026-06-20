@@ -19,8 +19,13 @@ class JimakuApi(
     private val json: Json = Injekt.get(),
 ) {
     suspend fun searchEntries(apiKey: String, query: String): List<JimakuEntry> {
+        return (searchEntries(apiKey, query, anime = true) + searchEntries(apiKey, query, anime = false))
+            .distinctBy { it.id }
+    }
+
+    private suspend fun searchEntries(apiKey: String, query: String, anime: Boolean): List<JimakuEntry> {
         val url = "$BASE_URL/entries/search".toHttpUrl().newBuilder()
-            .addQueryParameter("anime", "true")
+            .addQueryParameter("anime", anime.toString())
             .addQueryParameter("query", query)
             .build()
         return with(json) {

@@ -25,6 +25,7 @@ package eu.kanade.tachiyomi.ui.player
 import android.annotation.SuppressLint
 import android.app.PictureInPictureParams
 import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -157,6 +158,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     companion object {
+        private const val EXTRA_STANDALONE_VIDEO = "standaloneVideo"
         private const val EXTRA_STANDALONE_VIDEO_URL = "standaloneVideoUrl"
         private const val EXTRA_STANDALONE_VIDEO_TITLE = "standaloneVideoTitle"
 
@@ -185,10 +187,18 @@ class PlayerActivity : BaseActivity() {
         ): Intent {
             return Intent(context, PlayerActivity::class.java).apply {
                 data = uri
+                putExtra(EXTRA_STANDALONE_VIDEO, true)
                 putExtra(EXTRA_STANDALONE_VIDEO_URL, uri.toString())
                 title?.let { putExtra(EXTRA_STANDALONE_VIDEO_TITLE, it) }
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                if (uri.scheme.equals("content", ignoreCase = true) || uri.scheme.equals("file", ignoreCase = true)) {
+                    clipData = ClipData.newUri(
+                        context.contentResolver,
+                        title ?: uri.lastPathSegment ?: "video",
+                        uri,
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             }
         }
     }
@@ -198,11 +208,23 @@ class PlayerActivity : BaseActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
 
-        val animeId = intent.extras?.getLong("animeId") ?: -1
-        val episodeId = intent.extras?.getLong("episodeId") ?: -1
-        val hostList = intent.extras?.getString("hostList") ?: ""
-        val hostIndex = intent.extras?.getInt("hostIndex") ?: -1
-        val vidIndex = intent.extras?.getInt("vidIndex") ?: -1
+        if (intent.isStandaloneVideoIntent()) {
+            player.isExiting = false
+            val standaloneVideo = intent.toStandaloneVideo()
+            if (standaloneVideo != null) {
+                viewModel.loadStandaloneVideo(standaloneVideo)
+                setIntent(intent)
+                return
+            }
+            finish()
+            return
+        }
+
+        val animeId = intent.getLongExtra("animeId", -1)
+        val episodeId = intent.getLongExtra("episodeId", -1)
+        val hostList = intent.getStringExtra("hostList") ?: ""
+        val hostIndex = intent.getIntExtra("hostIndex", -1)
+        val vidIndex = intent.getIntExtra("vidIndex", -1)
         if (animeId == -1L || episodeId == -1L) {
             val standaloneVideo = intent.toStandaloneVideo()
             if (standaloneVideo != null) {
@@ -248,6 +270,12 @@ class PlayerActivity : BaseActivity() {
         }
 
         setIntent(intent)
+    }
+
+    private fun Intent.isStandaloneVideoIntent(): Boolean {
+        if (getBooleanExtra(EXTRA_STANDALONE_VIDEO, false)) return true
+        if (hasExtra(EXTRA_STANDALONE_VIDEO_URL)) return true
+        return data != null && !hasExtra("animeId") && !hasExtra("episodeId")
     }
 
     private fun Intent.toStandaloneVideo(): Video? {
@@ -468,6 +496,14 @@ class PlayerActivity : BaseActivity() {
     private fun executeMPVCommand(commands: Array<String>) {
         if (!player.isExiting) {
             MPVLib.command(commands)
+        }
+    }
+
+    private fun loadPlayableUrl(url: String) {
+        if (player.surfaceReady) {
+            MPVLib.command(arrayOf("loadfile", url))
+        } else {
+            player.playFile(url)
         }
     }
 
@@ -1193,7 +1229,18 @@ class PlayerActivity : BaseActivity() {
                 torrentLinkHandler(video.videoUrl, video.quality)
             }
         } else {
-            MPVLib.command(arrayOf("loadfile", parseVideoUrl(video.videoUrl)))
+            val playableUrl = try {
+                parseVideoUrl(video.videoUrl) ?: video.videoUrl
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to resolve video URI: ${video.videoUrl}" }
+                toast(e.message ?: "Unable to open video")
+                null
+            }
+            if (playableUrl.isNullOrBlank()) {
+                toast("Unable to open video")
+                return
+            }
+            loadPlayableUrl(playableUrl)
         }
 
     }
@@ -1206,7 +1253,7 @@ class PlayerActivity : BaseActivity() {
             val videoInputStream = applicationContext.contentResolver.openInputStream(Uri.parse(videoUrl))
             val torrent = TorrentServerApi.uploadTorrent(videoInputStream!!, quality, "", "", false)
             val torrentUrl = TorrentServerUtils.getTorrentPlayLink(torrent, 0)
-            MPVLib.command(arrayOf("loadfile", torrentUrl))
+            loadPlayableUrl(torrentUrl)
             return
         }
 
@@ -1223,7 +1270,7 @@ class PlayerActivity : BaseActivity() {
 
         val currentTorrent = TorrentServerApi.addTorrent(videoUrl, quality, "", "", false)
         val videoTorrentUrl = TorrentServerUtils.getTorrentPlayLink(currentTorrent, index)
-        MPVLib.command(arrayOf("loadfile", videoTorrentUrl))
+        loadPlayableUrl(videoTorrentUrl)
     }
 
     /**
@@ -1246,10 +1293,13 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun setHttpOptions(video: Video) {
-        if (viewModel.isEpisodeOnline() != true) return
-        val source = viewModel.currentSource.value as? AnimeHttpSource ?: return
+        val headersSource = video.headers ?: run {
+            if (viewModel.isEpisodeOnline() != true) return
+            val source = viewModel.currentSource.value as? AnimeHttpSource ?: return
+            source.headers
+        }
 
-        val headers = (video.headers ?: source.headers)
+        val headers = headersSource
             .toMultimap()
             .mapValues { it.value.firstOrNull() ?: "" }
             .toMutableMap()

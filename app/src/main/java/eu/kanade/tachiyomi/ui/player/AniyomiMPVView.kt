@@ -23,6 +23,7 @@ import android.os.Environment
 import android.util.AttributeSet
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.SurfaceHolder
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.toColorHexString
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
@@ -48,6 +49,18 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
     private val networkPreferences: NetworkPreferences by injectLazy()
 
     var isExiting = false
+    var surfaceReady = false
+        private set
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        super.surfaceCreated(holder)
+        surfaceReady = true
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        surfaceReady = false
+        super.surfaceDestroyed(holder)
+    }
 
     private fun getPropertyInt(property: String): Int? {
         return MPVLib.getPropertyInt(property) as Int?
