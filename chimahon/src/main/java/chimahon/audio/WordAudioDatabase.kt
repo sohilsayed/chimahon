@@ -1,13 +1,19 @@
 package chimahon.audio
 
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
+import android.net.Uri
 import android.util.Log
 import java.io.File
 
+/**
+ * Read-only access to word_audio.db backed by a SAF Uri.
+ * SAF fd → mmap → sqlite3_deserialize(READONLY).
+ * Zero copy, zero path-based opening, works on FUSE devices.
+ */
 class WordAudioDatabase(private val context: Context) {
-    private var db: SQLiteDatabase? = null
-    private var dbPath: String? = null
+
+    private var handle: Long = 0L
+    private var currentUri: String? = null
 
     private val defaultSources = listOf(
         "nhk16", "daijisen", "shinmeikai8", "jpod", "jpod_alternate",
@@ -15,150 +21,81 @@ class WordAudioDatabase(private val context: Context) {
     )
 
     private fun katakanaToHiragana(text: String): String {
-        return text.map { char ->
-            val code = char.code
-            if (code in 0x30A1..0x30F6) {
-                (code - 0x60).toChar()
-            } else {
-                char
-            }
-        }.joinToString("")
+        val sb = StringBuilder(text.length)
+        for (c in text) {
+            val code = c.code
+            sb.append(if (code in 0x30A1..0x30F6) (code - 0x60).toChar() else c)
+        }
+        return sb.toString()
     }
 
-    companion object {
-        private const val TAG = "WordAudioDatabase"
-    }
-
-    /**
-     * Updates the database path and opens the connection if necessary.
-     */
+    /** Legacy: opens a database by file path. */
     fun updatePath(path: String?): Boolean {
-        if (path == dbPath && db != null) return true
+        if (path.isNullOrBlank()) { close(); return false }
+        return updateUri(Uri.fromFile(File(path)))
+    }
 
+    /** Opens any SAF Uri (or file:// Uri). */
+    fun updateUri(uri: Uri): Boolean {
+        val key = uri.toString()
+        if (key == currentUri && handle != 0L) return true
         close()
 
-        if (path == null) return false
+        val pfd = try {
+            context.contentResolver.openFileDescriptor(uri, "r")
+        } catch (e: Exception) {
+            Log.e(TAG, "SAF open failed for $uri", e)
+            return false
+        } ?: return false
 
-        val file = File(path)
-        if (!file.exists() || !file.canRead()) {
-            Log.w(TAG, "Database file not found or not readable: $path")
+        // Close the legacy path pfd before detaching
+        val size = pfd.statSize
+        if (size <= 0) {
+            Log.e(TAG, "empty or invalid file: $uri ($size)")
+            pfd.close()
             return false
         }
 
-        return try {
-            db = SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY)
-            dbPath = path
-            Log.i(TAG, "Opened local audio database at $path")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to open local audio database", e)
-            false
+        val fd = pfd.detachFd()
+        val h = nativeOpen(fd, size)
+        if (h == 0L) {
+            Log.e(TAG, "nativeOpen failed (see logcat: word_audio)")
+            return false
         }
+        handle = h
+        currentUri = key
+        Log.i(TAG, "Opened audio database: $uri")
+        return true
     }
 
-    /**
-     * Tests if the database is queryable and not malformed.
-     */
+    fun isOpenFor(uriStr: String): Boolean = currentUri == uriStr && handle != 0L
+
     fun testConnection(): Boolean {
-        val database = db ?: return false
-        return try {
-            database.rawQuery("SELECT count(*) FROM entries LIMIT 1", null).use { cursor ->
-                cursor.moveToFirst()
-            }
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Database connection test failed, likely corrupted or malformed", e)
-            false
-        }
+        if (handle == 0L) return false
+        return nativeTestConnection(handle)
     }
 
-    /**
-     * Finds entries for a given term and reading, replicated from Hoshi Reader's logic.
-     */
     fun findEntries(term: String, reading: String): List<LocalEntry> {
-        val database = db ?: return emptyList()
-        val results = mutableListOf<LocalEntry>()
-
+        if (handle == 0L) return emptyList()
         val normalizedReading = katakanaToHiragana(reading)
-
-        // Sort order based on source priority
-        val sourceOrder = StringBuilder("CASE source ")
-        defaultSources.forEachIndexed { index, source ->
-            sourceOrder.append("WHEN '$source' THEN $index ")
-        }
-        sourceOrder.append("ELSE 999 END")
-
-        val query = if (normalizedReading.isEmpty()) {
-            """
-            SELECT file, source, speaker, display, reading, expression FROM entries
-            WHERE expression = ? AND (file LIKE '%.mp3' OR file LIKE '%.ogg' OR file LIKE '%.opus' OR file LIKE '%.wav' OR file LIKE '%.m4a' OR file LIKE '%.aac' OR file LIKE '%.flac')
-            ORDER BY $sourceOrder
-            LIMIT 1
-            """.trimIndent()
-        } else {
-            """
-            SELECT file, source, speaker, display, reading, expression FROM entries
-            WHERE (expression = ? OR reading = ?) AND (file LIKE '%.mp3' OR file LIKE '%.ogg' OR file LIKE '%.opus' OR file LIKE '%.wav' OR file LIKE '%.m4a' OR file LIKE '%.aac' OR file LIKE '%.flac')
-            ORDER BY CASE WHEN reading = ? THEN 0 ELSE 1 END, $sourceOrder
-            LIMIT 1
-            """.trimIndent()
-        }
-
-        val args = if (normalizedReading.isEmpty()) {
-            arrayOf(term)
-        } else {
-            arrayOf(term, normalizedReading, normalizedReading)
-        }
-
-        try {
-            database.rawQuery(query, args).use { cursor ->
-                while (cursor.moveToNext()) {
-                    results.add(
-                        LocalEntry(
-                            file = cursor.getString(0) ?: "",
-                            sourceId = cursor.getString(1) ?: "",
-                            speaker = cursor.getString(2),
-                            display = cursor.getString(3),
-                            reading = cursor.getString(4) ?: "",
-                            expression = cursor.getString(5) ?: "",
-                        ),
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error querying entries", e)
-        }
-
-        return results
+        val rows = nativeFindEntries(
+            handle, term, normalizedReading,
+            defaultSources.joinToString(","),
+        )
+        return rows?.toList() ?: emptyList()
     }
 
-    /**
-     * Retrieves the raw audio bytes for a specific file path and source.
-     */
     fun getAudioData(filePath: String, sourceId: String): ByteArray? {
-        val database = db ?: return null
-
-        // AnkiconnectAndroid schema uses 'android' table with 'file' and 'source' columns
-        val query = "SELECT data FROM android WHERE file = ? AND source = ?"
-
-        return try {
-            database.rawQuery(query, arrayOf(filePath, sourceId)).use { cursor ->
-                if (cursor.moveToFirst()) {
-                    cursor.getBlob(0)
-                } else {
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error retrieving audio data", e)
-            null
-        }
+        if (handle == 0L) return null
+        return nativeGetAudioData(handle, filePath, sourceId)
     }
 
     fun close() {
-        db?.close()
-        db = null
-        dbPath = null
+        if (handle != 0L) {
+            nativeClose(handle)
+            handle = 0L
+        }
+        currentUri = null
     }
 
     data class LocalEntry(
@@ -169,4 +106,19 @@ class WordAudioDatabase(private val context: Context) {
         val reading: String,
         val expression: String,
     )
+
+    companion object {
+        private const val TAG = "WordAudioDatabase"
+        init { System.loadLibrary("word_audio_jni") }
+    }
+
+    private external fun nativeOpen(fd: Int, size: Long): Long
+    private external fun nativeClose(handle: Long)
+    private external fun nativeTestConnection(handle: Long): Boolean
+    private external fun nativeFindEntries(
+        handle: Long, term: String, reading: String, sourceOrder: String,
+    ): Array<LocalEntry>?
+    private external fun nativeGetAudioData(
+        handle: Long, filePath: String, sourceId: String,
+    ): ByteArray?
 }

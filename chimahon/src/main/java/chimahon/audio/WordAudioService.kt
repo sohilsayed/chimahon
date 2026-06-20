@@ -1,6 +1,7 @@
 package chimahon.audio
 
 import android.content.Context
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,9 @@ class WordAudioService(
         ignoreUnknownKeys = true
         coerceInputValues = true
     }
+
+    private var cachedSources: List<WordAudioSource>? = null
+    private var cachedSourcesRaw: String = ""
 
     companion object {
         private const val TAG = "WordAudioService"
@@ -73,13 +77,25 @@ class WordAudioService(
         localDatabase.getAudioData(filePath, sourceId)
     }
 
+    private val tempAudioFile by lazy { File(context.cacheDir, "word_audio_track") }
+
+    suspend fun getAudioDataFd(filePath: String, sourceId: String): ParcelFileDescriptor? = withContext(Dispatchers.IO) {
+        val blob = localDatabase.getAudioData(filePath, sourceId) ?: return@withContext null
+        tempAudioFile.writeBytes(blob)
+        ParcelFileDescriptor.open(tempAudioFile, ParcelFileDescriptor.MODE_READ_ONLY)
+    }
+
     private fun getEnabledSources(): List<WordAudioSource> {
-        val rawSources = preferences.wordAudioSources().get()
-        val sources = try {
-            json.decodeFromString<List<WordAudioSource>>(rawSources)
-        } catch (e: Exception) {
-            emptyList()
+        val raw = preferences.wordAudioSources().get()
+        if (raw != cachedSourcesRaw || cachedSources == null) {
+            cachedSources = try {
+                json.decodeFromString<List<WordAudioSource>>(raw)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            cachedSourcesRaw = raw
         }
+        val sources = cachedSources!!
 
         val localEnabled = preferences.wordAudioLocalEnabled().get()
         val finalSources = sources.toMutableList()
@@ -92,9 +108,21 @@ class WordAudioService(
     }
 
     private fun findLocalAudio(term: String, reading: String): List<WordAudioDatabase.LocalEntry> {
+        // New path: SAF Uri
+        val uriStr = preferences.wordAudioLocalUri().get()
+        if (uriStr.isNotBlank()) {
+            if (!localDatabase.isOpenFor(uriStr)) {
+                localDatabase.close()
+                if (!localDatabase.updateUri(android.net.Uri.parse(uriStr))) {
+                    return emptyList()
+                }
+            }
+            return localDatabase.findEntries(term, reading)
+        }
+
+        // Legacy path: file path
         val path = preferences.wordAudioLocalPath().get()
         if (path.isBlank()) return emptyList()
-
         localDatabase.updatePath(path)
         return localDatabase.findEntries(term, reading)
     }

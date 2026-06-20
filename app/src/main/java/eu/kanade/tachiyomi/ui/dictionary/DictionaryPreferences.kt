@@ -251,6 +251,9 @@ class DictionaryPreferences(
     
     /** Local android.db file path */
     override fun wordAudioLocalPath() = preferenceStore.getString("pref_word_audio_local_path", "")
-    
+
+    /** SAF Uri string for the audio database */
+    override fun wordAudioLocalUri() = preferenceStore.getString("pref_word_audio_local_uri", "")
+
     override fun wordAudioLocalEnabled() = preferenceStore.getBoolean("pref_word_audio_local_enabled", false)
 }

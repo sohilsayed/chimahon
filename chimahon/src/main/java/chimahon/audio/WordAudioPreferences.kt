@@ -7,5 +7,6 @@ interface WordAudioPreferences {
     fun wordAudioAutoplay(): Preference<Boolean>
     fun wordAudioSources(): Preference<String>
     fun wordAudioLocalPath(): Preference<String>
+    fun wordAudioLocalUri(): Preference<String>
     fun wordAudioLocalEnabled(): Preference<Boolean>
 }

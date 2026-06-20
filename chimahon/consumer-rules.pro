@@ -10,3 +10,7 @@
 
 # Keep @Keep annotation itself
 -keep class androidx.annotation.Keep
+
+# word_audio_jni — JNI binding
+-keep class chimahon.audio.WordAudioDatabase { <init>(...); *; }
+-keep class chimahon.audio.WordAudioDatabase$LocalEntry { <init>(...); <fields>; }

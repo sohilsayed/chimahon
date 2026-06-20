@@ -281,7 +281,6 @@ private fun loadDictionaryList(context: Context) {
 
 private val _isImporting = kotlinx.coroutines.flow.MutableStateFlow(false)
 private val _isImportingDb = kotlinx.coroutines.flow.MutableStateFlow(false)
-private val _importDbProgress = kotlinx.coroutines.flow.MutableStateFlow(0f)
 
 object SettingsDictionaryScreen : SearchableSettings {
 
@@ -324,46 +323,34 @@ object SettingsDictionaryScreen : SearchableSettings {
             if (uri != null) {
                 scope.launch {
                     _isImportingDb.value = true
-                    _importDbProgress.value = 0f
-                    val targetFile = File(context.getExternalFilesDir(null), "word_audio.db")
                     withContext(Dispatchers.IO) {
-                        var totalSize = 1L
-                        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                            if (cursor.moveToFirst()) {
-                                totalSize = cursor.getLong(0).coerceAtLeast(1L)
-                            }
-                        }
+                        try {
+                            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            context.contentResolver.takePersistableUriPermission(uri, flags)
 
-                        val tempFile = File(context.getExternalFilesDir(null), "word_audio.db.tmp")
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            tempFile.outputStream().use { output ->
-                                val buffer = ByteArray(2 * 1024 * 1024)
-                                var copied = 0L
-                                while (true) {
-                                    val read = input.read(buffer)
-                                    if (read < 0) break
-                                    output.write(buffer, 0, read)
-                                    copied += read
-                                    _importDbProgress.value = copied.toFloat() / totalSize
+                            val db = chimahon.audio.WordAudioDatabase(context)
+                            val ok = db.updateUri(uri) && db.testConnection()
+                            db.close()
+
+                            if (ok) {
+                                dictionaryPreferences.wordAudioLocalUri().set(uri.toString())
+                                dictionaryPreferences.wordAudioLocalPath().set("")
+                                withContext(Dispatchers.Main) {
+                                    context.toast("Local database loaded")
                                 }
-                                output.fd.sync()
+                            } else {
+                                context.contentResolver.releasePersistableUriPermission(uri, flags)
+                                withContext(Dispatchers.Main) {
+                                    context.toast("Selected file is not a valid audio database")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to load audio DB", e)
+                            withContext(Dispatchers.Main) {
+                                context.toast("Failed: ${e.message}")
                             }
                         }
-                        if (!tempFile.renameTo(targetFile)) {
-                            tempFile.copyTo(targetFile, overwrite = true)
-                            tempFile.delete()
-                        }
                     }
-                    val db = chimahon.audio.WordAudioDatabase(context)
-                    if (db.updatePath(targetFile.absolutePath) && db.testConnection()) {
-                        dictionaryPreferences.wordAudioLocalPath().set(targetFile.absolutePath)
-                        context.toast("Local database loaded")
-                    } else {
-                        context.toast("Selected file is not a valid audio database or is corrupted")
-                        if (targetFile.exists()) targetFile.delete()
-                        dictionaryPreferences.wordAudioLocalPath().set("")
-                    }
-                    db.close()
                     _isImportingDb.value = false
                 }
             }
@@ -2497,6 +2484,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         val autoplay by prefs.wordAudioAutoplay().collectAsState()
         val localEnabled by prefs.wordAudioLocalEnabled().collectAsState()
         val localPath by prefs.wordAudioLocalPath().collectAsState()
+        val localUri by prefs.wordAudioLocalUri().collectAsState()
         val rawSources by prefs.wordAudioSources().collectAsState()
 
         val sources = remember(rawSources) {
@@ -2512,7 +2500,6 @@ object SettingsDictionaryScreen : SearchableSettings {
         }
 
         val isImportingDb by _isImportingDb.collectAsState()
-        val importDbProgress by _importDbProgress.collectAsState()
 
         return Preference.PreferenceGroup(
             title = "Word Audio",
@@ -2536,10 +2523,20 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 Switch(checked = localEnabled, onCheckedChange = { prefs.wordAudioLocalEnabled().set(it) })
                             }
                             if (localEnabled) {
+                                val displayStr = if (localUri.isNotBlank()) {
+                                    "URI: ${localUri.take(60)}${if (localUri.length > 60) "..." else ""}"
+                                } else if (localPath.isNotBlank()) {
+                                    "Path: $localPath"
+                                } else {
+                                    "No database selected"
+                                }
                                 Text(
-                                    text = if (localPath.isNotBlank()) "Path: $localPath" else "No database selected",
+                                    text = displayStr,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (localPath.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+                                    color = if (localUri.isNotBlank() || localPath.isNotBlank())
+                                        MaterialTheme.colorScheme.onSurface
+                                    else
+                                        MaterialTheme.colorScheme.error,
                                 )
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2558,24 +2555,27 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     ) {
                                         if (isImportingDb) {
                                             androidx.compose.material3.CircularProgressIndicator(
-                                                progress = importDbProgress,
                                                 modifier = Modifier.size(16.dp),
                                                 strokeWidth = 2.dp,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Copying ${(importDbProgress * 100).toInt()}%")
+                                            Text("Validating...")
                                         } else {
                                             Text("Select Database")
                                         }
                                     }
 
-                                    if (localPath.isNotBlank()) {
+                                    if (localUri.isNotBlank()) {
                                         OutlinedButton(
                                             onClick = {
-                                                val file = java.io.File(localPath)
-                                                if (file.exists()) file.delete()
-                                                prefs.wordAudioLocalPath().set("")
+                                                try {
+                                                    context.contentResolver.releasePersistableUriPermission(
+                                                        Uri.parse(localUri),
+                                                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                                                    )
+                                                } catch (_: Exception) { }
+                                                prefs.wordAudioLocalUri().set("")
                                             },
                                             enabled = !isImportingDb
                                         ) {

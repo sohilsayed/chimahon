@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.dictionary
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -78,6 +79,7 @@ internal class WordAudioBridge(
     private val wordAudioService: WordAudioService by Injekt.injectLazy()
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var mediaPlayer: android.media.MediaPlayer? = null
+    private var currentAudioFd: ParcelFileDescriptor? = null
 
     @JavascriptInterface
     fun fetchAudio(term: String, reading: String, callbackId: String) {
@@ -103,29 +105,23 @@ internal class WordAudioBridge(
         scope.launch {
             try {
                 stopAudio()
-                val player = android.media.MediaPlayer()
-                mediaPlayer = player
+                val player = mediaPlayer ?: android.media.MediaPlayer().also { mediaPlayer = it }
+                player.reset()
                 if (url.startsWith("chimahon-local://")) {
                     val uri = Uri.parse(url)
                     val sourceId = uri.host ?: return@launch
                     val filePath = uri.path?.substring(1) ?: return@launch
-                    val data = withContext(Dispatchers.IO) {
-                        wordAudioService.getAudioData(filePath, sourceId)
+                    val pfd = withContext(Dispatchers.IO) {
+                        wordAudioService.getAudioDataFd(filePath, sourceId)
                     } ?: return@launch
-                    val extension = "." + (filePath.substringAfterLast('.', "mp3"))
-                    val tempFile = File.createTempFile("word_audio", extension, context.cacheDir)
-                    tempFile.writeBytes(data)
-                    player.setDataSource(tempFile.absolutePath)
-                    tempFile.deleteOnExit()
+                    currentAudioFd = pfd
+                    player.setDataSource(pfd.fileDescriptor)
                 } else {
                     player.setDataSource(url)
                 }
                 player.prepareAsync()
                 player.setOnPreparedListener { it.start() }
-                player.setOnCompletionListener {
-                    it.release()
-                    if (mediaPlayer == it) mediaPlayer = null
-                }
+                player.setOnCompletionListener { /* reuse on next call */ }
             } catch (e: Exception) {
                 Log.e("WordAudioBridge", "Error playing audio: $url", e)
             }
@@ -133,8 +129,13 @@ internal class WordAudioBridge(
     }
 
     fun stopAudio() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.reset()
+        } catch (_: Exception) { }
+        try {
+            currentAudioFd?.close()
+        } catch (_: Exception) { }
+        currentAudioFd = null
     }
 }
