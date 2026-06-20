@@ -1645,4 +1645,28 @@
     <string name="enable_volume_brightness_gestures">Volume and brightness gestures</string>
     <string name="enable_horizontal_seek_gesture">Horizontal seek gesture</string>
     <string name="pref_show_seekbar">Seekbar</string>
+
+    <!-- Anime library/detail UI -->
+    <string name="action_bookmark_episode">Bookmark episode</string>
+    <string name="action_remove_bookmark_episode">Remove episode bookmark</string>
+    <string name="action_change_intro_length">Change intro length</string>
+    <string name="action_filter_unseen">Unseen</string>
+    <string name="action_mark_previous_as_seen">Mark previous as seen</string>
+    <string name="action_migrate_duplicate">Migrate duplicate</string>
+    <string name="action_play_externally">Play externally</string>
+    <string name="action_play_internally">Play internally</string>
+    <string name="action_show_anime">Show anime</string>
+    <string name="also_set_episode_settings_for_library">Also set episode settings for library</string>
+    <string name="anime_interval_expected_update">Expected next update in %1$s with current interval of %2$s</string>
+    <string name="anime_interval_expected_update_null">Expected next update is unknown</string>
+    <string name="anime_recommendations">Recommendations</string>
+    <string name="confirm_add_duplicate_manga">This entry is already in your library.</string>
+    <string name="confirm_delete_episodes">Delete selected episodes?</string>
+    <string name="download_error">Download error</string>
+    <string name="download_unseen">Unseen episodes</string>
+    <string name="episode_progress">%1$s / %2$s</string>
+    <string name="episode_settings">Episode settings</string>
+    <string name="show_episode_number">Show episode number</string>
+    <string name="sort_by_episode_number">Episode number</string>
+    <string name="unseen">Unseen</string>
 </resources>

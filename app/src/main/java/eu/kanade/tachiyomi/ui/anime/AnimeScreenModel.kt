@@ -15,6 +15,7 @@ import eu.kanade.domain.anime.interactor.SetAnimeViewerFlags
 import eu.kanade.domain.anime.interactor.UpdateAnime
 import eu.kanade.domain.anime.model.downloadedFilter
 import eu.kanade.domain.anime.model.episodesFiltered
+import eu.kanade.domain.anime.model.toDomainAnime
 import eu.kanade.domain.anime.model.toSAnime
 import eu.kanade.domain.episode.interactor.SetSeenStatus
 import eu.kanade.domain.episode.interactor.SyncEpisodesWithSource
@@ -26,6 +27,7 @@ import eu.kanade.presentation.anime.DownloadAction
 import eu.kanade.presentation.anime.components.EpisodeDownloadAction
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
@@ -36,6 +38,9 @@ import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.source.isSourceForTorrents
 import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
+import eu.kanade.tachiyomi.ui.anime.RelatedAnime.Companion.isLoading
+import eu.kanade.tachiyomi.ui.anime.RelatedAnime.Companion.removeDuplicates
+import eu.kanade.tachiyomi.ui.anime.RelatedAnime.Companion.sorted
 import eu.kanade.tachiyomi.ui.anime.track.TrackItem
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
@@ -71,6 +76,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.source.NoResultsException
 import tachiyomi.domain.anime.interactor.GetAnimeWithEpisodes
 import tachiyomi.domain.anime.interactor.GetDuplicateLibraryAnime
+import tachiyomi.domain.anime.interactor.NetworkToLocalAnime
 import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
 import tachiyomi.domain.anime.interactor.SetCustomAnimeInfo
 import tachiyomi.domain.anime.model.Anime
@@ -90,6 +96,7 @@ import tachiyomi.domain.episode.service.calculateChapterGap
 import tachiyomi.domain.episode.service.getEpisodeSort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.animesource.model.StubAnimeSource
 import tachiyomi.domain.storage.service.StoragePreferences
 import tachiyomi.domain.track.anime.repository.AnimeTrackRepository
 import tachiyomi.i18n.MR
@@ -130,6 +137,7 @@ class AnimeScreenModel(
     private val addTracks: AddAnimeTracks = Injekt.get(),
     private val setAnimeCategories: SetAnimeCategories = Injekt.get(),
     private val animeRepository: AnimeRepository = Injekt.get(),
+    private val networkToLocalAnime: NetworkToLocalAnime = Injekt.get(),
     private val animeTrackRepository: AnimeTrackRepository = Injekt.get(),
     private val filterEpisodesForDownload: FilterEpisodesForDownload = Injekt.get(),
     internal val setAnimeViewerFlags: SetAnimeViewerFlags = Injekt.get(),
@@ -243,6 +251,7 @@ class AnimeScreenModel(
             }
             // Start observe tracking since it only needs animeId
             observeTrackers()
+            screenModelScope.launchIO { fetchRelatedAnimeFromSource() }
 
             // Fetch info-episodes when needed
             if (screenModelScope.isActive) {
@@ -291,6 +300,54 @@ class AnimeScreenModel(
             screenModelScope.launch {
                 snackbarHostState.showSnackbar(message = with(context) { e.formattedMessage })
             }
+        }
+    }
+
+    private fun setRelatedAnimeFetchedStatus(state: Boolean) {
+        updateSuccessState { it.copy(isRelatedAnimeFetched = state) }
+    }
+
+    private suspend fun fetchRelatedAnimeFromSource() {
+        val state = successState ?: return
+        if (state.anime.isLocal() || state.source is StubAnimeSource) {
+            setRelatedAnimeFetchedStatus(true)
+            return
+        }
+
+        setRelatedAnimeFetchedStatus(false)
+
+        fun exceptionHandler(e: Throwable) {
+            if (e is UnsupportedOperationException) return
+            logcat(LogPriority.ERROR, e)
+        }
+
+        try {
+            state.source.getRelatedAnimeList(
+                anime = state.anime.toSAnime(),
+                exceptionHandler = ::exceptionHandler,
+            ) { pair, _ ->
+                val relatedAnime = RelatedAnime.Success.fromPair(pair) { animeList ->
+                    animeList
+                        .map { it.toDomainAnime(state.source.id) }
+                        .distinctBy { it.url }
+                        .map { networkToLocalAnime.await(it) }
+                }
+
+                updateSuccessState { successState ->
+                    val relatedAnimeCollection =
+                        successState.relatedAnimeCollection
+                            ?.toMutableList()
+                            ?.apply { add(relatedAnime) }
+                            ?: listOf(relatedAnime)
+                    successState.copy(relatedAnimeCollection = relatedAnimeCollection)
+                }
+            }
+        } catch (e: UnsupportedOperationException) {
+            // Source does not provide related anime.
+        } catch (e: Throwable) {
+            exceptionHandler(e)
+        } finally {
+            setRelatedAnimeFetchedStatus(true)
         }
     }
 
@@ -683,6 +740,9 @@ class AnimeScreenModel(
             LibraryPreferences.EpisodeSwipeAction.ToggleBookmark -> {
                 bookmarkEpisodes(listOf(episode), !episode.bookmark)
             }
+            LibraryPreferences.EpisodeSwipeAction.ToggleFillermark -> {
+                fillermarkEpisodes(listOf(episode), !episode.fillermark)
+            }
             LibraryPreferences.EpisodeSwipeAction.Download -> {
                 val downloadAction: EpisodeDownloadAction = when (episodeItem.downloadState) {
                     AnimeDownload.State.ERROR,
@@ -785,12 +845,12 @@ class AnimeScreenModel(
 
     fun runDownloadAction(action: DownloadAction) {
         val episodesToDownload = when (action) {
-            DownloadAction.NEXT_1_ITEM -> getUnseenEpisodesSorted().take(1)
-            DownloadAction.NEXT_5_ITEMS -> getUnseenEpisodesSorted().take(5)
-            DownloadAction.NEXT_10_ITEMS -> getUnseenEpisodesSorted().take(10)
-            DownloadAction.NEXT_25_ITEMS -> getUnseenEpisodesSorted().take(25)
+            DownloadAction.NEXT_1_EPISODE -> getUnseenEpisodesSorted().take(1)
+            DownloadAction.NEXT_5_EPISODES -> getUnseenEpisodesSorted().take(5)
+            DownloadAction.NEXT_10_EPISODES -> getUnseenEpisodesSorted().take(10)
+            DownloadAction.NEXT_25_EPISODES -> getUnseenEpisodesSorted().take(25)
 
-            DownloadAction.UNVIEWED_ITEMS -> getUnseenEpisodes()
+            DownloadAction.UNSEEN_EPISODES -> getUnseenEpisodes()
         }
         if (episodesToDownload.isNotEmpty()) {
             startDownload(episodesToDownload, false)
@@ -1332,6 +1392,8 @@ class AnimeScreenModel(
             val dialog: Dialog? = null,
             val hasPromptedToAddBefore: Boolean = false,
             val trackItems: List<TrackItem> = emptyList(),
+            val isRelatedAnimeFetched: Boolean? = null,
+            val relatedAnimeCollection: List<RelatedAnime>? = null,
             val nextAiringEpisode: Pair<Int, Long> = Pair(
                 anime.nextEpisodeToAir,
                 anime.nextEpisodeAiringAt,
@@ -1392,6 +1454,14 @@ class AnimeScreenModel(
             val nextUnseenEpisode: Episode?
                 get() = processedEpisodes.firstOrNull { !it.episode.seen }?.episode
 
+            val relatedAnimeSorted: List<RelatedAnime>?
+                get() = relatedAnimeCollection
+                    ?.removeDuplicates(anime)
+                    ?.filter { it.isVisible() }
+                    ?.sorted(anime)
+                    ?.isLoading(isRelatedAnimeFetched)
+                    ?: if (isRelatedAnimeFetched == true) emptyList() else null
+
             /**
              * Applies the view filters to the list of episodes obtained from the database.
              * @return an observable of the list of episodes filtered and sorted.
@@ -1442,5 +1512,64 @@ sealed class EpisodeList {
     ) : EpisodeList() {
         val id = episode.id
         val isDownloaded = downloadState == AnimeDownload.State.DOWNLOADED
+    }
+}
+
+@Immutable
+sealed interface RelatedAnime {
+    data object Loading : RelatedAnime
+
+    data class Success(
+        val keyword: String,
+        val animeList: List<Anime>,
+    ) : RelatedAnime {
+        val isEmpty: Boolean
+            get() = animeList.isEmpty()
+
+        companion object {
+            suspend fun fromPair(
+                pair: Pair<String, List<SAnime>>,
+                toAnime: suspend (animeList: List<SAnime>) -> List<Anime>,
+            ) = Success(pair.first, toAnime(pair.second))
+        }
+    }
+
+    fun isVisible(): Boolean {
+        return this is Loading || (this is Success && !this.isEmpty)
+    }
+
+    companion object {
+        internal fun List<RelatedAnime>.sorted(anime: Anime): List<RelatedAnime> {
+            val success = filterIsInstance<Success>()
+            val loading = filterIsInstance<Loading>()
+            val title = anime.title.lowercase()
+            val ogTitle = anime.ogTitle.lowercase()
+            return success.filter { it.keyword.isEmpty() } +
+                success.filter { it.keyword.lowercase() == title } +
+                success.filter { it.keyword.lowercase() == ogTitle && ogTitle != title } +
+                success.filter { it.keyword.isNotEmpty() && it.keyword.lowercase() !in listOf(title, ogTitle) }
+                    .sortedByDescending { it.keyword.length }
+                    .sortedBy { it.animeList.size } +
+                loading
+        }
+
+        internal fun List<RelatedAnime>.removeDuplicates(anime: Anime): List<RelatedAnime> {
+            val animeIds = HashSet<Long>().apply { add(anime.id) }
+
+            return map { relatedAnime ->
+                if (relatedAnime is Success) {
+                    Success(
+                        relatedAnime.keyword,
+                        relatedAnime.animeList.filter { animeIds.add(it.id) },
+                    )
+                } else {
+                    relatedAnime
+                }
+            }
+        }
+
+        internal fun List<RelatedAnime>.isLoading(isRelatedAnimeFetched: Boolean?): List<RelatedAnime> {
+            return if (isRelatedAnimeFetched == false) this + listOf(Loading) else this
+        }
     }
 }

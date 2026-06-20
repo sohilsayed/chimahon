@@ -61,6 +61,12 @@ interface AnimeSource {
         anime: SAnime,
         exceptionHandler: (Throwable) -> Unit,
         pushResults: suspend (relatedAnime: Pair<String, List<SAnime>>, completed: Boolean) -> Unit,
+    ): Unit = getRelatedMangaList(anime, exceptionHandler, pushResults)
+
+    suspend fun getRelatedMangaList(
+        anime: SAnime,
+        exceptionHandler: (Throwable) -> Unit,
+        pushResults: suspend (relatedAnime: Pair<String, List<SAnime>>, completed: Boolean) -> Unit,
     ): Unit = throw UnsupportedOperationException()
     // KMK <--
 }

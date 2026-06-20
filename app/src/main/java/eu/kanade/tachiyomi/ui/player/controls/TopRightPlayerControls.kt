@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -50,6 +51,9 @@ fun TopRightPlayerControls(
     // audio
     onAudioClick: () -> Unit,
     onAudioLongClick: () -> Unit,
+
+    // OCR
+    onOcrClick: () -> Unit,
 
     // video
     onQualityClick: () -> Unit,
@@ -95,6 +99,11 @@ fun TopRightPlayerControls(
             icon = Icons.Default.Audiotrack,
             onClick = onAudioClick,
             onLongClick = onAudioLongClick,
+            horizontalSpacing = MaterialTheme.padding.mediumSmall,
+        )
+        ControlsButton(
+            icon = Icons.Default.Search,
+            onClick = onOcrClick,
             horizontalSpacing = MaterialTheme.padding.mediumSmall,
         )
         if (isEpisodeOnline == true) {

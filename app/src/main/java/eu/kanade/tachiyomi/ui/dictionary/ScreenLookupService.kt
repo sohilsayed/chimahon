@@ -63,16 +63,17 @@ class ScreenLookupService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var projection: MediaProjection? = null
+    @Volatile private var projection: MediaProjection? = null
     private var projectionCallback: MediaProjection.Callback? = null
-    private var imageReader: ImageReader? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var virtualDisplaySize: CaptureSize? = null
+    @Volatile private var imageReader: ImageReader? = null
+    @Volatile private var virtualDisplay: VirtualDisplay? = null
+    @Volatile private var virtualDisplaySize: CaptureSize? = null
     private var lastCaptureError: String? = null
     private var floatingButton: View? = null
     private var floatingButtonParams: WindowManager.LayoutParams? = null
     private var captureJob: Job? = null
     private var overlayController: ScreenLookupOverlayController? = null
+    private var cachedCaptureSize: CaptureSize? = null
 
     private val windowManager: WindowManager
         get() = getSystemService()!!
@@ -176,11 +177,13 @@ class ScreenLookupService : Service() {
                 scope.launch { stopSelf() }
             }
 
-            override fun onCapturedContentResize(width: Int, height: Int) {
-                if (width > 0 && height > 0) {
-                    mainHandler.post { resizeVirtualDisplay(CaptureSize(width, height)) }
-                }
-            }
+            // onCapturedContentResize intentionally not overridden.
+            // Android 16 fires this callback in a storm during VirtualDisplay
+            // setup before createVirtualDisplay returns, creating multiple
+            // ImageReaders whose surfaces are immediately abandoned (the
+            // "BufferQueue has been abandoned" loop in the logs). PlayTranslate
+            // avoids this entirely by checking dimensions fresh on every
+            // captureFrame() call. We follow the same pattern.
         }
         nextProjection.registerCallback(callback, mainHandler)
         projection = nextProjection
@@ -196,10 +199,12 @@ class ScreenLookupService : Service() {
             return true
         }
 
+        // Allocate reader before createVirtualDisplay so its surface is ready.
+        // Only assign imageReader/virtualDisplay after both succeed — mirrors
+        // PlayTranslate's pattern of not storing state until the VD is live.
         val reader = ImageReader.newInstance(size.width, size.height, PixelFormat.RGBA_8888, 2)
-        imageReader = reader
         virtualDisplaySize = size
-        virtualDisplay = runCatching {
+        val vd = runCatching {
             mediaProjection.createVirtualDisplay(
                 "ChimahonScreenLookup",
                 size.width,
@@ -210,10 +215,13 @@ class ScreenLookupService : Service() {
                 null,
                 mainHandler,
             )
-        }.onFailure {
-            logcat(LogPriority.ERROR, it) { "Failed to create screen lookup virtual display" }
-        }.getOrNull()
-        return virtualDisplay != null
+        }.onFailure { e ->
+            logcat(LogPriority.ERROR, e) { "Failed to create screen lookup virtual display" }
+            reader.close()
+        }.getOrNull() ?: return false
+        imageReader = reader
+        virtualDisplay = vd
+        return true
     }
 
     private fun resizeVirtualDisplay(size: CaptureSize) {
@@ -233,6 +241,7 @@ class ScreenLookupService : Service() {
 
         imageReader = newReader
         virtualDisplaySize = size
+        cachedCaptureSize = null
         oldReader?.close()
     }
 
@@ -473,10 +482,17 @@ class ScreenLookupService : Service() {
     }
 
     private fun releaseProjection() {
+        // Order matters: release VirtualDisplay first (detaches the surface),
+        // then close ImageReader (abandons the BufferQueue). Closing the reader
+        // before releasing the display leaves the VirtualDisplay pointing at an
+        // abandoned surface — same race that caused the Android 16 log storm.
+        // Mirrors PlayTranslate's teardown() order exactly.
         imageReader?.setOnImageAvailableListener(null, null)
         virtualDisplay?.release()
         virtualDisplay = null
         virtualDisplaySize = null
+        // Close reader after display is released — BufferQueue can now be
+        // abandoned cleanly with no one writing to it.
         imageReader?.close()
         imageReader = null
 
@@ -491,6 +507,13 @@ class ScreenLookupService : Service() {
     }
 
     private fun captureSize(): CaptureSize {
+        cachedCaptureSize?.let { return it }
+        val size = resolveCaptureSize()
+        cachedCaptureSize = size
+        return size
+    }
+
+    private fun resolveCaptureSize(): CaptureSize {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val display = getSystemService<DisplayManager>()
@@ -499,7 +522,7 @@ class ScreenLookupService : Service() {
                     val wm = createDisplayContext(display)
                         .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
                         .getSystemService<WindowManager>()
-                    val bounds = wm?.currentWindowMetrics?.bounds
+                    val bounds = wm?.maximumWindowMetrics?.bounds
                     if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
                         return CaptureSize(bounds.width(), bounds.height())
                     }

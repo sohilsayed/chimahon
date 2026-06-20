@@ -25,6 +25,7 @@ package eu.kanade.tachiyomi.ui.player
 import android.annotation.SuppressLint
 import android.app.PictureInPictureParams
 import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -63,15 +64,18 @@ import eu.kanade.tachiyomi.animesource.model.ChapterType
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.SerializableHoster.Companion.serialize
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
 import eu.kanade.tachiyomi.databinding.PlayerLayoutBinding
 import eu.kanade.tachiyomi.network.NetworkPreferences
-import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.torrentServer.TorrentServerApi
 import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupPermissionActivity
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupService
+import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupServiceState
 import eu.kanade.tachiyomi.ui.player.controls.PlayerControls
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
@@ -109,6 +113,8 @@ import java.io.OutputStream
 import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.floor
+
+private const val COMPLETED_RESUME_GRACE_MS = 1_500L
 
 class PlayerActivity : BaseActivity() {
     private val viewModel by viewModels<PlayerViewModel>(factoryProducer = { PlayerViewModelProviderFactory(this) })
@@ -152,6 +158,10 @@ class PlayerActivity : BaseActivity() {
     }
 
     companion object {
+        private const val EXTRA_STANDALONE_VIDEO = "standaloneVideo"
+        private const val EXTRA_STANDALONE_VIDEO_URL = "standaloneVideoUrl"
+        private const val EXTRA_STANDALONE_VIDEO_TITLE = "standaloneVideoTitle"
+
         fun newIntent(
             context: Context,
             animeId: Long?,
@@ -169,6 +179,28 @@ class PlayerActivity : BaseActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
+
+        fun newStandaloneIntent(
+            context: Context,
+            uri: Uri,
+            title: String? = null,
+        ): Intent {
+            return Intent(context, PlayerActivity::class.java).apply {
+                data = uri
+                putExtra(EXTRA_STANDALONE_VIDEO, true)
+                putExtra(EXTRA_STANDALONE_VIDEO_URL, uri.toString())
+                title?.let { putExtra(EXTRA_STANDALONE_VIDEO_TITLE, it) }
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                if (uri.scheme.equals("content", ignoreCase = true) || uri.scheme.equals("file", ignoreCase = true)) {
+                    clipData = ClipData.newUri(
+                        context.contentResolver,
+                        title ?: uri.lastPathSegment ?: "video",
+                        uri,
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+        }
     }
 
 
@@ -176,12 +208,30 @@ class PlayerActivity : BaseActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
 
-        val animeId = intent.extras?.getLong("animeId") ?: -1
-        val episodeId = intent.extras?.getLong("episodeId") ?: -1
-        val hostList = intent.extras?.getString("hostList") ?: ""
-        val hostIndex = intent.extras?.getInt("hostIndex") ?: -1
-        val vidIndex = intent.extras?.getInt("vidIndex") ?: -1
+        if (intent.isStandaloneVideoIntent()) {
+            player.isExiting = false
+            val standaloneVideo = intent.toStandaloneVideo()
+            if (standaloneVideo != null) {
+                viewModel.loadStandaloneVideo(standaloneVideo)
+                setIntent(intent)
+                return
+            }
+            finish()
+            return
+        }
+
+        val animeId = intent.getLongExtra("animeId", -1)
+        val episodeId = intent.getLongExtra("episodeId", -1)
+        val hostList = intent.getStringExtra("hostList") ?: ""
+        val hostIndex = intent.getIntExtra("hostIndex", -1)
+        val vidIndex = intent.getIntExtra("vidIndex", -1)
         if (animeId == -1L || episodeId == -1L) {
+            val standaloneVideo = intent.toStandaloneVideo()
+            if (standaloneVideo != null) {
+                viewModel.loadStandaloneVideo(standaloneVideo)
+                setIntent(intent)
+                return
+            }
             finish()
             return
         }
@@ -220,6 +270,30 @@ class PlayerActivity : BaseActivity() {
         }
 
         setIntent(intent)
+    }
+
+    private fun Intent.isStandaloneVideoIntent(): Boolean {
+        if (getBooleanExtra(EXTRA_STANDALONE_VIDEO, false)) return true
+        if (hasExtra(EXTRA_STANDALONE_VIDEO_URL)) return true
+        return data != null && !hasExtra("animeId") && !hasExtra("episodeId")
+    }
+
+    private fun Intent.toStandaloneVideo(): Video? {
+        val uriString = getStringExtra(EXTRA_STANDALONE_VIDEO_URL)
+            ?: data?.toString()
+            ?: return null
+        val title = getStringExtra(EXTRA_STANDALONE_VIDEO_TITLE)
+            ?: data?.let { uri ->
+                runCatching { uri.getFileName(this@PlayerActivity) }.getOrNull()
+                    ?: uri.lastPathSegment
+            }
+            ?: uriString.substringAfterLast('/').substringBefore('?')
+
+        return Video(
+            videoUrl = uriString,
+            videoTitle = title,
+            initialized = true,
+        )
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -422,6 +496,14 @@ class PlayerActivity : BaseActivity() {
     private fun executeMPVCommand(commands: Array<String>) {
         if (!player.isExiting) {
             MPVLib.command(commands)
+        }
+    }
+
+    private fun loadPlayableUrl(url: String) {
+        if (player.surfaceReady) {
+            MPVLib.command(arrayOf("loadfile", url))
+        } else {
+            player.playFile(url)
         }
     }
 
@@ -681,6 +763,14 @@ class PlayerActivity : BaseActivity() {
         runOnUiThread { toast(message) }
     }
 
+    fun openScreenLookup() {
+        if (ScreenLookupServiceState.isRunning.value) {
+            ScreenLookupService.capture(this)
+        } else {
+            startActivity(Intent(this, ScreenLookupPermissionActivity::class.java))
+        }
+    }
+
     // A bunch of observers
 
     internal fun onObserverEvent(property: String, value: Long) {
@@ -758,6 +848,7 @@ class PlayerActivity : BaseActivity() {
             "secondary-sid" -> trackId(value)?.let {
                 viewModel.updateSubtitle(viewModel.selectedSubtitles.value.first, it)
             }
+            "sub-text" -> viewModel.updateSubtitleText(value)
             "hwdec", "hwdec-current" -> viewModel.getDecoder()
             "user-data/aniyomi" -> viewModel.handleLuaInvocation(property, value)
         }
@@ -1115,7 +1206,13 @@ class PlayerActivity : BaseActivity() {
                     } else {
                         episode.last_second_seen
                     }
-                MPVLib.command(arrayOf("set", "start", "${resumePosition / 1000F}"))
+                MPVLib.command(
+                    arrayOf(
+                        "set",
+                        "start",
+                        "${resumePosition.resetIfCompleted(episode.total_seconds) / 1000F}",
+                    ),
+                )
             }
         } else {
             player.timePos?.let {
@@ -1132,7 +1229,18 @@ class PlayerActivity : BaseActivity() {
                 torrentLinkHandler(video.videoUrl, video.quality)
             }
         } else {
-            MPVLib.command(arrayOf("loadfile", parseVideoUrl(video.videoUrl)))
+            val playableUrl = try {
+                parseVideoUrl(video.videoUrl) ?: video.videoUrl
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to resolve video URI: ${video.videoUrl}" }
+                toast(e.message ?: "Unable to open video")
+                null
+            }
+            if (playableUrl.isNullOrBlank()) {
+                toast("Unable to open video")
+                return
+            }
+            loadPlayableUrl(playableUrl)
         }
 
     }
@@ -1145,7 +1253,7 @@ class PlayerActivity : BaseActivity() {
             val videoInputStream = applicationContext.contentResolver.openInputStream(Uri.parse(videoUrl))
             val torrent = TorrentServerApi.uploadTorrent(videoInputStream!!, quality, "", "", false)
             val torrentUrl = TorrentServerUtils.getTorrentPlayLink(torrent, 0)
-            MPVLib.command(arrayOf("loadfile", torrentUrl))
+            loadPlayableUrl(torrentUrl)
             return
         }
 
@@ -1162,7 +1270,7 @@ class PlayerActivity : BaseActivity() {
 
         val currentTorrent = TorrentServerApi.addTorrent(videoUrl, quality, "", "", false)
         val videoTorrentUrl = TorrentServerUtils.getTorrentPlayLink(currentTorrent, index)
-        MPVLib.command(arrayOf("loadfile", videoTorrentUrl))
+        loadPlayableUrl(videoTorrentUrl)
     }
 
     /**
@@ -1185,10 +1293,13 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun setHttpOptions(video: Video) {
-        if (viewModel.isEpisodeOnline() != true) return
-        val source = viewModel.currentSource.value as? HttpSource ?: return
+        val headersSource = video.headers ?: run {
+            if (viewModel.isEpisodeOnline() != true) return
+            val source = viewModel.currentSource.value as? AnimeHttpSource ?: return
+            source.headers
+        }
 
-        val headers = (video.headers ?: source.headers)
+        val headers = headersSource
             .toMultimap()
             .mapValues { it.value.firstOrNull() ?: "" }
             .toMutableMap()
@@ -1203,6 +1314,11 @@ class PlayerActivity : BaseActivity() {
         // MPVLib.setOptionString("cache-on-disk", "yes")
         // val cacheDir = File(applicationContext.filesDir, "media").path
         // MPVLib.setOptionString("cache-dir", cacheDir)
+    }
+
+    private fun Long.resetIfCompleted(total: Long): Long {
+        if (this <= 0L || total <= 0L) return this.coerceAtLeast(0L)
+        return if (this >= total - COMPLETED_RESUME_GRACE_MS) 0L else this
     }
 
     /**
@@ -1261,6 +1377,7 @@ class PlayerActivity : BaseActivity() {
         setupPlayerOrientation()
         setupChapters()
         setupTracks()
+        viewModel.autoLoadJimakuSubtitlesOnVideoOpen()
 
         // aniSkip stuff
         viewModel.waitingSkipIntro = playerPreferences.waitingTimeIntroSkip().get()

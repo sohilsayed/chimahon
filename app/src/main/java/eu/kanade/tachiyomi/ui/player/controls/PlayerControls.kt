@@ -17,6 +17,7 @@
 
 package eu.kanade.tachiyomi.ui.player.controls
 
+import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -30,14 +31,24 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -45,14 +56,32 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
 import eu.kanade.presentation.more.settings.screen.player.custombutton.getButtons
@@ -77,15 +106,20 @@ import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.extractOcrLookupString
+import eu.kanade.tachiyomi.ui.reader.viewer.isLookupStartChar
+import eu.kanade.tachiyomi.util.system.toast
 import `is`.xyz.mpv.MPVLib
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.abs
 
 @Suppress("CompositionLocalAllowlist")
 val LocalPlayerButtonsClickEvent = staticCompositionLocalOf { {} }
@@ -97,6 +131,8 @@ fun PlayerControls(
     onBackPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showCastSheet by remember { mutableStateOf(false) }
     val castState by castManager.castState.collectAsState()
 
@@ -120,10 +156,19 @@ fun PlayerControls(
     val currentChapter by viewModel.currentChapter.collectAsState()
     val chapters by viewModel.chapters.collectAsState()
     val currentBrightness by viewModel.currentBrightness.collectAsState()
+    val currentSubtitleText by viewModel.currentSubtitleText.collectAsState()
+    val subtitleCues by viewModel.subtitleHistory.collectAsState()
+    val activeSubtitleCueIndex by viewModel.activeSubtitleCueIndex.collectAsState()
+    val activeSubtitleCue = remember(subtitleCues, activeSubtitleCueIndex) {
+        subtitleCues.firstOrNull { it.index == activeSubtitleCueIndex }
+    }
 
     val playerTimeToDisappear by playerPreferences.playerTimeToDisappear().collectAsState()
     var isSeeking by remember { mutableStateOf(false) }
     var resetControls by remember { mutableStateOf(true) }
+    var subtitleLookupRequest by remember { mutableStateOf<SubtitleLookupRequest?>(null) }
+    var videoOcrScreenshot by remember { mutableStateOf<Bitmap?>(null) }
+    var isCapturingVideoOcr by remember { mutableStateOf(false) }
 
     val customButtons by viewModel.customButtons.collectAsState()
     val customButton by viewModel.primaryButton.collectAsState()
@@ -145,9 +190,71 @@ fun PlayerControls(
         animationSpec = playerControlsExitAnimationSpec(),
         label = "controls_transparent_overlay",
     )
+    val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
+        if (
+            viewModel.sheetShown.value != Sheets.None ||
+            viewModel.panelShown.value != Panels.None ||
+            viewModel.dialogShown.value != Dialogs.None
+        ) {
+            return@openSubtitleLookup
+        }
+        viewModel.pause()
+        subtitleLookupRequest = SubtitleLookupRequest(
+            lookupString = subtitleLookup.lookupString,
+            fullText = subtitleLookup.fullText,
+            charOffset = subtitleLookup.charOffset,
+            tapCharOffset = subtitleLookup.tapCharOffset,
+            lineText = subtitleLookup.lineText,
+            lineIndex = subtitleLookup.lineIndex,
+            lineStartOffset = subtitleLookup.lineStartOffset,
+            anchorX = subtitleLookup.anchorX,
+            anchorY = subtitleLookup.anchorY,
+            anchorWidth = subtitleLookup.anchorWidth,
+            anchorHeight = subtitleLookup.anchorHeight,
+            lineLeft = subtitleLookup.lineLeft,
+            lineTop = subtitleLookup.lineTop,
+            lineWidth = subtitleLookup.lineWidth,
+            lineHeight = subtitleLookup.lineHeight,
+            cueStartSeconds = subtitleLookup.cueStartSeconds,
+            cueEndSeconds = subtitleLookup.cueEndSeconds,
+        )
+    }
+    val togglePanel: (Panels) -> Unit = { panel ->
+        viewModel.showPanel(
+            if (viewModel.panelShown.value == panel) {
+                Panels.None
+            } else {
+                panel
+            },
+        )
+    }
+    val dismissVideoOcr = {
+        videoOcrScreenshot = null
+    }
+    val captureVideoOcr = {
+        if (!isCapturingVideoOcr) {
+            isCapturingVideoOcr = true
+            scope.launch {
+                val screenshot = viewModel.captureVideoFrameForOcr()
+                isCapturingVideoOcr = false
+                if (screenshot == null) {
+                    context.toast("Could not capture video frame")
+                } else {
+                    videoOcrScreenshot = screenshot
+                    viewModel.hideControls()
+                }
+            }
+        }
+    }
     GestureHandler(
         viewModel = viewModel,
         interactionSource = interactionSource,
+    )
+    PlayerSubtitleTextLayer(
+        text = currentSubtitleText,
+        cue = activeSubtitleCue,
+        request = subtitleLookupRequest,
+        onLookup = openSubtitleLookup,
     )
     DoubleTapToSeekOvals(doubleTapSeekAmount, seekText, interactionSource)
     CompositionLocalProvider(
@@ -178,6 +285,7 @@ fun PlayerControls(
                     unlockControlsButton,
                     bottomRightControls, bottomLeftControls,
                     centerControls, seekbar, playerUpdates,
+                    leftSideOcrButton, rightSideSubtitleButtons,
                 ) = createRefs()
 
                 val hasPreviousEpisode by viewModel.hasPreviousEpisode.collectAsState()
@@ -362,6 +470,51 @@ fun PlayerControls(
                     )
                 }
                 AnimatedVisibility(
+                    controlsShown && !areControlsLocked,
+                    enter = fadeIn(playerControlsEnterAnimationSpec()),
+                    exit = fadeOut(playerControlsExitAnimationSpec()),
+                    modifier = Modifier.constrainAs(leftSideOcrButton) {
+                        start.linkTo(parent.start, spacing.small)
+                        top.linkTo(parent.top)
+                        bottom.linkTo(parent.bottom)
+                    },
+                ) {
+                    ControlsButton(
+                        icon = Icons.Default.Search,
+                        onClick = captureVideoOcr,
+                        horizontalSpacing = MaterialTheme.padding.mediumSmall,
+                        iconSize = MaterialTheme.padding.large,
+                    )
+                }
+                AnimatedVisibility(
+                    controlsShown && !areControlsLocked,
+                    enter = fadeIn(playerControlsEnterAnimationSpec()),
+                    exit = fadeOut(playerControlsExitAnimationSpec()),
+                    modifier = Modifier.constrainAs(rightSideSubtitleButtons) {
+                        end.linkTo(parent.end, spacing.small)
+                        top.linkTo(parent.top)
+                        bottom.linkTo(parent.bottom)
+                    },
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.medium),
+                    ) {
+                        ControlsButton(
+                            icon = Icons.Default.FormatListBulleted,
+                            onClick = { togglePanel(Panels.SubtitleSideList) },
+                            horizontalSpacing = MaterialTheme.padding.mediumSmall,
+                            iconSize = MaterialTheme.padding.large,
+                        )
+                        ControlsButton(
+                            icon = Icons.Default.Subtitles,
+                            onClick = { togglePanel(Panels.SubtitleOverlayList) },
+                            horizontalSpacing = MaterialTheme.padding.mediumSmall,
+                            iconSize = MaterialTheme.padding.large,
+                        )
+                    }
+                }
+                AnimatedVisibility(
                     visible = (controlsShown || seekBarShown) && !areControlsLocked,
                     enter = if (!reduceMotion) {
                         slideInVertically(playerControlsEnterAnimationSpec()) { it } +
@@ -457,6 +610,7 @@ fun PlayerControls(
                         onSubtitlesLongClick = { viewModel.showPanel(Panels.SubtitleSettings) },
                         onAudioClick = { viewModel.showSheet(Sheets.AudioTracks) },
                         onAudioLongClick = { viewModel.showPanel(Panels.AudioDelay) },
+                        onOcrClick = captureVideoOcr,
                         onQualityClick = { viewModel.showSheet(Sheets.QualityTracks) },
                         isEpisodeOnline = isEpisodeOnline,
                         onMoreClick = { viewModel.showSheet(Sheets.More) },
@@ -552,6 +706,8 @@ fun PlayerControls(
         val dismissSheet by viewModel.dismissSheet.collectAsState()
         val subtitles by viewModel.subtitleTracks.collectAsState()
         val selectedSubtitles by viewModel.selectedSubtitles.collectAsState()
+        val jimakuState by viewModel.jimakuState.collectAsState()
+        val jimakuTitle by subtitlePreferences.jimakuTitle().collectAsState()
         val audioTracks by viewModel.audioTracks.collectAsState()
         val selectedAudio by viewModel.selectedAudio.collectAsState()
         val isLoadingHosters by viewModel.isLoadingHosters.collectAsState()
@@ -564,13 +720,22 @@ fun PlayerControls(
         val showSubtitles by subtitlePreferences.screenshotSubtitles().collectAsState()
         val showFailedHosters by playerPreferences.showFailedHosters().collectAsState()
         val emptyHosters by playerPreferences.showEmptyHosters().collectAsState()
+        val anime by viewModel.currentAnime.collectAsState()
 
         PlayerSheets(
             sheetShown = sheetShown,
             subtitles = subtitles.toImmutableList(),
             selectedSubtitles = selectedSubtitles.toList().toImmutableList(),
+            jimakuState = jimakuState,
+            jimakuTitle = jimakuTitle,
+            currentJimakuTitle = viewModel.getCurrentJimakuTitle(),
             onAddSubtitle = viewModel::addSubtitle,
             onSelectSubtitle = viewModel::selectSub,
+            onSearchJimaku = viewModel::searchJimakuSubtitles,
+            onSelectJimakuEntry = viewModel::loadJimakuFiles,
+            onSelectJimakuFile = viewModel::downloadJimakuSubtitle,
+            onDismissJimaku = viewModel::dismissJimakuDialog,
+            onUpdateJimakuTitle = viewModel::updateJimakuTitle,
             audioTracks = audioTracks.toImmutableList(),
             selectedAudio = selectedAudio,
             onAddAudio = viewModel::addAudio,
@@ -618,12 +783,15 @@ fun PlayerControls(
         val panel by viewModel.panelShown.collectAsState()
         PlayerPanels(
             panelShown = panel,
+            subtitleCues = subtitleCues.toImmutableList(),
+            activeSubtitleCueIndex = activeSubtitleCueIndex,
+            animeId = anime?.id,
+            onSelectSubtitleCue = viewModel::selectSubtitleCue,
             onDismissRequest = { viewModel.showPanel(Panels.None) },
         )
 
         val activity = LocalContext.current as PlayerActivity
         val dialog by viewModel.dialogShown.collectAsState()
-        val anime by viewModel.currentAnime.collectAsState()
         val playlist by viewModel.currentPlaylist.collectAsState()
 
         PlayerDialogs(
@@ -641,8 +809,27 @@ fun PlayerControls(
             onDismissRequest = { viewModel.showDialog(Dialogs.None) },
         )
 
+        PlayerSubtitleLookupPopup(
+            viewModel = viewModel,
+            request = subtitleLookupRequest,
+            onDismiss = { subtitleLookupRequest = null },
+            onTermMatched = { count, offset ->
+                subtitleLookupRequest = subtitleLookupRequest?.copy(
+                    matchedCharCount = count,
+                    matchOffset = offset,
+                )
+            },
+        )
+
         BrightnessOverlay(
             brightness = currentBrightness,
+        )
+
+        PlayerVideoOcrOverlay(
+            viewModel = viewModel,
+            screenshot = videoOcrScreenshot,
+            onDismiss = dismissVideoOcr,
+            onRecapture = captureVideoOcr,
         )
     }
 
@@ -653,6 +840,405 @@ fun PlayerControls(
             onDismissRequest = { showCastSheet = false },
         )
     }
+}
+
+@Composable
+private fun PlayerSubtitleTextLayer(
+    text: String,
+    cue: PlayerViewModel.SubtitleCue?,
+    request: SubtitleLookupRequest?,
+    onLookup: (SubtitleLookupSelection) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val subtitleText = remember(text) {
+        text.lines()
+            .map { it.trim().collapseHorizontalWhitespace() }
+            .filter { it.hasLookupCharacters() }
+            .joinToString("\n")
+    }
+    if (subtitleText.isBlank()) return
+
+    val subtitlePreferences = remember { Injekt.get<SubtitlePreferences>() }
+    val subtitleFontSize by subtitlePreferences.subtitleFontSize().collectAsState()
+    val subtitleScale by subtitlePreferences.subtitleFontScale().collectAsState()
+    val subtitlePos by subtitlePreferences.subtitlePos().collectAsState()
+    val textColor by subtitlePreferences.textColorSubtitles().collectAsState()
+    val borderColor by subtitlePreferences.borderColorSubtitles().collectAsState()
+    val borderSize by subtitlePreferences.subtitleBorderSize().collectAsState()
+    val bold by subtitlePreferences.boldSubtitles().collectAsState()
+    val italic by subtitlePreferences.italicSubtitles().collectAsState()
+
+    var textLayout by remember(subtitleText) { mutableStateOf<TextLayoutResult?>(null) }
+    var textLayerOrigin by remember(subtitleText) { mutableStateOf(Offset.Zero) }
+    val fontSizeSp = (subtitleFontSize * subtitleScale * 0.52f).coerceIn(18f, 42f)
+    val bottomPadding = (28f + (100 - subtitlePos).coerceIn(0, 100) * 2.2f).dp
+    val outlineWidth = borderSize.coerceAtLeast(1) * 1.8f
+    val baseStyle = TextStyle(
+        color = Color(textColor),
+        fontSize = fontSizeSp.sp,
+        lineHeight = (fontSizeSp * 1.18f).sp,
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+        fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+        textAlign = TextAlign.Center,
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = bottomPadding),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 980.dp)
+                .onGloballyPositioned { coordinates ->
+                    textLayerOrigin = coordinates.positionInRoot()
+                }
+                .drawBehind {
+                    val layout = textLayout ?: return@drawBehind
+                    val activeRequest = request?.takeIf { it.fullText == subtitleText } ?: return@drawBehind
+                    val start = (activeRequest.charOffset + activeRequest.matchOffset)
+                        .coerceIn(0, subtitleText.length)
+                    if (start >= subtitleText.length) return@drawBehind
+                    val fallbackCount = activeRequest.lookupString.length.coerceAtLeast(1)
+                    val count = activeRequest.matchedCharCount.takeIf { it > 0 } ?: fallbackCount
+                    val end = (start + count).coerceIn(start + 1, subtitleText.length)
+                    layout.highlightRects(subtitleText, start, end).forEach { rect ->
+                        drawRoundRect(
+                            color = Color(130, 150, 200, 0x8A),
+                            topLeft = Offset(rect.left, rect.top),
+                            size = Size(rect.width, rect.height),
+                            cornerRadius = CornerRadius(6f, 6f),
+                        )
+                    }
+                }
+                .pointerInput(subtitleText, textLayout, textLayerOrigin) {
+                    detectTapGestures(
+                        onTap = { position ->
+                            val layout = textLayout ?: return@detectTapGestures
+                            layout.subtitleLookupSelectionForTap(subtitleText, position, cue)
+                                ?.offsetBy(textLayerOrigin)
+                                ?.let(onLookup)
+                        },
+                        onLongPress = { position ->
+                            val layout = textLayout ?: return@detectTapGestures
+                            layout.subtitleLookupSelectionForTap(subtitleText, position, cue)
+                                ?.offsetBy(textLayerOrigin)
+                                ?.let(onLookup)
+                        },
+                    )
+                },
+        ) {
+            Text(
+                text = subtitleText,
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(borderColor),
+                style = baseStyle.copy(
+                    color = Color(borderColor),
+                    drawStyle = Stroke(width = outlineWidth),
+                ),
+            )
+
+            Text(
+                text = subtitleText,
+                modifier = Modifier.fillMaxWidth(),
+                style = baseStyle,
+                onTextLayout = { textLayout = it },
+            )
+        }
+    }
+}
+
+private data class SubtitleLookupSelection(
+    val lookupString: String,
+    val fullText: String,
+    val charOffset: Int,
+    val tapCharOffset: Int,
+    val lineText: String,
+    val lineIndex: Int,
+    val lineStartOffset: Int,
+    val anchorX: Float,
+    val anchorY: Float,
+    val anchorWidth: Float,
+    val anchorHeight: Float,
+    val lineLeft: Float,
+    val lineTop: Float,
+    val lineWidth: Float,
+    val lineHeight: Float,
+    val cueStartSeconds: Double? = null,
+    val cueEndSeconds: Double? = null,
+)
+
+private fun String.hasLookupCharacters(): Boolean = any { it.isLetterOrDigit() }
+
+private fun TextLayoutResult.subtitleLookupSelectionForTap(
+    text: String,
+    position: Offset,
+    cue: PlayerViewModel.SubtitleCue?,
+): SubtitleLookupSelection? {
+    if (text.isBlank()) return null
+    val offset = lookupOffsetForPosition(text, position) ?: return null
+    val lookupStart = text.lookupStartNear(offset) ?: return null
+    val lookupString = extractOcrLookupString(text, lookupStart).take(80).trim()
+    if (lookupString.isBlank()) return null
+    val anchor = lookupAnchorRect(text, lookupStart, lookupString) ?: return null
+    val lineIndex = getLineForOffset(offset.coerceIn(0, text.lastIndex))
+    val lineStart = getLineStart(lineIndex)
+    val lineEnd = getLineEnd(lineIndex, visibleEnd = true).coerceAtLeast(lineStart)
+    val lineText = text.substring(lineStart, lineEnd)
+    val lineBounds = lineBounds(lineIndex)
+
+    return SubtitleLookupSelection(
+        lookupString = lookupString,
+        fullText = text,
+        charOffset = lookupStart,
+        tapCharOffset = offset,
+        lineText = lineText,
+        lineIndex = lineIndex,
+        lineStartOffset = lineStart,
+        anchorX = anchor.left,
+        anchorY = anchor.top,
+        anchorWidth = anchor.width,
+        anchorHeight = anchor.height,
+        lineLeft = lineBounds.left,
+        lineTop = lineBounds.top,
+        lineWidth = lineBounds.width,
+        lineHeight = lineBounds.height,
+        cueStartSeconds = cue?.positionSeconds?.toDouble(),
+        cueEndSeconds = cue?.endPositionSeconds?.toDouble(),
+    )
+}
+
+private data class SubtitleAnchorRect(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+)
+
+private fun SubtitleLookupSelection.offsetBy(offset: Offset): SubtitleLookupSelection {
+    return copy(
+        anchorX = anchorX + offset.x,
+        anchorY = anchorY + offset.y,
+        lineLeft = lineLeft + offset.x,
+        lineTop = lineTop + offset.y,
+    )
+}
+
+private fun TextLayoutResult.lookupOffsetForPosition(text: String, position: Offset): Int? {
+    if (text.isBlank()) return null
+    val rawOffset = getOffsetForPosition(position).coerceIn(0, text.lastIndex)
+    val candidates = buildList {
+        add(rawOffset)
+        add(rawOffset - 1)
+        add(rawOffset + 1)
+        add(rawOffset - 2)
+        add(rawOffset + 2)
+    }.filter { it in text.indices }.distinct()
+
+    for (offset in candidates) {
+        val char = text[offset]
+        if (!isLookupStartChar(char) && !char.isLetterOrDigit()) continue
+        val box = getBoundingBox(offset)
+        val slop = (box.height * 0.35f).coerceIn(6f, 18f)
+        if (
+            position.x >= box.left - slop &&
+            position.x <= box.right + slop &&
+            position.y >= box.top - slop &&
+            position.y <= box.bottom + slop
+        ) {
+            return offset
+        }
+    }
+
+    val lineIndex = getLineForOffset(rawOffset)
+    val lineStart = getLineStart(lineIndex).coerceIn(0, text.length)
+    val lineEnd = getLineEnd(lineIndex, visibleEnd = true).coerceIn(lineStart, text.length)
+    val lineBounds = lineBounds(lineIndex)
+    val verticalSlop = (lineBounds.height * 0.75f).coerceIn(12f, 34f)
+    if (position.y < lineBounds.top - verticalSlop || position.y > lineBounds.bottom + verticalSlop) {
+        return null
+    }
+
+    return (lineStart until lineEnd)
+        .filter { offset ->
+            val char = text[offset]
+            isLookupStartChar(char) || char.isLetterOrDigit()
+        }
+        .mapNotNull { offset ->
+            val box = getBoundingBox(offset)
+            if (box.width <= 0f || box.height <= 0f) return@mapNotNull null
+            val dx = when {
+                position.x < box.left -> box.left - position.x
+                position.x > box.right -> position.x - box.right
+                else -> 0f
+            }
+            val dy = when {
+                position.y < box.top -> box.top - position.y
+                position.y > box.bottom -> position.y - box.bottom
+                else -> 0f
+            }
+            val horizontalLimit = (box.width * 1.8f).coerceIn(18f, 42f)
+            val verticalLimit = (box.height * 1.1f).coerceIn(16f, 38f)
+            if (dx <= horizontalLimit && dy <= verticalLimit) {
+                offset to (dx * 1.35f + dy)
+            } else {
+                null
+            }
+        }
+        .minByOrNull { it.second }
+        ?.first
+}
+
+private fun TextLayoutResult.lookupAnchorRect(
+    text: String,
+    lookupStart: Int,
+    lookupString: String,
+): SubtitleAnchorRect? {
+    val matchLength = lookupString.takeWhile { it.isLetterOrDigit() || it.isKanji() || it.isKana() }
+        .length
+        .takeIf { it > 0 }
+        ?: 1
+    val start = lookupStart.coerceIn(0, text.length)
+    val end = (start + matchLength).coerceIn(start + 1, text.length)
+    val rect = highlightRects(text, start, end).reduceOrNull { acc, item -> acc.unionWith(item) }
+        ?: return null
+    return SubtitleAnchorRect(
+        left = rect.left,
+        top = rect.top,
+        width = rect.width.coerceAtLeast(8f),
+        height = rect.height.coerceAtLeast(8f),
+    )
+}
+
+private fun TextLayoutResult.highlightRects(text: String, start: Int, end: Int): List<Rect> {
+    val rects = (start until end)
+        .filter { it in text.indices && !text[it].isWhitespace() }
+        .map { getBoundingBox(it) }
+        .filter { it.width > 0f && it.height > 0f }
+    if (rects.isEmpty()) return emptyList()
+
+    val merged = mutableListOf<Rect>()
+    rects.forEach { rect ->
+        val index = merged.indexOfFirst {
+            abs(it.top - rect.top) < 2f && abs(it.bottom - rect.bottom) < 2f
+        }
+        if (index >= 0) {
+            merged[index] = merged[index].unionWith(rect)
+        } else {
+            merged += rect
+        }
+    }
+    return merged
+}
+
+private fun TextLayoutResult.lineBounds(lineIndex: Int): Rect {
+    return Rect(
+        left = getLineLeft(lineIndex),
+        top = getLineTop(lineIndex),
+        right = getLineRight(lineIndex),
+        bottom = getLineBottom(lineIndex),
+    )
+}
+
+private fun Rect.unionWith(other: Rect): Rect {
+    return Rect(
+        left = minOf(left, other.left),
+        top = minOf(top, other.top),
+        right = maxOf(right, other.right),
+        bottom = maxOf(bottom, other.bottom),
+    )
+}
+
+private fun Char.subtitleDisplayUnits(): Double {
+    return when {
+        isWhitespace() -> 0.5
+        code <= 0x7F -> 0.6
+        else -> 1.0
+    }
+}
+
+private fun String.lookupStartNear(index: Int): Int? {
+    if (isEmpty()) return null
+    val start = index.coerceIn(indices)
+    if (isLookupStartChar(this[start])) return lookupTermStart(start)
+
+    for (distance in 1..3) {
+        val left = start - distance
+        if (left in indices && isLookupStartChar(this[left])) return lookupTermStart(left)
+        val right = start + distance
+        if (right in indices && isLookupStartChar(this[right])) return lookupTermStart(right)
+    }
+    return null
+}
+
+private fun String.lookupTermStart(index: Int): Int {
+    if (index !in indices) return 0
+    var start = index
+    val char = this[start]
+
+    when {
+        char.isKanji() -> {
+            while (start > 0 && this[start - 1].isKanji()) {
+                start--
+            }
+        }
+        char.isKana() -> {
+            while (start > 0 && this[start - 1].isKana()) {
+                start--
+            }
+            if (start == index && char !in commonKanaParticles && start > 0 && this[start - 1].isKanji()) {
+                start--
+                while (start > 0 && this[start - 1].isKanji()) {
+                    start--
+                }
+            }
+        }
+        char.isLetterOrDigit() -> {
+            while (start > 0 && this[start - 1].isLetterOrDigit() && this[start - 1].code <= 0x7F) {
+                start--
+            }
+        }
+    }
+
+    return start
+}
+
+private val commonKanaParticles = setOf(
+    '\u306F',
+    '\u304C',
+    '\u3092',
+    '\u306B',
+    '\u3078',
+    '\u3068',
+    '\u3082',
+    '\u3067',
+    '\u3084',
+    '\u306E',
+    '\u304B',
+    '\u306D',
+    '\u3088',
+)
+
+private fun Char.isKanji(): Boolean = this in '\u3400'..'\u9FFF' || this in '\uF900'..'\uFAFF'
+
+private fun Char.isKana(): Boolean = this in '\u3040'..'\u30FF' || this in '\u31F0'..'\u31FF'
+
+private fun String.collapseHorizontalWhitespace(): String {
+    var lastWasSpace = false
+    return buildString(length) {
+        for (char in this@collapseHorizontalWhitespace) {
+            if (char == ' ' || char == '\t' || char == '\u3000') {
+                if (!lastWasSpace) append(' ')
+                lastWasSpace = true
+            } else {
+                append(char)
+                lastWasSpace = false
+            }
+        }
+    }.trim()
 }
 
 fun <T> playerControlsExitAnimationSpec(): FiniteAnimationSpec<T> = tween(
