@@ -34,17 +34,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.player.Panels
+import eu.kanade.tachiyomi.ui.player.PlayerViewModel.SubtitleCue
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.AudioDelayPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleDelayPanel
+import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleListPanel
+import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleListPanelMode
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleSettingsPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.VideoFiltersPanel
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
+import kotlinx.collections.immutable.ImmutableList
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 @Composable
 fun PlayerPanels(
     panelShown: Panels,
+    subtitleCues: ImmutableList<SubtitleCue>,
+    activeSubtitleCueIndex: Int?,
+    animeId: Long?,
+    onSelectSubtitleCue: (Int) -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -62,11 +70,32 @@ fun PlayerPanels(
             Panels.None -> {
                 Box(Modifier.fillMaxHeight())
             }
+            Panels.SubtitleSideList -> {
+                SubtitleListPanel(
+                    mode = SubtitleListPanelMode.SideList,
+                    cues = subtitleCues,
+                    activeCueIndex = activeSubtitleCueIndex,
+                    onSelectCue = onSelectSubtitleCue,
+                    onDismissRequest = onDismissRequest,
+                )
+            }
+            Panels.SubtitleOverlayList -> {
+                SubtitleListPanel(
+                    mode = SubtitleListPanelMode.Overlay,
+                    cues = subtitleCues,
+                    activeCueIndex = activeSubtitleCueIndex,
+                    onSelectCue = onSelectSubtitleCue,
+                    onDismissRequest = onDismissRequest,
+                )
+            }
             Panels.SubtitleSettings -> {
                 SubtitleSettingsPanel(onDismissRequest)
             }
             Panels.SubtitleDelay -> {
-                SubtitleDelayPanel(onDismissRequest)
+                SubtitleDelayPanel(
+                    animeId = animeId,
+                    onDismissRequest = onDismissRequest,
+                )
             }
             Panels.AudioDelay -> {
                 AudioDelayPanel(onDismissRequest)

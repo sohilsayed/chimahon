@@ -61,6 +61,21 @@
         <item quantity="other">Next %d chapters</item>
     </plurals>
 
+    <plurals name="anime_num_episodes">
+        <item quantity="one">%1$s episode</item>
+        <item quantity="other">%1$s episodes</item>
+    </plurals>
+
+    <plurals name="download_amount_episodes">
+        <item quantity="one">Next episode</item>
+        <item quantity="other">Next %d episodes</item>
+    </plurals>
+
+    <plurals name="missing_items">
+        <item quantity="one">Missing %1$d item</item>
+        <item quantity="other">Missing %1$d items</item>
+    </plurals>
+
     <plurals name="num_trackers">
         <item quantity="one">%d tracker</item>
         <item quantity="other">%d trackers</item>

@@ -1,14 +1,24 @@
 package eu.kanade.presentation.anime
 
 enum class DownloadAction {
-    NEXT_1_ITEM,
-    NEXT_5_ITEMS,
-    NEXT_10_ITEMS,
-    NEXT_25_ITEMS,
-    UNVIEWED_ITEMS,
+    NEXT_1_EPISODE,
+    NEXT_5_EPISODES,
+    NEXT_10_EPISODES,
+    NEXT_25_EPISODES,
+    UNSEEN_EPISODES,
 }
 
 enum class EditCoverAction {
     EDIT,
     DELETE,
+}
+
+enum class AnimeScreenItem {
+    INFO_BOX,
+    ACTION_ROW,
+    DESCRIPTION_WITH_TAG,
+    RELATED_ANIME,
+    EPISODE_HEADER,
+    EPISODE,
+    AIRING_TIME,
 }

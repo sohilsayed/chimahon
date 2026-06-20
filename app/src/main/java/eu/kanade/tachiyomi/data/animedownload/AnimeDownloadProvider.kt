@@ -88,6 +88,21 @@ class AnimeDownloadProvider(
         }
     }
 
+    fun getEpisodeFileSize(
+        episodeName: String,
+        @Suppress("UNUSED_PARAMETER") episodeUrl: String,
+        episodeScanlator: String?,
+        animeTitle: String,
+        source: AnimeSource,
+    ): Long? {
+        val episodeDir = findEpisodeDir(episodeName, episodeScanlator, animeTitle, source) ?: return null
+        return episodeDir
+            .listFiles()
+            .orEmpty()
+            .sumOf { it.length() }
+            .takeIf { it > 0L }
+    }
+
     fun getSourceDirName(source: AnimeSource): String {
         return DiskUtil.buildValidFilename(
             source.toString(),

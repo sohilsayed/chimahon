@@ -23,6 +23,7 @@ import android.os.Environment
 import android.util.AttributeSet
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.SurfaceHolder
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.toColorHexString
 import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
@@ -48,6 +49,18 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
     private val networkPreferences: NetworkPreferences by injectLazy()
 
     var isExiting = false
+    var surfaceReady = false
+        private set
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        super.surfaceCreated(holder)
+        surfaceReady = true
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        surfaceReady = false
+        super.surfaceDestroyed(holder)
+    }
 
     private fun getPropertyInt(property: String): Int? {
         return MPVLib.getPropertyInt(property) as Int?
@@ -219,6 +232,7 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
 
         "sid" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
         "secondary-sid" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
+        "sub-text" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
         "aid" to MPVLib.mpvFormat.MPV_FORMAT_STRING,
 
         "speed" to MPVLib.mpvFormat.MPV_FORMAT_DOUBLE,
@@ -274,12 +288,15 @@ class AniyomiMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(c
         MPVLib.setOptionString("sub-bold", if (subtitlePreferences.boldSubtitles().get()) "yes" else "no")
         MPVLib.setOptionString("sub-italic", if (subtitlePreferences.italicSubtitles().get()) "yes" else "no")
         MPVLib.setOptionString("sub-justify", subtitlePreferences.subtitleJustification().get().value)
-        MPVLib.setOptionString("sub-color", subtitlePreferences.textColorSubtitles().get().toColorHexString())
+        // Subtitle text is rendered by the Compose player overlay so lookup/highlight can use
+        // exact TextLayoutResult glyph bounds. Keep MPV's subtitle track active for timing and
+        // sub-text updates, but make MPV's own draw layer transparent.
+        MPVLib.setOptionString("sub-color", "#00FFFFFF")
         MPVLib.setOptionString(
             "sub-back-color",
-            subtitlePreferences.backgroundColorSubtitles().get().toColorHexString(),
+            "#00000000",
         )
-        MPVLib.setOptionString("sub-border-color", subtitlePreferences.borderColorSubtitles().get().toColorHexString())
+        MPVLib.setOptionString("sub-border-color", "#00000000")
         MPVLib.setOptionString("sub-border-size", subtitlePreferences.subtitleBorderSize().get().toString())
         MPVLib.setOptionString("sub-border-style", subtitlePreferences.borderStyleSubtitles().get().value)
         MPVLib.setOptionString("sub-shadow-offset", subtitlePreferences.shadowOffsetSubtitles().get().toString())

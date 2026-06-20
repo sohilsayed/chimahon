@@ -79,6 +79,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import chimahon.MediaInfo
 
 private const val TAP_HINT_DURATION_MS = 1_200L
 
@@ -217,12 +218,16 @@ private data class ScreenLookupSelection(
 )
 
 @Composable
-private fun ScreenLookupOverlay(
+internal fun ScreenLookupOverlay(
     screenshot: Bitmap,
     webView: WebView,
     activeProfile: chimahon.anki.AnkiProfile,
     onClose: () -> Unit,
     onRecapture: () -> Unit,
+    type: String = "screen",
+    mediaInfo: MediaInfo? = null,
+    titleId: String? = null,
+    onRequestSentenceAudio: (suspend () -> ByteArray?)? = null,
 ) {
     val context = LocalContext.current
     val localDensity = LocalDensity.current
@@ -515,10 +520,13 @@ private fun ScreenLookupOverlay(
                     anchorHeight = selected.anchorHeight,
                     isVertical = selected.block.vertical,
                     activeProfile = activeProfile,
-                    type = "screen",
+                    type = type,
+                    mediaInfo = mediaInfo,
                     screenshot = screenshot,
                     onRequestScreenshot = { screenshot },
+                    onRequestSentenceAudio = onRequestSentenceAudio,
                     usePopup = false,
+                    titleId = titleId,
                     onTermMatched = { count, off ->
                         matchedCharCount = count
                         matchOffset = off

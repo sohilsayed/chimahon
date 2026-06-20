@@ -1,18 +1,42 @@
 package eu.kanade.tachiyomi.di
 
 import android.app.Application
+import android.content.Context
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import chimahon.DictionaryRepository
+import chimahon.audio.WordAudioPreferences
+import chimahon.audio.WordAudioService
+import chimahon.ocr.LensClient
+import chimahon.ocr.OcrCacheManager
+import com.canopus.chimareader.data.NovelCategoryStorage
+import com.canopus.chimareader.ui.reader.NovelReaderActivity
+import com.canopus.chimareader.ttusync.SyncSettingsRepository
+import com.canopus.chimareader.ttusync.TtuOAuthManager
+import com.canopus.chimareader.ttusync.TtuSyncManager
 import eu.kanade.domain.track.store.DelayedTrackingStore
+import eu.kanade.tachiyomi.animeextension.AnimeExtensionManager
+import eu.kanade.tachiyomi.animesource.AndroidAnimeSourceManager
+import eu.kanade.tachiyomi.data.BackupRestoreStatus
+import eu.kanade.tachiyomi.data.LibraryUpdateStatus
+import eu.kanade.tachiyomi.data.SyncStatus
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadProvider
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.data.connections.ConnectionsManager
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
+import eu.kanade.tachiyomi.data.ocr.LocalOcrBridge
+import eu.kanade.tachiyomi.data.ocr.ModelDownloader
+import eu.kanade.tachiyomi.data.ocr.OcrManager
+import eu.kanade.tachiyomi.data.ocr.OcrStore
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.sync.service.GoogleDriveService
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -20,8 +44,12 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
+import eu.kanade.tachiyomi.ui.library.novels.ChimaReaderActivity
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.player.ExternalIntents
+import eu.kanade.tachiyomi.util.LocalHttpServerHolder
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
+import exh.eh.EHentaiUpdateHelper
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
@@ -29,6 +57,7 @@ import nl.adaptivity.xmlutil.XmlDeclMode.Charset
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
+import tachiyomi.core.common.storage.UniFileTempFileManager
 import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
 import tachiyomi.data.Anime_history
 import tachiyomi.data.Animes
@@ -45,6 +74,7 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.anime.AndroidAnimeDatabaseHandler
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.data.track.anime.AnimeTrackRepositoryImpl
+import tachiyomi.domain.animesource.service.AnimeSourceManager
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.anime.repository.AnimeTrackRepository
@@ -62,6 +92,8 @@ class AppModule(val app: Application) : InjektModule {
 
     override fun InjektRegistrar.registerInjectables() {
         addSingleton(app)
+        addSingleton<Context>(app)
+        NovelReaderActivity.activityClass = ChimaReaderActivity::class.java
 
         val sqlDriverAnime = AndroidSqliteDriver(
             schema = Database.Schema,
@@ -193,17 +225,23 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { ChapterCache(app, get(), get()) }
 
         addSingletonFactory { CoverCache(app) }
+        addSingletonFactory { PagePreviewCache(app) }
 
         addSingletonFactory { NetworkHelper(app, get(), isDebugBuildType) }
         addSingletonFactory { JavaScriptEngine(app) }
 
         addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
+        addSingletonFactory<AnimeSourceManager> { AndroidAnimeSourceManager(app, get(), get()) }
 
         addSingletonFactory { ExtensionManager(app) }
+        addSingletonFactory { AnimeExtensionManager(app) }
 
         addSingletonFactory { DownloadProvider(app) }
         addSingletonFactory { DownloadManager(app) }
         addSingletonFactory { DownloadCache(app) }
+        addSingletonFactory { AnimeDownloadProvider(app) }
+        addSingletonFactory { AnimeDownloadManager(app) }
+        addSingletonFactory { AnimeDownloadCache(app) }
 
         addSingletonFactory { TrackerManager() }
         addSingletonFactory { DelayedTrackingStore(app) }
@@ -214,10 +252,32 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { LocalSourceFileSystem(get()) }
         addSingletonFactory { LocalCoverManager(app, get()) }
+        addSingletonFactory { UniFileTempFileManager(app) }
 
         addSingletonFactory { StorageManager(app, get()) }
+        addSingletonFactory { LocalHttpServerHolder(get()) }
 
         addSingletonFactory { ExternalIntents() }
+        addSingletonFactory { EHentaiUpdateHelper(app) }
+
+        addSingletonFactory { NovelCategoryStorage(app) }
+        addSingletonFactory { DictionaryRepository(app.getExternalFilesDir(null)) }
+        addSingletonFactory { TtuOAuthManager(app) }
+        addSingletonFactory { SyncSettingsRepository(app) }
+        addSingletonFactory { TtuSyncManager(app, get(), get()) }
+        addSingletonFactory<WordAudioPreferences> { get<DictionaryPreferences>() }
+        addSingletonFactory { WordAudioService(app) }
+
+        addSingletonFactory { LensClient() }
+        addSingletonFactory { LocalOcrBridge(app) }
+        addSingletonFactory { ModelDownloader(app, get<NetworkHelper>().client) }
+        addSingletonFactory { OcrStore(app) }
+        addSingletonFactory { OcrCacheManager(app, get()) }
+        addSingletonFactory { OcrManager(app, get(), get()) }
+
+        addSingletonFactory<BackupRestoreStatus> { BackupRestoreStatus() }
+        addSingletonFactory<SyncStatus> { SyncStatus() }
+        addSingletonFactory<LibraryUpdateStatus> { LibraryUpdateStatus() }
 
         // AM (CONNECTIONS) -->
         addSingletonFactory { ConnectionsManager() }
