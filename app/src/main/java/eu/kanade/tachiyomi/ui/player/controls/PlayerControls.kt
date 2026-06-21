@@ -159,6 +159,7 @@ fun PlayerControls(
     val currentSubtitleText by viewModel.currentSubtitleText.collectAsState()
     val subtitleCues by viewModel.subtitleHistory.collectAsState()
     val activeSubtitleCueIndex by viewModel.activeSubtitleCueIndex.collectAsState()
+    val primarySubtitleDelaySeconds by viewModel.primarySubtitleDelaySeconds.collectAsState()
     val activeSubtitleCue = remember(subtitleCues, activeSubtitleCueIndex) {
         subtitleCues.firstOrNull { it.index == activeSubtitleCueIndex }
     }
@@ -253,6 +254,7 @@ fun PlayerControls(
     PlayerSubtitleTextLayer(
         text = currentSubtitleText,
         cue = activeSubtitleCue,
+        subtitleDelaySeconds = primarySubtitleDelaySeconds,
         request = subtitleLookupRequest,
         onLookup = openSubtitleLookup,
     )
@@ -787,6 +789,7 @@ fun PlayerControls(
             activeSubtitleCueIndex = activeSubtitleCueIndex,
             animeId = anime?.id,
             onSelectSubtitleCue = viewModel::selectSubtitleCue,
+            onPrimarySubtitleDelayMillisChange = viewModel::updatePrimarySubtitleDelayMillis,
             onDismissRequest = { viewModel.showPanel(Panels.None) },
         )
 
@@ -846,6 +849,7 @@ fun PlayerControls(
 private fun PlayerSubtitleTextLayer(
     text: String,
     cue: PlayerViewModel.SubtitleCue?,
+    subtitleDelaySeconds: Double,
     request: SubtitleLookupRequest?,
     onLookup: (SubtitleLookupSelection) -> Unit,
     modifier: Modifier = Modifier,
@@ -914,17 +918,17 @@ private fun PlayerSubtitleTextLayer(
                         )
                     }
                 }
-                .pointerInput(subtitleText, textLayout, textLayerOrigin) {
+                .pointerInput(subtitleText, textLayout, textLayerOrigin, subtitleDelaySeconds) {
                     detectTapGestures(
                         onTap = { position ->
                             val layout = textLayout ?: return@detectTapGestures
-                            layout.subtitleLookupSelectionForTap(subtitleText, position, cue)
+                            layout.subtitleLookupSelectionForTap(subtitleText, position, cue, subtitleDelaySeconds)
                                 ?.offsetBy(textLayerOrigin)
                                 ?.let(onLookup)
                         },
                         onLongPress = { position ->
                             val layout = textLayout ?: return@detectTapGestures
-                            layout.subtitleLookupSelectionForTap(subtitleText, position, cue)
+                            layout.subtitleLookupSelectionForTap(subtitleText, position, cue, subtitleDelaySeconds)
                                 ?.offsetBy(textLayerOrigin)
                                 ?.let(onLookup)
                         },
@@ -971,19 +975,20 @@ private data class SubtitleLookupSelection(
     val cueEndSeconds: Double? = null,
 )
 
-private fun String.hasLookupCharacters(): Boolean = any { it.isLetterOrDigit() }
+private fun String.hasLookupCharacters(): Boolean = any { it.isSubtitleLookupChar() }
 
 private fun TextLayoutResult.subtitleLookupSelectionForTap(
     text: String,
     position: Offset,
     cue: PlayerViewModel.SubtitleCue?,
+    subtitleDelaySeconds: Double,
 ): SubtitleLookupSelection? {
     if (text.isBlank()) return null
     val offset = lookupOffsetForPosition(text, position) ?: return null
-    val lookupStart = text.lookupStartNear(offset) ?: return null
-    val lookupString = extractOcrLookupString(text, lookupStart).take(80).trim()
+    if (offset !in text.indices || !isLookupStartChar(text[offset])) return null
+    val lookupString = extractOcrLookupString(text, offset).take(80).trim()
     if (lookupString.isBlank()) return null
-    val anchor = lookupAnchorRect(text, lookupStart, lookupString) ?: return null
+    val anchor = lookupAnchorRect(text, offset, lookupString) ?: return null
     val lineIndex = getLineForOffset(offset.coerceIn(0, text.lastIndex))
     val lineStart = getLineStart(lineIndex)
     val lineEnd = getLineEnd(lineIndex, visibleEnd = true).coerceAtLeast(lineStart)
@@ -993,7 +998,7 @@ private fun TextLayoutResult.subtitleLookupSelectionForTap(
     return SubtitleLookupSelection(
         lookupString = lookupString,
         fullText = text,
-        charOffset = lookupStart,
+        charOffset = offset,
         tapCharOffset = offset,
         lineText = lineText,
         lineIndex = lineIndex,
@@ -1006,8 +1011,8 @@ private fun TextLayoutResult.subtitleLookupSelectionForTap(
         lineTop = lineBounds.top,
         lineWidth = lineBounds.width,
         lineHeight = lineBounds.height,
-        cueStartSeconds = cue?.positionSeconds?.toDouble(),
-        cueEndSeconds = cue?.endPositionSeconds?.toDouble(),
+        cueStartSeconds = cue?.positionSeconds?.plus(subtitleDelaySeconds),
+        cueEndSeconds = cue?.endPositionSeconds?.plus(subtitleDelaySeconds),
     )
 }
 
@@ -1029,35 +1034,11 @@ private fun SubtitleLookupSelection.offsetBy(offset: Offset): SubtitleLookupSele
 
 private fun TextLayoutResult.lookupOffsetForPosition(text: String, position: Offset): Int? {
     if (text.isBlank()) return null
-    val rawOffset = getOffsetForPosition(position).coerceIn(0, text.lastIndex)
-    val candidates = buildList {
-        add(rawOffset)
-        add(rawOffset - 1)
-        add(rawOffset + 1)
-        add(rawOffset - 2)
-        add(rawOffset + 2)
-    }.filter { it in text.indices }.distinct()
-
-    for (offset in candidates) {
-        val char = text[offset]
-        if (!isLookupStartChar(char) && !char.isLetterOrDigit()) continue
-        val box = getBoundingBox(offset)
-        val slop = (box.height * 0.35f).coerceIn(6f, 18f)
-        if (
-            position.x >= box.left - slop &&
-            position.x <= box.right + slop &&
-            position.y >= box.top - slop &&
-            position.y <= box.bottom + slop
-        ) {
-            return offset
-        }
-    }
-
-    val lineIndex = getLineForOffset(rawOffset)
+    val lineIndex = getLineForVerticalPosition(position.y).coerceIn(0, lineCount - 1)
     val lineStart = getLineStart(lineIndex).coerceIn(0, text.length)
     val lineEnd = getLineEnd(lineIndex, visibleEnd = true).coerceIn(lineStart, text.length)
     val lineBounds = lineBounds(lineIndex)
-    val verticalSlop = (lineBounds.height * 0.75f).coerceIn(12f, 34f)
+    val verticalSlop = (lineBounds.height * 0.55f).coerceIn(10f, 28f)
     if (position.y < lineBounds.top - verticalSlop || position.y > lineBounds.bottom + verticalSlop) {
         return null
     }
@@ -1065,7 +1046,7 @@ private fun TextLayoutResult.lookupOffsetForPosition(text: String, position: Off
     return (lineStart until lineEnd)
         .filter { offset ->
             val char = text[offset]
-            isLookupStartChar(char) || char.isLetterOrDigit()
+            char.isSubtitleLookupChar()
         }
         .mapNotNull { offset ->
             val box = getBoundingBox(offset)
@@ -1080,10 +1061,13 @@ private fun TextLayoutResult.lookupOffsetForPosition(text: String, position: Off
                 position.y > box.bottom -> position.y - box.bottom
                 else -> 0f
             }
-            val horizontalLimit = (box.width * 1.8f).coerceIn(18f, 42f)
-            val verticalLimit = (box.height * 1.1f).coerceIn(16f, 38f)
+            val horizontalLimit = (box.width * 0.9f).coerceIn(10f, 28f)
+            val verticalLimit = (box.height * 0.8f).coerceIn(12f, 30f)
             if (dx <= horizontalLimit && dy <= verticalLimit) {
-                offset to (dx * 1.35f + dy)
+                val centerX = (box.left + box.right) / 2f
+                val centerY = (box.top + box.bottom) / 2f
+                val centerDistance = abs(position.x - centerX) + abs(position.y - centerY) * 0.55f
+                offset to (dx * 2.2f + dy * 1.4f + centerDistance * 0.2f)
             } else {
                 null
             }
@@ -1097,7 +1081,7 @@ private fun TextLayoutResult.lookupAnchorRect(
     lookupStart: Int,
     lookupString: String,
 ): SubtitleAnchorRect? {
-    val matchLength = lookupString.takeWhile { it.isLetterOrDigit() || it.isKanji() || it.isKana() }
+    val matchLength = lookupString.takeWhile { isLookupStartChar(it) }
         .length
         .takeIf { it > 0 }
         ?: 1
@@ -1160,71 +1144,7 @@ private fun Char.subtitleDisplayUnits(): Double {
     }
 }
 
-private fun String.lookupStartNear(index: Int): Int? {
-    if (isEmpty()) return null
-    val start = index.coerceIn(indices)
-    if (isLookupStartChar(this[start])) return lookupTermStart(start)
-
-    for (distance in 1..3) {
-        val left = start - distance
-        if (left in indices && isLookupStartChar(this[left])) return lookupTermStart(left)
-        val right = start + distance
-        if (right in indices && isLookupStartChar(this[right])) return lookupTermStart(right)
-    }
-    return null
-}
-
-private fun String.lookupTermStart(index: Int): Int {
-    if (index !in indices) return 0
-    var start = index
-    val char = this[start]
-
-    when {
-        char.isKanji() -> {
-            while (start > 0 && this[start - 1].isKanji()) {
-                start--
-            }
-        }
-        char.isKana() -> {
-            while (start > 0 && this[start - 1].isKana()) {
-                start--
-            }
-            if (start == index && char !in commonKanaParticles && start > 0 && this[start - 1].isKanji()) {
-                start--
-                while (start > 0 && this[start - 1].isKanji()) {
-                    start--
-                }
-            }
-        }
-        char.isLetterOrDigit() -> {
-            while (start > 0 && this[start - 1].isLetterOrDigit() && this[start - 1].code <= 0x7F) {
-                start--
-            }
-        }
-    }
-
-    return start
-}
-
-private val commonKanaParticles = setOf(
-    '\u306F',
-    '\u304C',
-    '\u3092',
-    '\u306B',
-    '\u3078',
-    '\u3068',
-    '\u3082',
-    '\u3067',
-    '\u3084',
-    '\u306E',
-    '\u304B',
-    '\u306D',
-    '\u3088',
-)
-
-private fun Char.isKanji(): Boolean = this in '\u3400'..'\u9FFF' || this in '\uF900'..'\uFAFF'
-
-private fun Char.isKana(): Boolean = this in '\u3040'..'\u30FF' || this in '\u31F0'..'\u31FF'
+private fun Char.isSubtitleLookupChar(): Boolean = isLookupStartChar(this)
 
 private fun String.collapseHorizontalWhitespace(): String {
     var lastWasSpace = false

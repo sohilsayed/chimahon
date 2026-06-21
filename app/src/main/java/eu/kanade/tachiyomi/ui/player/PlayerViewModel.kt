@@ -142,6 +142,7 @@ import java.util.Locale
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.roundToInt
 
 private val jimakuEpisodeRegexes = listOf(
     Regex("""(?i)\bS\d{1,3}E(\d{1,4})\b"""),
@@ -156,6 +157,12 @@ private val jimakuStandaloneEpisodeRegex = Regex("""(?<![A-Za-z0-9])(\d{1,4})(?!
 private val jimakuEpisodeCleanupRegex = Regex(
     """(?i)\bS\d{1,3}E\d{1,4}\b|\b\d{1,3}x\d{1,4}\b|\b(?:ep|episode|e)\.?\s*\d{1,4}\b|第\s*\d{1,4}\s*話|\d{1,4}\s*話""",
 )
+private val jimakuSeasonRegexes = listOf(
+    Regex("""(?i)\bS(\d{1,3})E\d{1,4}\b"""),
+    Regex("""(?i)\b(\d{1,3})x\d{1,4}\b"""),
+    Regex("""(?i)\bseason[ ._-]*(\d{1,3})\b"""),
+)
+private val jimakuSeasonCleanupRegex = Regex("""(?i)\bseason[ ._-]*\d{1,3}\b""")
 private val jimakuFilenameJunkRegex = Regex(
     """(?i)\b(?:480p|720p|1080p|2160p|x264|x265|h264|h265|hevc|web[- ]?dl|webrip|bluray|aac|flac|multi|proper|repack)\b|\[[^\]]*]|\([^)]*\)""",
 )
@@ -242,6 +249,8 @@ class PlayerViewModel @JvmOverloads constructor(
     val subtitleHistory = _subtitleHistory.asStateFlow()
     private val _activeSubtitleCueIndex = MutableStateFlow<Int?>(null)
     val activeSubtitleCueIndex = _activeSubtitleCueIndex.asStateFlow()
+    private val _primarySubtitleDelaySeconds = MutableStateFlow(0.0)
+    val primarySubtitleDelaySeconds = _primarySubtitleDelaySeconds.asStateFlow()
     private var lastSubtitleHistoryText = ""
     private var nextSubtitleCueIndex = 0
     private val parsedSubtitleCuesByTrackId = mutableMapOf<Int, List<SubtitleCue>>()
@@ -538,6 +547,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private data class JimakuMediaGuess(
         val title: String,
         val episode: Int?,
+        val season: Int? = null,
     )
 
     fun loadChapters() {
@@ -647,6 +657,7 @@ class PlayerViewModel @JvmOverloads constructor(
             currentEpisode.value?.id?.toString().orEmpty(),
             currentVideo.value?.videoUrl.orEmpty(),
             guess.title,
+            guess.season?.toString().orEmpty(),
             guess.episode?.toString().orEmpty(),
         ).joinToString("|")
         if (lastAutoJimakuKey == key) return
@@ -790,8 +801,11 @@ class PlayerViewModel @JvmOverloads constructor(
             animeTitle.value.takeIf { it.isNotBlank() },
             mediaTitle.value.takeIf { it.isNotBlank() },
             currentVideo.value?.videoTitle?.takeIf { it.isNotBlank() },
+            currentVideo.value?.videoUrl?.takeIf { it.isNotBlank() },
         )
-        val parsed = candidates.mapNotNull { guessitLite(it) }.firstOrNull()
+        val parsedCandidates = candidates.mapNotNull { guessitLite(it) }
+        val parsed = parsedCandidates.firstOrNull { it.season != null || it.episode != null }
+            ?: parsedCandidates.firstOrNull()
         val title = overrideTitle
             .ifBlank { currentAnime.value?.title.orEmpty() }
             .ifBlank { parsed?.title.orEmpty() }
@@ -801,12 +815,16 @@ class PlayerViewModel @JvmOverloads constructor(
             ?.takeIf { it >= 0f }
             ?.toInt()
             ?: parsed?.episode
+        val season = parsed?.season
 
-        return JimakuMediaGuess(title.trim(), episode)
+        return JimakuMediaGuess(title.trim(), episode, season)
     }
 
     private fun guessitLite(value: String): JimakuMediaGuess? {
         val withoutExtension = value.substringBeforeLast('.', value)
+        val season = jimakuSeasonRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(withoutExtension)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }
         val episode = jimakuEpisodeRegexes.firstNotNullOfOrNull { regex ->
             regex.find(withoutExtension)?.groupValues?.lastOrNull()?.toIntOrNull()
         } ?: jimakuStandaloneEpisodeRegex.findAll(withoutExtension)
@@ -817,12 +835,13 @@ class PlayerViewModel @JvmOverloads constructor(
         val title = withoutExtension
             .replace(Regex("""\u7b2c\s*\d{1,4}\s*\u8a71|\d{1,4}\s*\u8a71"""), " ")
             .replace(jimakuEpisodeCleanupRegex, " ")
+            .replace(jimakuSeasonCleanupRegex, " ")
             .replace(jimakuFilenameJunkRegex, " ")
             .replace(Regex("""[._-]+"""), " ")
             .replace(Regex("""\s+"""), " ")
             .trim()
 
-        return title.takeIf { it.isNotBlank() }?.let { JimakuMediaGuess(it, episode) }
+        return title.takeIf { it.isNotBlank() }?.let { JimakuMediaGuess(it, episode, season) }
     }
 
     private fun selectBestJimakuEntry(entries: List<JimakuEntry>, title: String): JimakuEntry? {
@@ -879,7 +898,16 @@ class PlayerViewModel @JvmOverloads constructor(
     private fun jimakuFileScore(file: JimakuFile, guess: JimakuMediaGuess): Int {
         val parsed = guessitLite(file.name)
         val parsedEpisode = parsed?.episode
+        val parsedSeason = parsed?.season
         var score = 0
+
+        if (guess.season != null) {
+            score += when (parsedSeason) {
+                guess.season -> 60
+                null -> 0
+                else -> -160
+            }
+        }
 
         if (guess.episode != null) {
             score += when (parsedEpisode) {
@@ -911,10 +939,17 @@ class PlayerViewModel @JvmOverloads constructor(
     private fun List<JimakuFile>.matchedSrtFiles(guess: JimakuMediaGuess, episodeFiltered: Boolean): List<JimakuFile> {
         return filter { file -> file.name.lowercase().endsWith(".srt") }
             .filter { file ->
-                val parsedEpisode = guessitLite(file.name)?.episode
-                guess.episode == null ||
+                val parsed = guessitLite(file.name)
+                val parsedEpisode = parsed?.episode
+                val parsedSeason = parsed?.season
+                val seasonMatches = guess.season == null ||
+                    parsedSeason == null ||
+                    parsedSeason == guess.season
+                seasonMatches && (
+                    guess.episode == null ||
                     parsedEpisode == guess.episode ||
                     (episodeFiltered && parsedEpisode == null)
+                    )
             }
             .sortedWith(
                 compareByDescending<JimakuFile> { jimakuFileScore(it, guess) }
@@ -923,7 +958,9 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     private fun JimakuMediaGuess.displayName(): String {
-        return if (episode == null) title else "$title episode $episode"
+        val seasonText = season?.let { " season $it" }.orEmpty()
+        val episodeText = episode?.let { " episode $it" }.orEmpty()
+        return "$title$seasonText$episodeText"
     }
 
     private fun String.normalizedJimakuText(): String {
@@ -1070,27 +1107,42 @@ class PlayerViewModel @JvmOverloads constructor(
         lastSubtitleHistoryText = ""
         nextSubtitleCueIndex = cues.maxOfOrNull { it.index + 1 } ?: 0
         _subtitleHistory.update { cues }
-        updateActiveSubtitleCueFromPosition(pos.value.toInt())
+        updateActiveSubtitleCueFromPosition(pos.value.toDouble())
     }
 
-    private fun updateActiveSubtitleCueFromPosition(positionSeconds: Int, text: String = currentSubtitleText.value) {
+    private fun updateActiveSubtitleCueFromPosition(positionSeconds: Double, text: String = currentSubtitleText.value) {
         val cues = subtitleHistory.value
         if (cues.isEmpty()) {
             _activeSubtitleCueIndex.update { null }
             return
         }
 
+        val delaySeconds = primarySubtitleDelaySeconds.value
         val cueByTime = cues.lastOrNull {
-            positionSeconds >= it.positionSeconds && positionSeconds <= it.endPositionSeconds
+            positionSeconds >= it.delayedStartSeconds(delaySeconds) &&
+                positionSeconds <= it.delayedEndSeconds(delaySeconds)
         }
         val cueByText = text.takeIf { it.isNotBlank() }?.let { cleanedText ->
             val normalizedText = cleanedText.normalizedSubtitleCueText()
             cues
                 .filter { it.text.normalizedSubtitleCueText() == normalizedText }
-                .minByOrNull { kotlin.math.abs(it.positionSeconds - positionSeconds) }
+                .minByOrNull { kotlin.math.abs(it.delayedStartSeconds(delaySeconds) - positionSeconds) }
         }
 
         _activeSubtitleCueIndex.update { cueByTime?.index ?: cueByText?.index }
+    }
+
+    private fun SubtitleCue.delayedStartSeconds(delaySeconds: Double = primarySubtitleDelaySeconds.value): Double {
+        return positionSeconds + delaySeconds
+    }
+
+    private fun SubtitleCue.delayedEndSeconds(delaySeconds: Double = primarySubtitleDelaySeconds.value): Double {
+        return endPositionSeconds + delaySeconds
+    }
+
+    fun updatePrimarySubtitleDelayMillis(delayMillis: Int) {
+        _primarySubtitleDelaySeconds.update { delayMillis / 1000.0 }
+        updateActiveSubtitleCueFromPosition(pos.value.toDouble())
     }
 
     private fun String.normalizedSubtitleCueText(): String {
@@ -1283,7 +1335,7 @@ class PlayerViewModel @JvmOverloads constructor(
         val cleaned = text.orEmpty().cleanMpvSubtitleText()
         _currentSubtitleText.update { cleaned }
         if (showingParsedSubtitleTrackId != null) {
-            updateActiveSubtitleCueFromPosition(pos.value.toInt(), cleaned)
+            updateActiveSubtitleCueFromPosition(pos.value.toDouble(), cleaned)
             return
         }
         updateSubtitleHistory(cleaned)
@@ -1314,7 +1366,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
     fun selectSubtitleCue(index: Int) {
         val cue = subtitleHistory.value.firstOrNull { it.index == index } ?: return
-        seekTo(cue.positionSeconds.coerceAtLeast(0))
+        seekTo(cue.delayedStartSeconds().roundToInt().coerceAtLeast(0))
         _activeSubtitleCueIndex.update { cue.index }
     }
 
@@ -1322,7 +1374,7 @@ class PlayerViewModel @JvmOverloads constructor(
         onSecondReached(pos.toInt(), duration.value.toInt())
         _pos.update { pos }
         if (showingParsedSubtitleTrackId != null) {
-            updateActiveSubtitleCueFromPosition(pos.toInt())
+            updateActiveSubtitleCueFromPosition(pos.toDouble())
         }
     }
 
@@ -2374,14 +2426,16 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     private fun applySubtitleDelayForAnime(animeId: Long) {
+        val primaryDelayMillis = subtitlePreferences.subtitlesDelayForAnime(animeId).get()
         MPVLib.setPropertyDouble(
             "sub-delay",
-            subtitlePreferences.subtitlesDelayForAnime(animeId).get() / 1000.0,
+            primaryDelayMillis / 1000.0,
         )
         MPVLib.setPropertyDouble(
             "secondary-sub-delay",
             subtitlePreferences.subtitlesSecondaryDelayForAnime(animeId).get() / 1000.0,
         )
+        updatePrimarySubtitleDelayMillis(primaryDelayMillis)
     }
 
     /**

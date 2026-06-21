@@ -53,6 +53,7 @@ fun PlayerPanels(
     activeSubtitleCueIndex: Int?,
     animeId: Long?,
     onSelectSubtitleCue: (Int) -> Unit,
+    onPrimarySubtitleDelayMillisChange: (Int) -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -94,6 +95,7 @@ fun PlayerPanels(
             Panels.SubtitleDelay -> {
                 SubtitleDelayPanel(
                     animeId = animeId,
+                    onPrimaryDelayChange = onPrimarySubtitleDelayMillisChange,
                     onDismissRequest = onDismissRequest,
                 )
             }
