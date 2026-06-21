@@ -55,6 +55,7 @@ fun ExtensionReposContent(
     onClickDisable: (String) -> Unit,
     disabledRepos: Set<String>,
     // KMK <--
+    copyUrlForRepo: (ExtensionRepo) -> String = { "${it.baseUrl}/index.min.json" },
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -74,6 +75,7 @@ fun ExtensionReposContent(
                     onEnable = { onClickEnable(it.baseUrl) },
                     onDisable = { onClickDisable(it.baseUrl) },
                     isDisabled = it.baseUrl in disabledRepos,
+                    copyUrl = copyUrlForRepo(it),
                     // KMK <--
                 )
             }
@@ -91,6 +93,7 @@ private fun ExtensionRepoListItem(
     isDisabled: Boolean,
     onEnable: () -> Unit,
     onDisable: () -> Unit,
+    copyUrl: String,
     // KMK <--
 ) {
     val context = LocalContext.current
@@ -149,8 +152,7 @@ private fun ExtensionRepoListItem(
 
                     IconButton(
                         onClick = {
-                            val url = "${repo.baseUrl}/index.min.json"
-                            context.copyToClipboard(url, url)
+                            context.copyToClipboard(copyUrl, copyUrl)
                         },
                     ) {
                         Icon(

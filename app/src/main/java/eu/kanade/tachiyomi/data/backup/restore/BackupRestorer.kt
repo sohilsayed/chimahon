@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
+import eu.kanade.tachiyomi.data.backup.models.BackupSourceNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeCategoriesRestorer
@@ -21,6 +22,7 @@ import eu.kanade.tachiyomi.data.backup.restore.restorers.FeedRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.SavedSearchRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.SourceNovelRestorer
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +57,7 @@ class BackupRestorer(
     // KMK <--
     // Chimahon -->
     private val novelRestorer: eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer = eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer(context),
+    private val sourceNovelRestorer: SourceNovelRestorer = SourceNovelRestorer(isSync),
     // Chimahon <--
 ) {
 
@@ -128,6 +131,9 @@ class BackupRestorer(
                 restoreAmount += 1
             }
         }
+        if (options.sourceNovelLibrary) {
+            restoreAmount += backup.backupSourceNovels.size
+        }
         if (options.appSettings) {
             if (backup.backupMangaStats.isNotEmpty()) restoreAmount += 1
             if (backup.backupAnkiStats.isNotEmpty()) restoreAmount += 1
@@ -169,6 +175,9 @@ class BackupRestorer(
             // Chimahon -->
             if (options.novels) {
                 restoreNovels(backup.backupNovels, backup.backupNovelCategories)
+            }
+            if (options.sourceNovelLibrary) {
+                restoreSourceNovels(backup.backupSourceNovels)
             }
             // Chimahon <--
 
@@ -427,6 +436,31 @@ class BackupRestorer(
                 ).show(Notifications.ID_RESTORE_PROGRESS)
             }
         }
+    }
+
+    private fun CoroutineScope.restoreSourceNovels(
+        backupNovels: List<BackupSourceNovel>,
+    ) = launch {
+        sourceNovelRestorer.sortByNew(backupNovels)
+            .forEach {
+                ensureActive()
+
+                try {
+                    sourceNovelRestorer.restore(it)
+                } catch (e: Exception) {
+                    errors.add(Date() to "${it.title} [${it.source}]: ${e.message}")
+                }
+
+                restoreProgress += 1
+                with(notifier) {
+                    showRestoreProgress(
+                        it.title,
+                        restoreProgress,
+                        restoreAmount,
+                        isSync,
+                    ).show(Notifications.ID_RESTORE_PROGRESS)
+                }
+            }
     }
 
     private fun CoroutineScope.restoreGlobalStats(

@@ -48,6 +48,7 @@ fun ExtensionReposScreen(
     // KMK <--
     onClickRefresh: () -> Unit,
     navigateUp: () -> Unit,
+    copyUrlForRepo: (ExtensionRepo) -> String = { "${it.baseUrl}/index.min.json" },
 ) {
     val lazyListState = rememberLazyListState()
     Scaffold(
@@ -105,6 +106,7 @@ fun ExtensionReposScreen(
             onClickEnable = onClickEnable,
             onClickDisable = onClickDisable,
             disabledRepos = state.disabledRepos,
+            copyUrlForRepo = copyUrlForRepo,
             // KMK <--
         )
     }

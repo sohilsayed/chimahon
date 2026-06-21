@@ -38,6 +38,7 @@ sealed class Extension {
         val hasUpdate: Boolean = false,
         val isObsolete: Boolean = false,
         val isShared: Boolean,
+        val isBuiltIn: Boolean = false,
         val repoUrl: String? = null,
         // SY -->
         val isRedundant: Boolean = false,
