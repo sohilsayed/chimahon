@@ -74,6 +74,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SubtitleDelayPanel(
     animeId: Long?,
+    onPrimaryDelayChange: (Int) -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -95,14 +96,18 @@ fun SubtitleDelayPanel(
         LaunchedEffect(speed) {
             if (speed in 0.1f..1f) MPVLib.setPropertyDouble("sub-speed", speed.toDouble())
         }
-        LaunchedEffect(delay, secondaryDelay) {
+        LaunchedEffect(delay, secondaryDelay, affectedSubtitle) {
             val finalDelay = (if (affectedSubtitle == SubtitleDelayType.Secondary) secondaryDelay else delay) / 1000.0
             when (affectedSubtitle) {
-                SubtitleDelayType.Primary -> MPVLib.setPropertyDouble("sub-delay", finalDelay)
+                SubtitleDelayType.Primary -> {
+                    MPVLib.setPropertyDouble("sub-delay", finalDelay)
+                    onPrimaryDelayChange(delay)
+                }
                 SubtitleDelayType.Secondary -> MPVLib.setPropertyDouble("secondary-sub-delay", finalDelay)
                 else -> {
                     MPVLib.setPropertyDouble("sub-delay", finalDelay)
                     MPVLib.setPropertyDouble("secondary-sub-delay", finalDelay)
+                    onPrimaryDelayChange(delay)
                 }
             }
         }
@@ -130,11 +135,13 @@ fun SubtitleDelayPanel(
             onApply = {
                 preferences.subtitlesDelayForAnime(animeId).set(delay)
                 preferences.subtitlesSecondaryDelayForAnime(animeId).set(secondaryDelay)
+                onPrimaryDelayChange(delay)
                 if (speed in 0.1f..10f) preferences.subtitlesSpeed().set(speed)
             },
             onReset = {
                 delay = 0
                 secondaryDelay = 0
+                onPrimaryDelayChange(0)
                 speed = 1f
             },
             onClose = onDismissRequest,
