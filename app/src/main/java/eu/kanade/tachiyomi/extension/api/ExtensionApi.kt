@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.extension.api
 import android.content.Context
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.ireader.IReaderExtensionConstants
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
@@ -54,13 +55,33 @@ internal class ExtensionApi {
         val disabledRepos = sourcePreferences.disabledRepos().get()
         // KMK <--
         return withIOContext {
-            getExtensionRepo.getAll()
-                // KMK -->
-                .filterNot { it.baseUrl in disabledRepos }
-                // KMK <--
-                .map { async { getExtensions(it) } }
-                .awaitAll()
-                .flatten()
+            val mangaExtensions = async {
+                getExtensionRepo.getAll()
+                    // KMK -->
+                    .filterNot { it.baseUrl in disabledRepos }
+                    // KMK <--
+                    .map { async { getExtensions(it) } }
+                    .awaitAll()
+                    .flatten()
+            }
+            val iReaderExtensions = async { getIReaderExtensions() }
+            mangaExtensions.await() + iReaderExtensions.await()
+        }
+    }
+
+    private suspend fun getIReaderExtensions(): List<Extension.Available> {
+        return try {
+            val response = networkService.client
+                .newCall(GET("${IReaderExtensionConstants.REPO_URL}/index.min.json"))
+                .awaitSuccess()
+
+            with(json) {
+                response.parseAs<List<IReaderExtensionJsonObject>>()
+                    .mapNotNull { it.toExtensionOrNull() }
+            }
+        } catch (e: Throwable) {
+            logcat(LogPriority.ERROR, e) { "Failed to get IReader extensions" }
+            emptyList()
         }
     }
 
@@ -179,6 +200,32 @@ internal class ExtensionApi {
         return version.substringBeforeLast('.').toDouble()
     }
 
+    private fun IReaderExtensionJsonObject.toExtensionOrNull(): Extension.Available? {
+        val libVersion = version.substringBeforeLast('.', version).toDoubleOrNull() ?: return null
+        if (
+            libVersion < IReaderExtensionConstants.LIB_VERSION_MIN ||
+            libVersion > IReaderExtensionConstants.LIB_VERSION_MAX
+        ) {
+            return null
+        }
+        return Extension.Available(
+            name = name,
+            pkgName = pkg,
+            versionName = version,
+            versionCode = code,
+            libVersion = libVersion,
+            lang = lang,
+            isNsfw = nsfw,
+            signatureHash = IReaderExtensionConstants.SIGNATURE_HASH,
+            repoName = IReaderExtensionConstants.REPO_NAME,
+            sources = emptyList(),
+            apkName = apk,
+            iconUrl = "${IReaderExtensionConstants.REPO_URL}/icon/${apk.removeSuffix(".apk")}.png",
+            repoUrl = IReaderExtensionConstants.REPO_URL,
+            contentType = Extension.ContentType.NOVEL,
+        )
+    }
+
     // SY -->
     private fun Extension.isBlacklisted(
         blacklistEnabled: Boolean = sourcePreferences.enableSourceBlacklist().get(),
@@ -213,6 +260,19 @@ private data class ExtensionSourceJsonObject(
     val lang: String,
     val name: String,
     val baseUrl: String,
+)
+
+@Serializable
+private data class IReaderExtensionJsonObject(
+    val pkg: String,
+    val apk: String,
+    val name: String,
+    val id: Long,
+    val lang: String,
+    val code: Long,
+    val version: String,
+    val description: String = "",
+    val nsfw: Boolean = false,
 )
 
 private val extensionSourceMapper: (ExtensionSourceJsonObject) -> Extension.Available.Source = {
