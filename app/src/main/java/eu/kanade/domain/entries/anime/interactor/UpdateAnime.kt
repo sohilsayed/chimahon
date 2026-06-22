@@ -101,6 +101,10 @@ class UpdateAnime(
         return animeRepository.update(AnimeUpdate(id = animeId, coverLastModified = Instant.now().toEpochMilli()))
     }
 
+    suspend fun awaitUpdateBackgroundLastModified(animeId: Long): Boolean {
+        return animeRepository.update(AnimeUpdate(id = animeId, backgroundLastModified = Instant.now().toEpochMilli()))
+    }
+
     suspend fun awaitUpdateFavorite(animeId: Long, favorite: Boolean): Boolean {
         val dateAdded = when (favorite) {
             true -> Instant.now().toEpochMilli()

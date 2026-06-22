@@ -27,6 +27,8 @@ class SourcePreferences(
 
     fun incognitoExtensions() = preferenceStore.getStringSet("incognito_extensions", emptySet())
 
+    fun incognitoAnimeExtensions() = preferenceStore.getStringSet("incognito_anime_extensions", emptySet())
+
     fun pinnedSources() = preferenceStore.getStringSet(
         // KMK -->
         PINNED_SOURCES_PREF_KEY,

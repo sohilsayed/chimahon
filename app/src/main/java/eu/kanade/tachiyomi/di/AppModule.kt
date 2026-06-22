@@ -27,6 +27,8 @@ import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadProvider
 import eu.kanade.tachiyomi.data.cache.ChapterCache
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
+import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.data.connections.ConnectionsManager
@@ -230,6 +232,8 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { ChapterCache(app, get(), get()) }
 
         addSingletonFactory { CoverCache(app) }
+        addSingletonFactory { AnimeCoverCache(app) }
+        addSingletonFactory { AnimeBackgroundCache(app) }
         addSingletonFactory { PagePreviewCache(app) }
 
         addSingletonFactory { NetworkHelper(app, get(), isDebugBuildType) }

@@ -1,6 +1,8 @@
 package eu.kanade.domain.entries.anime.model
 
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
+import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.toUpdateStrategy
@@ -41,6 +43,7 @@ fun Anime.toSAnime(): SAnime = SAnime.create().also {
     it.genre = genre.orEmpty().joinToString()
     it.status = status.toInt()
     it.thumbnail_url = thumbnailUrl
+    it.background_url = backgroundUrl
     it.initialized = initialized
 }
 
@@ -50,6 +53,7 @@ fun Anime.copyFrom(other: SAnime): Anime {
     val author = other.author ?: ogAuthor
     val artist = other.artist ?: ogArtist
     val thumbnailUrl = other.thumbnail_url ?: ogThumbnailUrl
+    val backgroundUrl = other.background_url ?: backgroundUrl
     val description = other.description ?: ogDescription
     val genres = if (other.genre != null) {
         other.getGenres()
@@ -63,6 +67,7 @@ fun Anime.copyFrom(other: SAnime): Anime {
         ogAuthor = author,
         ogArtist = artist,
         ogThumbnailUrl = thumbnailUrl,
+        backgroundUrl = backgroundUrl,
         ogDescription = description,
         ogGenre = genres,
         // SY <--
@@ -82,6 +87,7 @@ fun SAnime.toDomainAnime(sourceId: Long): Anime {
         ogArtist = artist,
         ogAuthor = author,
         ogThumbnailUrl = thumbnail_url,
+        backgroundUrl = background_url,
         ogDescription = description,
         ogGenre = getGenres(),
         ogStatus = status.toLong(),
@@ -107,4 +113,12 @@ fun SAnime.titleOrUrl(): String {
 
 fun Anime.hasCustomCover(coverCache: CoverCache = Injekt.get()): Boolean {
     return coverCache.getCustomCoverFile(id).exists()
+}
+
+fun Anime.hasCustomCover(coverCache: AnimeCoverCache): Boolean {
+    return coverCache.getCustomCoverFile(id).exists()
+}
+
+fun Anime.hasCustomBackground(backgroundCache: AnimeBackgroundCache = Injekt.get()): Boolean {
+    return backgroundCache.getCustomBackgroundFile(id).exists()
 }

@@ -63,6 +63,15 @@ class AnimeExtensionManager(
         AnimeExtensionInstallReceiver(InstallationListener()).register(context)
     }
 
+    fun getExtensionPackageAsFlow(sourceId: Long): Flow<String?> {
+        return installedExtensionsFlow.map { extensions ->
+            extensions.find { extension ->
+                extension.sources.any { it.id == sourceId }
+            }
+                ?.pkgName
+        }
+    }
+
     fun getExtensionPackage(sourceId: Long): String? {
         return installedExtensionsFlow.value.find { extension ->
             extension.sources.any { it.id == sourceId }

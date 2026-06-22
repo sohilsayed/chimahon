@@ -10,7 +10,7 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.size.Size
 import eu.kanade.domain.entries.anime.interactor.UpdateAnime
-import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
@@ -35,7 +35,7 @@ class AnimeCoverScreenModel(
     private val animeId: Long,
     private val getAnime: GetAnime = Injekt.get(),
     private val imageSaver: ImageSaver = Injekt.get(),
-    private val coverCache: CoverCache = Injekt.get(),
+    private val coverCache: AnimeCoverCache = Injekt.get(),
     private val updateAnime: UpdateAnime = Injekt.get(),
 
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
