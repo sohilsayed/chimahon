@@ -10,6 +10,8 @@ import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import chimahon.DictionaryRepository
 import chimahon.audio.WordAudioPreferences
 import chimahon.audio.WordAudioService
+import chimahon.novel.manager.NovelSourceManager
+import chimahon.novel.model.NovelServerStorage
 import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
 import com.canopus.chimareader.data.NovelCategoryStorage
@@ -65,6 +67,8 @@ import tachiyomi.core.common.storage.UniFileTempFileManager
 import tachiyomi.data.Database
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.novel.NovelChapterRepositoryImpl
+import tachiyomi.data.novel.NovelRepositoryImpl
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.FetchTypeColumnAdapter
 import tachiyomi.data.History
@@ -75,6 +79,8 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.anime.AndroidAnimeDatabaseHandler
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.data.track.anime.AnimeTrackRepositoryImpl
+import tachiyomi.domain.novel.repository.NovelChapterRepository
+import tachiyomi.domain.novel.repository.NovelRepository
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
@@ -269,6 +275,10 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { EHentaiUpdateHelper(app) }
 
         addSingletonFactory { NovelCategoryStorage(app) }
+        addSingletonFactory { NovelServerStorage(app) }
+        addSingletonFactory { NovelSourceManager(get(), get()) }
+        addSingletonFactory<NovelRepository> { NovelRepositoryImpl(get()) }
+        addSingletonFactory<NovelChapterRepository> { NovelChapterRepositoryImpl(get()) }
         addSingletonFactory { DictionaryRepository(app.getExternalFilesDir(null)) }
         addSingletonFactory { TtuOAuthManager(app) }
         addSingletonFactory { SyncSettingsRepository(app) }
