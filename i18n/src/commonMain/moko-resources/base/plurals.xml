@@ -66,6 +66,11 @@
         <item quantity="other">%1$s episodes</item>
     </plurals>
 
+    <plurals name="anime_num_seasons">
+        <item quantity="one">%1$s season</item>
+        <item quantity="other">%1$s seasons</item>
+    </plurals>
+
     <plurals name="download_amount_episodes">
         <item quantity="one">Next episode</item>
         <item quantity="other">Next %d episodes</item>

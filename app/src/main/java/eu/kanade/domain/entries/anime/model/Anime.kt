@@ -34,6 +34,75 @@ fun Anime.forceDownloaded(): Boolean {
     return favorite && Injekt.get<BasePreferences>().downloadedOnly().get()
 }
 
+val Anime.seasonDownloadedFilter: TriState
+    get() {
+        if (forceDownloaded()) return TriState.ENABLED_IS
+        return when (seasonFlags and Anime.SEASON_DOWNLOADED_MASK) {
+            Anime.SEASON_SHOW_DOWNLOADED -> TriState.ENABLED_IS
+            Anime.SEASON_SHOW_NOT_DOWNLOADED -> TriState.ENABLED_NOT
+            else -> TriState.DISABLED
+        }
+    }
+
+val Anime.seasonUnseenFilter: TriState
+    get() = when (seasonFlags and Anime.SEASON_UNSEEN_MASK) {
+        Anime.SEASON_SHOW_UNSEEN -> TriState.ENABLED_IS
+        Anime.SEASON_SHOW_SEEN -> TriState.ENABLED_NOT
+        else -> TriState.DISABLED
+    }
+
+val Anime.seasonStartedFilter: TriState
+    get() = when (seasonFlags and Anime.SEASON_STARTED_MASK) {
+        Anime.SEASON_SHOW_STARTED -> TriState.ENABLED_IS
+        Anime.SEASON_SHOW_NOT_STARTED -> TriState.ENABLED_NOT
+        else -> TriState.DISABLED
+    }
+
+val Anime.seasonCompletedFilter: TriState
+    get() = when (seasonFlags and Anime.SEASON_COMPLETED_MASK) {
+        Anime.SEASON_SHOW_COMPLETED -> TriState.ENABLED_IS
+        Anime.SEASON_SHOW_NOT_COMPLETED -> TriState.ENABLED_NOT
+        else -> TriState.DISABLED
+    }
+
+val Anime.seasonBookmarkedFilter: TriState
+    get() = when (seasonFlags and Anime.SEASON_BOOKMARKED_MASK) {
+        Anime.SEASON_SHOW_BOOKMARKED -> TriState.ENABLED_IS
+        Anime.SEASON_SHOW_NOT_BOOKMARKED -> TriState.ENABLED_NOT
+        else -> TriState.DISABLED
+    }
+
+val Anime.seasonFillermarkedFilter: TriState
+    get() = when (seasonFlags and Anime.SEASON_FILLERMARKED_MASK) {
+        Anime.SEASON_SHOW_FILLERMARKED -> TriState.ENABLED_IS
+        Anime.SEASON_SHOW_NOT_FILLERMARKED -> TriState.ENABLED_NOT
+        else -> TriState.DISABLED
+    }
+
+val Anime.seasonDownloadedOverlay: Boolean
+    get() = seasonFlags and Anime.SEASON_OVERLAY_DOWNLOADED_MASK != 0L
+
+val Anime.seasonUnseenOverlay: Boolean
+    get() = seasonFlags and Anime.SEASON_OVERLAY_UNSEEN_MASK != 0L
+
+val Anime.seasonLocalOverlay: Boolean
+    get() = seasonFlags and Anime.SEASON_OVERLAY_LOCAL_MASK != 0L
+
+val Anime.seasonLangOverlay: Boolean
+    get() = seasonFlags and Anime.SEASON_OVERLAY_LANG_MASK != 0L
+
+val Anime.seasonContinueOverlay: Boolean
+    get() = seasonFlags and Anime.SEASON_OVERLAY_CONT_MASK != 0L
+
+fun Anime.seasonsFiltered(): Boolean {
+    return seasonDownloadedFilter != TriState.DISABLED ||
+        seasonUnseenFilter != TriState.DISABLED ||
+        seasonStartedFilter != TriState.DISABLED ||
+        seasonCompletedFilter != TriState.DISABLED ||
+        seasonBookmarkedFilter != TriState.DISABLED ||
+        seasonFillermarkedFilter != TriState.DISABLED
+}
+
 fun Anime.toSAnime(): SAnime = SAnime.create().also {
     it.url = url
     it.title = title

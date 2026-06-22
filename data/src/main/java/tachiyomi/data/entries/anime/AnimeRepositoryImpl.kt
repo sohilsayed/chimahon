@@ -9,6 +9,7 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeUpdate
+import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.library.model.LibraryAnime
 import java.time.LocalDate
@@ -192,6 +193,28 @@ class AnimeRepositoryImpl(
                 )
             }
         }
+    }
+
+    override suspend fun getAnimeSeasonsById(parentId: Long): List<SeasonAnime> {
+        return handler.awaitList { animeseasonsViewQueries.getAnimeSeasonsById(parentId, AnimeMapper::mapSeasonAnime) }
+    }
+
+    override fun getAnimeSeasonsByIdAsFlow(parentId: Long): Flow<List<SeasonAnime>> {
+        return handler.subscribeToList {
+            animeseasonsViewQueries.getAnimeSeasonsById(parentId, AnimeMapper::mapSeasonAnime)
+        }
+    }
+
+    override suspend fun removeParentIdByIds(animeIds: List<Long>) {
+        try {
+            handler.await { animesQueries.removeParentIdByIds(animeIds) }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+        }
+    }
+
+    override suspend fun getChildrenByParentId(parentId: Long): List<Anime> {
+        return handler.awaitList { animesQueries.getChildrenByParentId(parentId, AnimeMapper::mapAnime) }
     }
 
     // SY -->

@@ -80,6 +80,7 @@ import com.mikepenz.markdown.model.markdownAnnotatorConfig
 import eu.kanade.presentation.entries.anime.components.MarkdownRender
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.tachiyomi.R
+import eu.kanade.presentation.entries.components.DotSeparatorText
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.domain.entries.anime.model.Anime

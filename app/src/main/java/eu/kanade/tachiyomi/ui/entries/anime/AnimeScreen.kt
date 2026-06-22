@@ -31,6 +31,7 @@ import eu.kanade.presentation.entries.anime.AnimeScreen
 import eu.kanade.presentation.entries.anime.DuplicateAnimeDialog
 import eu.kanade.presentation.entries.EditCoverAction
 import eu.kanade.presentation.entries.anime.EpisodeSettingsDialog
+import eu.kanade.presentation.entries.anime.SeasonSettingsDialog
 import eu.kanade.presentation.entries.anime.components.AnimeCoverDialog
 import eu.kanade.presentation.entries.anime.components.DeleteEpisodesDialog
 import eu.kanade.presentation.entries.anime.components.SetIntervalDialog
@@ -146,6 +147,19 @@ class AnimeScreen(
             },
             onTagSearch = { navigator.push(GlobalAnimeSearchScreen(it)) },
             onFilterButtonClicked = screenModel::showSettingsDialog,
+            onSeasonClicked = { navigator.push(AnimeScreen(it.anime.id, true)) },
+            onContinueWatchingClicked = { season ->
+                scope.launchIO {
+                    val episode = screenModel.getNextUnseenEpisode(season)
+                    if (episode != null) {
+                        openEpisode(
+                            context = context,
+                            episode = episode,
+                            useExternalPlayer = screenModel.alwaysUseExternalPlayer,
+                        )
+                    }
+                }
+            },
             onRefresh = screenModel::fetchAllFromSource,
             onContinueWatching = {
                 scope.launchIO {
@@ -224,6 +238,28 @@ class AnimeScreen(
                     onSortModeChanged = screenModel::setSorting,
                     onDisplayModeChanged = screenModel::setDisplayMode,
                     onSetAsDefault = screenModel::setCurrentSettingsAsDefault,
+                )
+            }
+            AnimeScreenModel.Dialog.SeasonSettings -> {
+                SeasonSettingsDialog(
+                    onDismissRequest = onDismissRequest,
+                    anime = successState.anime,
+                    onDownloadFilterChanged = screenModel::setSeasonDownloadedFilter,
+                    onUnseenFilterChanged = screenModel::setSeasonUnseenFilter,
+                    onStartedFilterChanged = screenModel::setSeasonStartedFilter,
+                    onCompletedFilterChanged = screenModel::setSeasonCompletedFilter,
+                    onBookmarkedFilterChanged = screenModel::setSeasonBookmarkedFilter,
+                    onFillermarkedFilterChanged = screenModel::setSeasonFillermarkedFilter,
+                    onSortModeChanged = screenModel::setSeasonSorting,
+                    onDisplayGridModeChanged = screenModel::setSeasonDisplayGridMode,
+                    onDisplayGridSizeChanged = screenModel::setSeasonDisplayGridSize,
+                    onOverlayDownloadedChanged = screenModel::setSeasonDownloadedOverlay,
+                    onOverlayUnseenChanged = screenModel::setSeasonUnseenOverlay,
+                    onOverlayLocalChanged = screenModel::setSeasonLocalOverlay,
+                    onOverlayLangChanged = screenModel::setSeasonLangOverlay,
+                    onOverlayContinueChanged = screenModel::setSeasonContinueOverlay,
+                    onDisplayModeChanged = screenModel::setSeasonDisplayMode,
+                    onSetAsDefault = screenModel::setSeasonSettingsAsDefault,
                 )
             }
             AnimeScreenModel.Dialog.FullCover -> {

@@ -1,4 +1,4 @@
-package eu.kanade.presentation.entries.anime.components
+package eu.kanade.presentation.entries.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import eu.kanade.tachiyomi.animesource.model.FetchType
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.SECONDARY_ALPHA
 import tachiyomi.presentation.core.components.material.padding
@@ -18,12 +19,14 @@ import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
-fun EpisodeHeader(
+fun ItemHeader(
     enabled: Boolean,
-    episodeCount: Int?,
-    missingEpisodeCount: Int,
+    itemCount: Int?,
+    missingItemsCount: Int,
     onClick: () -> Unit,
+    isManga: Boolean,
     modifier: Modifier = Modifier,
+    fetchType: FetchType = FetchType.Episodes,
 ) {
     Column(
         modifier = modifier
@@ -36,21 +39,30 @@ fun EpisodeHeader(
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
     ) {
         Text(
-            text = if (episodeCount == null) {
-                stringResource(MR.strings.episodes)
+            text = if (itemCount == null) {
+                val count = if (isManga) MR.strings.chapters else MR.strings.episodes
+                stringResource(count)
             } else {
-                pluralStringResource(MR.plurals.anime_num_episodes, count = episodeCount, episodeCount)
+                val pluralCount = if (isManga) {
+                    MR.plurals.manga_num_chapters
+                } else {
+                    when (fetchType) {
+                        FetchType.Seasons -> MR.plurals.anime_num_seasons
+                        FetchType.Episodes -> MR.plurals.anime_num_episodes
+                    }
+                }
+                pluralStringResource(pluralCount, count = itemCount, itemCount)
             },
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
         )
 
-        MissingEpisodesWarning(missingEpisodeCount)
+        MissingItemsWarning(missingItemsCount)
     }
 }
 
 @Composable
-private fun MissingEpisodesWarning(count: Int) {
+private fun MissingItemsWarning(count: Int) {
     if (count == 0) {
         return
     }

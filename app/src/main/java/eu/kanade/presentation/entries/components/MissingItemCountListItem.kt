@@ -1,4 +1,4 @@
-package eu.kanade.presentation.entries.anime.components
+package eu.kanade.presentation.entries.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -18,7 +18,7 @@ import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.util.secondaryItemAlpha
 
 @Composable
-fun MissingEpisodeCountListItem(
+fun MissingItemCountListItem(
     count: Int,
     modifier: Modifier = Modifier,
 ) {
@@ -46,7 +46,7 @@ fun MissingEpisodeCountListItem(
 private fun Preview() {
     TachiyomiPreviewTheme {
         Surface {
-            MissingEpisodeCountListItem(count = 42)
+            MissingItemCountListItem(count = 42)
         }
     }
 }

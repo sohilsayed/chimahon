@@ -3,21 +3,54 @@ package eu.kanade.tachiyomi.ui.browse
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.Tab as M3Tab
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.zIndex
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.ui.UiPreferences
-import eu.kanade.presentation.components.TabbedScreen
+import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.AppBarActions
+import eu.kanade.presentation.components.BulkSelectionToolbar
+import eu.kanade.presentation.components.SearchToolbar
+import eu.kanade.presentation.components.TabContent
+import tachiyomi.presentation.core.components.material.TabText
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
@@ -25,6 +58,7 @@ import eu.kanade.tachiyomi.data.connections.discord.DiscordScreen
 import eu.kanade.tachiyomi.ui.browse.animeextension.AnimeExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.animeextension.animeExtensionsTab
 import eu.kanade.tachiyomi.ui.browse.animesource.animeSourcesTab
+import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.GlobalAnimeSearchScreen
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.extension.extensionsTab
 import eu.kanade.tachiyomi.ui.browse.feed.FeedScreenModel
@@ -33,13 +67,17 @@ import eu.kanade.tachiyomi.ui.browse.migration.sources.migrateSourceTab
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.browse.source.sourcesTab
 import eu.kanade.tachiyomi.ui.main.MainActivity
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -71,6 +109,7 @@ data object BrowseTab : Tab {
 
     @Composable
     override fun Content() {
+        val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         // SY -->
@@ -90,14 +129,19 @@ data object BrowseTab : Tab {
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
         // KMK <--
 
+        val feedState by feedScreenModel.state.collectAsState()
+        val bulkFavoriteState by bulkFavoriteScreenModel.state.collectAsState()
+
+        val snackbarHostState = remember { SnackbarHostState() }
+
+        var isAnimeMode by rememberSaveable { mutableStateOf(false) }
+
         // SY -->
-        val tabs = when {
+        val mangaTabs = when {
             hideFeedTab ->
                 persistentListOf(
                     sourcesTab(),
                     extensionsTab(extensionsScreenModel),
-                    animeSourcesTab(),
-                    animeExtensionsTab(animeExtensionsScreenModel),
                     migrateSourceTab(),
                 )
 
@@ -111,8 +155,6 @@ data object BrowseTab : Tab {
                     ),
                     sourcesTab(),
                     extensionsTab(extensionsScreenModel),
-                    animeSourcesTab(),
-                    animeExtensionsTab(animeExtensionsScreenModel),
                     migrateSourceTab(),
                 )
 
@@ -126,47 +168,157 @@ data object BrowseTab : Tab {
                         // KMK <--
                     ),
                     extensionsTab(extensionsScreenModel),
-                    animeSourcesTab(),
-                    animeExtensionsTab(animeExtensionsScreenModel),
                     migrateSourceTab(),
                 )
         }
         // SY <--
 
-        val state = rememberPagerState { tabs.size }
-
-        val currentTabTitleRes = tabs.getOrNull(state.currentPage)?.titleRes
-        val searchQuery = when (currentTabTitleRes) {
-            MR.strings.label_anime_extensions -> animeExtensionsState.searchQuery
-            MR.strings.label_extensions -> extensionsState.searchQuery
-            else -> null
-        }
-        val onChangeSearchQuery: (String?) -> Unit = when (currentTabTitleRes) {
-            MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
-            MR.strings.label_extensions -> extensionsScreenModel::search
-            else -> { _ -> }
-        }
-        TabbedScreen(
-            titleRes = MR.strings.browse,
-            tabs = tabs,
-            state = state,
-            searchQuery = searchQuery,
-            onChangeSearchQuery = onChangeSearchQuery,
-            // KMK -->
-            feedScreenModel = feedScreenModel,
-            bulkFavoriteScreenModel = bulkFavoriteScreenModel,
-            // KMK <--
+        val animeTabs: ImmutableList<TabContent> = persistentListOf(
+            animeSourcesTab(),
+            animeExtensionsTab(animeExtensionsScreenModel),
         )
-        LaunchedEffect(Unit) {
-            switchToExtensionTabChannel.receiveAsFlow()
-                .collectLatest {
-                    val extensionsIndex = tabs.indexOfFirst { tab ->
-                        tab.titleRes == MR.strings.label_extensions
+
+        val currentTabs = if (isAnimeMode) animeTabs else mangaTabs
+
+        key(isAnimeMode) {
+            val pagerState = rememberPagerState { currentTabs.size }
+
+            val currentTab = currentTabs.getOrNull(pagerState.currentPage)
+            val searchEnabled = currentTab?.searchEnabled ?: false
+
+            val searchQuery: String? = when {
+                isAnimeMode && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsState.searchQuery
+                !isAnimeMode && currentTab?.titleRes == MR.strings.label_extensions -> extensionsState.searchQuery
+                else -> null
+            }
+            val onChangeSearchQuery: (String?) -> Unit = when {
+                isAnimeMode && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
+                !isAnimeMode && currentTab?.titleRes == MR.strings.label_extensions -> extensionsScreenModel::search
+                else -> { _ -> }
+            }
+
+            Scaffold(
+                topBar = {
+                    if (bulkFavoriteState.selectionMode) {
+                        BulkSelectionToolbar(
+                            selectedCount = bulkFavoriteState.selection.size,
+                            isRunning = bulkFavoriteState.isRunning,
+                            onClickClearSelection = bulkFavoriteScreenModel::toggleSelectionMode,
+                            onChangeCategoryClick = bulkFavoriteScreenModel::addFavorite,
+                            onSelectAll = {
+                                feedState.items?.let { result ->
+                                    result.mapNotNull { it.results }
+                                        .flatten()
+                                        .forEach { bulkFavoriteScreenModel.select(it) }
+                                }
+                            },
+                            onReverseSelection = {
+                                feedState.items?.let { result ->
+                                    result.mapNotNull { it.results }
+                                        .flatten()
+                                        .let { bulkFavoriteScreenModel.reverseSelection(it) }
+                                }
+                            },
+                        )
+                    } else {
+                        SearchToolbar(
+                            titleContent = {
+                                SingleChoiceSegmentedButtonRow {
+                                    SegmentedButton(
+                                        selected = !isAnimeMode,
+                                        onClick = { isAnimeMode = false },
+                                        shape = SegmentedButtonDefaults.itemShape(
+                                                            index = 0,
+                                                            count = 2,
+                                        ),
+                                    ) {
+                                        Text(stringResource(MR.strings.label_library))
+                                    }
+                                    SegmentedButton(
+                                        selected = isAnimeMode,
+                                        onClick = { isAnimeMode = true },
+                                        shape = SegmentedButtonDefaults.itemShape(
+                                                            index = 1,
+                                                            count = 2,
+                                        ),
+                                    ) {
+                                        Text(stringResource(MR.strings.label_anime))
+                                    }
+                                }
+                            },
+                            searchEnabled = searchEnabled,
+                            searchQuery = if (searchEnabled) searchQuery else null,
+                            onChangeSearchQuery = onChangeSearchQuery,
+                            actions = {
+                                AppBarActions(
+                                    persistentListOf(
+                                        AppBar.Action(
+                                            title = stringResource(MR.strings.action_global_search),
+                                            icon = Icons.Outlined.TravelExplore,
+                                            onClick = {
+                                                if (isAnimeMode) {
+                                                    navigator.push(GlobalAnimeSearchScreen())
+                                                } else {
+                                                    navigator.push(GlobalSearchScreen())
+                                                }
+                                            },
+                                        ),
+                                    ).let { globalActions ->
+                                        val tabActions = currentTab?.actions.orEmpty()
+                                        (globalActions + tabActions).toImmutableList()
+                                    },
+                                )
+                            },
+                        )
                     }
-                    if (extensionsIndex >= 0) {
-                        state.scrollToPage(extensionsIndex)
+                },
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+            ) { contentPadding ->
+                Column(
+                    modifier = Modifier.padding(
+                        top = contentPadding.calculateTopPadding(),
+                        start = contentPadding.calculateStartPadding(LocalLayoutDirection.current),
+                        end = contentPadding.calculateEndPadding(LocalLayoutDirection.current),
+                    ),
+                ) {
+                    PrimaryTabRow(
+                        selectedTabIndex = pagerState.currentPage,
+                        modifier = Modifier.zIndex(1f),
+                    ) {
+                        currentTabs.forEachIndexed { index, tab ->
+                            M3Tab(
+                                selected = pagerState.currentPage == index,
+                                onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                                text = { TabText(text = stringResource(tab.titleRes), badgeCount = tab.badgeNumber) },
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+
+                    HorizontalPager(
+                        modifier = Modifier.fillMaxSize(),
+                        state = pagerState,
+                        verticalAlignment = Alignment.Top,
+                    ) { page ->
+                        currentTabs[page].content(
+                            PaddingValues(bottom = contentPadding.calculateBottomPadding()),
+                            snackbarHostState,
+                        )
                     }
                 }
+            }
+
+            LaunchedEffect(Unit) {
+                switchToExtensionTabChannel.receiveAsFlow()
+                    .collectLatest {
+                        val extensionsIndex = currentTabs.indexOfFirst { tab ->
+                            tab.titleRes == MR.strings.label_extensions
+                        }
+                        if (extensionsIndex >= 0) {
+                            pagerState.scrollToPage(extensionsIndex)
+                        }
+                    }
+            }
         }
 
         LaunchedEffect(Unit) {
