@@ -7,7 +7,7 @@ import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.anime.model.applyFilter
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.service.getEpisodeSort
-import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.entries.anime.isLocal
 
 /**
  * Applies the view filters to the list of episodes obtained from the database.

@@ -46,6 +46,7 @@ fun Anime.toSAnime(): SAnime = SAnime.create().also {
 
 fun Anime.copyFrom(other: SAnime): Anime {
     // SY -->
+    val title = other.titleOrUrl().ifBlank { ogTitle }
     val author = other.author ?: ogAuthor
     val artist = other.artist ?: ogArtist
     val thumbnailUrl = other.thumbnail_url ?: ogThumbnailUrl
@@ -58,6 +59,7 @@ fun Anime.copyFrom(other: SAnime): Anime {
     // SY <--
     return this.copy(
         // SY -->
+        ogTitle = title,
         ogAuthor = author,
         ogArtist = artist,
         ogThumbnailUrl = thumbnailUrl,
@@ -68,7 +70,7 @@ fun Anime.copyFrom(other: SAnime): Anime {
         ogStatus = other.status.toLong(),
         // SY <--
         updateStrategy = other.update_strategy.toUpdateStrategy(),
-        initialized = other.initialized && initialized,
+        initialized = other.initialized,
     )
 }
 
@@ -76,7 +78,7 @@ fun SAnime.toDomainAnime(sourceId: Long): Anime {
     return Anime.create().copy(
         url = url,
         // SY -->
-        ogTitle = title,
+        ogTitle = titleOrUrl(),
         ogArtist = artist,
         ogAuthor = author,
         ogThumbnailUrl = thumbnail_url,
@@ -88,6 +90,19 @@ fun SAnime.toDomainAnime(sourceId: Long): Anime {
         initialized = initialized,
         source = sourceId,
     )
+}
+
+fun SAnime.titleOrUrl(): String {
+    val sourceTitle = runCatching { title.trim() }.getOrDefault("")
+    if (sourceTitle.isNotBlank()) return sourceTitle
+
+    val sourceUrl = runCatching { url.trim() }.getOrDefault("")
+    return sourceUrl
+        .substringBefore('?')
+        .trimEnd('/', '\\')
+        .substringAfterLast('/')
+        .substringAfterLast('\\')
+        .ifBlank { sourceUrl.ifBlank { "Unknown anime" } }
 }
 
 fun Anime.hasCustomCover(coverCache: CoverCache = Injekt.get()): Boolean {

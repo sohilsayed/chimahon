@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.animesource.browse
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.anime.model.titleOrUrl
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -41,7 +42,7 @@ class BrowseAnimeSourceScreenModel(
     private var browseJob: Job? = null
 
     fun loadFeed() {
-        loadPopular()
+        loadSourceFeed()
     }
 
     fun loadSourceFeed() {
@@ -81,11 +82,17 @@ class BrowseAnimeSourceScreenModel(
     }
 
     fun loadPopular() {
-        loadListing(Listing.Popular)
+        loadListing(
+            listing = Listing.Popular,
+            filters = source?.getFilterList() ?: AnimeFilterList(),
+        )
     }
 
     fun loadLatest() {
-        loadListing(Listing.Latest)
+        loadListing(
+            listing = Listing.Latest,
+            filters = source?.getFilterList() ?: AnimeFilterList(),
+        )
     }
 
     fun search(query: String, filters: AnimeFilterList = state.value.filters) {
@@ -201,14 +208,14 @@ class BrowseAnimeSourceScreenModel(
             val anime = Anime.create().copy(
                 source = sourceId,
                 url = sAnime.url,
-                ogTitle = sAnime.title,
+                ogTitle = sAnime.titleOrUrl(),
                 ogArtist = sAnime.artist,
                 ogAuthor = sAnime.author,
                 ogDescription = sAnime.description,
                 ogGenre = sAnime.getGenres(),
                 ogThumbnailUrl = sAnime.thumbnail_url,
                 ogStatus = sAnime.status.toLong(),
-                initialized = true,
+                initialized = sAnime.initialized,
             )
             val id = animeRepository.insert(anime)!!
             withUIContext { onAdded(id) }

@@ -80,7 +80,12 @@ import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.anime.repository.AnimeTrackRepository
 import tachiyomi.mi.data.AnimeDatabase
 import tachiyomi.source.local.image.LocalCoverManager
+import tachiyomi.source.local.image.anime.LocalAnimeBackgroundManager
+import tachiyomi.source.local.image.anime.LocalAnimeCoverManager
+import tachiyomi.source.local.image.anime.LocalEpisodeThumbnailManager
 import tachiyomi.source.local.io.LocalSourceFileSystem
+import tachiyomi.source.local.io.anime.LocalAnimeSourceFileSystem
+import tachiyomi.source.local.entries.anime.LocalAnimeFetchTypeManager
 import dataanime.Animehistory
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
@@ -252,6 +257,11 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { LocalSourceFileSystem(get()) }
         addSingletonFactory { LocalCoverManager(app, get()) }
+        addSingletonFactory { LocalAnimeSourceFileSystem(get()) }
+        addSingletonFactory { LocalAnimeCoverManager(app, get()) }
+        addSingletonFactory { LocalAnimeBackgroundManager(app, get()) }
+        addSingletonFactory { LocalEpisodeThumbnailManager(app, get()) }
+        addSingletonFactory { LocalAnimeFetchTypeManager(get()) }
         addSingletonFactory { UniFileTempFileManager(app) }
 
         addSingletonFactory { StorageManager(app, get()) }

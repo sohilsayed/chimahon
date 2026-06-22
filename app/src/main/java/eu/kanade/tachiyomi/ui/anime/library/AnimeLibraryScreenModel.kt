@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.anime.library
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.animesource.model.SAnime
-import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
+import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
@@ -45,7 +45,7 @@ class AnimeLibraryScreenModel(
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
     private val preferences: AnimeLibraryPreferences = Injekt.get(),
     private val sourceManager: AnimeSourceManager = Injekt.get(),
-    private val downloadCache: AnimeDownloadCache = Injekt.get(),
+    private val downloadManager: AnimeDownloadManager = Injekt.get(),
 ) : StateScreenModel<AnimeLibraryScreenModel.State>(State()) {
 
     private val searchQueryFlow = MutableStateFlow<String?>(null)
@@ -82,7 +82,7 @@ class AnimeLibraryScreenModel(
                 val items = libraryAnime.map { anime ->
                     AnimeLibraryItem(
                         libraryAnime = anime,
-                        downloadCount = downloadCache.getDownloadCount(anime.anime).toLong(),
+                        downloadCount = downloadManager.getDownloadCount(anime.anime).toLong(),
                         unseenCount = anime.unseenCount,
                         isLocal = anime.anime.source == LOCAL_SOURCE_ID,
                         sourceLanguage = sourceManager.getOrStub(anime.anime.source).lang,

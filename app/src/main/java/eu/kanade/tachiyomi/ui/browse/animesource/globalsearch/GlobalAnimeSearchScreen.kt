@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.anime.model.titleOrUrl
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
@@ -207,7 +208,7 @@ private fun AnimeSearchCard(
                 .clip(RoundedCornerShape(4.dp)),
         )
         Text(
-            text = anime.title,
+            text = anime.titleOrUrl(),
             style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,

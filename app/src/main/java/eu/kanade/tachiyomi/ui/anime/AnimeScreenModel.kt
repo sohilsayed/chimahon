@@ -100,8 +100,7 @@ import tachiyomi.domain.animesource.model.StubAnimeSource
 import tachiyomi.domain.storage.service.StoragePreferences
 import tachiyomi.domain.track.anime.repository.AnimeTrackRepository
 import tachiyomi.i18n.MR
-import tachiyomi.source.local.LocalSource
-import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.entries.anime.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.Calendar
@@ -251,7 +250,6 @@ class AnimeScreenModel(
             }
             // Start observe tracking since it only needs animeId
             observeTrackers()
-            screenModelScope.launchIO { fetchRelatedAnimeFromSource() }
 
             // Fetch info-episodes when needed
             if (screenModelScope.isActive) {
@@ -261,6 +259,7 @@ class AnimeScreenModel(
                 )
                 fetchFromSourceTasks.awaitAll()
             }
+            fetchRelatedAnimeFromSource()
 
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
@@ -275,6 +274,8 @@ class AnimeScreenModel(
                 async { fetchEpisodesFromSource(manualFetch) },
             )
             fetchFromSourceTasks.awaitAll()
+            updateSuccessState { it.copy(relatedAnimeCollection = null) }
+            fetchRelatedAnimeFromSource()
             updateSuccessState { it.copy(isRefreshingData = false) }
             successState?.let { updateAiringTime(it.anime, it.trackItems, manualFetch) }
         }

@@ -11,3 +11,12 @@ object Archive {
         return file.extension?.lowercase() in SUPPORTED_ARCHIVE_TYPES
     }
 }
+
+object ArchiveAnime {
+
+    private val SUPPORTED_VIDEO_TYPES = setOf("avi", "flv", "mkv", "mov", "mp4", "webm", "wmv")
+
+    fun isSupported(file: UniFile): Boolean {
+        return file.extension?.lowercase() in SUPPORTED_VIDEO_TYPES
+    }
+}

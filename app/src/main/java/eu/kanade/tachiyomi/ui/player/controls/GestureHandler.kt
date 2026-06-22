@@ -17,6 +17,7 @@
 
 package eu.kanade.tachiyomi.ui.player.controls
 
+import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -66,7 +67,10 @@ import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import `is`.xyz.mpv.MPVLib
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -121,70 +125,107 @@ fun GestureHandler(
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeGestures)
             .pointerInput(Unit) {
-                val originalSpeed = viewModel.playbackSpeed.value
-                detectTapGestures(
-                    onTap = {
-                        if (onSubtitleTap(it.x, it.y, size.width, size.height)) {
-                            return@detectTapGestures
-                        }
-                        if (controlsShown) viewModel.hideControls() else viewModel.showControls()
-                    },
-                    onDoubleTap = {
-                        if (areControlsLocked || isDoubleTapSeeking) return@detectTapGestures
-                        if (it.x > size.width * 3 / 5) {
-                            if (!isSeekingForwards) viewModel.updateSeekAmount(0)
-                            viewModel.handleRightDoubleTap()
-                            isDoubleTapSeeking = true
-                        } else if (it.x < size.width * 2 / 5) {
-                            if (isSeekingForwards) viewModel.updateSeekAmount(0)
-                            viewModel.handleLeftDoubleTap()
-                            isDoubleTapSeeking = true
-                        } else {
-                            viewModel.handleCenterDoubleTap()
-                        }
-                    },
-                    onPress = {
-                        if (panelShown != Panels.None && !allowGesturesInPanels) {
-                            viewModel.panelShown.update { Panels.None }
-                        }
-                        val press = PressInteraction.Press(
-                            it.copy(x = if (it.x > size.width * 3 / 5) it.x - size.width * 0.6f else it.x),
-                        )
-                        if (!areControlsLocked && isDoubleTapSeeking && seekAmount != 0) {
-                            if (it.x > size.width * 3 / 5) {
-                                if (!isSeekingForwards) viewModel.updateSeekAmount(0)
-                                viewModel.handleRightDoubleTap()
-                            } else if (it.x < size.width * 2 / 5) {
-                                if (isSeekingForwards) viewModel.updateSeekAmount(0)
-                                viewModel.handleLeftDoubleTap()
-                            } else {
-                                viewModel.handleCenterDoubleTap()
-                            }
-                        } else {
-                            isDoubleTapSeeking = false
-                        }
-                        interactionSource.emit(press)
-                        tryAwaitRelease()
-                        if (isLongPressing) {
-                            isLongPressing = false
-                            MPVLib.setPropertyDouble("speed", originalSpeed.toDouble())
-                            viewModel.playerUpdate.update { PlayerUpdates.None }
-                        }
-                        interactionSource.emit(PressInteraction.Release(press))
-                    },
-                    onLongPress = {
-                        if (areControlsLocked) return@detectTapGestures
-                        if (!isLongPressing) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (onSubtitleLongPress(it.x, it.y, size.width, size.height)) {
+                coroutineScope {
+                    val originalSpeed = viewModel.playbackSpeed.value
+                    var pendingSingleTap: Job? = null
+                    var lastTapAt = 0L
+                    var lastTapX = 0f
+                    var lastTapY = 0f
+                    val doubleTapWindowMillis = 220L
+                    val doubleTapDistance = viewConfiguration.touchSlop * 4
+
+                    detectTapGestures(
+                        onTap = { position ->
+                            if (onSubtitleTap(position.x, position.y, size.width, size.height)) {
+                                pendingSingleTap?.cancel()
+                                lastTapAt = 0L
                                 return@detectTapGestures
                             }
-                            isLongPressing = true
-                            viewModel.pause()
-                            viewModel.sheetShown.update { Sheets.Screenshot }
-                        }
-                    },
-                )
+
+                            val now = SystemClock.uptimeMillis()
+                            val isNearby = kotlin.math.abs(position.x - lastTapX) <= doubleTapDistance &&
+                                kotlin.math.abs(position.y - lastTapY) <= doubleTapDistance
+                            val isDoubleTap = lastTapAt > 0L &&
+                                now - lastTapAt <= doubleTapWindowMillis &&
+                                isNearby
+
+                            if (isDoubleTap) {
+                                pendingSingleTap?.cancel()
+                                lastTapAt = 0L
+                                if (areControlsLocked || isDoubleTapSeeking) return@detectTapGestures
+                                if (position.x > size.width * 3 / 5) {
+                                    if (!isSeekingForwards) viewModel.updateSeekAmount(0)
+                                    viewModel.handleRightDoubleTap()
+                                    isDoubleTapSeeking = true
+                                } else if (position.x < size.width * 2 / 5) {
+                                    if (isSeekingForwards) viewModel.updateSeekAmount(0)
+                                    viewModel.handleLeftDoubleTap()
+                                    isDoubleTapSeeking = true
+                                } else {
+                                    viewModel.handleCenterDoubleTap()
+                                }
+                            } else {
+                                lastTapAt = now
+                                lastTapX = position.x
+                                lastTapY = position.y
+                                pendingSingleTap = launch {
+                                    delay(doubleTapWindowMillis)
+                                    if (lastTapAt == now) {
+                                        lastTapAt = 0L
+                                        if (viewModel.controlsShown.value) {
+                                            viewModel.hideControls()
+                                        } else {
+                                            viewModel.showControls()
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        onPress = {
+                            if (panelShown != Panels.None && !allowGesturesInPanels) {
+                                viewModel.panelShown.update { Panels.None }
+                            }
+                            val press = PressInteraction.Press(
+                                it.copy(x = if (it.x > size.width * 3 / 5) it.x - size.width * 0.6f else it.x),
+                            )
+                            if (!areControlsLocked && isDoubleTapSeeking && seekAmount != 0) {
+                                if (it.x > size.width * 3 / 5) {
+                                    if (!isSeekingForwards) viewModel.updateSeekAmount(0)
+                                    viewModel.handleRightDoubleTap()
+                                } else if (it.x < size.width * 2 / 5) {
+                                    if (isSeekingForwards) viewModel.updateSeekAmount(0)
+                                    viewModel.handleLeftDoubleTap()
+                                } else {
+                                    viewModel.handleCenterDoubleTap()
+                                }
+                            } else {
+                                isDoubleTapSeeking = false
+                            }
+                            interactionSource.emit(press)
+                            tryAwaitRelease()
+                            if (isLongPressing) {
+                                isLongPressing = false
+                                MPVLib.setPropertyDouble("speed", originalSpeed.toDouble())
+                                viewModel.playerUpdate.update { PlayerUpdates.None }
+                            }
+                            interactionSource.emit(PressInteraction.Release(press))
+                        },
+                        onLongPress = {
+                            pendingSingleTap?.cancel()
+                            lastTapAt = 0L
+                            if (areControlsLocked) return@detectTapGestures
+                            if (!isLongPressing) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (onSubtitleLongPress(it.x, it.y, size.width, size.height)) {
+                                    return@detectTapGestures
+                                }
+                                isLongPressing = true
+                                viewModel.pause()
+                                viewModel.sheetShown.update { Sheets.Screenshot }
+                            }
+                        },
+                    )
+                }
             }
             .pointerInput(areControlsLocked) {
                 if (!seekGesture || areControlsLocked) return@pointerInput

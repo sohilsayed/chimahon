@@ -17,6 +17,9 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.animesource.service.AnimeSourceManager
 import tachiyomi.domain.episode.model.Episode
+import tachiyomi.source.local.entries.anime.LocalAnimeSource
+import tachiyomi.source.local.io.ArchiveAnime
+import tachiyomi.source.local.io.anime.LocalAnimeSourceFileSystem
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -78,7 +81,21 @@ class AnimeDownloadManager(
     }
 
     fun getDownloadCount(anime: Anime): Int {
+        if (anime.source == LocalAnimeSource.ID) {
+            val fileSystem: LocalAnimeSourceFileSystem = Injekt.get()
+            return fileSystem.getAnimeDirectory(anime.url)?.countLocalVideos() ?: 0
+        }
         return cache.getDownloadCount(anime)
+    }
+
+    private fun com.hippo.unifile.UniFile.countLocalVideos(): Int {
+        return listFiles().orEmpty().sumOf { file ->
+            when {
+                file.isDirectory -> file.countLocalVideos()
+                ArchiveAnime.isSupported(file) -> 1
+                else -> 0
+            }
+        }
     }
 
     suspend fun deleteEpisodes(episodes: List<Episode>, anime: Anime, source: AnimeSource) {

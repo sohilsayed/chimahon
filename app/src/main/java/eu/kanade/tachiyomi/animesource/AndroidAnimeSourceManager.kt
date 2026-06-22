@@ -17,6 +17,9 @@ import kotlinx.coroutines.runBlocking
 import tachiyomi.domain.animesource.model.StubAnimeSource
 import tachiyomi.domain.animesource.repository.StubAnimeSourceRepository
 import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.source.local.entries.anime.LocalAnimeSource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class AndroidAnimeSourceManager(
     private val context: Context,
@@ -41,7 +44,17 @@ class AndroidAnimeSourceManager(
         scope.launch {
             animeExtensionManager.installedExtensionsFlow
                 .collectLatest { extensions ->
-                    val mutableMap = HashMap<Long, eu.kanade.tachiyomi.animesource.AnimeSource>()
+                    val mutableMap = HashMap<Long, eu.kanade.tachiyomi.animesource.AnimeSource>().apply {
+                        put(
+                            LocalAnimeSource.ID,
+                            LocalAnimeSource(
+                                context = context,
+                                fileSystem = Injekt.get(),
+                                coverManager = Injekt.get(),
+                                backgroundManager = Injekt.get(),
+                            ),
+                        )
+                    }
                     extensions.forEach { extension ->
                         extension.sources.forEach { source ->
                             mutableMap[source.id] = source

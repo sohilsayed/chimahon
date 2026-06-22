@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.animesource.globalsearch
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.anime.model.titleOrUrl
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -102,14 +103,14 @@ class GlobalAnimeSearchScreenModel(
             val anime = Anime.create().copy(
                 source = sourceId,
                 url = sAnime.url,
-                ogTitle = sAnime.title,
+                ogTitle = sAnime.titleOrUrl(),
                 ogArtist = sAnime.artist,
                 ogAuthor = sAnime.author,
                 ogDescription = sAnime.description,
                 ogGenre = sAnime.getGenres(),
                 ogThumbnailUrl = sAnime.thumbnail_url,
                 ogStatus = sAnime.status.toLong(),
-                initialized = true,
+                initialized = sAnime.initialized,
             )
             val id = animeRepository.insert(anime)!!
             withUIContext { onAdded(id) }

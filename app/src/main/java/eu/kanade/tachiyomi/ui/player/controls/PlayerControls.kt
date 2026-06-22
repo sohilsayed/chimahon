@@ -186,9 +186,10 @@ fun PlayerControls(
         }
     }
 
+    val overlayTarget = if (controlsShown && !areControlsLocked) .8f else 0f
     val transparentOverlay by animateFloatAsState(
-        if (controlsShown && !areControlsLocked) .8f else 0f,
-        animationSpec = playerControlsExitAnimationSpec(),
+        targetValue = overlayTarget,
+        animationSpec = if (overlayTarget > 0f) playerControlsEnterAnimationSpec() else playerControlsExitAnimationSpec(),
         label = "controls_transparent_overlay",
     )
     val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
@@ -815,7 +816,10 @@ fun PlayerControls(
         PlayerSubtitleLookupPopup(
             viewModel = viewModel,
             request = subtitleLookupRequest,
-            onDismiss = { subtitleLookupRequest = null },
+            onDismiss = {
+                subtitleLookupRequest = null
+                viewModel.unpause()
+            },
             onTermMatched = { count, offset ->
                 subtitleLookupRequest = subtitleLookupRequest?.copy(
                     matchedCharCount = count,

@@ -2,6 +2,9 @@ package eu.kanade.tachiyomi.ui.player.controls
 
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -75,37 +78,46 @@ internal fun PlayerSubtitleLookupPopup(
 
     BackHandler(onBack = onDismiss)
 
-    OcrLookupPopup(
-        visible = true,
-        lookupString = request.lookupString,
-        fullText = request.fullText,
-        charOffset = request.charOffset,
-        onDismiss = onDismiss,
-        webView = webView,
-        repository = repository,
-        anchorX = request.anchorX,
-        anchorY = request.anchorY,
-        anchorWidth = request.anchorWidth,
-        anchorHeight = request.anchorHeight,
-        isVertical = false,
-        activeProfile = activeProfile,
-        type = "anime",
-        mediaInfo = MediaInfo(
-            mangaTitle = anime?.title.orEmpty(),
-            chapterName = episode?.name.orEmpty(),
-        ),
-        onRequestScreenshot = {
-            viewModel.captureVideoFrameForOcr()
-        },
-        onRequestSentenceAudio = {
-            viewModel.captureSubtitleAudioForAnki(
-                startSeconds = request.cueStartSeconds,
-                endSeconds = request.cueEndSeconds,
-            )
-        },
-        usePopup = true,
-        onTermMatched = onTermMatched,
-        modifier = modifier,
-        titleId = anime?.id?.toString(),
-    )
-}
+    Box(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onDismiss),
+        )
+        OcrLookupPopup(
+            visible = true,
+            lookupString = request.lookupString,
+            fullText = request.fullText,
+            charOffset = request.charOffset,
+            onDismiss = onDismiss,
+            webView = webView,
+            repository = repository,
+            anchorX = request.anchorX,
+            anchorY = request.anchorY,
+            anchorWidth = request.anchorWidth,
+            anchorHeight = request.anchorHeight,
+            isVertical = false,
+            activeProfile = activeProfile,
+            type = "anime",
+            mediaInfo = MediaInfo(
+                mangaTitle = anime?.title.orEmpty(),
+                chapterName = episode?.name.orEmpty(),
+            ),
+            onRequestScreenshot = {
+                viewModel.captureVideoFrameForOcr()
+            },
+            onRequestSentenceAudio = {
+                viewModel.captureSubtitleAudioForAnki(
+                    startSeconds = request.cueStartSeconds,
+                    endSeconds = request.cueEndSeconds,
+                )
+            },
+            usePopup = false,
+            onTermMatched = onTermMatched,
+            modifier = modifier,
+            titleId = anime?.id?.toString(),
+        )
+    }
+    }

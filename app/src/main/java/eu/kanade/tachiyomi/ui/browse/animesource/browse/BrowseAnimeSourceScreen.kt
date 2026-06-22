@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.anime.model.titleOrUrl
 import eu.kanade.presentation.library.components.AnimeComfortableGridItem
 import eu.kanade.presentation.library.components.CommonAnimeItemDefaults
 import eu.kanade.presentation.util.Screen
@@ -392,7 +393,7 @@ private fun AnimeSourceGrid(
     onClickAnime: (SAnime) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Adaptive(128.dp),
         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 96.dp) +
             PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(CommonAnimeItemDefaults.GridHorizontalSpacer),
@@ -429,7 +430,7 @@ private fun BrowseAnimeSourceGridItem(
     onClick: () -> Unit,
 ) {
     AnimeComfortableGridItem(
-        title = anime.title,
+        title = anime.titleOrUrl(),
         titleMaxLines = titleMaxLines,
         coverData = DomainAnimeCover(
             animeId = stableBrowseAnimeId(sourceId, anime),

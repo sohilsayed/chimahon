@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.util.episode
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.episode.model.Episode
-import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.entries.anime.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 

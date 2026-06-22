@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.source.local.entries.anime.LocalAnimeSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -35,7 +36,11 @@ class AnimeSourcesScreenModel(
                     .toMap()
 
                 sources
-                    .filter { it.lang in enabledLanguages || enabledLanguages.isEmpty() }
+                    .filter {
+                        it.id == LocalAnimeSource.ID ||
+                            it.lang in enabledLanguages ||
+                            enabledLanguages.isEmpty()
+                    }
                     .map { source -> AnimeSourceUiModel(source, extensionBySourceId[source.id]) }
                     .sortedWith(
                         compareBy<AnimeSourceUiModel> { it.source.id.toString() !in pinnedSources }

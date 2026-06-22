@@ -18,6 +18,7 @@
 package eu.kanade.tachiyomi.ui.player.controls.components
 
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -48,7 +49,7 @@ import tachiyomi.presentation.core.components.material.padding
 fun ControlsButton(
     icon: ImageVector,
     onClick: () -> Unit,
-    onLongClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
     title: String? = null,
     color: Color = Color.White,
     horizontalSpacing: Dp = MaterialTheme.padding.medium,
@@ -59,19 +60,32 @@ fun ControlsButton(
     val interactionSource = remember { MutableInteractionSource() }
     val clickEvent = LocalPlayerButtonsClickEvent.current
     val iconColor = if (enabled) color else color.copy(alpha = DISABLED_ALPHA)
+    val clickModifier = if (onLongClick == null) {
+        Modifier.clickable(
+            enabled = enabled,
+            onClick = {
+                clickEvent()
+                onClick()
+            },
+            interactionSource = interactionSource,
+            indication = null,
+        )
+    } else {
+        Modifier.combinedClickable(
+            enabled = enabled,
+            onClick = {
+                clickEvent()
+                onClick()
+            },
+            onLongClick = onLongClick,
+            interactionSource = interactionSource,
+            indication = null,
+        )
+    }
 
     Box(
         modifier = modifier
-            .combinedClickable(
-                enabled = enabled,
-                onClick = {
-                    clickEvent()
-                    onClick()
-                },
-                onLongClick = onLongClick,
-                interactionSource = interactionSource,
-                indication = null,
-            )
+            .then(clickModifier)
             .clip(CircleShape)
             .indication(
                 interactionSource,
@@ -96,24 +110,35 @@ fun ControlsButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
     color: Color = Color.White,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
 
     val clickEvent = LocalPlayerButtonsClickEvent.current
+    val clickModifier = if (onLongClick == null) {
+        Modifier.clickable(
+            onClick = {
+                clickEvent()
+                onClick()
+            },
+            interactionSource = interactionSource,
+            indication = null,
+        )
+    } else {
+        Modifier.combinedClickable(
+            onClick = {
+                clickEvent()
+                onClick()
+            },
+            onLongClick = onLongClick,
+            interactionSource = interactionSource,
+            indication = null,
+        )
+    }
     Box(
         modifier = modifier
-            .combinedClickable(
-                onClick = {
-                    clickEvent()
-                    onClick()
-                },
-                onLongClick = onLongClick,
-                interactionSource = interactionSource,
-                indication = null,
-
-            )
+            .then(clickModifier)
             .clip(CircleShape)
             .indication(
                 interactionSource,

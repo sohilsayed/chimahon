@@ -246,7 +246,7 @@ class StorageManager(
 
 private const val AUTOMATIC_BACKUPS_PATH = "autobackup"
 private const val DOWNLOADS_PATH = "downloads"
-private const val ANIME_DOWNLOADS_PATH = "animedownloads"
+private const val ANIME_DOWNLOADS_PATH = "downloads"
 private const val LOCAL_SOURCE_PATH = "local"
 private const val LOCAL_ANIMESOURCE_PATH = "localanime"
 
