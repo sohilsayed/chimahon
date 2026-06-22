@@ -2,7 +2,7 @@ package eu.kanade.domain.episode.model
 
 import eu.kanade.domain.entries.anime.model.downloadedFilter
 import eu.kanade.tachiyomi.data.download.DownloadManager
-import eu.kanade.tachiyomi.ui.anime.EpisodeList
+import eu.kanade.tachiyomi.ui.entries.anime.EpisodeList
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.applyFilter
 import tachiyomi.domain.episode.model.Episode
