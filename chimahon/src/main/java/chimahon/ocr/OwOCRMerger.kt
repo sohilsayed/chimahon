@@ -336,7 +336,7 @@ object OwOCRMerger {
 
             val coord1 = if (line1.isRtl) line2.bbox.right else line1.bbox.left
             val coord2 = if (line1.isRtl) line1.bbox.right else line2.bbox.left
-            if (abs(coord1 - coord2) < 2 * characterSize) return true
+            if (coord1 - coord2 < 2 * characterSize) return true
 
             if (config.supportCenterAlignedText && horizontalOverlap(line1.bbox, line2.bbox) > 0.9) return true
         }
@@ -375,6 +375,10 @@ object OwOCRMerger {
                 continue
             }
             if (!next.hasKanji) {
+                filtered.add(lines[i])
+                continue
+            }
+            if (next.isFurigana) {
                 filtered.add(lines[i])
                 continue
             }
@@ -575,54 +579,30 @@ object OwOCRMerger {
     private fun reorderMixedOrientationBlocks(paragraphs: List<OcrResult>, isVerticalOrRtl: Boolean): List<OcrResult> {
         if (paragraphs.size < 2) return paragraphs
 
-        var result = paragraphs
-        var madeProgress = true
+        val result = mutableListOf<OcrResult>()
+        val currentBlock = mutableListOf(paragraphs[0])
+        var currentOrientation = paragraphs[0].forcedOrientation == "vertical"
 
-        while (madeProgress) {
-            madeProgress = false
-            for (i in 0 until result.size - 1) {
-                val p1 = result[i]
-                val p2 = result[i + 1]
+        for (para in paragraphs.drop(1)) {
+            val paraOrientation = para.forcedOrientation == "vertical"
 
-                val p1Center = if (p1.forcedOrientation == "vertical") p1.tightBoundingBox.y else p1.tightBoundingBox.x
-                val p2Center = if (p2.forcedOrientation == "vertical") p2.tightBoundingBox.y else p2.tightBoundingBox.x
-                val p1End = if (p1.forcedOrientation ==
-                    "vertical"
-                ) {
-                    p1.tightBoundingBox.y + p1.tightBoundingBox.height
-                } else {
-                    p1.tightBoundingBox.x +
-                        p1.tightBoundingBox.width
+            if (paraOrientation == currentOrientation) {
+                currentBlock.add(para)
+            } else {
+                if (currentOrientation != isVerticalOrRtl) {
+                    currentBlock.reverse()
                 }
-                val p2End = if (p2.forcedOrientation ==
-                    "vertical"
-                ) {
-                    p2.tightBoundingBox.y + p2.tightBoundingBox.height
-                } else {
-                    p2.tightBoundingBox.x +
-                        p2.tightBoundingBox.width
-                }
-
-                val p1IsVertical = p1.forcedOrientation == "vertical"
-                val p2IsVertical = p2.forcedOrientation == "vertical"
-
-                if (p1IsVertical != p2IsVertical) {
-                    if (p2IsVertical && p2Center < p1Center + (p1End - p1Center) / 2) {
-                        result = result.toMutableList().apply {
-                            removeAt(i + 1)
-                            add(i, p2)
-                        }
-                        madeProgress = true
-                    } else if (!p2IsVertical && p1Center > p2Center + (p2End - p2Center) / 2) {
-                        result = result.toMutableList().apply {
-                            removeAt(i + 1)
-                            add(i, p2)
-                        }
-                        madeProgress = true
-                    }
-                }
+                result.addAll(currentBlock)
+                currentBlock.clear()
+                currentBlock.add(para)
+                currentOrientation = paraOrientation
             }
         }
+
+        if (currentOrientation != isVerticalOrRtl) {
+            currentBlock.reverse()
+        }
+        result.addAll(currentBlock)
 
         return result
     }
