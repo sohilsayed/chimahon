@@ -4,6 +4,7 @@ CREATE TABLE animehistory(
     _id INTEGER NOT NULL PRIMARY KEY,
     episode_id INTEGER NOT NULL UNIQUE,
     last_seen INTEGER AS Date,
+    watch_duration INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(episode_id) REFERENCES episodes (_id)
     ON DELETE CASCADE
 );
@@ -14,7 +15,8 @@ getHistoryByAnimeId:
 SELECT
 H._id,
 H.episode_id,
-H.last_seen
+H.last_seen,
+H.watch_duration
 FROM animehistory H
 JOIN episodes EP
 ON H.episode_id = EP._id
@@ -24,7 +26,8 @@ getHistoryByEpisodeUrl:
 SELECT
 H._id,
 H.episode_id,
-H.last_seen
+H.last_seen,
+H.watch_duration
 FROM animehistory H
 JOIN episodes EP
 ON H.episode_id = EP._id
@@ -35,17 +38,17 @@ UPDATE animehistory
 SET last_seen = 0
 WHERE _id = :historyId;
 
-resetHistoryByAnimeId:
+resetHistoryByAnimeIds:
 UPDATE animehistory
 SET last_seen = 0
 WHERE _id IN (
     SELECT H._id
-    FROM animes M
+    FROM animes AN
     INNER JOIN episodes EP
-    ON M._id = EP.anime_id
+    ON AN._id = EP.anime_id
     INNER JOIN animehistory H
     ON EP._id = H.episode_id
-    WHERE M._id = :animeId
+    WHERE AN._id IN :animeIds
 );
 
 removeAllHistory:
@@ -56,10 +59,15 @@ DELETE FROM animehistory
 WHERE last_seen = 0;
 
 upsert:
-INSERT INTO animehistory(episode_id, last_seen)
-VALUES (:episodeId, :seenAt)
+INSERT INTO animehistory(episode_id, last_seen, watch_duration)
+VALUES (:episodeId, :seenAt, :watchDuration)
 ON CONFLICT(episode_id)
 DO UPDATE
 SET
-    last_seen = :seenAt
+    last_seen = :seenAt,
+    watch_duration = watch_duration + :watchDuration
 WHERE episode_id = :episodeId;
+
+getWatchDuration:
+SELECT coalesce(sum(watch_duration), 0)
+FROM animehistory;

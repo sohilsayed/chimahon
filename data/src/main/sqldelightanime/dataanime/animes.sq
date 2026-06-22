@@ -1,4 +1,4 @@
-import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy;
+import eu.kanade.tachiyomi.source.model.UpdateStrategy;
 import eu.kanade.tachiyomi.animesource.model.FetchType;
 import kotlin.Boolean;
 import kotlin.String;
@@ -23,7 +23,7 @@ CREATE TABLE animes(
     episode_flags INTEGER NOT NULL,
     cover_last_modified INTEGER NOT NULL,
     date_added INTEGER NOT NULL,
-    update_strategy INTEGER AS AnimeUpdateStrategy NOT NULL DEFAULT 0,
+    update_strategy INTEGER AS UpdateStrategy NOT NULL DEFAULT 0,
     calculate_interval INTEGER DEFAULT 0 NOT NULL,
     last_modified_at INTEGER NOT NULL DEFAULT 0,
     favorite_modified_at INTEGER,
@@ -75,7 +75,6 @@ SELECT *
 FROM animes
 WHERE _id = :id;
 
--- TODO: this should ideally never really have more than 1 result
 getAnimeByUrlAndSource:
 SELECT *
 FROM animes
@@ -87,7 +86,7 @@ SELECT *
 FROM animes
 WHERE favorite = 1;
 
-getWatchedAnimeNotInLibrary:
+getSeenAnimeNotInLibrary:
 SELECT *
 FROM animes
 WHERE favorite = 0 AND _id IN (
@@ -96,7 +95,7 @@ WHERE favorite = 0 AND _id IN (
     WHERE seen = 1 OR last_second_seen != 0
 );
 
-getAllAnime:
+getAll:
 SELECT *
 FROM animes;
 
@@ -137,6 +136,20 @@ WHERE next_update >= :startOfDay
 AND favorite = 1
 AND status IN :statuses
 ORDER BY next_update ASC;
+
+getIdByUrlAndSource:
+SELECT _id
+FROM animes
+WHERE url = :url AND source = :source;
+
+getBySource:
+SELECT *
+FROM animes
+WHERE source = :sourceId;
+
+deleteById:
+DELETE FROM animes
+WHERE _id = :animeId;
 
 resetViewerFlags:
 UPDATE animes

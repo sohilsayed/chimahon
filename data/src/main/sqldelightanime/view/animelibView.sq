@@ -34,9 +34,14 @@ FROM animes M
 LEFT JOIN episodestatsView AS ES ON M._id = ES.anime_id
 LEFT JOIN animehistorystatsView AS AHS ON M._id = AHS.anime_id
 LEFT JOIN animes_categories AS MC ON MC.anime_id = M._id
-LEFT JOIN animeseasonstatsView AS ASS ON M._id = ASS.parent_id
-WHERE M.favorite = 1;
+LEFT JOIN animeseasonstatsView AS ASS ON M._id = ASS.parent_id;
 
-animelib:
+libraryAnime:
 SELECT *
-FROM animelibView;
+FROM animelibView
+WHERE favorite = 1;
+
+seenAnimeNonLibrary:
+SELECT *
+FROM animelibView
+WHERE favorite = 0 AND seenCount != 0;

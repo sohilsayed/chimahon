@@ -1,0 +1,73 @@
+import kotlin.Boolean;
+
+CREATE TABLE merged_anime(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    info_anime INTEGER AS Boolean NOT NULL,
+    get_episode_updates INTEGER AS Boolean NOT NULL,
+    episode_sort_mode INTEGER NOT NULL,
+    episode_priority INTEGER NOT NULL,
+    download_episodes INTEGER AS Boolean NOT NULL,
+    merge_id INTEGER NOT NULL,
+    merge_url TEXT NOT NULL,
+    anime_id INTEGER,
+    anime_url TEXT NOT NULL,
+    anime_source INTEGER NOT NULL,
+    FOREIGN KEY(anime_id) REFERENCES animes (_id) ON DELETE SET NULL,
+    FOREIGN KEY(merge_id) REFERENCES animes (_id) ON DELETE CASCADE
+);
+
+CREATE INDEX merged_anime_merge_id_index ON merged_anime(merge_id);
+
+selectAllMergedAnimes:
+SELECT animes.*
+FROM (
+    SELECT anime_id FROM merged_anime
+) AS A
+JOIN animes
+ON animes._id = A.anime_id;
+
+selectMergedAnimesById:
+SELECT animes.*
+FROM (
+    SELECT anime_id FROM merged_anime WHERE anime_id = :animeId
+) AS A
+JOIN animes
+ON animes._id = A.anime_id;
+
+selectByMergeId:
+SELECT *
+FROM merged_anime
+WHERE merge_id = :merge_id;
+
+updateSettingsById:
+UPDATE merged_anime
+SET info_anime = :infoAnime,
+    get_episode_updates = :getEpisodeUpdates,
+    episode_sort_mode = :episodeSortMode,
+    episode_priority = :episodePriority,
+    download_episodes = :downloadEpisodes,
+    merge_url = :mergeUrl
+WHERE _id = :id;
+
+insert:
+INSERT INTO merged_anime(info_anime, get_episode_updates, episode_sort_mode, episode_priority, download_episodes, merge_id, merge_url, anime_id, anime_url, anime_source)
+VALUES (:infoAnime, :getEpisodeUpdates, :episodeSortMode, :episodePriority, :downloadEpisodes, :mergeId, :mergeUrl, :animeId, :animeUrl, :animeSource);
+
+selectLastInsertedRowId:
+SELECT last_insert_rowid();
+
+deleteById:
+DELETE FROM merged_anime
+WHERE _id = :animeId;
+
+deleteByMergeId:
+DELETE FROM merged_anime
+WHERE merge_id = :merge_id;
+
+selectMergedAnimesForDownloadingById:
+SELECT animes.*
+FROM (
+    SELECT anime_id FROM merged_anime WHERE merge_id = :mergeId AND download_episodes = 1
+) AS A
+JOIN animes
+ON animes._id = A.anime_id;

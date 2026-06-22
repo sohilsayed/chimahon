@@ -6,31 +6,31 @@ import kotlinx.coroutines.flow.map
 import mihon.domain.animeextensionrepo.repository.AnimeExtensionRepoRepository
 import mihon.domain.extensionrepo.exception.SaveExtensionRepoException
 import mihon.domain.extensionrepo.model.ExtensionRepo
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 
 class AnimeExtensionRepoRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val handler: AnimeDatabaseHandler,
 ) : AnimeExtensionRepoRepository {
     override fun subscribeAll(): Flow<List<ExtensionRepo>> {
-        return handler.subscribeToList { anime_extension_reposQueries.findAll(::mapExtensionRepo) }
+        return handler.subscribeToList { extension_reposQueries.findAll(::mapExtensionRepo) }
     }
 
     override suspend fun getAll(): List<ExtensionRepo> {
-        return handler.awaitList { anime_extension_reposQueries.findAll(::mapExtensionRepo) }
+        return handler.awaitList { extension_reposQueries.findAll(::mapExtensionRepo) }
     }
 
     override suspend fun getRepo(baseUrl: String): ExtensionRepo? {
-        return handler.awaitOneOrNull { anime_extension_reposQueries.findOne(baseUrl, ::mapExtensionRepo) }
+        return handler.awaitOneOrNull { extension_reposQueries.findOne(baseUrl, ::mapExtensionRepo) }
     }
 
     override suspend fun getRepoBySigningKeyFingerprint(fingerprint: String): ExtensionRepo? {
         return handler.awaitOneOrNull {
-            anime_extension_reposQueries.findOneBySigningKeyFingerprint(fingerprint, ::mapExtensionRepo)
+            extension_reposQueries.findOneBySigningKeyFingerprint(fingerprint, ::mapExtensionRepo)
         }
     }
 
     override fun getCount(): Flow<Int> {
-        return handler.subscribeToOne { anime_extension_reposQueries.count() }.map { it.toInt() }
+        return handler.subscribeToOne { extension_reposQueries.count() }.map { it.toInt() }
     }
 
     override suspend fun insertRepo(
@@ -41,7 +41,7 @@ class AnimeExtensionRepoRepositoryImpl(
         signingKeyFingerprint: String,
     ) {
         try {
-            handler.await { anime_extension_reposQueries.insert(baseUrl, name, shortName, website, signingKeyFingerprint) }
+            handler.await { extension_reposQueries.insert(baseUrl, name, shortName, website, signingKeyFingerprint) }
         } catch (ex: SQLiteException) {
             throw SaveExtensionRepoException(ex)
         }
@@ -55,7 +55,7 @@ class AnimeExtensionRepoRepositoryImpl(
         signingKeyFingerprint: String,
     ) {
         try {
-            handler.await { anime_extension_reposQueries.upsert(baseUrl, name, shortName, website, signingKeyFingerprint) }
+            handler.await { extension_reposQueries.upsert(baseUrl, name, shortName, website, signingKeyFingerprint) }
         } catch (ex: SQLiteException) {
             throw SaveExtensionRepoException(ex)
         }
@@ -63,7 +63,7 @@ class AnimeExtensionRepoRepositoryImpl(
 
     override suspend fun replaceRepo(newRepo: ExtensionRepo) {
         handler.await {
-            anime_extension_reposQueries.replace(
+            extension_reposQueries.replace(
                 newRepo.baseUrl,
                 newRepo.name,
                 newRepo.shortName,
@@ -74,7 +74,7 @@ class AnimeExtensionRepoRepositoryImpl(
     }
 
     override suspend fun deleteRepo(baseUrl: String) {
-        return handler.await { anime_extension_reposQueries.delete(baseUrl) }
+        return handler.await { extension_reposQueries.delete(baseUrl) }
     }
 
     private fun mapExtensionRepo(

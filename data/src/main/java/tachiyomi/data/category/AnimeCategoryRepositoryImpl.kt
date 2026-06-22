@@ -1,54 +1,53 @@
 package tachiyomi.data.category
 
 import kotlinx.coroutines.flow.Flow
-import tachiyomi.data.Database
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.domain.category.model.AnimeCategory
 import tachiyomi.domain.category.model.AnimeCategoryUpdate
 import tachiyomi.domain.category.repository.AnimeCategoryRepository
+import tachiyomi.mi.data.AnimeDatabase
 
 class AnimeCategoryRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val handler: AnimeDatabaseHandler,
 ) : AnimeCategoryRepository {
 
     override suspend fun getAll(): List<AnimeCategory> {
         return handler.awaitList {
-            anime_categoriesQueries.getCategories(AnimeCategoryMapper::mapAnimeCategory)
+            categoriesQueries.getCategories(AnimeCategoryMapper::mapAnimeCategory)
         }
     }
 
     override fun getAllAsFlow(): Flow<List<AnimeCategory>> {
         return handler.subscribeToList {
-            anime_categoriesQueries.getCategories(AnimeCategoryMapper::mapAnimeCategory)
+            categoriesQueries.getCategories(AnimeCategoryMapper::mapAnimeCategory)
         }
     }
 
     override suspend fun getCategoriesByAnimeId(animeId: Long): List<AnimeCategory> {
         return handler.awaitList {
-            anime_categoriesQueries.getCategoriesByAnimeId(animeId, AnimeCategoryMapper::mapAnimeCategory)
+            categoriesQueries.getCategoriesByAnimeId(animeId, AnimeCategoryMapper::mapAnimeCategory)
         }
     }
 
     override fun getCategoriesByAnimeIdAsFlow(animeId: Long): Flow<List<AnimeCategory>> {
         return handler.subscribeToList {
-            anime_categoriesQueries.getCategoriesByAnimeId(animeId, AnimeCategoryMapper::mapAnimeCategory)
+            categoriesQueries.getCategoriesByAnimeId(animeId, AnimeCategoryMapper::mapAnimeCategory)
         }
     }
 
     override suspend fun insert(name: String, order: Long, flags: Long) {
         handler.await {
-            anime_categoriesQueries.insert(
+            categoriesQueries.insert(
                 name = name,
                 order = order,
                 flags = flags,
-                hidden = 0L,
             )
         }
     }
 
     override suspend fun delete(categoryId: Long) {
         handler.await {
-            anime_categoriesQueries.delete(categoryId = categoryId)
+            categoriesQueries.delete(categoryId = categoryId)
         }
     }
 
@@ -60,12 +59,12 @@ class AnimeCategoryRepositoryImpl(
 
     override suspend fun updateAllFlags(flags: Long?) {
         handler.await {
-            anime_categoriesQueries.updateAllFlags(flags)
+            categoriesQueries.updateAllFlags(flags)
         }
     }
 
-    private fun Database.updatePartialBlocking(update: AnimeCategoryUpdate) {
-        anime_categoriesQueries.update(
+    private fun AnimeDatabase.updatePartialBlocking(update: AnimeCategoryUpdate) {
+        categoriesQueries.update(
             name = update.name,
             order = update.order,
             flags = update.flags,

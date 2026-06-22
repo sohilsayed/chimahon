@@ -62,12 +62,22 @@ SELECT *
 FROM episodes
 WHERE anime_id = :animeId;
 
+getScanlatorsByAnimeId:
+SELECT DISTINCT scanlator
+FROM episodes
+WHERE anime_id = :animeId;
+
 getBookmarkedEpisodesByAnimeId:
 SELECT *
 FROM episodes
 WHERE bookmark
 AND anime_id = :animeId;
 
+getFillermarkedEpisodesByAnimeId:
+SELECT *
+FROM episodes
+WHERE fillermark
+AND anime_id = :animeId;
 
 getEpisodeByUrl:
 SELECT *

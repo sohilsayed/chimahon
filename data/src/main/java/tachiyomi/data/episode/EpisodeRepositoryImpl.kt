@@ -3,13 +3,13 @@ package tachiyomi.data.episode
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.model.EpisodeUpdate
 import tachiyomi.domain.episode.repository.EpisodeRepository
 
 class EpisodeRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val handler: AnimeDatabaseHandler,
 ) : EpisodeRepository {
 
     override suspend fun addAll(episodes: List<Episode>): List<Episode> {
@@ -17,20 +17,22 @@ class EpisodeRepositoryImpl(
             handler.await(inTransaction = true) {
                 episodes.map { episode ->
                     episodesQueries.insert(
-                        episode.animeId,
-                        episode.url,
-                        episode.name,
-                        episode.scanlator,
-                        episode.seen,
-                        episode.bookmark,
-                        episode.fillermark,
-                        episode.lastSecondSeen,
-                        episode.totalSeconds,
-                        episode.episodeNumber,
-                        episode.sourceOrder,
-                        episode.dateFetch,
-                        episode.dateUpload,
-                        episode.version,
+                        animeId = episode.animeId,
+                        url = episode.url,
+                        name = episode.name,
+                        scanlator = episode.scanlator,
+                        seen = episode.seen,
+                        bookmark = episode.bookmark,
+                        lastSecondSeen = episode.lastSecondSeen,
+                        totalSeconds = episode.totalSeconds,
+                        episodeNumber = episode.episodeNumber,
+                        sourceOrder = episode.sourceOrder,
+                        dateFetch = episode.dateFetch,
+                        dateUpload = episode.dateUpload,
+                        version = episode.version,
+                        summary = null,
+                        previewUrl = null,
+                        fillermark = episode.fillermark,
                     )
                     val lastInsertId = episodesQueries.selectLastInsertedRowId().executeAsOne()
                     episode.copy(id = lastInsertId)
@@ -70,6 +72,8 @@ class EpisodeRepositoryImpl(
                     episodeId = episodeUpdate.id,
                     version = episodeUpdate.version,
                     isSyncing = 0,
+                    summary = null,
+                    previewUrl = null,
                 )
             }
         }
@@ -85,7 +89,7 @@ class EpisodeRepositoryImpl(
 
     override suspend fun getEpisodeByAnimeId(animeId: Long, applyScanlatorFilter: Boolean): List<Episode> {
         return handler.awaitList {
-            episodesQueries.getEpisodesByAnimeId(animeId, 0L, EpisodeMapper::mapEpisode)
+            episodesQueries.getEpisodesByAnimeId(animeId, EpisodeMapper::mapEpisode)
         }
     }
 
@@ -120,7 +124,7 @@ class EpisodeRepositoryImpl(
 
     override suspend fun getEpisodeByAnimeIdAsFlow(animeId: Long, applyScanlatorFilter: Boolean): Flow<List<Episode>> {
         return handler.subscribeToList {
-            episodesQueries.getEpisodesByAnimeId(animeId, 0L, EpisodeMapper::mapEpisode)
+            episodesQueries.getEpisodesByAnimeId(animeId, EpisodeMapper::mapEpisode)
         }
     }
 

@@ -7,4 +7,5 @@ data class MergeAnimeSettingsUpdate(
     var episodePriority: Int?,
     var downloadEpisodes: Boolean?,
     var episodeSortMode: Int?,
+    var mergeUrl: String?,
 )

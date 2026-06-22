@@ -3,14 +3,14 @@ package tachiyomi.data.entries.anime
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.MergeAnimeSettingsUpdate
 import tachiyomi.domain.entries.anime.model.MergedAnimeReference
 import tachiyomi.domain.entries.anime.repository.AnimeMergeRepository
 
 class AnimeMergeRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val handler: AnimeDatabaseHandler,
 ) : AnimeMergeRepository {
 
     override suspend fun getMergedAnime(): List<Anime> {
@@ -62,11 +62,12 @@ class AnimeMergeRepositoryImpl(
             values.forEach { value ->
                 merged_animeQueries.updateSettingsById(
                     id = value.id,
-                    getEpisodeUpdates = value.getEpisodeUpdates,
-                    downloadEpisodes = value.downloadEpisodes,
-                    infoAnime = value.isInfoAnime,
-                    episodePriority = value.episodePriority?.toLong(),
-                    episodeSortMode = value.episodeSortMode?.toLong(),
+                    getEpisodeUpdates = value.getEpisodeUpdates ?: false,
+                    downloadEpisodes = value.downloadEpisodes ?: false,
+                    infoAnime = value.isInfoAnime ?: false,
+                    episodePriority = value.episodePriority?.toLong() ?: 0L,
+                    episodeSortMode = value.episodeSortMode?.toLong() ?: 0L,
+                    mergeUrl = value.mergeUrl ?: "",
                 )
             }
         }

@@ -9,7 +9,11 @@ SELECT
     animes.favorite,
     animes.cover_last_modified,
     episodes.episode_number AS episodeNumber,
+    episodes.seen,
+    episodes.last_second_seen,
+    episodes.total_seconds,
     animehistory.last_seen AS seenAt,
+    animehistory.watch_duration AS watchDuration,
     max_last_seen.last_seen AS maxSeenAt,
     max_last_seen.episode_id AS maxSeenAtEpisodeId
 FROM animes
@@ -36,7 +40,11 @@ source,
 favorite,
 cover_last_modified,
 episodeNumber,
-seenAt
+seen,
+last_second_seen,
+total_seconds,
+seenAt,
+watchDuration
 FROM animehistoryView
 WHERE animehistoryView.seenAt > 0
 AND maxSeenAtEpisodeId = animehistoryView.episodeId
@@ -54,7 +62,11 @@ source,
 favorite,
 cover_last_modified,
 episodeNumber,
-seenAt
+seen,
+last_second_seen,
+total_seconds,
+seenAt,
+watchDuration
 FROM animehistoryView
 WHERE animehistoryView.seenAt > 0
 ORDER BY seenAt DESC

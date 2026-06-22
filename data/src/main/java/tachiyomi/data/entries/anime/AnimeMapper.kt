@@ -1,7 +1,9 @@
 package tachiyomi.data.entries.anime
 
+import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.library.model.LibraryAnime
 
 object AnimeMapper {
@@ -24,10 +26,6 @@ object AnimeMapper {
         episodeFlags: Long,
         coverLastModified: Long,
         dateAdded: Long,
-        // SY -->
-        @Suppress("UNUSED_PARAMETER")
-        filteredScanlators: String?,
-        // SY <--
         updateStrategy: UpdateStrategy,
         calculateInterval: Long,
         lastModifiedAt: Long,
@@ -35,6 +33,13 @@ object AnimeMapper {
         version: Long,
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
+        fetchType: FetchType,
+        parentId: Long?,
+        seasonFlags: Long,
+        seasonNumber: Double,
+        seasonSourceOrder: Long,
+        backgroundUrl: String?,
+        backgroundLastModified: Long,
     ): Anime = Anime(
         id = id,
         source = source,
@@ -45,22 +50,27 @@ object AnimeMapper {
         dateAdded = dateAdded,
         viewerFlags = viewerFlags,
         episodeFlags = episodeFlags,
+        seasonFlags = seasonFlags,
+        seasonNumber = seasonNumber,
+        seasonSourceOrder = seasonSourceOrder,
         coverLastModified = coverLastModified,
+        backgroundLastModified = backgroundLastModified,
         url = url,
-        // SY -->
         ogTitle = title,
         ogArtist = artist,
         ogAuthor = author,
         ogThumbnailUrl = thumbnailUrl,
+        backgroundUrl = backgroundUrl,
         ogDescription = description,
         ogGenre = genre,
         ogStatus = status,
-        // SY <--
         updateStrategy = updateStrategy,
         initialized = initialized,
         lastModifiedAt = lastModifiedAt,
         favoriteModifiedAt = favoriteModifiedAt,
         version = version,
+        fetchType = fetchType,
+        parentId = parentId,
     )
 
     fun mapLibraryAnime(
@@ -82,25 +92,26 @@ object AnimeMapper {
         episodeFlags: Long,
         coverLastModified: Long,
         dateAdded: Long,
-        // SY -->
-        @Suppress("UNUSED_PARAMETER")
-        filteredScanlators: String?,
-        // SY <--
         updateStrategy: UpdateStrategy,
         calculateInterval: Long,
         lastModifiedAt: Long,
         favoriteModifiedAt: Long?,
         version: Long,
         isSyncing: Long,
+        fetchType: FetchType,
+        parentId: Long?,
+        seasonFlags: Long,
+        seasonNumber: Double,
+        seasonSourceOrder: Long,
+        backgroundUrl: String?,
+        backgroundLastModified: Long,
         totalCount: Long,
         seenCount: Double,
         latestUpload: Long,
         episodeFetchedAt: Long,
         lastSeen: Long,
         bookmarkCount: Double,
-        // AM (FILLERMARK) -->
         fillermarkCount: Double,
-        // <-- AM (FILLERMARK)
         category: Long,
     ): LibraryAnime = LibraryAnime(
         anime = mapAnime(
@@ -122,25 +133,109 @@ object AnimeMapper {
             episodeFlags,
             coverLastModified,
             dateAdded,
-            // SY -->
-            null,
-            // SY <--
             updateStrategy,
             calculateInterval,
             lastModifiedAt,
             favoriteModifiedAt,
             version,
             isSyncing,
+            fetchType,
+            parentId,
+            seasonFlags,
+            seasonNumber,
+            seasonSourceOrder,
+            backgroundUrl,
+            backgroundLastModified,
         ),
         categories = listOf(category),
         totalEpisodes = totalCount,
         seenCount = seenCount.toLong(),
         bookmarkCount = bookmarkCount.toLong(),
-        // AM (FILLERMARK) -->
         fillermarkCount = fillermarkCount.toLong(),
-        // <-- AM (FILLERMARK)
         latestUpload = latestUpload,
         episodeFetchedAt = episodeFetchedAt,
+        lastSeen = lastSeen,
+    )
+
+    fun mapSeasonAnime(
+        id: Long,
+        source: Long,
+        url: String,
+        artist: String?,
+        author: String?,
+        description: String?,
+        genre: List<String>?,
+        title: String,
+        status: Long,
+        thumbnailUrl: String?,
+        favorite: Boolean,
+        lastUpdate: Long?,
+        nextUpdate: Long?,
+        initialized: Boolean,
+        viewerFlags: Long,
+        episodeFlags: Long,
+        coverLastModified: Long,
+        dateAdded: Long,
+        updateStrategy: UpdateStrategy,
+        calculateInterval: Long,
+        lastModifiedAt: Long,
+        favoriteModifiedAt: Long?,
+        version: Long,
+        isSyncing: Long,
+        fetchType: FetchType,
+        parentId: Long?,
+        seasonFlags: Long,
+        seasonNumber: Double,
+        seasonSourceOrder: Long,
+        backgroundUrl: String?,
+        backgroundLastModified: Long,
+        totalCount: Long,
+        seenCount: Double,
+        latestUpload: Long,
+        fetchedAt: Long,
+        lastSeen: Long,
+        bookmarkCount: Double,
+        fillermarkCount: Double,
+    ): SeasonAnime = SeasonAnime(
+        anime = mapAnime(
+            id,
+            source,
+            url,
+            artist,
+            author,
+            description,
+            genre,
+            title,
+            status,
+            thumbnailUrl,
+            favorite,
+            lastUpdate,
+            nextUpdate,
+            initialized,
+            viewerFlags,
+            episodeFlags,
+            coverLastModified,
+            dateAdded,
+            updateStrategy,
+            calculateInterval,
+            lastModifiedAt,
+            favoriteModifiedAt,
+            version,
+            isSyncing,
+            fetchType,
+            parentId,
+            seasonFlags,
+            seasonNumber,
+            seasonSourceOrder,
+            backgroundUrl,
+            backgroundLastModified,
+        ),
+        totalCount = totalCount,
+        seenCount = seenCount.toLong(),
+        bookmarkCount = bookmarkCount.toLong(),
+        fillermarkCount = fillermarkCount.toLong(),
+        latestUpload = latestUpload,
+        fetchedAt = fetchedAt,
         lastSeen = lastSeen,
     )
 }

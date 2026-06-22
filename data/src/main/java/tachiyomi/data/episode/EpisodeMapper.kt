@@ -11,9 +11,6 @@ object EpisodeMapper {
         scanlator: String?,
         seen: Boolean,
         bookmark: Boolean,
-        // AM (FILLERMARK) -->
-        fillermark: Boolean,
-        // <-- AM (FILLERMARK)
         lastSecondSeen: Long,
         totalSeconds: Long,
         episodeNumber: Double,
@@ -24,14 +21,17 @@ object EpisodeMapper {
         version: Long,
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
+        @Suppress("UNUSED_PARAMETER")
+        summary: String?,
+        @Suppress("UNUSED_PARAMETER")
+        previewUrl: String?,
+        fillermark: Boolean,
     ): Episode = Episode(
         id = id,
         animeId = animeId,
         seen = seen,
         bookmark = bookmark,
-        // AM (FILLERMARK) -->
         fillermark = fillermark,
-        // <-- AM (FILLERMARK)
         lastSecondSeen = lastSecondSeen,
         totalSeconds = totalSeconds,
         dateFetch = dateFetch,

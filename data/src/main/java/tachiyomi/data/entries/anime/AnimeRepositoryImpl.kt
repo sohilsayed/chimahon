@@ -3,9 +3,10 @@ package tachiyomi.data.entries.anime
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.FetchTypeColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
@@ -14,7 +15,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class AnimeRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val handler: AnimeDatabaseHandler,
 ) : AnimeRepository {
 
     override suspend fun getAnimeById(id: Long): Anime {
@@ -54,11 +55,11 @@ class AnimeRepositoryImpl(
     }
 
     override suspend fun getLibraryAnime(): List<LibraryAnime> {
-        return handler.awaitList { library_view_animeQueries.libraryAnime(AnimeMapper::mapLibraryAnime) }
+        return handler.awaitList { animelibViewQueries.libraryAnime(AnimeMapper::mapLibraryAnime) }
     }
 
     override fun getLibraryAnimeAsFlow(): Flow<List<LibraryAnime>> {
-        return handler.subscribeToList { library_view_animeQueries.libraryAnime(AnimeMapper::mapLibraryAnime) }
+        return handler.subscribeToList { animelibViewQueries.libraryAnime(AnimeMapper::mapLibraryAnime) }
     }
 
     override fun getFavoritesBySourceId(sourceId: Long): Flow<List<Anime>> {
@@ -99,11 +100,9 @@ class AnimeRepositoryImpl(
 
     override suspend fun insert(anime: Anime): Long? {
         return handler.awaitOneOrNullExecutable(inTransaction = true) {
-            // SY -->
             if (animesQueries.getIdByUrlAndSource(anime.url, anime.source).executeAsOneOrNull() != null) {
                 return@awaitOneOrNullExecutable animesQueries.getIdByUrlAndSource(anime.url, anime.source)
             }
-            // SY <--
             animesQueries.insert(
                 source = anime.source,
                 url = anime.url,
@@ -114,6 +113,7 @@ class AnimeRepositoryImpl(
                 title = anime.title,
                 status = anime.status,
                 thumbnailUrl = anime.thumbnailUrl,
+                backgroundUrl = anime.backgroundUrl,
                 favorite = anime.favorite,
                 lastUpdate = anime.lastUpdate,
                 nextUpdate = anime.nextUpdate,
@@ -122,9 +122,15 @@ class AnimeRepositoryImpl(
                 viewerFlags = anime.viewerFlags,
                 episodeFlags = anime.episodeFlags,
                 coverLastModified = anime.coverLastModified,
+                backgroundLastModified = anime.backgroundLastModified,
                 dateAdded = anime.dateAdded,
                 updateStrategy = anime.updateStrategy,
                 version = anime.version,
+                fetchType = anime.fetchType,
+                parentId = anime.parentId,
+                seasonFlags = anime.seasonFlags,
+                seasonNumber = anime.seasonNumber,
+                seasonSourceOrder = anime.seasonSourceOrder,
             )
             animesQueries.selectLastInsertedRowId()
         }
@@ -163,6 +169,7 @@ class AnimeRepositoryImpl(
                     title = value.title,
                     status = value.status,
                     thumbnailUrl = value.thumbnailUrl,
+                    backgroundUrl = value.backgroundUrl,
                     favorite = value.favorite,
                     lastUpdate = value.lastUpdate,
                     nextUpdate = value.nextUpdate,
@@ -171,11 +178,17 @@ class AnimeRepositoryImpl(
                     viewer = value.viewerFlags,
                     episodeFlags = value.episodeFlags,
                     coverLastModified = value.coverLastModified,
+                    backgroundLastModified = value.backgroundLastModified,
                     dateAdded = value.dateAdded,
                     animeId = value.id,
                     updateStrategy = value.updateStrategy?.let(UpdateStrategyColumnAdapter::encode),
                     version = value.version,
                     isSyncing = 0,
+                    fetchType = value.fetchType?.let(FetchTypeColumnAdapter::encode),
+                    parentId = value.parentId,
+                    seasonFlags = value.seasonFlags,
+                    seasonNumber = value.seasonNumber,
+                    seasonSourceOrder = value.seasonSourceOrder,
                 )
             }
         }
@@ -195,7 +208,7 @@ class AnimeRepositoryImpl(
     }
 
     override suspend fun getSeenAnimeNotInLibraryView(): List<LibraryAnime> {
-        return handler.awaitList { library_view_animeQueries.seenAnimeNonLibrary(AnimeMapper::mapLibraryAnime) }
+        return handler.awaitList { animelibViewQueries.seenAnimeNonLibrary(AnimeMapper::mapLibraryAnime) }
     }
     // SY <--
 }

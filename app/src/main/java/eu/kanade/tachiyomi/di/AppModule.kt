@@ -60,9 +60,6 @@ import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
 import tachiyomi.core.common.storage.UniFileTempFileManager
-import tachiyomi.data.AnimeUpdateStrategyColumnAdapter
-import tachiyomi.data.Anime_history
-import tachiyomi.data.Animes
 import tachiyomi.data.Database
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.DatabaseHandler
@@ -102,10 +99,10 @@ class AppModule(val app: Application) : InjektModule {
         addSingleton<Context>(app)
         NovelReaderActivity.activityClass = ChimaReaderActivity::class.java
 
-        val sqlDriverAnime = AndroidSqliteDriver(
+        val sqlDriverManga = AndroidSqliteDriver(
             schema = Database.Schema,
             context = app,
-            name = "tachiyomi.animedb",
+            name = "tachiyomi.db",
             factory = if (isDebugBuildType && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 // Support database inspector in Android Studio
                 FrameworkSQLiteOpenHelperFactory()
@@ -129,14 +126,7 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory {
             Database(
-                driver = sqlDriverAnime,
-                anime_historyAdapter = Anime_history.Adapter(
-                    last_watchedAdapter = DateColumnAdapter,
-                ),
-                animesAdapter = Animes.Adapter(
-                    genreAdapter = StringListColumnAdapter,
-                    update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
-                ),
+                driver = sqlDriverManga,
                 historyAdapter = History.Adapter(
                     last_readAdapter = DateColumnAdapter,
                 ),
@@ -153,14 +143,14 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory<DatabaseHandler> {
             AndroidDatabaseHandler(
                 get(),
-                sqlDriverAnime,
+                sqlDriverManga,
             )
         }
 
-        val sqlDriverDatabaseAnime = AndroidSqliteDriver(
+        val sqlDriverAnime = AndroidSqliteDriver(
             schema = AnimeDatabase.Schema,
             context = app,
-            name = "tachiyomi.animeanimedb",
+            name = "tachiyomi.animedb",
             factory = if (isDebugBuildType && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 FrameworkSQLiteOpenHelperFactory()
             } else {
@@ -183,13 +173,13 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory {
             AnimeDatabase(
-                driver = sqlDriverDatabaseAnime,
+                driver = sqlDriverAnime,
                 animehistoryAdapter = Animehistory.Adapter(
                     last_seenAdapter = DateColumnAdapter,
                 ),
                 animesAdapter = dataanime.Animes.Adapter(
                     genreAdapter = StringListColumnAdapter,
-                    update_strategyAdapter = AnimeUpdateStrategyColumnAdapter,
+                    update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
                     fetch_typeAdapter = FetchTypeColumnAdapter,
                 ),
             )
@@ -198,7 +188,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory<AnimeDatabaseHandler> {
             AndroidAnimeDatabaseHandler(
                 get(),
-                sqlDriverDatabaseAnime,
+                sqlDriverAnime,
             )
         }
 
