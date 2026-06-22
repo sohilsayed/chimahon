@@ -9,8 +9,8 @@ import kotlinx.coroutines.coroutineScope
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.anime.model.Anime
-import tachiyomi.domain.anime.repository.AnimeRepository
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.model.Episode
 import uy.kohesive.injekt.Injekt

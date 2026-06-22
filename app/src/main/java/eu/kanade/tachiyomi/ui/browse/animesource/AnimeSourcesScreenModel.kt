@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get

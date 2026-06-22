@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.util
 
 import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.domain.anime.model.toSAnime
-import tachiyomi.domain.anime.model.Anime
+import eu.kanade.domain.entries.anime.model.toSAnime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.source.local.image.LocalCoverManager
 import tachiyomi.source.local.entries.anime.isLocal
 import tachiyomi.source.local.image.anime.LocalAnimeCoverManager
@@ -15,14 +15,14 @@ suspend fun Anime.editCover(
     @Suppress("UNUSED_PARAMETER")
     coverManager: LocalCoverManager,
     stream: InputStream,
-    updateAnime: tachiyomi.domain.anime.interactor.UpdateAnime = Injekt.get(),
+    updateAnime: tachiyomi.domain.entries.anime.interactor.UpdateAnime = Injekt.get(),
     coverCache: CoverCache = Injekt.get(),
 ) {
     if (isLocal()) {
         val sourceAnime = toSAnime()
         Injekt.get<LocalAnimeCoverManager>().update(sourceAnime, stream)
         updateAnime.await(
-            animeUpdate = tachiyomi.domain.anime.model.AnimeUpdate(
+            animeUpdate = tachiyomi.domain.entries.anime.model.AnimeUpdate(
                 id = id,
                 thumbnailUrl = sourceAnime.thumbnail_url,
                 coverLastModified = Instant.now().toEpochMilli(),
@@ -30,7 +30,7 @@ suspend fun Anime.editCover(
         )
     } else if (favorite) {
         coverCache.setCustomCoverToCache(this, stream)
-        updateAnime.await(animeUpdate = tachiyomi.domain.anime.model.AnimeUpdate(
+        updateAnime.await(animeUpdate = tachiyomi.domain.entries.anime.model.AnimeUpdate(
             id = id,
             coverLastModified = Instant.now().toEpochMilli(),
         ))

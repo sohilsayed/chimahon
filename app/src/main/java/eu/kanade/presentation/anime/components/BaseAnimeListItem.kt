@@ -14,7 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.presentation.core.components.material.padding
 
 @Composable

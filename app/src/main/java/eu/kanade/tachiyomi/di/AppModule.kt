@@ -74,7 +74,7 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.anime.AndroidAnimeDatabaseHandler
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.data.track.anime.AnimeTrackRepositoryImpl
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.anime.repository.AnimeTrackRepository

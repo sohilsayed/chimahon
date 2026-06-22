@@ -1,6 +1,6 @@
 package tachiyomi.domain.history.interactor
 
-import tachiyomi.domain.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.interactor.GetAnime
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.service.getEpisodeSort

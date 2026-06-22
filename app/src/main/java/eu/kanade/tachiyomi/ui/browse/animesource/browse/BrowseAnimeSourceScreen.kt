@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.domain.anime.model.titleOrUrl
+import eu.kanade.domain.entries.anime.model.titleOrUrl
 import eu.kanade.presentation.library.components.AnimeComfortableGridItem
 import eu.kanade.presentation.library.components.CommonAnimeItemDefaults
 import eu.kanade.presentation.util.Screen
@@ -68,7 +68,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.util.plus
-import tachiyomi.domain.anime.model.AnimeCover as DomainAnimeCover
+import tachiyomi.domain.entries.anime.model.AnimeCover as DomainAnimeCover
 
 class BrowseAnimeSourceScreen(
     private val sourceId: Long,

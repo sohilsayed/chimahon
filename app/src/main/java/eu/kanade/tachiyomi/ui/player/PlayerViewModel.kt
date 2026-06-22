@@ -44,7 +44,7 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import dev.icerock.moko.resources.StringResource
-import eu.kanade.domain.anime.interactor.SetAnimeViewerFlags
+import eu.kanade.domain.entries.anime.interactor.SetAnimeViewerFlags
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.episode.model.toDbEpisode
 import eu.kanade.domain.track.interactor.TrackEpisode
@@ -117,8 +117,8 @@ import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.anime.interactor.GetAnime
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.custombuttons.interactor.GetCustomButtons
 import tachiyomi.domain.custombuttons.model.CustomButton
@@ -130,7 +130,7 @@ import tachiyomi.domain.episode.service.getEpisodeSort
 import tachiyomi.domain.history.interactor.GetNextEpisodes
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.model.HistoryUpdate
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import tachiyomi.source.local.entries.anime.isLocal

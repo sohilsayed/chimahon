@@ -25,8 +25,8 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
-import eu.kanade.domain.anime.model.hasCustomCover
-import eu.kanade.domain.anime.model.toSAnime
+import eu.kanade.domain.entries.anime.model.hasCustomCover
+import eu.kanade.domain.entries.anime.model.toSAnime
 import eu.kanade.presentation.anime.AnimeScreen
 import eu.kanade.presentation.anime.DuplicateAnimeDialog
 import eu.kanade.presentation.anime.EditCoverAction
@@ -54,9 +54,9 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.episode.model.Episode
-import tachiyomi.domain.animesource.model.StubAnimeSource
+import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen

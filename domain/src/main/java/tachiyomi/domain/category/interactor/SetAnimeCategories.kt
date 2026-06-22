@@ -1,6 +1,6 @@
 package tachiyomi.domain.category.interactor
 
-import tachiyomi.domain.anime.repository.AnimeRepository
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
 
 class SetAnimeCategories(
     private val animeRepository: AnimeRepository,

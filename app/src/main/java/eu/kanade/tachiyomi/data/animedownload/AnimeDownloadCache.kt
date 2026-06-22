@@ -33,8 +33,8 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.anime.model.Anime
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.storage.service.StorageManager
 import uy.kohesive.injekt.Injekt

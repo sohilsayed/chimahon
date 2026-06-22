@@ -1,9 +1,9 @@
 package tachiyomi.domain.episode.interactor
 
 import tachiyomi.core.common.util.lang.withNonCancellableContext
-import tachiyomi.domain.anime.interactor.GetFavorites
-import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.interactor.GetFavorites
+import tachiyomi.domain.entries.anime.interactor.SetAnimeEpisodeFlags
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.library.service.LibraryPreferences
 
 class SetAnimeDefaultEpisodeFlags(

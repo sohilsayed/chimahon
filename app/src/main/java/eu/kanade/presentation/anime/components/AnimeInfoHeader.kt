@@ -82,7 +82,7 @@ import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.util.system.copyToClipboard
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.TextButton

@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.anime.interactor.GetMergedReferencesById
-import tachiyomi.domain.anime.model.MergedAnimeReference
+import tachiyomi.domain.entries.anime.interactor.GetMergedReferencesById
+import tachiyomi.domain.entries.anime.model.MergedAnimeReference
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.repository.EpisodeRepository
 

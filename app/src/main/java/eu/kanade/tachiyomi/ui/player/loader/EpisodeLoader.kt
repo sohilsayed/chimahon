@@ -9,7 +9,7 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.HosterState
 import kotlinx.coroutines.CancellationException
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
 import tachiyomi.source.local.io.anime.LocalAnimeSourceFileSystem

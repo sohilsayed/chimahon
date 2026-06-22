@@ -8,7 +8,7 @@ import tachiyomi.domain.library.model.GroupLibraryMode
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryGroup
 import tachiyomi.domain.library.model.LibrarySort
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.manga.model.Manga
 
 class LibraryPreferences(

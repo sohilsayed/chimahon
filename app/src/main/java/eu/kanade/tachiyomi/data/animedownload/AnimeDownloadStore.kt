@@ -7,9 +7,9 @@ import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import tachiyomi.domain.anime.interactor.GetAnime
-import tachiyomi.domain.anime.model.Anime
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.entries.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.episode.interactor.GetEpisode
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get

@@ -20,6 +20,10 @@ class EpisodeImpl : Episode {
 
     override var fillermark: Boolean = false
 
+    override var summary: String? = null
+
+    override var preview_url: String? = null
+
     override var last_second_seen: Long = 0
 
     override var total_seconds: Long = 0

@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.animesource.globalsearch
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import eu.kanade.domain.anime.model.titleOrUrl
+import eu.kanade.domain.entries.anime.model.titleOrUrl
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -20,10 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
-import tachiyomi.domain.anime.interactor.GetAnime
-import tachiyomi.domain.anime.model.Anime
-import tachiyomi.domain.anime.repository.AnimeRepository
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.entries.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.Executors

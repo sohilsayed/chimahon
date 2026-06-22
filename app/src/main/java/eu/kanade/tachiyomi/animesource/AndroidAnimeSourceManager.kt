@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import tachiyomi.domain.animesource.model.StubAnimeSource
-import tachiyomi.domain.animesource.repository.StubAnimeSourceRepository
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.source.anime.model.StubAnimeSource
+import tachiyomi.domain.source.anime.repository.StubAnimeSourceRepository
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -52,6 +52,8 @@ class AndroidAnimeSourceManager(
                                 fileSystem = Injekt.get(),
                                 coverManager = Injekt.get(),
                                 backgroundManager = Injekt.get(),
+                                thumbnailManager = Injekt.get(),
+                                fetchTypeManager = Injekt.get(),
                             ),
                         )
                     }

@@ -1,6 +1,6 @@
 package tachiyomi.domain.library.model
 
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 
 data class LibraryAnime(
     val anime: Anime,

@@ -1,6 +1,6 @@
 package eu.kanade.domain
 
-import eu.kanade.domain.anime.interactor.SetAnimeViewerFlags
+import eu.kanade.domain.entries.anime.interactor.SetAnimeViewerFlags
 import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionLanguages
 import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionSources
 import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionsByType
@@ -51,7 +51,8 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.upcoming.interactor.GetUpcomingManga
-import tachiyomi.data.animesource.StubAnimeSourceRepositoryImpl
+import tachiyomi.data.source.anime.AnimeSourceRepositoryImpl
+import tachiyomi.data.source.anime.StubAnimeSourceRepositoryImpl
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.AnimeHistoryRepositoryImpl
@@ -62,7 +63,9 @@ import tachiyomi.data.source.SourceRepositoryImpl
 import tachiyomi.data.source.StubSourceRepositoryImpl
 import tachiyomi.data.track.TrackRepositoryImpl
 import tachiyomi.data.updates.UpdatesRepositoryImpl
-import tachiyomi.domain.animesource.repository.StubAnimeSourceRepository
+import tachiyomi.domain.source.anime.interactor.GetRemoteAnime
+import tachiyomi.domain.source.anime.repository.AnimeSourceRepository
+import tachiyomi.domain.source.anime.repository.StubAnimeSourceRepository
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
@@ -257,6 +260,8 @@ class DomainModule : InjektModule {
 
         addSingletonFactory<AnimeExtensionRepoRepository> { AnimeExtensionRepoRepositoryImpl(get()) }
         addSingletonFactory<StubAnimeSourceRepository> { StubAnimeSourceRepositoryImpl(get()) }
+        addSingletonFactory<AnimeSourceRepository> { AnimeSourceRepositoryImpl(get(), get()) }
+        addFactory { GetRemoteAnime(get()) }
         addFactory { GetAnimeExtensionRepo(get()) }
         addFactory { GetAnimeExtensionRepoCount(get()) }
         addFactory { CreateAnimeExtensionRepo(get(), get()) }

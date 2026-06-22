@@ -5,7 +5,7 @@ import androidx.core.content.edit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.episode.model.Episode
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get

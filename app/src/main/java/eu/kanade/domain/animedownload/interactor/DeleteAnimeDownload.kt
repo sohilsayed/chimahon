@@ -2,8 +2,8 @@ package eu.kanade.domain.animedownload.interactor
 
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import tachiyomi.core.common.util.lang.withNonCancellableContext
-import tachiyomi.domain.anime.model.Anime
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.episode.model.Episode
 
 class DeleteAnimeDownload(

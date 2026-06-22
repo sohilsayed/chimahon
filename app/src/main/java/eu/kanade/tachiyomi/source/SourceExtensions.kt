@@ -7,7 +7,7 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import exh.source.EH_PACKAGE
 import exh.source.LOCAL_SOURCE_PACKAGE
 import exh.source.isEhBasedSource
-import tachiyomi.domain.animesource.model.StubAnimeSource
+import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.presentation.core.icons.FlagEmoji
 import tachiyomi.source.local.isLocal

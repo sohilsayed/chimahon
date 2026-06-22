@@ -43,7 +43,7 @@ import exh.ui.metadata.adapters.MetadataUIUtil.getResourceColor
 import exh.util.dropBlank
 import exh.util.trimOrNull
 import kotlinx.coroutines.CoroutineScope
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.source.local.entries.anime.isLocal
 
 @Composable

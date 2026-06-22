@@ -1,6 +1,6 @@
 package tachiyomi.domain.history.model
 
-import tachiyomi.domain.anime.model.AnimeCover
+import tachiyomi.domain.entries.anime.model.AnimeCover
 import java.util.Date
 
 data class AnimeHistoryWithRelations(

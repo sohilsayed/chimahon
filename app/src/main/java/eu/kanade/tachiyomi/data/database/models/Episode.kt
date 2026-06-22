@@ -16,7 +16,11 @@ interface Episode : SEpisode, Serializable {
 
     var bookmark: Boolean
 
-    var fillermark: Boolean
+    override var fillermark: Boolean
+
+    override var summary: String?
+
+    override var preview_url: String?
 
     var last_second_seen: Long
 

@@ -81,11 +81,11 @@ import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeSourcePreferenc
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import kotlinx.coroutines.delay
 import tachiyomi.core.common.util.lang.withIOContext
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.service.missingEpisodesCount
 import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.animesource.model.StubAnimeSource
+import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.TwoPanelBox
 import tachiyomi.presentation.core.components.VerticalFastScroller

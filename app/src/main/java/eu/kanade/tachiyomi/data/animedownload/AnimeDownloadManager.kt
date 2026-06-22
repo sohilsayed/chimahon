@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.anime.model.Anime
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
 import tachiyomi.source.local.io.ArchiveAnime

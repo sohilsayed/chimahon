@@ -1,28 +1,28 @@
 package eu.kanade.domain
 
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
-import eu.kanade.domain.anime.interactor.UpdateAnime as AppUpdateAnime
+import eu.kanade.domain.entries.anime.interactor.UpdateAnime as AppUpdateAnime
 import eu.kanade.domain.episode.interactor.SetSeenStatus as AppSetSeenStatus
 import eu.kanade.domain.track.interactor.SyncEpisodeProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackEpisode
-import tachiyomi.data.anime.CustomAnimeRepositoryImpl
-import tachiyomi.data.anime.AnimeRepositoryImpl
+import tachiyomi.data.entries.anime.CustomAnimeRepositoryImpl
+import tachiyomi.data.entries.anime.AnimeRepositoryImpl
 import tachiyomi.data.category.AnimeCategoryRepositoryImpl
 import tachiyomi.data.episode.EpisodeRepositoryImpl
-import tachiyomi.domain.anime.interactor.GetAnime
-import tachiyomi.domain.anime.interactor.FetchInterval
-import tachiyomi.domain.anime.interactor.GetAnimeWithEpisodes
-import tachiyomi.domain.anime.interactor.GetCustomAnimeInfo
-import tachiyomi.domain.anime.interactor.GetDuplicateLibraryAnime
-import tachiyomi.domain.anime.interactor.GetFavoriteAnime
-import tachiyomi.domain.anime.interactor.GetFavorites
-import tachiyomi.domain.anime.interactor.GetLibraryAnime
-import tachiyomi.domain.anime.interactor.NetworkToLocalAnime
-import tachiyomi.domain.anime.interactor.SetCustomAnimeInfo
-import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
-import tachiyomi.domain.anime.interactor.UpdateAnime as DomainUpdateAnime
-import tachiyomi.domain.anime.repository.AnimeRepository
-import tachiyomi.domain.anime.repository.CustomAnimeRepository
+import tachiyomi.domain.entries.anime.interactor.GetAnime
+import tachiyomi.domain.entries.anime.interactor.FetchInterval
+import tachiyomi.domain.entries.anime.interactor.GetAnimeWithEpisodes
+import tachiyomi.domain.entries.anime.interactor.GetCustomAnimeInfo
+import tachiyomi.domain.entries.anime.interactor.GetDuplicateLibraryAnime
+import tachiyomi.domain.entries.anime.interactor.GetFavoriteAnime
+import tachiyomi.domain.entries.anime.interactor.GetFavorites
+import tachiyomi.domain.entries.anime.interactor.GetLibraryAnime
+import tachiyomi.domain.entries.anime.interactor.NetworkToLocalAnime
+import tachiyomi.domain.entries.anime.interactor.SetCustomAnimeInfo
+import tachiyomi.domain.entries.anime.interactor.SetAnimeEpisodeFlags
+import tachiyomi.domain.entries.anime.interactor.UpdateAnime as DomainUpdateAnime
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
+import tachiyomi.domain.entries.anime.repository.CustomAnimeRepository
 import tachiyomi.domain.category.interactor.CreateAnimeCategory
 import tachiyomi.domain.category.interactor.DeleteAnimeCategory
 import tachiyomi.domain.category.interactor.GetAnimeCategories

@@ -1,6 +1,6 @@
 package tachiyomi.domain.episode.interactor
 
-import tachiyomi.domain.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.episode.model.Episode
 
 class FilterEpisodesForDownload(

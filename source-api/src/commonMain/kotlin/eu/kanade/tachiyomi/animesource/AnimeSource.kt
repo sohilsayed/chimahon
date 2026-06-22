@@ -26,6 +26,8 @@ interface AnimeSource {
         return fetchEpisodeList(anime).awaitSingle()
     }
 
+    suspend fun getSeasonList(anime: SAnime): List<SAnime> = emptyList()
+
     suspend fun getHosterList(episode: SEpisode): List<Hoster> = throw IllegalStateException("Not used")
 
     suspend fun getVideoList(hoster: Hoster): List<Video> = throw IllegalStateException("Not used")

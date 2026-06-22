@@ -607,7 +607,7 @@ class DownloadManager(
     }
 
     fun downloadEpisodes(
-        anime: tachiyomi.domain.anime.model.Anime,
+        anime: tachiyomi.domain.entries.anime.model.Anime,
         episodes: List<tachiyomi.domain.episode.model.Episode>,
     ) {
         animeDownloadManager.downloadEpisodes(anime, episodes, emptyList(), false)
@@ -615,7 +615,7 @@ class DownloadManager(
 
     fun enqueueEpisodesToDelete(
         episodes: List<tachiyomi.domain.episode.model.Episode>,
-        anime: tachiyomi.domain.anime.model.Anime,
+        anime: tachiyomi.domain.entries.anime.model.Anime,
     ) {
         animeDownloadManager.pendingDeleter.enqueueEpisodesToDelete(episodes, anime)
     }
@@ -623,7 +623,7 @@ class DownloadManager(
     fun deletePendingEpisodes() {
         tachiyomi.core.common.util.lang.launchIO {
             val sourceManager: tachiyomi.domain.source.service.SourceManager = Injekt.get()
-            val getAnime: tachiyomi.domain.anime.interactor.GetAnime = Injekt.get()
+            val getAnime: tachiyomi.domain.entries.anime.interactor.GetAnime = Injekt.get()
             val pendingDeleter = animeDownloadManager.pendingDeleter
             for (animeId in pendingDeleter.getAllAnimeIds()) {
                 val anime = getAnime.await(animeId) ?: continue
@@ -637,7 +637,7 @@ class DownloadManager(
 
     fun buildVideo(
         source: eu.kanade.tachiyomi.source.Source,
-        anime: tachiyomi.domain.anime.model.Anime,
+        anime: tachiyomi.domain.entries.anime.model.Anime,
         episode: tachiyomi.domain.episode.model.Episode,
     ): eu.kanade.tachiyomi.animesource.model.Video? {
         return animeDownloadManager.buildVideoForPlayer(anime, episode, source as eu.kanade.tachiyomi.animesource.AnimeSource)

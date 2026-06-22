@@ -18,10 +18,10 @@ import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
-import tachiyomi.domain.anime.interactor.GetLibraryAnime
-import tachiyomi.domain.anime.interactor.UpdateAnime
-import tachiyomi.domain.anime.model.AnimeUpdate
-import tachiyomi.domain.animesource.service.AnimeSourceManager
+import tachiyomi.domain.entries.anime.interactor.GetLibraryAnime
+import tachiyomi.domain.entries.anime.interactor.UpdateAnime
+import tachiyomi.domain.entries.anime.model.AnimeUpdate
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.category.interactor.GetAnimeCategories
 import tachiyomi.domain.category.interactor.SetAnimeCategories
 import tachiyomi.domain.category.model.AnimeCategory
