@@ -50,6 +50,10 @@ class AnimeDownloadStore(
         }
     }
 
+    fun hasItems(): Boolean {
+        return preferences.all.isNotEmpty()
+    }
+
     private fun getKey(download: AnimeDownload): String {
         return download.episode.id.toString()
     }

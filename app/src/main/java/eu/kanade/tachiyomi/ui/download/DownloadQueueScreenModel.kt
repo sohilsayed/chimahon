@@ -191,7 +191,7 @@ class DownloadQueueScreenModel(
     // KMK <--
 
     fun cancelAnimeDownload(download: AnimeDownload) {
-        animeDownloadManager.cancelEpisodeDownload(download)
+        animeDownloadManager.cancelQueuedDownloads(listOf(download))
     }
 
     // Chimahon: OCR methods

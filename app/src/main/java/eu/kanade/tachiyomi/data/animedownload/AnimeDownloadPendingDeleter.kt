@@ -17,45 +17,70 @@ class AnimeDownloadPendingDeleter(
 
     private val preferences = context.getSharedPreferences("anime_episodes_to_delete", Context.MODE_PRIVATE)
 
-    fun enqueueEpisodesToDelete(episodes: List<Episode>, anime: Anime) {
-        val existingEntry = preferences.getString(anime.id.toString(), null)
-        val existingEpisodes = existingEntry?.let { decodeEntry(it)?.episodes } ?: emptyList()
-        val existingIds = existingEpisodes.map { it.id }.toSet()
+    private var lastAddedEntry: Entry? = null
 
-        val merged = existingEpisodes + episodes
-            .filter { it.id !in existingIds }
-            .map { EpisodeEntry(it.id, it.name, it.scanlator) }
-        val entry = Entry(merged, AnimeEntry(anime.id, anime.title, anime.source))
+    @Synchronized
+    fun addEpisodes(episodes: List<Episode>, anime: Anime) {
+        val lastEntry = lastAddedEntry
+
+        val newEntry = if (lastEntry != null && lastEntry.anime.id == anime.id) {
+            val newEpisodes = lastEntry.episodes.addUniqueById(episodes)
+            if (newEpisodes.size == lastEntry.episodes.size) return
+            lastEntry.copy(episodes = newEpisodes)
+        } else {
+            val existingEntry = preferences.getString(anime.id.toString(), null)
+            if (existingEntry != null) {
+                val savedEntry = json.decodeFromString<Entry>(existingEntry)
+                val newEpisodes = savedEntry.episodes.addUniqueById(episodes)
+                if (newEpisodes.size == savedEntry.episodes.size) return
+                savedEntry.copy(episodes = newEpisodes)
+            } else {
+                Entry(episodes.map { it.toEntry() }, anime.toEntry())
+            }
+        }
+
+        val json = json.encodeToString(newEntry)
         preferences.edit {
-            putString(anime.id.toString(), json.encodeToString(entry))
+            putString(newEntry.anime.id.toString(), json)
+        }
+        lastAddedEntry = newEntry
+    }
+
+    @Synchronized
+    fun getPendingEpisodes(): Map<Anime, List<Episode>> {
+        val entries = decodeAll()
+        preferences.edit { clear() }
+        lastAddedEntry = null
+
+        return entries.associate { (episodes, anime) ->
+            anime.toModel() to episodes.map { it.toModel() }
         }
     }
 
-    fun getPendingEpisodes(anime: Anime): List<Episode> {
-        val entry = preferences.getString(anime.id.toString(), null)?.let { decodeEntry(it) }
-            ?: return emptyList()
-        return entry.episodes.map { ep ->
-            Episode.create().copy(id = ep.id, name = ep.name, scanlator = ep.scanlator)
+    private fun decodeAll(): List<Entry> {
+        return preferences.all.values.mapNotNull { rawEntry ->
+            try {
+                (rawEntry as? String)?.let { json.decodeFromString<Entry>(it) }
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
-    fun removePendingDelete(anime: Anime) {
-        preferences.edit {
-            remove(anime.id.toString())
+    private fun List<EpisodeEntry>.addUniqueById(episodes: List<Episode>): List<EpisodeEntry> {
+        val newList = toMutableList()
+        for (episode in episodes) {
+            if (none { it.id == episode.id }) {
+                newList.add(episode.toEntry())
+            }
         }
+        return newList
     }
 
-    fun getAllAnimeIds(): List<Long> {
-        return preferences.all.keys.mapNotNull { it.toLongOrNull() }
-    }
-
-    private fun decodeEntry(string: String): Entry? {
-        return try {
-            json.decodeFromString<Entry>(string)
-        } catch (_: Exception) {
-            null
-        }
-    }
+    private fun Anime.toEntry() = AnimeEntry(id, url, ogTitle, source)
+    private fun Episode.toEntry() = EpisodeEntry(id, url, name, scanlator)
+    private fun AnimeEntry.toModel() = Anime.create().copy(url = url, ogTitle = ogTitle, source = source, id = id)
+    private fun EpisodeEntry.toModel() = Episode.create().copy(id = id, url = url, name = name, scanlator = scanlator)
 
     @Serializable
     private data class Entry(
@@ -66,14 +91,16 @@ class AnimeDownloadPendingDeleter(
     @Serializable
     private data class EpisodeEntry(
         val id: Long,
+        val url: String,
         val name: String,
-        val scanlator: String?,
+        val scanlator: String? = null,
     )
 
     @Serializable
     private data class AnimeEntry(
         val id: Long,
-        val title: String,
+        val url: String,
+        val ogTitle: String,
         val source: Long,
     )
 }

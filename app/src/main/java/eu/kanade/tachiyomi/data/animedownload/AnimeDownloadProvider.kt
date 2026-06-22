@@ -26,13 +26,11 @@ class AnimeDownloadProvider(
     private val downloadsDir: UniFile?
         get() = storageManager.getAnimeDownloadsDirectory()
 
-    internal fun getAnimeDir(animeTitle: String, source: AnimeSource): Result<UniFile> {
+    internal fun getAnimeDir(animeTitle: String, source: AnimeSource): UniFile {
         val downloadsDir = downloadsDir
         if (downloadsDir == null) {
             logcat(LogPriority.ERROR) { "Failed to create anime download directory" }
-            return Result.failure(
-                IOException(context.stringResource(MR.strings.storage_failed_to_create_download_directory)),
-            )
+            throw IOException(context.stringResource(MR.strings.storage_failed_to_create_download_directory))
         }
 
         val sourceDirName = getSourceDirName(source)
@@ -40,9 +38,7 @@ class AnimeDownloadProvider(
         if (sourceDir == null) {
             val displayablePath = downloadsDir.displayablePath + "/$sourceDirName"
             logcat(LogPriority.ERROR) { "Failed to create source download directory: $displayablePath" }
-            return Result.failure(
-                IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath)),
-            )
+            throw IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath))
         }
 
         val animeDirName = getAnimeDirName(animeTitle)
@@ -50,12 +46,10 @@ class AnimeDownloadProvider(
         if (animeDir == null) {
             val displayablePath = sourceDir.displayablePath + "/$animeDirName"
             logcat(LogPriority.ERROR) { "Failed to create anime download directory: $displayablePath" }
-            return Result.failure(
-                IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath)),
-            )
+            throw IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath))
         }
 
-        return Result.success(animeDir)
+        return animeDir
     }
 
     fun findSourceDir(source: AnimeSource): UniFile? {
@@ -128,7 +122,7 @@ class AnimeDownloadProvider(
         )
     }
 
-    private fun getValidEpisodeDirNames(episodeName: String, episodeScanlator: String?): List<String> {
+    internal fun getValidEpisodeDirNames(episodeName: String, episodeScanlator: String?): List<String> {
         val episodeDirName = getEpisodeDirName(episodeName, episodeScanlator)
         return listOf(episodeDirName)
     }

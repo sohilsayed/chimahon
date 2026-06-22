@@ -84,7 +84,7 @@ class EpisodeLoader {
         ): List<Hoster> {
             val downloadManager: AnimeDownloadManager = Injekt.get()
             return try {
-                val video = downloadManager.buildVideoForPlayer(anime, episode, source)
+                val video = downloadManager.buildVideo(source, anime, episode)
                 listOfNotNull(video).toHosterList()
             } catch (e: Throwable) {
                 emptyList()

@@ -42,6 +42,9 @@ class DownloadPreferences(
     fun useExternalDownloader() = preferenceStore.getBoolean("use_external_downloader", false)
     fun externalDownloaderSelection() = preferenceStore.getString("external_downloader_selection", "")
     fun notDownloadFillermarkedItems() = preferenceStore.getBoolean("pref_no_download_fillermarked", false)
+    fun downloadFillermarkedItems() = preferenceStore.getBoolean("pref_download_fillermarked", true)
+
+    fun removeExcludeAnimeCategories() = preferenceStore.getStringSet(REMOVE_EXCLUDE_ANIME_CATEGORIES_PREF_KEY, emptySet())
 
     fun parallelSourceLimit() = preferenceStore.getInt("download_parallel_source_limit", 5)
 
@@ -57,10 +60,12 @@ class DownloadPreferences(
 
     companion object {
         private const val REMOVE_EXCLUDE_CATEGORIES_PREF_KEY = "remove_exclude_categories"
+        private const val REMOVE_EXCLUDE_ANIME_CATEGORIES_PREF_KEY = "remove_exclude_anime_categories"
         private const val DOWNLOAD_NEW_CATEGORIES_PREF_KEY = "download_new_categories"
         private const val DOWNLOAD_NEW_CATEGORIES_EXCLUDE_PREF_KEY = "download_new_categories_exclude"
         val categoryPreferenceKeys = setOf(
             REMOVE_EXCLUDE_CATEGORIES_PREF_KEY,
+            REMOVE_EXCLUDE_ANIME_CATEGORIES_PREF_KEY,
             DOWNLOAD_NEW_CATEGORIES_PREF_KEY,
             DOWNLOAD_NEW_CATEGORIES_EXCLUDE_PREF_KEY,
         )

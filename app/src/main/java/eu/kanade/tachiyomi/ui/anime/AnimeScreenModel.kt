@@ -860,7 +860,7 @@ class AnimeScreenModel(
 
     private fun cancelDownload(episodeId: Long) {
         val activeDownload = animeDownloadManager.queueState.value.firstOrNull { it.episode.id == episodeId } ?: return
-        animeDownloadManager.cancelEpisodeDownload(activeDownload)
+        animeDownloadManager.cancelQueuedDownloads(listOf(activeDownload))
         updateDownloadState(activeDownload.apply { status = AnimeDownload.State.NOT_DOWNLOADED })
     }
 
@@ -928,7 +928,7 @@ class AnimeScreenModel(
         video: Video? = null,
     ) {
         val anime = successState?.anime ?: return
-        animeDownloadManager.downloadEpisodes(anime, episodes, listOf(video), true)
+        animeDownloadManager.downloadEpisodes(anime, episodes, autoStart = true, alt = alt, video = video)
         toggleAllSelection(false)
     }
 

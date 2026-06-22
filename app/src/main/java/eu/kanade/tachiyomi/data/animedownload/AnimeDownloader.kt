@@ -29,6 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,28 +87,32 @@ class AnimeDownloader(
     val isRunning: Boolean
         get() = downloaderJob?.isActive == true
 
-    suspend fun start(): Boolean {
+    fun start(): Boolean {
         if (downloaderJob?.isActive == true) {
             logcat(LogPriority.INFO) { "AnimeDownloader: already running" }
             return true
         }
 
-        val queuedDownloads = _queueState.value.filter { it.status == AnimeDownload.State.QUEUE }
-        if (queuedDownloads.isEmpty()) {
+        if (_queueState.value.isEmpty() && !store.hasItems()) {
+            logcat(LogPriority.INFO) { "AnimeDownloader: nothing to start (queue empty)" }
+            return false
+        }
+
+        logcat(LogPriority.INFO) { "AnimeDownloader: starting with ${_queueState.value.size} items" }
+        downloaderJob = scope.launchIO {
+            restoreAndProcess()
+        }
+        return true
+    }
+
+    private suspend fun restoreAndProcess() {
+        if (_queueState.value.isEmpty()) {
             val restored = store.restore()
-            if (restored.isEmpty()) {
-                logcat(LogPriority.INFO) { "AnimeDownloader: nothing to start (queue empty, no restore)" }
-                return false
-            }
+            if (restored.isEmpty()) return
             restored.forEach { it.status = AnimeDownload.State.QUEUE }
             addAllToQueue(restored)
         }
-
-        logcat(LogPriority.INFO) { "AnimeDownloader: starting processQueue with ${_queueState.value.size} items" }
-        downloaderJob = scope.launchIO {
-            processQueue()
-        }
-        return true
+        processQueue()
     }
 
     fun stop(reason: String? = null) {
@@ -149,43 +154,35 @@ class AnimeDownloader(
         notifier.dismissProgress()
     }
 
-    fun queueEpisodes(anime: Anime, episodes: List<Episode>, videos: List<Video?>, autoStart: Boolean) {
+    fun queueEpisodes(
+        anime: Anime,
+        episodes: List<Episode>,
+        autoStart: Boolean,
+        changeDownloader: Boolean = false,
+        video: Video? = null,
+    ) {
         val source = animeSourceManager.get(anime.source) as? AnimeHttpSource
         if (source == null) {
             logcat(LogPriority.ERROR) { "AnimeDownloader: source ${anime.source} not found or not AnimeHttpSource" }
             return
         }
 
-        // Remove any errored items for these episodes so they can be re-queued
-        val episodeIds = episodes.map { it.id }.toSet()
-        _queueState.update { queue ->
-            queue.filter { it.episode.id !in episodeIds || it.status != AnimeDownload.State.ERROR }
-        }
-
-        val episodesToQueue = episodes.zip(videos).filter { (episode, _) ->
-            val isDuplicate = _queueState.value.any { it.episode.id == episode.id }
-            val isDownloaded = provider.findEpisodeDir(
-                episode.name,
-                episode.scanlator,
-                anime.title,
-                source,
-            ) != null
-            !isDuplicate && !isDownloaded
-        }
+        val episodesToQueue = episodes.asSequence()
+            .filter { provider.findEpisodeDir(it.name, it.scanlator, anime.title, source) == null }
+            .sortedByDescending { it.sourceOrder }
+            .filter { episode -> _queueState.value.none { it.episode.id == episode.id } }
+            .map { AnimeDownload(source, anime, it, video) }
+            .toList()
 
         if (episodesToQueue.isEmpty()) {
             logcat(LogPriority.WARN) { "AnimeDownloader: nothing to queue (duplicate or already downloaded)" }
             return
         }
 
-        val downloads = episodesToQueue.map { (episode, video) ->
-            AnimeDownload(source, anime, episode, video)
-        }
-
-        downloads.forEach { it.status = AnimeDownload.State.QUEUE }
-        addAllToQueue(downloads)
-        store.addAll(downloads)
-        logcat(LogPriority.INFO) { "AnimeDownloader: queued ${downloads.size} episode(s)" }
+        episodesToQueue.forEach { it.status = AnimeDownload.State.QUEUE }
+        addAllToQueue(episodesToQueue)
+        store.addAll(episodesToQueue)
+        logcat(LogPriority.INFO) { "AnimeDownloader: queued ${episodesToQueue.size} episode(s)" }
 
         if (autoStart) {
             AnimeDownloadJob.start(context)
@@ -207,6 +204,27 @@ class AnimeDownloader(
 
     private fun addAllToQueue(downloads: List<AnimeDownload>) {
         _queueState.update { it + downloads }
+    }
+
+    private fun internalClearQueue() {
+        store.clear()
+        _queueState.update { emptyList() }
+    }
+
+    fun updateQueue(downloads: List<AnimeDownload>) {
+        if (_queueState.value == downloads) return
+        if (downloads.isEmpty()) {
+            clearQueue()
+            stop()
+            return
+        }
+        val wasRunning = isRunning
+        pause()
+        internalClearQueue()
+        addAllToQueue(downloads)
+        if (wasRunning) {
+            scope.launch { start() }
+        }
     }
 
     private fun removeFromQueueState(download: AnimeDownload) {
@@ -259,7 +277,7 @@ class AnimeDownloader(
         notifyQueueChanged()
         notifier.onProgressChange(download)
 
-        val animeDir = provider.getAnimeDir(download.anime.title, download.source).getOrThrow()
+        val animeDir = provider.getAnimeDir(download.anime.title, download.source)
 
         val availSpace = DiskUtil.getAvailableStorageSpace(animeDir)
         if (availSpace != -1L && availSpace < MIN_DISK_SPACE) {

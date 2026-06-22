@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.animedownload
 
 import android.content.Context
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadProvider.Companion.TMP_DIR_SUFFIX
 import eu.kanade.tachiyomi.data.download.UniFileAsStringSerializer
 import kotlinx.coroutines.CancellationException
@@ -160,8 +161,11 @@ class AnimeDownloadCache(
         rootDirMutex.withLock {
             val sourceDir = rootDir.sourceDirs[anime.source] ?: return
             val animeDir = sourceDir.animeDirs[provider.getAnimeDirName(anime.title)] ?: return
-            val episodeDirName = provider.getEpisodeDirName(episode.name, episode.scanlator)
-            animeDir.episodeDirs -= episodeDirName
+            provider.getValidEpisodeDirNames(episode.name, episode.scanlator).forEach {
+                if (it in animeDir.episodeDirs) {
+                    animeDir.episodeDirs -= it
+                }
+            }
         }
 
         notifyChanges()
@@ -172,8 +176,11 @@ class AnimeDownloadCache(
             val sourceDir = rootDir.sourceDirs[anime.source] ?: return
             val animeDir = sourceDir.animeDirs[provider.getAnimeDirName(anime.title)] ?: return
             episodes.forEach { episode ->
-                val episodeDirName = provider.getEpisodeDirName(episode.name, episode.scanlator)
-                animeDir.episodeDirs -= episodeDirName
+                provider.getValidEpisodeDirNames(episode.name, episode.scanlator).forEach {
+                    if (it in animeDir.episodeDirs) {
+                        animeDir.episodeDirs -= it
+                    }
+                }
             }
         }
 
@@ -190,6 +197,40 @@ class AnimeDownloadCache(
         }
 
         notifyChanges()
+    }
+
+    suspend fun removeSource(source: AnimeSource) {
+        rootDirMutex.withLock {
+            rootDir.sourceDirs -= source.id
+        }
+
+        notifyChanges()
+    }
+
+    fun getTotalDownloadCount(): Int {
+        renewCache()
+
+        return rootDir.sourceDirs.values.sumOf { sourceDir ->
+            sourceDir.animeDirs.values.sumOf { animeDir ->
+                animeDir.episodeDirs.size
+            }
+        }
+    }
+
+    fun getTotalDownloadSize(): Long {
+        renewCache()
+
+        return rootDir.sourceDirs.values.sumOf { sourceDir ->
+            sourceDir.dir?.length() ?: 0L
+        }
+    }
+
+    fun getDownloadSize(anime: Anime): Long {
+        renewCache()
+
+        return rootDir.sourceDirs[anime.source]?.animeDirs?.get(
+            provider.getAnimeDirName(anime.title),
+        )?.dir?.length() ?: 0L
     }
 
     fun invalidateCache() {

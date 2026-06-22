@@ -4,8 +4,13 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import tachiyomi.domain.entries.anime.interactor.GetAnime
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.episode.interactor.GetEpisode
 import tachiyomi.domain.episode.model.Episode
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 data class AnimeDownload(
     val source: AnimeHttpSource,
@@ -49,4 +54,17 @@ data class AnimeDownload(
         ERROR(4),
     }
 
+    companion object {
+        suspend fun fromEpisodeId(
+            episodeId: Long,
+            getEpisode: GetEpisode = Injekt.get(),
+            getAnimeById: GetAnime = Injekt.get(),
+            sourceManager: AnimeSourceManager = Injekt.get(),
+        ): AnimeDownload? {
+            val episode = getEpisode.await(episodeId) ?: return null
+            val anime = getAnimeById.await(episode.animeId) ?: return null
+            val source = sourceManager.get(anime.source) as? AnimeHttpSource ?: return null
+            return AnimeDownload(source, anime, episode)
+        }
+    }
 }

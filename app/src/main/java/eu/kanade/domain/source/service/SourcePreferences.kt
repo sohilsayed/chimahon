@@ -41,6 +41,11 @@ class SourcePreferences(
         -1,
     )
 
+    fun lastUsedAnimeSource() = preferenceStore.getLong(
+        Preference.appStateKey("last_anime_catalogue_source"),
+        -1,
+    )
+
     fun showNsfwSource() = preferenceStore.getBoolean("show_nsfw_source", true)
 
     fun migrationSortingMode() = preferenceStore.getEnum("pref_migration_sorting", SetMigrateSorting.Mode.ALPHABETICAL)
@@ -51,6 +56,8 @@ class SourcePreferences(
     )
 
     fun hideInLibraryItems() = preferenceStore.getBoolean("browse_hide_in_library_items", false)
+
+    fun hideInAnimeLibraryItems() = preferenceStore.getBoolean("browse_hide_in_anime_library_items", false)
 
     // KMK -->
     fun hideInLibraryFeedItems() = preferenceStore.getBoolean("feed_hide_in_library_items", false)
