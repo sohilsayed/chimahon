@@ -19,7 +19,7 @@ internal class MonetColorScheme(context: Context) : BaseColorScheme() {
         MonetSystemColorScheme(context)
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
         val seed = WallpaperManager.getInstance(context)
-            .getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
+            ?.getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
             ?.primaryColor
             ?.toArgb()
         if (seed != null) {
