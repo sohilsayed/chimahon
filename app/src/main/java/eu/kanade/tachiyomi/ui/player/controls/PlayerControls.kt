@@ -791,6 +791,7 @@ fun PlayerControls(
             animeId = anime?.id,
             onSelectSubtitleCue = viewModel::selectSubtitleCue,
             onPrimarySubtitleDelayMillisChange = viewModel::updatePrimarySubtitleDelayMillis,
+            onSubtitleSpeedChange = viewModel::updateSubtitleSpeed,
             onDismissRequest = { viewModel.showPanel(Panels.None) },
         )
 

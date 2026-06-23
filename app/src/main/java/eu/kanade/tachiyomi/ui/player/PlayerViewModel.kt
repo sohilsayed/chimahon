@@ -142,7 +142,6 @@ import java.util.Locale
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.roundToInt
 
 private val jimakuEpisodeRegexes = listOf(
     Regex("""(?i)\bS\d{1,3}E(\d{1,4})\b"""),
@@ -251,6 +250,7 @@ class PlayerViewModel @JvmOverloads constructor(
     val activeSubtitleCueIndex = _activeSubtitleCueIndex.asStateFlow()
     private val _primarySubtitleDelaySeconds = MutableStateFlow(0.0)
     val primarySubtitleDelaySeconds = _primarySubtitleDelaySeconds.asStateFlow()
+    private val _subtitleSpeedSeconds = MutableStateFlow(1.0)
     private var lastSubtitleHistoryText = ""
     private var nextSubtitleCueIndex = 0
     private val parsedSubtitleCuesByTrackId = mutableMapOf<Int, List<SubtitleCue>>()
@@ -530,8 +530,8 @@ class PlayerViewModel @JvmOverloads constructor(
     data class SubtitleCue(
         val index: Int,
         val text: String,
-        val positionSeconds: Int,
-        val endPositionSeconds: Int = positionSeconds + 5,
+        val positionSeconds: Double,
+        val endPositionSeconds: Double = positionSeconds + 5.0,
     )
 
     sealed interface JimakuState {
@@ -1117,31 +1117,51 @@ class PlayerViewModel @JvmOverloads constructor(
             return
         }
 
-        val delaySeconds = primarySubtitleDelaySeconds.value
+        val delaySeconds = currentPrimarySubtitleDelaySeconds()
+        val speed = currentSubtitleSpeed()
         val cueByTime = cues.lastOrNull {
-            positionSeconds >= it.delayedStartSeconds(delaySeconds) &&
-                positionSeconds <= it.delayedEndSeconds(delaySeconds)
+            positionSeconds >= it.effectiveStartSeconds(delaySeconds, speed) &&
+                positionSeconds <= it.effectiveEndSeconds(delaySeconds, speed)
         }
         val cueByText = text.takeIf { it.isNotBlank() }?.let { cleanedText ->
             val normalizedText = cleanedText.normalizedSubtitleCueText()
             cues
                 .filter { it.text.normalizedSubtitleCueText() == normalizedText }
-                .minByOrNull { kotlin.math.abs(it.delayedStartSeconds(delaySeconds) - positionSeconds) }
+                .minByOrNull { kotlin.math.abs(it.effectiveStartSeconds(delaySeconds, speed) - positionSeconds) }
         }
 
         _activeSubtitleCueIndex.update { cueByTime?.index ?: cueByText?.index }
     }
 
-    private fun SubtitleCue.delayedStartSeconds(delaySeconds: Double = primarySubtitleDelaySeconds.value): Double {
-        return positionSeconds + delaySeconds
+    private fun SubtitleCue.effectiveStartSeconds(
+        delaySeconds: Double = currentPrimarySubtitleDelaySeconds(),
+        speed: Double = currentSubtitleSpeed(),
+    ): Double {
+        return positionSeconds * speed + delaySeconds
     }
 
-    private fun SubtitleCue.delayedEndSeconds(delaySeconds: Double = primarySubtitleDelaySeconds.value): Double {
-        return endPositionSeconds + delaySeconds
+    private fun SubtitleCue.effectiveEndSeconds(
+        delaySeconds: Double = currentPrimarySubtitleDelaySeconds(),
+        speed: Double = currentSubtitleSpeed(),
+    ): Double {
+        return endPositionSeconds * speed + delaySeconds
+    }
+
+    private fun currentPrimarySubtitleDelaySeconds(): Double {
+        return primarySubtitleDelaySeconds.value
+    }
+
+    private fun currentSubtitleSpeed(): Double {
+        return subtitleSpeedSeconds.value
     }
 
     fun updatePrimarySubtitleDelayMillis(delayMillis: Int) {
         _primarySubtitleDelaySeconds.update { delayMillis / 1000.0 }
+        updateActiveSubtitleCueFromPosition(pos.value.toDouble())
+    }
+
+    fun updateSubtitleSpeed(speed: Double) {
+        _subtitleSpeedSeconds.update { speed }
         updateActiveSubtitleCueFromPosition(pos.value.toDouble())
     }
 
@@ -1227,12 +1247,11 @@ class PlayerViewModel @JvmOverloads constructor(
                     .cleanMpvSubtitleText()
 
                 if (text.isNotBlank()) {
-                    val startSecond = start.toInt()
                     cues += SubtitleCue(
                         index = cues.size,
                         text = text,
-                        positionSeconds = startSecond,
-                        endPositionSeconds = end.toInt().coerceAtLeast(startSecond + 1),
+                        positionSeconds = start,
+                        endPositionSeconds = end.coerceAtLeast(start + 1.0),
                     )
                 }
             }
@@ -1280,12 +1299,11 @@ class PlayerViewModel @JvmOverloads constructor(
             val text = values[textIndex].cleanMpvSubtitleText()
             if (text.isBlank()) return@forEach
 
-            val startSecond = start.toInt()
             cues += SubtitleCue(
                 index = cues.size,
                 text = text,
-                positionSeconds = startSecond,
-                endPositionSeconds = end.toInt().coerceAtLeast(startSecond + 1),
+                positionSeconds = start,
+                endPositionSeconds = end.coerceAtLeast(start + 1.0),
             )
         }
         return cues
@@ -1358,7 +1376,7 @@ class PlayerViewModel @JvmOverloads constructor(
         val cue = SubtitleCue(
             index = nextSubtitleCueIndex++,
             text = text,
-            positionSeconds = pos.value.toInt(),
+            positionSeconds = pos.value.toDouble(),
         )
         _subtitleHistory.update { cues -> (cues + cue).takeLast(MAX_SUBTITLE_HISTORY) }
         _activeSubtitleCueIndex.update { cue.index }
@@ -1366,7 +1384,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
     fun selectSubtitleCue(index: Int) {
         val cue = subtitleHistory.value.firstOrNull { it.index == index } ?: return
-        seekTo(cue.delayedStartSeconds().roundToInt().coerceAtLeast(0))
+        seekTo(cue.effectiveStartSeconds().coerceAtLeast(0.0))
         _activeSubtitleCueIndex.update { cue.index }
     }
 
@@ -1507,11 +1525,15 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun seekTo(position: Int, precise: Boolean = true) {
-        val duration = activity.player.duration ?: 0
-        if (position !in 0..duration) return
-        val target = if (duration > 0 && position >= duration) duration - 1 else position
+        seekTo(position.toDouble(), precise)
+    }
+
+    fun seekTo(position: Double, precise: Boolean = true) {
+        val duration = activity.player.duration?.toDouble() ?: 0.0
+        if (position < 0.0 || position > duration) return
+        val target = if (duration > 0.0 && position >= duration) duration - 1.0 else position
         clearEndOfFileState()
-        MPVLib.command(arrayOf("seek", target.coerceAtLeast(0).toString(), if (precise) "absolute" else "absolute+keyframes"))
+        MPVLib.command(arrayOf("seek", target.coerceAtLeast(0.0).toString(), if (precise) "absolute" else "absolute+keyframes"))
     }
 
     private fun clearEndOfFileState() {
@@ -2427,15 +2449,13 @@ class PlayerViewModel @JvmOverloads constructor(
 
     private fun applySubtitleDelayForAnime(animeId: Long) {
         val primaryDelayMillis = subtitlePreferences.subtitlesDelayForAnime(animeId).get()
-        MPVLib.setPropertyDouble(
-            "sub-delay",
-            primaryDelayMillis / 1000.0,
-        )
-        MPVLib.setPropertyDouble(
+        MPVLib.setOptionString("sub-delay", (primaryDelayMillis / 1000.0).toString())
+        MPVLib.setOptionString(
             "secondary-sub-delay",
-            subtitlePreferences.subtitlesSecondaryDelayForAnime(animeId).get() / 1000.0,
+            (subtitlePreferences.subtitlesSecondaryDelayForAnime(animeId).get() / 1000.0).toString(),
         )
         updatePrimarySubtitleDelayMillis(primaryDelayMillis)
+        updateSubtitleSpeed(subtitlePreferences.subtitlesSpeed().get().toDouble())
     }
 
     /**
