@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Hoster.Companion.toHosterList
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.HosterState
 import kotlinx.coroutines.CancellationException
@@ -63,10 +64,31 @@ class EpisodeLoader {
          */
         private suspend fun getHostersOnHttp(episode: Episode, source: AnimeHttpSource): List<Hoster> {
             // TODO(1.6): Remove else block when dropping support for ext lib <1.6
-            return if (source.javaClass.declaredMethods.any { it.name == "getHosterList" }) {
+            return if (checkHasHosters(source)) {
                 source.getHosterList(episode.toSEpisode())
             } else {
                 source.getVideoList(episode.toSEpisode()).toHosterList()
+            }
+        }
+
+        private fun checkHasHosters(source: AnimeHttpSource): Boolean {
+            var current: Class<*> = source.javaClass
+            while (true) {
+                if (
+                    current == ParsedAnimeHttpSource::class.java ||
+                    current == AnimeHttpSource::class.java ||
+                    current == AnimeSource::class.java
+                ) {
+                    return false
+                }
+                if (
+                    current.declaredMethods.any {
+                        it.name in listOf("getHosterList", "hosterListRequest", "hosterListParse")
+                    }
+                ) {
+                    return true
+                }
+                current = current.superclass ?: return false
             }
         }
 

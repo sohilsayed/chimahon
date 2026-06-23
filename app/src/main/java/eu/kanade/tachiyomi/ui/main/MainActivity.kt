@@ -663,6 +663,10 @@ class MainActivity : BaseActivity() {
                 navigator.popUntilRoot()
                 HomeScreen.Tab.More(toDownloads = true)
             }
+            Constants.SHORTCUT_ANIME -> {
+                navigator.popUntilRoot()
+                HomeScreen.Tab.Anime
+            }
             // KMK -->
             Constants.SHORTCUT_LIBRARY_UPDATE_ERRORS -> {
                 navigator.popUntilRoot()

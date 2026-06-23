@@ -555,6 +555,26 @@ class NotificationReceiver : BroadcastReceiver() {
         }
 
         /**
+         * Returns [PendingIntent] that opens the anime info controller
+         *
+         * @param context context of application
+         * @param animeId id of the entry to open
+         */
+        internal fun openAnimeEntryPendingActivity(context: Context, animeId: Long): PendingIntent {
+            val newIntent = Intent(context, MainActivity::class.java).setAction(Constants.SHORTCUT_ANIME)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(Constants.ANIME_EXTRA, animeId)
+                .putExtra("notificationId", animeId.hashCode())
+
+            return PendingIntent.getActivity(
+                context,
+                animeId.hashCode(),
+                newIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
          * Returns [PendingIntent] that starts a service which stops the library update
          *
          * @param context context of application

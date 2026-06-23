@@ -114,10 +114,11 @@ internal class AnimeDownloadNotifier(private val context: Context) {
 
     fun onComplete() {
         dismissProgress()
+        context.cancelNotification(Notifications.ID_ANIME_DOWNLOAD_ERROR)
         isDownloading = false
     }
 
-    fun onError(error: String? = null, episodeName: String? = null, animeTitle: String? = null) {
+    fun onError(error: String? = null, episodeName: String? = null, animeTitle: String? = null, animeId: Long? = null) {
         with(errorNotificationBuilder) {
             setContentTitle(
                 animeTitle?.plus(": $episodeName")
@@ -127,6 +128,13 @@ internal class AnimeDownloadNotifier(private val context: Context) {
             setSmallIcon(R.drawable.ic_warning_white_24dp)
             clearActions()
             setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
+            if (animeId != null) {
+                addAction(
+                    R.drawable.ic_book_24dp,
+                    context.stringResource(MR.strings.action_show_anime),
+                    NotificationReceiver.openAnimeEntryPendingActivity(context, animeId),
+                )
+            }
             setProgress(0, 0, false)
 
             show(Notifications.ID_ANIME_DOWNLOAD_ERROR)

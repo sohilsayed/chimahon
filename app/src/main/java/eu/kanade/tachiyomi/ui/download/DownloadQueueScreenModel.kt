@@ -4,6 +4,7 @@ import android.view.MenuItem
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.Navigator
+import eu.davidea.flexibleadapter.items.AbstractFlexibleItem
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
@@ -42,14 +43,11 @@ class DownloadQueueScreenModel(
     private val ocrManager: OcrManager = Injekt.get(),
 ) : ScreenModel {
 
-    private val _state = MutableStateFlow(emptyList<DownloadHeaderItem>())
+    private val _state = MutableStateFlow(emptyList<AbstractFlexibleItem<*>>())
     val state = _state.asStateFlow()
 
     // OCR queue state
     val ocrQueueState: StateFlow<List<OcrQueueItem>> = ocrManager.queueState
-
-    // Anime download queue state
-    val animeQueueState = animeDownloadManager.queueState
 
     lateinit var controllerBinding: DownloadListBinding
 
@@ -113,12 +111,16 @@ class DownloadQueueScreenModel(
                             cancel(allDownloadsForSeries)
                         }
                     }
-                    // KMK -->
                     R.id.show_manga -> {
                         val mangaId = item.download.manga.id
                         showManga(mangaId = mangaId)
                     }
-                    // KMK <--
+                }
+            } else if (item is AnimeDownloadItem) {
+                when (menuItem.itemId) {
+                    R.id.cancel_download -> {
+                        cancelAnimeDownload(item.download)
+                    }
                 }
             }
         }
@@ -126,17 +128,23 @@ class DownloadQueueScreenModel(
 
     init {
         screenModelScope.launch {
-            downloadManager.queueState
-                .map { downloads ->
-                    downloads
+            combine(
+                downloadManager.queueState,
+                animeDownloadManager.queueState,
+            ) { mangaDownloads, animeDownloads ->
+                buildList<AbstractFlexibleItem<*>> {
+                    mangaDownloads
                         .groupBy { it.source }
-                        .map { entry ->
-                            DownloadHeaderItem(entry.key.id, entry.key.name, entry.value.size).apply {
-                                addSubItems(0, entry.value.map { DownloadItem(it, this) })
-                            }
+                        .forEach { entry ->
+                            val header = DownloadHeaderItem(entry.key.id, entry.key.name, entry.value.size)
+                            header.addSubItems(0, entry.value.map { DownloadItem(it, header) })
+                            add(header)
                         }
+                    animeDownloads.forEach { download ->
+                        add(AnimeDownloadItem(download))
+                    }
                 }
-                .collect { newList -> _state.update { newList } }
+            }.collect { newList -> _state.update { newList } }
         }
     }
 
@@ -160,6 +168,8 @@ class DownloadQueueScreenModel(
 
     fun getDownloadStatusFlow() = downloadManager.statusFlow()
     fun getDownloadProgressFlow() = downloadManager.progressFlow()
+    fun getAnimeStatusFlow() = animeDownloadManager.statusFlow()
+    fun getAnimeProgressFlow() = animeDownloadManager.progressFlow()
 
     fun startDownloads() {
         downloadManager.startDownloads()
@@ -265,5 +275,17 @@ class DownloadQueueScreenModel(
 
     private fun getHolder(download: Download): DownloadHolder? {
         return controllerBinding.root.findViewHolderForItemId(download.chapter.id) as? DownloadHolder
+    }
+
+    fun getAnimeHolder(episodeId: Long): AnimeDownloadHolder? {
+        return controllerBinding.root.findViewHolderForItemId(episodeId) as? AnimeDownloadHolder
+    }
+
+    fun onAnimeStatusChange(download: AnimeDownload) {
+        getAnimeHolder(download.episode.id)?.updateProgress(download)
+    }
+
+    fun onAnimeProgressChange(download: AnimeDownload) {
+        getAnimeHolder(download.episode.id)?.updateProgress(download)
     }
 }
