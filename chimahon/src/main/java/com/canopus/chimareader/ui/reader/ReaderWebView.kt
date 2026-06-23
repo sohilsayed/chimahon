@@ -374,6 +374,8 @@ private class ReaderAndroidWebView(
     internal var lastLoadedHeight: Int = -1
     internal var lastLoadedVerticalWriting: Boolean? = null
 
+    private var restoreEpoch: Int = 0
+
     private var lastProgressReportTime = 0L
     private val reportProgressRunnable = Runnable {
         if (continuousMode && !isImageOnly) {
@@ -443,12 +445,14 @@ private class ReaderAndroidWebView(
     )
 
     private val jsBridge = ReaderJavascriptBridge(
-        onRestoreCompleted = {
+        onRestoreCompleted = { epoch ->
             post {
-                alpha = 0f
-                visibility = View.VISIBLE
-                animate().cancel()
-                animate().alpha(1f).setDuration(160).start()
+                if (epoch == restoreEpoch || epoch == 0) {
+                    alpha = 0f
+                    visibility = View.VISIBLE
+                    animate().cancel()
+                    animate().alpha(1f).setDuration(160).start()
+                }
             }
         },
         onTextSelectedCallback = { word, sentence, x, y, w, h ->
@@ -484,7 +488,7 @@ private class ReaderAndroidWebView(
 
     init {
         setLayerType(LAYER_TYPE_HARDWARE, null)
-        addJavascriptInterface(jsBridge, "HoshiAndroid")
+        addJavascriptInterface(jsBridge, "ReaderAndroid")
         setBackgroundColor(readerSettings.backgroundColor)
     }
 
@@ -582,6 +586,7 @@ private class ReaderAndroidWebView(
             return
         }
 
+        restoreEpoch++
         val script = when {
             isImageOnly -> buildImageOnlyScript()
             continuousMode -> buildContinuousScript()
@@ -591,9 +596,12 @@ private class ReaderAndroidWebView(
     }
 
     private fun buildImageOnlyScript(): String {
+        val epoch = restoreEpoch
         val bg = readerSettings.resolvedBgHex()
         return """
             (function() {
+                window.__readerRestoreEpoch = $epoch;
+
                 var vp = document.querySelector('meta[name="viewport"]');
                 if (vp) vp.remove();
                 var nvp = document.createElement('meta');
@@ -603,8 +611,8 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader = {
                     handleTap: function(clientX, clientY) {
-                        if (window.HoshiAndroid && window.HoshiAndroid.onBackgroundTap)
-                            window.HoshiAndroid.onBackgroundTap(clientX, clientY);
+                        if (window.ReaderAndroid && window.ReaderAndroid.onBackgroundTap)
+                            window.ReaderAndroid.onBackgroundTap(clientX, clientY);
                         return false;
                     },
                     paginate: function(direction) {
@@ -623,14 +631,22 @@ private class ReaderAndroidWebView(
                     'width:' + w + 'px!important;height:' + h + 'px!important;' +
                     'overflow:hidden!important;background:$bg!important;';
 
+                function notifyComplete() {
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(function() {
+                            if (window.ReaderAndroid) window.ReaderAndroid.restoreCompleted(window.__readerRestoreEpoch);
+                        });
+                    });
+                }
+
                 if (!document.body) {
-                    if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                    notifyComplete();
                     return;
                 }
 
                 var target = document.querySelector('img, svg');
                 if (!target) {
-                    if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                    notifyComplete();
                     return;
                 }
 
@@ -661,14 +677,18 @@ private class ReaderAndroidWebView(
                 if (target.tagName.toLowerCase() === 'svg') {
                     target.setAttribute('preserveAspectRatio', 'xMidYMid meet');
                     target.style.cssText = imgStyle;
-                    if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                    notifyComplete();
                 } else {
                     target.style.cssText = imgStyle;
-                    if (target.complete && target.naturalWidth > 0) {
-                        if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                    if (target.complete) {
+                        if (target.naturalWidth > 0) {
+                            notifyComplete();
+                        } else {
+                            notifyComplete();
+                        }
                     } else {
-                        target.onload  = function() { if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted(); };
-                        target.onerror = function() { if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted(); };
+                        target.onload  = function() { notifyComplete(); };
+                        target.onerror = function() { notifyComplete(); };
                     }
                 }
             })();
@@ -676,18 +696,53 @@ private class ReaderAndroidWebView(
     }
 
     private fun buildContinuousScript(): String {
+        val epoch = restoreEpoch
         val vw = readerSettings.verticalWriting
         val css = buildBaseCSS()
         val bg = readerSettings.resolvedBgHex()
         val tc = readerSettings.resolvedTextHex()
 
+        val fullBleedCSS = if (vw) """
+                    '.full-bleed-img-container {',
+                    '  overflow: visible !important;',
+                    '  max-width: none !important;',
+                    '  max-height: none !important;',
+                    '}',
+                    'img.full-bleed-img, svg.full-bleed-img {',
+                    '  height: 100vh !important;',
+                    '  max-height: none !important;',
+                    '  max-width: none !important;',
+                    '  display: block !important;',
+                    '  position: relative !important;',
+                    '  top: 50% !important;',
+                    '  margin-top: -50vh !important;',
+                    '}',
+        """ else """
+                    '.full-bleed-img-container {',
+                    '  overflow: visible !important;',
+                    '  max-width: none !important;',
+                    '  max-height: none !important;',
+                    '}',
+                    'img.full-bleed-img, svg.full-bleed-img {',
+                    '  width: 100vw !important;',
+                    '  max-width: none !important;',
+                    '  max-height: none !important;',
+                    '  display: block !important;',
+                    '  position: relative !important;',
+                    '  left: 50% !important;',
+                    '  margin-left: -50vw !important;',
+                    '}',
+        """
+
         return """
             (function() {
+                window.__readerRestoreEpoch = $epoch;
+
                 window.webkit = window.webkit || {};
                 window.webkit.messageHandlers = window.webkit.messageHandlers || {};
                 window.webkit.messageHandlers.restoreCompleted = {
                     postMessage: function(_) {
-                        if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                        if (window.ReaderAndroid) window.ReaderAndroid.restoreCompleted(window.__readerRestoreEpoch);
                     }
                 };
 
@@ -701,20 +756,13 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
-                // Apply the configured percentage independently to each physical side.
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
-                // Keep the layout box inside the column, then visually scale standalone
-                // media to reclaim the padding without creating another column fragment.
                 var contentW = Math.max(1, iw - 2 * hPad);
-                var imageScale = iw / contentW;
-                var imgMaxW = contentW;
-                var imageAvailableH = Math.max(1, ih - 2 * vPad - 2);
-                var imgMaxH = Math.max(1, imageAvailableH / imageScale);
-                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
-                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
-                document.documentElement.style.setProperty('--reader-image-scale', imageScale);
+                var contentH = Math.max(1, ih - 2 * vPad - 2);
+                document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -723,32 +771,11 @@ private class ReaderAndroidWebView(
                 s.textContent = ${jsString(css)};
                 document.head.appendChild(s);
 
-                // Full-page image rules:
                 var contImgStyle = document.getElementById('reader-cont-img-style');
                 if (contImgStyle) contImgStyle.remove();
                 contImgStyle = document.createElement('style');
                 contImgStyle.id = 'reader-cont-img-style';
                 contImgStyle.textContent = [
-                    '.full-bleed-img-container {',
-                    '  box-sizing: border-box !important;',
-                    '  width: 100% !important;',
-                    '  max-width: 100% !important;',
-                    '  display: flex !important;',
-                    '  align-items: center !important;',
-                    '  justify-content: center !important;',
-                    '  overflow: visible !important;',
-                    '  line-height: 0 !important;',
-                    '  margin: 0 !important;',
-                    '  padding: 0 !important;',
-                    '  border: 0 !important;',
-                    '  break-inside: avoid !important;',
-                    '  page-break-inside: avoid !important;',
-                    '  -webkit-column-break-inside: avoid !important;',
-                    '}',
-                    'img.full-bleed-img, svg.full-bleed-img {',
-                    '  transform: scale(var(--reader-image-scale, 1)) !important;',
-                    '  transform-origin: center center !important;',
-                    '}',
                     'img.block-img, svg.block-img {',
                     '  max-width: var(--reader-image-max-width, 95vw) !important;',
                     '  max-height: var(--reader-image-max-height, 95vh) !important;',
@@ -773,6 +800,7 @@ private class ReaderAndroidWebView(
                     '  margin: 0 !important;',
                     '  padding: 0 !important;',
                     '}',
+                    $fullBleedCSS
                 ].join(' ');
                 document.head.appendChild(contImgStyle);
 
@@ -820,10 +848,6 @@ private class ReaderAndroidWebView(
                 window.hoshiReader.registerCopyText();
                 window.hoshiReader.continuousMode = true;
 
-                // Classify large non-gaiji media as block images.
-                // Wait for all images to finish loading before classifying and restoring progress —
-                // late-loading images shift element positions and cause scrollIntoView() to land
-                // at the wrong offset.
                 var allMediaCont = Array.from(document.querySelectorAll('img, svg'));
                 var imagePromises = allMediaCont.map(function(el) {
                     return new Promise(function(resolve) {
@@ -854,11 +878,6 @@ private class ReaderAndroidWebView(
                                         if (!hasContentSibling) {
                                             el.classList.add('full-bleed-img');
                                             mediaContainer.classList.add('full-bleed-img-container');
-                                            mediaContainer.style.setProperty(
-                                                'height',
-                                                Math.ceil(el.offsetHeight * imageScale) + 'px',
-                                                'important'
-                                            );
                                         }
                                     }
                                 }
@@ -866,15 +885,23 @@ private class ReaderAndroidWebView(
                             resolve();
                         };
                         if (tag === 'img') {
-                            if (el.complete && el.naturalWidth > 0) { classify(); }
-                            else { el.onload = classify; el.onerror = function() { resolve(); }; }
+                            if (el.complete) {
+                                if (el.naturalWidth > 0) { classify(); }
+                                else { resolve(); }
+                            } else {
+                                el.onload = classify;
+                                el.onerror = function() { resolve(); };
+                            }
                         } else {
                             classify();
                         }
                     });
                 });
+                var settlePromise = imagePromises.length > 0
+                    ? new Promise(function(r) { setTimeout(r, 50); })
+                    : Promise.resolve();
                 Promise.all(imagePromises)
-                    .then(function() { return new Promise(function(r) { setTimeout(r, 50); }); })
+                    .then(function() { return settlePromise; })
                     .then(function() {
                         window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
                     });
@@ -883,22 +910,54 @@ private class ReaderAndroidWebView(
     }
 
     private fun buildPagedScript(): String {
+        val epoch = restoreEpoch
         val vw = readerSettings.verticalWriting
         val css = buildBaseCSS()
         val bg = readerSettings.resolvedBgHex()
         val tc = readerSettings.resolvedTextHex()
-        // In vertical-rl paged mode the column axis is horizontal (width), so
-        // bottomOverlap reserves one line-height worth of space on the trailing
-        // edge — same as Hoshi's bottomOverlapPx = fontSize in vertical mode.
         val bottomOverlapPx = if (vw) readerSettings.fontSize else 0
+
+        val fullBleedCSS = if (vw) """
+                    '.full-bleed-img-container {',
+                    '  overflow: visible !important;',
+                    '  max-width: none !important;',
+                    '  max-height: none !important;',
+                    '}',
+                    'img.full-bleed-img, svg.full-bleed-img {',
+                    '  height: 100vh !important;',
+                    '  max-height: none !important;',
+                    '  max-width: none !important;',
+                    '  display: block !important;',
+                    '  position: relative !important;',
+                    '  top: 50% !important;',
+                    '  margin-top: -50vh !important;',
+                    '}',
+        """ else """
+                    '.full-bleed-img-container {',
+                    '  overflow: visible !important;',
+                    '  max-width: none !important;',
+                    '  max-height: none !important;',
+                    '}',
+                    'img.full-bleed-img, svg.full-bleed-img {',
+                    '  width: 100vw !important;',
+                    '  max-width: none !important;',
+                    '  max-height: none !important;',
+                    '  display: block !important;',
+                    '  position: relative !important;',
+                    '  left: 50% !important;',
+                    '  margin-left: -50vw !important;',
+                    '}',
+        """
 
         return """
             (function() {
+                window.__readerRestoreEpoch = $epoch;
+
                 window.webkit = window.webkit || {};
                 window.webkit.messageHandlers = window.webkit.messageHandlers || {};
                 window.webkit.messageHandlers.restoreCompleted = {
                     postMessage: function(_) {
-                        if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                        if (window.ReaderAndroid) window.ReaderAndroid.restoreCompleted(window.__readerRestoreEpoch);
                     }
                 };
 
@@ -912,21 +971,14 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
-                // Apply the configured percentage independently to each physical side.
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
                 var bottomOverlap = $bottomOverlapPx;
 
-                // Keep the layout box inside the column, then visually scale standalone
-                // media to reclaim the padding without creating another column fragment.
                 var contentW = Math.max(1, iw - 2 * hPad);
-                var imageScale = iw / contentW;
-                var imgMaxW = contentW;
-                var imageAvailableH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
-                var imgMaxH = Math.max(1, imageAvailableH / imageScale);
-                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
-                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
-                document.documentElement.style.setProperty('--reader-image-scale', imageScale);
+                var contentH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
+                document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -940,26 +992,6 @@ private class ReaderAndroidWebView(
                 blockImgStyle = document.createElement('style');
                 blockImgStyle.id = 'reader-block-img-style';
                 blockImgStyle.textContent = [
-                    '.full-bleed-img-container {',
-                    '  box-sizing: border-box !important;',
-                    '  width: 100% !important;',
-                    '  max-width: 100% !important;',
-                    '  display: flex !important;',
-                    '  align-items: center !important;',
-                    '  justify-content: center !important;',
-                    '  overflow: visible !important;',
-                    '  line-height: 0 !important;',
-                    '  margin: 0 !important;',
-                    '  padding: 0 !important;',
-                    '  border: 0 !important;',
-                    '  break-inside: avoid !important;',
-                    '  page-break-inside: avoid !important;',
-                    '  -webkit-column-break-inside: avoid !important;',
-                    '}',
-                    'img.full-bleed-img, svg.full-bleed-img {',
-                    '  transform: scale(var(--reader-image-scale, 1)) !important;',
-                    '  transform-origin: center center !important;',
-                    '}',
                     'img.block-img, svg.block-img {',
                     '  max-width: var(--reader-image-max-width, 95vw) !important;',
                     '  max-height: var(--reader-image-max-height, 95vh) !important;',
@@ -986,6 +1018,7 @@ private class ReaderAndroidWebView(
                     '  margin: 0 !important;',
                     '  padding: 0 !important;',
                     '}',
+                    $fullBleedCSS
                 ].join(' ');
                 document.head.appendChild(blockImgStyle);
 
@@ -994,8 +1027,6 @@ private class ReaderAndroidWebView(
                 var b = document.body;
                 if (!b) { window.hoshiReader.notifyRestoreComplete(); return; }
 
-                // Match Hoshi's pagination model: the multicol container owns both the
-                // page padding and the gap between page columns.
                 b.style.setProperty(
                     'padding',
                     vPad + 'px ' + hPad + 'px ' + (vPad + bottomOverlap) + 'px ' + hPad + 'px',
@@ -1068,10 +1099,6 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader.registerCopyText();
 
-                // Treat images/SVGs over 256px as block media.
-                // Gaiji inline glyphs are explicitly excluded. Classification happens after images
-                // load so naturalWidth is available. Then a 50ms settle lets column layout stabilise
-                // before restoreProgress() snaps to the correct page.
                 var allMediaPaged = Array.from(document.querySelectorAll('img, svg'));
                 var imagePromises = allMediaPaged.map(function(el) {
                     return new Promise(function(resolve) {
@@ -1102,11 +1129,6 @@ private class ReaderAndroidWebView(
                                         if (!hasContentSibling) {
                                             el.classList.add('full-bleed-img');
                                             mediaContainer.classList.add('full-bleed-img-container');
-                                            mediaContainer.style.setProperty(
-                                                'height',
-                                                Math.ceil(el.offsetHeight * imageScale) + 'px',
-                                                'important'
-                                            );
                                         }
                                     }
                                 }
@@ -1114,15 +1136,23 @@ private class ReaderAndroidWebView(
                             resolve();
                         };
                         if (tag === 'img') {
-                            if (el.complete && el.naturalWidth > 0) { classify(); }
-                            else { el.onload = classify; el.onerror = function() { resolve(); }; }
+                            if (el.complete) {
+                                if (el.naturalWidth > 0) { classify(); }
+                                else { resolve(); }
+                            } else {
+                                el.onload = classify;
+                                el.onerror = function() { resolve(); };
+                            }
                         } else {
                             classify();
                         }
                     });
                 });
+                var settlePromise = imagePromises.length > 0
+                    ? new Promise(function(r) { setTimeout(r, 50); })
+                    : Promise.resolve();
                 Promise.all(imagePromises)
-                    .then(function() { return new Promise(function(r) { setTimeout(r, 50); }); })
+                    .then(function() { return settlePromise; })
                     .then(function() {
                         window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
                     });
@@ -1157,22 +1187,9 @@ private class ReaderAndroidWebView(
                 var vPad = Math.round(ih * ${settings.verticalPadding} / 100);
                 var bottomOverlap = ${if (settings.verticalWriting && !continuousMode) settings.fontSize else 0};
                 var contentW = Math.max(1, iw - 2 * hPad);
-                var imageScale = iw / contentW;
-                var imgMaxW = contentW;
-                var imageAvailableH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
-                var imgMaxH = Math.max(1, imageAvailableH / imageScale);
-                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
-                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
-                document.documentElement.style.setProperty('--reader-image-scale', imageScale);
-                Array.from(document.querySelectorAll('.full-bleed-img')).forEach(function(el) {
-                    if (el.parentElement) {
-                        el.parentElement.style.setProperty(
-                            'height',
-                            Math.ceil(el.offsetHeight * imageScale) + 'px',
-                            'important'
-                        );
-                    }
-                });
+                var contentH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
+                document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
                 b.style.setProperty(
                     'padding',
                     vPad + 'px ' + hPad + 'px ' + (vPad + bottomOverlap) + 'px ' + hPad + 'px',
@@ -1346,7 +1363,7 @@ private class ReaderAndroidWebView(
 }
 
 private class ReaderJavascriptBridge(
-    private val onRestoreCompleted: () -> Unit,
+    private val onRestoreCompleted: (Int) -> Unit,
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
@@ -1355,8 +1372,8 @@ private class ReaderJavascriptBridge(
     var onSelectionRectsCallback: ((String) -> Unit)? = null
 
     @JavascriptInterface
-    fun restoreCompleted() {
-        onRestoreCompleted()
+    fun restoreCompleted(epoch: Int = 0) {
+        onRestoreCompleted(epoch)
     }
 
     @JavascriptInterface
