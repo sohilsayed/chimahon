@@ -142,6 +142,23 @@ sealed class Preference {
         }
 
         /**
+         * A [PreferenceItem] that shows a EditText with a subtitle in the dialog.
+         * Unlike [EditTextPreference], empty values can be set and a subtitle in the dialog can be show.
+         */
+        data class EditTextInfoPreference(
+            val preference: PreferenceData<String>,
+            val dialogSubtitle: String?,
+            val validate: (String) -> Boolean = { true },
+            val errorMessage: @Composable ((String) -> String)? = null,
+            override val title: String,
+            override val subtitle: String? = "%s",
+            override val enabled: Boolean = true,
+            override val onValueChanged: suspend (value: String) -> Boolean = { true },
+        ) : PreferenceItem<String, Boolean>() {
+            override val icon: ImageVector? = null
+        }
+
+        /**
          * A [PreferenceItem] for individual tracker.
          */
         data class TrackerPreference(
