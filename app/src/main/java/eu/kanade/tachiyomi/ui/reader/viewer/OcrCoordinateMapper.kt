@@ -1,15 +1,10 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
-import android.graphics.Bitmap
 import android.graphics.RectF
-import chimahon.ocr.OcrBitmapDecoder
 import okio.BufferedSource
-import okio.Buffer
-import tachiyomi.core.common.util.system.logcat
-import logcat.LogPriority
+import tachiyomi.decoder.ImageDecoder
+import java.io.ByteArrayInputStream
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * Coordinate remapping for OCR blocks under reader transformations.
@@ -18,17 +13,8 @@ import kotlin.math.roundToInt
  * When the reader applies transformations (crop borders, split, merge, webtoon splitAndMerge)
  * the displayed bitmap differs from the original, so block coordinates must be remapped.
  *
- * ## Crop border detection
- *
- * We port the *exact* algorithm from tachiyomi/image-decoder's `borders.cpp` to Kotlin so
- * the computed crop rect is pixel-perfect with what ImageDecoder produces.
- *
- * Constants (from borders.h):
- *   - `thresholdForBlack` = 191  (255 * 0.75)
- *   - `thresholdForWhite` = 63   (255 – 191)
- *   - `filledRatioLimit`  = 0.0025
- *
- * The scan works on a grayscale bitmap sampled every 2nd pixel.
+ * Crop rect is read directly from the native [ImageDecoder] which runs the C++ `borders.cpp`
+ * algorithm — no Kotlin reimplementation needed.
  */
 object OcrCoordinateMapper {
 
@@ -54,11 +40,9 @@ object OcrCoordinateMapper {
         val offset = if (keepLeft) 0f else 0.5f
         return blocks.mapNotNull { block ->
             val centerX = (block.xmin + block.xmax) / 2f
-            // Keep only blocks whose center is in the chosen half
             val inHalf = if (keepLeft) centerX <= 0.5f else centerX >= 0.5f
             if (!inHalf) return@mapNotNull null
 
-            // Rescale from half-space [offset, offset+0.5] → [0, 1]
             val newXmin = ((block.xmin - offset) * 2f).coerceIn(0f, 1f)
             val newXmax = ((block.xmax - offset) * 2f).coerceIn(0f, 1f)
             if (newXmax <= newXmin) return@mapNotNull null
@@ -116,7 +100,6 @@ object OcrCoordinateMapper {
 
         if (totalW <= 0 || totalH <= 0) return blocks1
 
-        // page positions in the merged bitmap
         val leftW: Int
         val leftH: Int
         val rightW: Int
@@ -146,8 +129,7 @@ object OcrCoordinateMapper {
     /**
      * Remap blocks to match the cropped image that ImageDecoder returns when cropBorders=true.
      *
-     * Reads the image source stream, detects crop margins using the same algorithm as the
-     * native image-decoder library (ports borders.cpp exactly), then adjusts OCR coordinates
+     * Reads the crop rect directly from the native [ImageDecoder], then adjusts OCR coordinates
      * so they align with the cropped bitmap.
      *
      * Returns original blocks unchanged if:
@@ -181,13 +163,6 @@ object OcrCoordinateMapper {
         blocks: List<OcrTextBlock>,
         upperIsRight: Boolean = true,
     ): List<OcrTextBlock> {
-        // After splitAndMerge the resulting image has:
-        //   Width  = half the original width
-        //   Height = 2x the original height (both halves stacked)
-        //
-        // Upper half = RIGHT (x in [0.5..1] original) → y in [0..0.5] new
-        // Lower half = LEFT  (x in [0..0.5] original) → y in [0.5..1] new
-
         return blocks.mapNotNull { block ->
             val centerX = (block.xmin + block.xmax) / 2f
             val isInRight = centerX >= 0.5f
@@ -198,11 +173,8 @@ object OcrCoordinateMapper {
                 if (isInRight) Pair(0.5f, 0.5f) else Pair(0f, 0f)
             }
 
-            // Rescale x from [xOffset, xOffset+0.5] → [0, 1]
             val newXmin = ((block.xmin - xOffset) * 2f).coerceIn(0f, 1f)
             val newXmax = ((block.xmax - xOffset) * 2f).coerceIn(0f, 1f)
-            // Rescale y: original y stays, but it now occupies only 1/2 of the new height
-            // new_y = yOffset + old_y * 0.5
             val newYmin = (yOffset + block.ymin * 0.5f).coerceIn(0f, 1f)
             val newYmax = (yOffset + block.ymax * 0.5f).coerceIn(0f, 1f)
 
@@ -245,19 +217,16 @@ object OcrCoordinateMapper {
         totalH: Float,
     ): List<OcrTextBlock> {
         return blocks.mapNotNull { block ->
-            // un-normalize to page pixels
             val pxMin = block.xmin * pageW
             val pyMin = block.ymin * pageH
             val pxMax = block.xmax * pageW
             val pyMax = block.ymax * pageH
 
-            // shift to canvas position
             val cxMin = pxMin + xOffsetPx
             val cyMin = pyMin + yOffsetPx
             val cxMax = pxMax + xOffsetPx
             val cyMax = pyMax + yOffsetPx
 
-            // normalize to canvas
             val newXmin = (cxMin / totalW).coerceIn(0f, 1f)
             val newYmin = (cyMin / totalH).coerceIn(0f, 1f)
             val newXmax = (cxMax / totalW).coerceIn(0f, 1f)
@@ -296,13 +265,11 @@ object OcrCoordinateMapper {
         if (cropW <= 0f || cropH <= 0f) return blocks
 
         return blocks.mapNotNull { block ->
-            // Translate block into crop-relative coords and rescale 0→1
             val newXmin = ((block.xmin - cropRect.left) / cropW).coerceIn(0f, 1f)
             val newYmin = ((block.ymin - cropRect.top) / cropH).coerceIn(0f, 1f)
             val newXmax = ((block.xmax - cropRect.left) / cropW).coerceIn(0f, 1f)
             val newYmax = ((block.ymax - cropRect.top) / cropH).coerceIn(0f, 1f)
 
-            // Discard blocks entirely outside the crop window
             if (newXmax <= 0f || newYmax <= 0f || newXmin >= 1f || newYmin >= 1f) {
                 return@mapNotNull null
             }
@@ -326,206 +293,36 @@ object OcrCoordinateMapper {
     }
 
     // ──────────────────────────────────────────────────
-    // Crop border detection (port of borders.cpp)
+    // Crop border detection (delegates to native ImageDecoder)
     // ──────────────────────────────────────────────────
 
-    /**
-     * Detect the crop rect that image-decoder would apply if cropBorders=true.
-     *
-     * Exact port of `borders.cpp / findBorders` from tachiyomi/image-decoder.
-     * Constants from borders.h:
-     *   thresholdForBlack = (255 * 0.75).toInt() = 191
-     *   thresholdForWhite = 255 - 191 = 64
-     *   filledRatioLimit  = 0.0025f
-     *
-     * Returns a normalized RectF (left, top, right, bottom) in [0,1] space,
-     * or null if detection fails.
-     */
     fun detectCropRect(stream: BufferedSource): RectF? {
-        return try {
-            // Peek so we don't consume the stream
+        val decoder = try {
             val bytes = stream.peek().readByteArray()
-            // sampleSize=2 keeps memory usage low but halves the decoded dimensions,
-            // which would halve filledLimit vs C++ (which runs on full-res pixels).
-            // We pass sampleSize into findBorders so it can scale filledLimit back up.
-            val sampleSize = 2
-            val bitmap = OcrBitmapDecoder.decode(bytes, sampleSize = sampleSize)
-            try {
-                findBorders(bitmap, sampleSize)
-            } finally {
-                bitmap.recycle()
-            }
+            ImageDecoder.newInstance(ByteArrayInputStream(bytes), cropBorders = true, displayProfile = null)
         } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "OcrCoordinateMapper: crop detection failed" }
             null
+        } ?: return null
+
+        try {
+            return detectCropRect(decoder)
+        } finally {
+            decoder.recycle()
         }
     }
 
-    // Constants from borders.h (THRESHOLD = 0.75)
-    private const val THRESHOLD = 0.75f
-    private val THRESHOLD_FOR_BLACK = (255f * THRESHOLD).toInt()        // 191
-    private val THRESHOLD_FOR_WHITE = (255f - 255f * THRESHOLD).toInt() // 63
-    private const val FILLED_RATIO_LIMIT = 0.0025f
-
-    private fun pixelLuminance(pixels: IntArray, width: Int, x: Int, y: Int): Int {
-        val argb = pixels[y * width + x]
-        // borders.cpp receives true grayscale (single uint8 luminance). We receive
-        // ARGB_8888, so convert using BT.601 luma coefficients to match the values
-        // image-decoder's row_convert.cpp produces.
-        val r = (argb shr 16) and 0xFF
-        val g = (argb shr 8) and 0xFF
-        val b = argb and 0xFF
-        return (0.299f * r + 0.587f * g + 0.114f * b).toInt()
-    }
-
-    private fun isBlackPixel(pixels: IntArray, width: Int, x: Int, y: Int): Boolean =
-        pixelLuminance(pixels, width, x, y) < THRESHOLD_FOR_BLACK
-
-    private fun isWhitePixel(pixels: IntArray, width: Int, x: Int, y: Int): Boolean =
-        pixelLuminance(pixels, width, x, y) > THRESHOLD_FOR_WHITE
-
-    /**
-     * findBorders — port of borders.cpp's findBorders().
-     * Returns a normalized RectF [0..1] that represents the *kept* region.
-     */
-    private fun findBorders(bitmap: Bitmap, sampleSize: Int = 1): RectF? {
-        val w = bitmap.width
-        val h = bitmap.height
-        if (w <= 0 || h <= 0) return null
-
-        val pixels = IntArray(w * h)
-        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
-
-        val top = findBorderTop(pixels, w, h, sampleSize)
-        val bottom = findBorderBottom(pixels, w, h, sampleSize)
-        val left = findBorderLeft(pixels, w, h, top, bottom, sampleSize)
-        val right = findBorderRight(pixels, w, h, top, bottom, sampleSize)
-
-        if (right <= left || bottom <= top) return null
-        // Only return a real crop rect if it actually trims something
-        if (left == 0 && top == 0 && right == w && bottom == h) return null
-
+    private fun detectCropRect(decoder: ImageDecoder): RectF? {
+        if (decoder.cropX == 0 && decoder.cropY == 0 &&
+            decoder.width == decoder.originalWidth &&
+            decoder.height == decoder.originalHeight
+        ) {
+            return null
+        }
         return RectF(
-            left.toFloat() / w,
-            top.toFloat() / h,
-            right.toFloat() / w,
-            bottom.toFloat() / h,
+            decoder.cropX.toFloat() / decoder.originalWidth,
+            decoder.cropY.toFloat() / decoder.originalHeight,
+            (decoder.cropX + decoder.width).toFloat() / decoder.originalWidth,
+            (decoder.cropY + decoder.height).toFloat() / decoder.originalHeight,
         )
-    }
-
-    private fun findBorderTop(pixels: IntArray, width: Int, height: Int, sampleSize: Int = 1): Int {
-        // Scale filledLimit by sampleSize: C++ runs on full-res pixels so its limit is
-        // proportional to full width. At sampleSize=2 the decoded width is halved, so
-        // multiply back to get an equivalent threshold.
-        val filledLimit = (width * sampleSize * FILLED_RATIO_LIMIT / 2).roundToInt()
-
-        var whitePixels = 0
-        var blackPixels = 0
-        for (x in 0 until width step 2) {
-            if (isBlackPixel(pixels, width, x, 0)) blackPixels++
-            else if (isWhitePixel(pixels, width, x, 0)) whitePixels++
-        }
-
-        // Mixed fill on the edge — content starts at row 0, don't crop
-        if (whitePixels > filledLimit && blackPixels > filledLimit) return 0
-
-        val detect: (IntArray, Int, Int, Int) -> Boolean =
-            if (blackPixels > filledLimit) ::isWhitePixel else ::isBlackPixel
-
-        for (y in 1 until height) {
-            var filledCount = 0
-            for (x in 0 until width step 2) {
-                if (detect(pixels, width, x, y)) filledCount++
-            }
-            if (filledCount > filledLimit) return y
-        }
-        return 0
-    }
-
-    private fun findBorderBottom(pixels: IntArray, width: Int, height: Int, sampleSize: Int = 1): Int {
-        val filledLimit = (width * sampleSize * FILLED_RATIO_LIMIT / 2).roundToInt()
-        val lastY = height - 1
-
-        var whitePixels = 0
-        var blackPixels = 0
-        for (x in 0 until width step 2) {
-            if (isBlackPixel(pixels, width, x, lastY)) blackPixels++
-            else if (isWhitePixel(pixels, width, x, lastY)) whitePixels++
-        }
-
-        // Mixed fill on the edge — content reaches the last row, don't crop
-        if (whitePixels > filledLimit && blackPixels > filledLimit) return height
-
-        val detect: (IntArray, Int, Int, Int) -> Boolean =
-            if (blackPixels > filledLimit) ::isWhitePixel else ::isBlackPixel
-
-        for (y in height - 2 downTo 1) {
-            var filledCount = 0
-            for (x in 0 until width step 2) {
-                if (detect(pixels, width, x, y)) filledCount++
-            }
-            if (filledCount > filledLimit) return y + 1
-        }
-        return height
-    }
-
-    private fun findBorderLeft(pixels: IntArray, width: Int, height: Int, top: Int, bottom: Int, sampleSize: Int = 1): Int {
-        val totalRows = bottom - top
-        if (totalRows <= 0) return 0
-        // C++ uses the full image height (not bottom-top) for left/right filledLimit.
-        // We use height*sampleSize to recover the equivalent full-res value.
-        val filledLimit = (height * sampleSize * FILLED_RATIO_LIMIT / 2).roundToInt()
-
-        var whitePixels = 0
-        var blackPixels = 0
-        for (y in top until bottom step 2) {
-            if (isBlackPixel(pixels, width, 0, y)) blackPixels++
-            else if (isWhitePixel(pixels, width, 0, y)) whitePixels++
-        }
-
-        // Mixed fill on the edge — content starts at column 0, don't crop
-        if (whitePixels > filledLimit && blackPixels > filledLimit) return 0
-
-        val detect: (IntArray, Int, Int, Int) -> Boolean =
-            if (blackPixels > filledLimit) ::isWhitePixel else ::isBlackPixel
-
-        for (x in 1 until width) {
-            var filledCount = 0
-            for (y in top until bottom step 2) {
-                if (detect(pixels, width, x, y)) filledCount++
-            }
-            if (filledCount > filledLimit) return x
-        }
-        return 0
-    }
-
-    private fun findBorderRight(pixels: IntArray, width: Int, height: Int, top: Int, bottom: Int, sampleSize: Int = 1): Int {
-        val totalRows = bottom - top
-        if (totalRows <= 0) return width
-        // C++ uses the full image height (not bottom-top) for left/right filledLimit.
-        val filledLimit = (height * sampleSize * FILLED_RATIO_LIMIT / 2).roundToInt()
-        val lastX = width - 1
-
-        var whitePixels = 0
-        var blackPixels = 0
-        for (y in top until bottom step 2) {
-            if (isBlackPixel(pixels, width, lastX, y)) blackPixels++
-            else if (isWhitePixel(pixels, width, lastX, y)) whitePixels++
-        }
-
-        // Mixed fill on the edge — content reaches the last column, don't crop
-        if (whitePixels > filledLimit && blackPixels > filledLimit) return width
-
-        val detect: (IntArray, Int, Int, Int) -> Boolean =
-            if (blackPixels > filledLimit) ::isWhitePixel else ::isBlackPixel
-
-        for (x in width - 2 downTo 1) {
-            var filledCount = 0
-            for (y in top until bottom step 2) {
-                if (detect(pixels, width, x, y)) filledCount++
-            }
-            if (filledCount > filledLimit) return x + 1
-        }
-        return width
     }
 }
