@@ -608,7 +608,6 @@
     const map = {
       fontStyle: 'fontStyle',
       fontWeight: 'fontWeight',
-      fontSize: 'fontSize',
       color: 'color',
       background: 'background',
       backgroundColor: 'backgroundColor',
