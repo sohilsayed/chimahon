@@ -1319,7 +1319,7 @@
     <string name="player_episodes">Episodes</string>
     <string name="player_lock">Lock</string>
     <string name="player_unlock">Unlock</string>
-    <string name="player_speed">Speed</string>
+    <string name="player_speed">%1$.2fx</string>
     <string name="player_more">More</string>
     <string name="player_previous">Previous</string>
     <string name="player_next">Next</string>
