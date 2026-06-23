@@ -15,7 +15,7 @@ struct SafDb {
     sqlite3*  db;
     void*     map;
     size_t    size;
-    int       fd;
+    int       fd;   // -1 when opened from byte array (no fd to close)
 };
 
 static SafDb* as_handle(jlong h) { return reinterpret_cast<SafDb*>(static_cast<uintptr_t>(h)); }
@@ -30,11 +30,13 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_chimahon_audio_WordAudioDatabase_nativeOpen(JNIEnv* env, jobject /*thiz*/, jint fd, jlong size) {
     if (size <= 0) {
+        close(fd);
         return 0;
     }
 
     void* map = mmap(nullptr, static_cast<size_t>(size), PROT_READ, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED) {
+        close(fd);
         return 0;
     }
 
@@ -44,6 +46,7 @@ Java_chimahon_audio_WordAudioDatabase_nativeOpen(JNIEnv* env, jobject /*thiz*/, 
     if (rc != SQLITE_OK) {
         sqlite3_close(db);
         munmap(map, static_cast<size_t>(size));
+        close(fd);
         return 0;
     }
 
@@ -55,6 +58,7 @@ Java_chimahon_audio_WordAudioDatabase_nativeOpen(JNIEnv* env, jobject /*thiz*/, 
     if (rc != SQLITE_OK) {
         sqlite3_close(db);
         munmap(map, static_cast<size_t>(size));
+        close(fd);
         return 0;
     }
 
@@ -71,14 +75,64 @@ Java_chimahon_audio_WordAudioDatabase_nativeOpen(JNIEnv* env, jobject /*thiz*/, 
     return static_cast<jlong>(reinterpret_cast<uintptr_t>(s));
 }
 
-// ─── nativeClose: SQLite → munmap → close fd ────────────────────────────
+// ─── nativeOpenBytes: deserialize from byte array (no mmap) ─────────────
+extern "C" JNIEXPORT jlong JNICALL
+Java_chimahon_audio_WordAudioDatabase_nativeOpenBytes(JNIEnv* env, jobject /*thiz*/, jbyteArray jData) {
+    jsize size = env->GetArrayLength(jData);
+    if (size <= 0) return 0;
+
+    jbyte* data = env->GetByteArrayElements(jData, nullptr);
+    unsigned char* copy = static_cast<unsigned char*>(sqlite3_malloc(size));
+    if (!copy) {
+        env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+        return 0;
+    }
+    memcpy(copy, data, size);
+    env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+
+    sqlite3* db = nullptr;
+    int rc = sqlite3_open_v2(":memory:", &db,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nullptr);
+    if (rc != SQLITE_OK) {
+        sqlite3_free(copy);
+        return 0;
+    }
+
+    rc = sqlite3_deserialize(db, "main", copy,
+        static_cast<sqlite3_int64>(size),
+        static_cast<sqlite3_int64>(size),
+        SQLITE_DESERIALIZE_READONLY | SQLITE_DESERIALIZE_FREEONCLOSE);
+    if (rc != SQLITE_OK) {
+        sqlite3_close(db);
+        sqlite3_free(copy);
+        return 0;
+    }
+
+    // Read-only performance tuning
+    sqlite3_exec(db, "PRAGMA query_only=1;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA journal_mode=OFF;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA synchronous=OFF;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA cache_size=-262144;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA temp_store=MEMORY;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA mmap_size=30000000000;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA page_size=4096;", nullptr, nullptr, nullptr);
+
+    auto* s = new SafDb{ db, copy, static_cast<size_t>(size), -1 };
+    return static_cast<jlong>(reinterpret_cast<uintptr_t>(s));
+}
+
+// ─── nativeClose: SQLite → munmap → close fd (if present) ──────────────
 extern "C" JNIEXPORT void JNICALL
 Java_chimahon_audio_WordAudioDatabase_nativeClose(JNIEnv* /*env*/, jobject /*thiz*/, jlong h) {
     SafDb* s = as_handle(h);
     if (!s) return;
     sqlite3_close(s->db);
-    munmap(s->map, s->size);
-    close(s->fd);
+    if (s->fd >= 0) {
+        // mmap path: unmap and close fd
+        if (s->map) munmap(s->map, s->size);
+        close(s->fd);
+    }
+    // Byte array path: SQLITE_DESERIALIZE_FREEONCLOSE handles freeing
     delete s;
 }
 

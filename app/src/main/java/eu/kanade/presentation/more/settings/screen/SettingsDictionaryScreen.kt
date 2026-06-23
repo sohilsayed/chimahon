@@ -330,20 +330,30 @@ object SettingsDictionaryScreen : SearchableSettings {
 
                             val db = chimahon.audio.WordAudioDatabase(context)
                             val ok = db.updateUri(uri) && db.testConnection()
-                            db.close()
 
                             if (ok) {
-                                dictionaryPreferences.wordAudioLocalUri().set(uri.toString())
-                                dictionaryPreferences.wordAudioLocalPath().set("")
-                                withContext(Dispatchers.Main) {
-                                    context.toast("Local database loaded")
+                                if (db.fallbackUsed) {
+                                    dictionaryPreferences.wordAudioLocalPath().set(
+                                        File(context.getExternalFilesDir(null), "word_audio.db").absolutePath,
+                                    )
+                                    dictionaryPreferences.wordAudioLocalUri().set("")
+                                    withContext(Dispatchers.Main) {
+                                        context.toast("Database copied to internal storage for compatibility")
+                                    }
+                                } else {
+                                    dictionaryPreferences.wordAudioLocalUri().set(uri.toString())
+                                    dictionaryPreferences.wordAudioLocalPath().set("")
+                                    withContext(Dispatchers.Main) {
+                                        context.toast("Local database loaded")
+                                    }
                                 }
                             } else {
                                 context.contentResolver.releasePersistableUriPermission(uri, flags)
                                 withContext(Dispatchers.Main) {
-                                    context.toast("Selected file is not a valid audio database")
+                                    context.toast(db.lastError ?: "Selected file is not a valid audio database")
                                 }
                             }
+                            db.close()
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to load audio DB", e)
                             withContext(Dispatchers.Main) {
