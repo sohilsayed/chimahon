@@ -20,9 +20,11 @@ import tachiyomi.domain.entries.anime.interactor.GetLibraryAnime
 import tachiyomi.domain.entries.anime.interactor.NetworkToLocalAnime
 import tachiyomi.domain.entries.anime.interactor.SetCustomAnimeInfo
 import tachiyomi.domain.entries.anime.interactor.SetAnimeEpisodeFlags
+import tachiyomi.domain.entries.anime.interactor.SetAnimeSeasonFlags
 import tachiyomi.domain.entries.anime.interactor.UpdateAnime as DomainUpdateAnime
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.entries.anime.repository.CustomAnimeRepository
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.category.interactor.CreateAnimeCategory
 import tachiyomi.domain.category.interactor.DeleteAnimeCategory
 import tachiyomi.domain.category.interactor.GetAnimeCategories
@@ -60,9 +62,10 @@ class AnimeDomainModule : InjektModule {
         addFactory { GetFavoriteAnime(get()) }
         addFactory { GetFavorites(get()) }
         addFactory { GetLibraryAnime(get()) }
-        addFactory { NetworkToLocalAnime(get()) }
+        addFactory { NetworkToLocalAnime(get(), get()) }
         addFactory { SetCustomAnimeInfo(get()) }
         addFactory { SetAnimeEpisodeFlags(get()) }
+        addFactory { SetAnimeSeasonFlags(get()) }
         addFactory { GetDuplicateLibraryAnime(get()) }
 
         addSingletonFactory<EpisodeRepository> { EpisodeRepositoryImpl(get()) }

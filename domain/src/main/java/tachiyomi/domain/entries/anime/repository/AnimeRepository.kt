@@ -34,7 +34,7 @@ interface AnimeRepository {
 
     suspend fun setAnimeCategories(animeId: Long, categoryIds: List<Long>)
 
-    suspend fun insert(anime: Anime): Long?
+    suspend fun insertAnime(anime: Anime): Long?
 
     suspend fun update(update: AnimeUpdate): Boolean
 

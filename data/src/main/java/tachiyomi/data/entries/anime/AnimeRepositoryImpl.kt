@@ -99,11 +99,8 @@ class AnimeRepositoryImpl(
         }
     }
 
-    override suspend fun insert(anime: Anime): Long? {
+    override suspend fun insertAnime(anime: Anime): Long? {
         return handler.awaitOneOrNullExecutable(inTransaction = true) {
-            if (animesQueries.getIdByUrlAndSource(anime.url, anime.source).executeAsOneOrNull() != null) {
-                return@awaitOneOrNullExecutable animesQueries.getIdByUrlAndSource(anime.url, anime.source)
-            }
             animesQueries.insert(
                 source = anime.source,
                 url = anime.url,

@@ -137,11 +137,6 @@ AND favorite = 1
 AND status IN :statuses
 ORDER BY next_update ASC;
 
-getIdByUrlAndSource:
-SELECT _id
-FROM animes
-WHERE url = :url AND source = :source;
-
 getBySource:
 SELECT *
 FROM animes

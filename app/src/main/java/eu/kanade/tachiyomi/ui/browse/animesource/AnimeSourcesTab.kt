@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,10 +29,14 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.components.BaseBrowseItem
 import eu.kanade.presentation.browse.components.AnimeExtensionIcon
+import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesFilterScreen
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel.AnimeSourceUiModel
 import eu.kanade.tachiyomi.ui.browse.animesource.browse.BrowseAnimeSourceScreen
+import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.GlobalAnimeSearchScreen
+import tachiyomi.domain.source.anime.interactor.GetRemoteAnime
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
@@ -52,7 +58,18 @@ fun Screen.animeSourcesTab(): TabContent {
 
     return TabContent(
         titleRes = MR.strings.label_anime_sources,
-        actions = persistentListOf(),
+        actions = persistentListOf(
+            AppBar.Action(
+                title = stringResource(MR.strings.action_global_search),
+                icon = Icons.Outlined.TravelExplore,
+                onClick = { navigator.push(GlobalAnimeSearchScreen()) },
+            ),
+            AppBar.Action(
+                title = stringResource(MR.strings.action_filter),
+                icon = Icons.Outlined.FilterList,
+                onClick = { navigator.push(AnimeSourcesFilterScreen()) },
+            ),
+        ),
         content = { contentPadding, _ ->
             val stateValue = state
             when {
@@ -63,7 +80,7 @@ fun Screen.animeSourcesTab(): TabContent {
                         items = stateValue.items,
                         contentPadding = contentPadding,
                         onClickSource = { source ->
-                            navigator.push(BrowseAnimeSourceScreen(source.id, source.name))
+                            navigator.push(BrowseAnimeSourceScreen(source.id, GetRemoteAnime.QUERY_POPULAR))
                         },
                     )
                 }
