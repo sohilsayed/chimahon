@@ -75,7 +75,8 @@ object PlayerSettingsMainScreen : Screen() {
     @Composable
     fun Content(twoPane: Boolean) {
         val navigator = LocalNavigator.currentOrThrow
-        val backPress = LocalBackPress.currentOrThrow
+        val backPress = LocalBackPress.current
+        val onBack = backPress ?: { if (navigator.canPop) navigator.pop() }
         val containerColor = if (twoPane) getPalerSurface() else MaterialTheme.colorScheme.surface
         val topBarState = rememberTopAppBarState()
 
@@ -84,7 +85,7 @@ object PlayerSettingsMainScreen : Screen() {
             topBar = { scrollBehavior ->
                 AppBar(
                     title = stringResource(MR.strings.label_player_settings),
-                    navigateUp = backPress::invoke,
+                    navigateUp = onBack,
                     actions = {
                         AppBarActions(
                             persistentListOf(
