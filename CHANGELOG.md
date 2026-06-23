@@ -4,6 +4,29 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v2.0.1]
+
+### Added
+- Subtitle text-filtering settings (whitelist, blacklist, preferred languages)
+- OCR chunking for local
+
+### Changed
+- Reworked anime download system
+- Consolidated font storage (removed duplicate mpv/fonts folder)
+- Chimahon icon for torrent notification
+
+### Fixed
+- Word audio database SAF import reliability (4-attempt fallback)
+- Subtitle delay not saving per-anime, keyboard not closing on Enter
+- Lookup multiple words in same subtitle without dismissing popup
+- Center active subtitle in list
+- Seek subtitle cue timing
+- Tab count change crash
+- Anime torrent extension crash (proguard rules)
+- Player speed button showing only 'Speed' label instead of value
+- Missing title in anime browse compact grid
+- Crash on tablet in player settings
+
 ## [v2.0.0]
 
 ### Added
