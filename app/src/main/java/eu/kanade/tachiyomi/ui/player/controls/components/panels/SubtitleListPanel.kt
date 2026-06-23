@@ -3,9 +3,12 @@ package eu.kanade.tachiyomi.ui.player.controls.components.panels
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -146,7 +151,7 @@ private fun SubtitleCueLazyList(
 
     LaunchedEffect(activePosition, cues.size) {
         if (cues.isEmpty()) return@LaunchedEffect
-        listState.animateScrollToItem((activePosition - 5).coerceAtLeast(0))
+        listState.animateScrollToCenteredItem(activePosition)
     }
 
     if (cues.isEmpty()) {
@@ -154,19 +159,40 @@ private fun SubtitleCueLazyList(
         return
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier.padding(vertical = 4.dp),
-    ) {
-        items(cues, key = { it.index }) { cue ->
-            when (mode) {
-                SubtitleCueRowMode.Side -> SubtitleCueSideRow(
-                    cue = cue,
-                    selected = cue.index == activeCueIndex,
-                    onClick = { onSelectCue(cue.index) },
-                )
+    BoxWithConstraints(modifier = modifier) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 4.dp),
+            contentPadding = PaddingValues(vertical = maxHeight * 0.5f),
+        ) {
+            items(cues, key = { it.index }) { cue ->
+                when (mode) {
+                    SubtitleCueRowMode.Side -> SubtitleCueSideRow(
+                        cue = cue,
+                        selected = cue.index == activeCueIndex,
+                        onClick = { onSelectCue(cue.index) },
+                    )
+                }
             }
         }
+    }
+}
+
+private suspend fun LazyListState.animateScrollToCenteredItem(index: Int) {
+    if (layoutInfo.visibleItemsInfo.none { it.index == index }) {
+        scrollToItem(index)
+        withFrameNanos { }
+    }
+
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val viewportCenter = layoutInfo.viewportSize.height / 2
+    val itemCenter = item.offset + item.size / 2
+    val scrollDelta = itemCenter - viewportCenter
+
+    if (scrollDelta != 0) {
+        animateScrollBy(scrollDelta.toFloat())
     }
 }
 
