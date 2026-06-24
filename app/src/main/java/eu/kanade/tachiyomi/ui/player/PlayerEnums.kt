@@ -106,6 +106,7 @@ enum class Panels {
     SubtitleOverlayList,
     SubtitleSettings,
     SubtitleDelay,
+    SubtitleRegex,
     AudioDelay,
     VideoFilters,
 }

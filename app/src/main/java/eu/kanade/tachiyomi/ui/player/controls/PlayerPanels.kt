@@ -39,6 +39,7 @@ import eu.kanade.tachiyomi.ui.player.controls.components.panels.AudioDelayPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleDelayPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleListPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleListPanelMode
+import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleRegexPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleSettingsPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.VideoFiltersPanel
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
@@ -55,6 +56,7 @@ fun PlayerPanels(
     onSelectSubtitleCue: (Int) -> Unit,
     onPrimarySubtitleDelayMillisChange: (Int) -> Unit,
     onSubtitleSpeedChange: (Double) -> Unit,
+    onSubtitleRegexFiltersChanged: () -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -98,6 +100,12 @@ fun PlayerPanels(
                     animeId = animeId,
                     onPrimaryDelayChange = onPrimarySubtitleDelayMillisChange,
                     onSpeedChange = onSubtitleSpeedChange,
+                    onDismissRequest = onDismissRequest,
+                )
+            }
+            Panels.SubtitleRegex -> {
+                SubtitleRegexPanel(
+                    onFiltersChanged = onSubtitleRegexFiltersChanged,
                     onDismissRequest = onDismissRequest,
                 )
             }

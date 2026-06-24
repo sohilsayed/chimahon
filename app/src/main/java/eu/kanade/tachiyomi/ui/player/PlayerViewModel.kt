@@ -84,6 +84,8 @@ import eu.kanade.tachiyomi.ui.player.utils.JimakuApi
 import eu.kanade.tachiyomi.ui.player.utils.JimakuEntry
 import eu.kanade.tachiyomi.ui.player.utils.JimakuFile
 import eu.kanade.tachiyomi.ui.player.utils.TrackSelect
+import eu.kanade.tachiyomi.ui.player.utils.applySubtitleRegexFilters
+import eu.kanade.tachiyomi.ui.player.utils.subtitleRegexFilterOptions
 import eu.kanade.tachiyomi.ui.reader.SaveImageNotifier
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.episode.filterDownloadedEpisodes
@@ -252,8 +254,11 @@ class PlayerViewModel @JvmOverloads constructor(
     val primarySubtitleDelaySeconds = _primarySubtitleDelaySeconds.asStateFlow()
     private val _subtitleSpeedSeconds = MutableStateFlow(1.0)
     val subtitleSpeedSeconds = _subtitleSpeedSeconds.asStateFlow()
+    private var currentRawSubtitleText = ""
     private var lastSubtitleHistoryText = ""
     private var nextSubtitleCueIndex = 0
+    private val rawParsedSubtitleCuesByTrackId = mutableMapOf<Int, List<SubtitleCue>>()
+    private val rawParsedSubtitleCuesByTitle = mutableMapOf<String, List<SubtitleCue>>()
     private val parsedSubtitleCuesByTrackId = mutableMapOf<Int, List<SubtitleCue>>()
     private val parsedSubtitleCuesByTitle = mutableMapOf<String, List<SubtitleCue>>()
     private var showingParsedSubtitleTrackId: Int? = null
@@ -533,6 +538,7 @@ class PlayerViewModel @JvmOverloads constructor(
         val text: String,
         val positionSeconds: Double,
         val endPositionSeconds: Double = positionSeconds + 5.0,
+        val rawText: String = text,
     )
 
     sealed interface JimakuState {
@@ -1020,10 +1026,51 @@ class PlayerViewModel @JvmOverloads constructor(
         }.trim()
     }
 
+    private fun String.toEffectiveSubtitleText(): String {
+        return applySubtitleRegexFilters(subtitlePreferences.subtitleRegexFilterOptions())
+    }
+
+    private fun List<SubtitleCue>.toEffectiveSubtitleCues(): List<SubtitleCue> {
+        return mapNotNull { cue ->
+            val rawText = cue.rawText.ifBlank { cue.text }
+            val effectiveText = rawText.toEffectiveSubtitleText()
+            if (effectiveText.isBlank()) {
+                null
+            } else {
+                cue.copy(text = effectiveText, rawText = rawText)
+            }
+        }
+    }
+
+    private fun refreshParsedSubtitleRegexFilters() {
+        parsedSubtitleCuesByTitle.clear()
+        rawParsedSubtitleCuesByTitle.forEach { (title, cues) ->
+            parsedSubtitleCuesByTitle[title] = cues.toEffectiveSubtitleCues()
+        }
+
+        parsedSubtitleCuesByTrackId.clear()
+        rawParsedSubtitleCuesByTrackId.forEach { (trackId, cues) ->
+            parsedSubtitleCuesByTrackId[trackId] = cues.toEffectiveSubtitleCues()
+        }
+    }
+
+    fun refreshSubtitleRegexFilters() {
+        refreshParsedSubtitleRegexFilters()
+        _currentSubtitleText.update { currentRawSubtitleText.toEffectiveSubtitleText() }
+
+        showingParsedSubtitleTrackId?.let {
+            applyParsedSubtitleCuesForTrack(it)
+            return
+        }
+
+        _subtitleHistory.update { cues -> cues.toEffectiveSubtitleCues() }
+        updateActiveSubtitleCueFromPosition(pos.value.toDouble())
+    }
+
     private fun rememberParsedSubtitleTrack(track: VideoTrack) {
         if (track.id == -1) return
 
-        parsedSubtitleCuesByTrackId[track.id]?.let {
+        rawParsedSubtitleCuesByTrackId[track.id]?.let {
             rememberParsedSubtitleCues(track.name, it)
             return
         }
@@ -1034,15 +1081,16 @@ class PlayerViewModel @JvmOverloads constructor(
             ?.let { parseSubtitleFile(it) }
             .orEmpty()
             .ifEmpty {
-                parsedSubtitleCuesByTitle[track.name]
-                    ?: parsedSubtitleCuesByTitle[File(track.name).name]
+                rawParsedSubtitleCuesByTitle[track.name]
+                    ?: rawParsedSubtitleCuesByTitle[File(track.name).name]
                     ?: track.externalFilename
-                        ?.let { parsedSubtitleCuesByTitle[File(it).name] }
+                        ?.let { rawParsedSubtitleCuesByTitle[File(it).name] }
                         .orEmpty()
             }
 
         if (cues.isNotEmpty()) {
-            parsedSubtitleCuesByTrackId[track.id] = cues
+            rawParsedSubtitleCuesByTrackId[track.id] = cues
+            parsedSubtitleCuesByTrackId[track.id] = cues.toEffectiveSubtitleCues()
             rememberParsedSubtitleCues(track.name, cues)
         }
     }
@@ -1054,11 +1102,19 @@ class PlayerViewModel @JvmOverloads constructor(
     private fun rememberParsedSubtitleCues(title: String, cues: List<SubtitleCue>) {
         if (title.isBlank() || cues.isEmpty()) return
 
-        val indexedCues = cues.mapIndexed { index, cue -> cue.copy(index = index) }
+        val indexedRawCues = cues.mapIndexed { index, cue ->
+            val rawText = cue.rawText.ifBlank { cue.text }
+            cue.copy(index = index, text = rawText, rawText = rawText)
+        }
+        val indexedCues = indexedRawCues.toEffectiveSubtitleCues()
+        rawParsedSubtitleCuesByTitle[title] = indexedRawCues
         parsedSubtitleCuesByTitle[title] = indexedCues
         File(title).name
             .takeIf { it.isNotBlank() && it != title }
-            ?.let { parsedSubtitleCuesByTitle[it] = indexedCues }
+            ?.let {
+                rawParsedSubtitleCuesByTitle[it] = indexedRawCues
+                parsedSubtitleCuesByTitle[it] = indexedCues
+            }
 
         val matchingTrack = subtitleTracks.value.firstOrNull { track ->
             track.name == title ||
@@ -1066,6 +1122,7 @@ class PlayerViewModel @JvmOverloads constructor(
                 track.externalFilename?.let { File(it).name == File(title).name } == true
         }
         if (matchingTrack != null) {
+            rawParsedSubtitleCuesByTrackId[matchingTrack.id] = indexedRawCues
             parsedSubtitleCuesByTrackId[matchingTrack.id] = indexedCues
             if (selectedSubtitles.value.first == matchingTrack.id) {
                 applyParsedSubtitleCuesForTrack(matchingTrack.id)
@@ -1081,6 +1138,7 @@ class PlayerViewModel @JvmOverloads constructor(
         if (trackId == -1) {
             showingParsedSubtitleTrackId = null
             lastSubtitleHistoryText = ""
+            currentRawSubtitleText = ""
             _currentSubtitleText.update { "" }
             _subtitleHistory.update { emptyList() }
             _activeSubtitleCueIndex.update { null }
@@ -1088,12 +1146,24 @@ class PlayerViewModel @JvmOverloads constructor(
         }
 
         val track = subtitleTracks.value.firstOrNull { it.id == trackId }
+        val rawCues = rawParsedSubtitleCuesByTrackId[trackId]
+            ?: track?.name?.let { rawParsedSubtitleCuesByTitle[it] }
+            ?: track?.name?.let { rawParsedSubtitleCuesByTitle[File(it).name] }
+            ?: track?.externalFilename?.let { rawParsedSubtitleCuesByTitle[File(it).name] }
         val cues = parsedSubtitleCuesByTrackId[trackId]
             ?: track?.name?.let { parsedSubtitleCuesByTitle[it] }
             ?: track?.name?.let { parsedSubtitleCuesByTitle[File(it).name] }
             ?: track?.externalFilename?.let { parsedSubtitleCuesByTitle[File(it).name] }
 
         if (cues.isNullOrEmpty()) {
+            if (!rawCues.isNullOrEmpty()) {
+                showingParsedSubtitleTrackId = trackId
+                lastSubtitleHistoryText = ""
+                nextSubtitleCueIndex = rawCues.maxOfOrNull { it.index + 1 } ?: 0
+                _subtitleHistory.update { emptyList() }
+                _activeSubtitleCueIndex.update { null }
+                return
+            }
             if (showingParsedSubtitleTrackId != null) {
                 showingParsedSubtitleTrackId = null
                 _subtitleHistory.update { emptyList() }
@@ -1352,15 +1422,17 @@ class PlayerViewModel @JvmOverloads constructor(
 
     fun updateSubtitleText(text: String?) {
         val cleaned = text.orEmpty().cleanMpvSubtitleText()
-        _currentSubtitleText.update { cleaned }
+        val effectiveText = cleaned.toEffectiveSubtitleText()
+        currentRawSubtitleText = cleaned
+        _currentSubtitleText.update { effectiveText }
         if (showingParsedSubtitleTrackId != null) {
-            updateActiveSubtitleCueFromPosition(pos.value.toDouble(), cleaned)
+            updateActiveSubtitleCueFromPosition(pos.value.toDouble(), effectiveText)
             return
         }
-        updateSubtitleHistory(cleaned)
+        updateSubtitleHistory(cleaned, effectiveText)
     }
 
-    private fun updateSubtitleHistory(text: String) {
+    private fun updateSubtitleHistory(rawText: String, text: String) {
         if (text.isBlank()) {
             lastSubtitleHistoryText = ""
             _activeSubtitleCueIndex.update { null }
@@ -1377,6 +1449,7 @@ class PlayerViewModel @JvmOverloads constructor(
         val cue = SubtitleCue(
             index = nextSubtitleCueIndex++,
             text = text,
+            rawText = rawText,
             positionSeconds = pos.value.toDouble(),
         )
         _subtitleHistory.update { cues -> (cues + cue).takeLast(MAX_SUBTITLE_HISTORY) }

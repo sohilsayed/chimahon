@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -80,6 +81,7 @@ fun SubtitlesSheet(
     onUpdateJimakuTitle: (String) -> Unit,
     onOpenSubtitleSettings: () -> Unit,
     onOpenSubtitleDelay: () -> Unit,
+    onOpenSubtitleRegex: () -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -108,6 +110,15 @@ fun SubtitlesSheet(
                         ) {
                             Icon(imageVector = Icons.Default.MoreTime, contentDescription = null)
                             Text(text = stringResource(MR.strings.player_sheets_track_delay))
+                        }
+                    }
+                    TextButton(onClick = onOpenSubtitleRegex) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+                        ) {
+                            Icon(imageVector = Icons.Outlined.Code, contentDescription = null)
+                            Text(text = stringResource(MR.strings.player_sheets_track_regex))
                         }
                     }
                 },

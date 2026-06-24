@@ -801,6 +801,7 @@ fun PlayerControls(
             onSelectSubtitleCue = viewModel::selectSubtitleCue,
             onPrimarySubtitleDelayMillisChange = viewModel::updatePrimarySubtitleDelayMillis,
             onSubtitleSpeedChange = viewModel::updateSubtitleSpeed,
+            onSubtitleRegexFiltersChanged = viewModel::refreshSubtitleRegexFilters,
             onDismissRequest = { viewModel.showPanel(Panels.None) },
         )
 

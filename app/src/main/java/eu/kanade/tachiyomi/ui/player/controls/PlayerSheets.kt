@@ -131,6 +131,7 @@ fun PlayerSheets(
                 onUpdateJimakuTitle = onUpdateJimakuTitle,
                 onOpenSubtitleSettings = { onOpenPanel(Panels.SubtitleSettings) },
                 onOpenSubtitleDelay = { onOpenPanel(Panels.SubtitleDelay) },
+                onOpenSubtitleRegex = { onOpenPanel(Panels.SubtitleRegex) },
                 onDismissRequest = onDismissRequest,
             )
         }
