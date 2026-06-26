@@ -2685,10 +2685,7 @@ class PlayerViewModel @JvmOverloads constructor(
                     "-i \"$input\"",
                     "-vn",
                     "-map 0:a:0",
-                    "-ac 2",
-                    "-ar 44100",
-                    "-c:a aac",
-                    "-b:a 128k",
+                    "-c:a copy",
                     "\"${output.absolutePath.replace("\"", "\\\"")}\"",
                     "-y",
                 )
