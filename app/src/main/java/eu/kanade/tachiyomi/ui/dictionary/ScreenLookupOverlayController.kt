@@ -9,18 +9,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,15 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -198,17 +184,6 @@ private class OverlayLifecycleOwner :
     }
 }
 
-private data class ScreenLookupSelection(
-    val block: OcrTextBlock,
-    val lookupString: String,
-    val sentence: String,
-    val sentenceOffset: Int,
-    val anchorX: Float,
-    val anchorY: Float,
-    val anchorWidth: Float,
-    val anchorHeight: Float,
-)
-
 @Composable
 internal fun ScreenLookupOverlay(
     screenshot: Bitmap,
@@ -232,7 +207,7 @@ internal fun ScreenLookupOverlay(
     var blocks by remember { mutableStateOf<List<OcrTextBlock>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    var selection by remember { mutableStateOf<ScreenLookupSelection?>(null) }
+    var selection by remember { mutableStateOf<OcrSelection?>(null) }
     var showTapHint by remember { mutableStateOf(false) }
     var lookupNonce by remember { mutableIntStateOf(0) }
 
@@ -275,45 +250,25 @@ internal fun ScreenLookupOverlay(
         val widthPx = with(localDensity) { maxWidth.toPx() }
         val heightPx = with(localDensity) { maxHeight.toPx() }
 
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(blocks, widthPx, heightPx) {
-                    detectTapGestures { offset ->
-                        val tapped = blocks.firstOrNull { block ->
-                            offset.x >= block.xmin * widthPx &&
-                                offset.x <= block.xmax * widthPx &&
-                                offset.y >= block.ymin * heightPx &&
-                                offset.y <= block.ymax * heightPx
-                        }
-
-                        if (tapped == null) {
-                            onClose()
-                            return@detectTapGestures
-                        }
-
-                        val tapX = (offset.x / widthPx).coerceIn(0f, 1f)
-                        val tapY = (offset.y / heightPx).coerceIn(0f, 1f)
-                        val charOffset = tapped.screenLookupCharOffset(tapX, tapY)
-                        val text = tapped.fullText
-                        if (charOffset !in text.indices || !isLookupStartChar(text[charOffset])) {
-                            selection = null
-                            showTapHint = false
-                            return@detectTapGestures
-                        }
-
-                        val lookupString = extractOcrLookupString(text, charOffset)
-                        if (lookupString.isBlank()) {
-                            selection = null
-                            showTapHint = false
-                            return@detectTapGestures
-                        }
-
+        OcrBlockCanvas(
+            blocks = blocks,
+            boxScaleX = boxScaleX,
+            boxScaleY = boxScaleY,
+            activeBlock = selection?.block,
+            activeMatchCount = matchedCharCount,
+            activeMatchOffset = matchOffset,
+            selection = selection,
+            onBlockTapped = { tapped, tapX, tapY ->
+                val charOffset = tapped.screenLookupCharOffset(tapX, tapY)
+                val text = tapped.fullText
+                if (charOffset in text.indices && isLookupStartChar(text[charOffset])) {
+                    val lookupString = extractOcrLookupString(text, charOffset)
+                    if (lookupString.isNotBlank()) {
                         lookupNonce++
                         showTapHint = false
                         matchedCharCount = 0
                         matchOffset = 0
-                        selection = ScreenLookupSelection(
+                        selection = OcrSelection(
                             block = tapped,
                             lookupString = lookupString,
                             sentence = tapped.fullText,
@@ -323,158 +278,38 @@ internal fun ScreenLookupOverlay(
                             anchorWidth = (tapped.xmax - tapped.xmin) * widthPx,
                             anchorHeight = (tapped.ymax - tapped.ymin) * heightPx,
                         )
-                    }
-                },
-        ) {
-            val active = selection?.block
-            val activeMatchCount = matchedCharCount
-            val activeMatchOffset = matchOffset
-            val activeSelection = selection
-
-            val borderColor = Color(0, 170, 255, 180)
-            val highlightColor = Color(130, 150, 200, 100)
-
-            blocks.forEach { block ->
-                val isActive = block == active
-                val geometries = block.lineGeometries
-
-                if (geometries != null && geometries.size == block.lines.size) {
-                    geometries.forEachIndexed { _, geo ->
-                        val centerX = (geo.xmin + geo.xmax) / 2f
-                        val centerY = (geo.ymin + geo.ymax) / 2f
-                        val tightW = (geo.xmax - geo.xmin).coerceAtLeast(0.001f)
-                        val tightH = (geo.ymax - geo.ymin).coerceAtLeast(0.001f)
-
-                        val scaledW = tightW * boxScaleX
-                        val scaledH = tightH * boxScaleY
-                        val left = (centerX - scaledW / 2f) * size.width
-                        val top = (centerY - scaledH / 2f) * size.height
-                        val w = scaledW * size.width
-                        val h = scaledH * size.height
-
-                        drawRect(
-                            color = if (isActive) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.10f),
-                            topLeft = Offset(left, top),
-                            size = Size(w, h),
-                        )
-                        drawRect(
-                            color = borderColor,
-                            topLeft = Offset(left, top),
-                            size = Size(w, h),
-                            style = Stroke(width = if (isActive) 2.dp.toPx() else 1.dp.toPx()),
-                        )
-
-                        if (isActive && activeMatchCount > 0 && activeSelection != null) {
-                            val orderedIds = block.lines.indices.toList()
-                            var accumulated = 0
-                            for (oi in orderedIds.indices) {
-                                val rawIdx = orderedIds[oi]
-                                val lineLen = block.lines[rawIdx].length
-                                val lineEnd = accumulated + lineLen
-                                val absStart = activeSelection.sentenceOffset + activeMatchOffset
-                                val absEnd = absStart + activeMatchCount
-                                if (absStart < lineEnd && absEnd > accumulated) {
-                                    val overlapL = maxOf(absStart, accumulated)
-                                    val overlapR = minOf(absEnd, lineEnd)
-                                    val startFrac = (overlapL - accumulated).toFloat() / lineLen.coerceAtLeast(1)
-                                    val endFrac = (overlapR - accumulated).toFloat() / lineLen.coerceAtLeast(1)
-
-                                    val lGeo = geometries[rawIdx]
-                                    val lCx = (lGeo.xmin + lGeo.xmax) / 2f
-                                    val lCy = (lGeo.ymin + lGeo.ymax) / 2f
-                                    val lTw = (lGeo.xmax - lGeo.xmin).coerceAtLeast(0.001f)
-                                    val lTh = (lGeo.ymax - lGeo.ymin).coerceAtLeast(0.001f)
-                                    val lSw = lTw * boxScaleX
-                                    val lSh = lTh * boxScaleY
-                                    val lLeft = (lCx - lSw / 2f) * size.width
-                                    val lTop = (lCy - lSh / 2f) * size.height
-                                    val lW = lSw * size.width
-                                    val lH = lSh * size.height
-
-                                    val origW = lW / boxScaleX
-                                    val origH = lH / boxScaleY
-                                    val padX = (lW - origW) / 2f
-                                    val padY = (lH - origH) / 2f
-
-                                    if (block.vertical) {
-                                        drawRect(
-                                            color = highlightColor,
-                                            topLeft = Offset(lLeft, lTop + padY + origH * startFrac),
-                                            size = Size(lW, origH * (endFrac - startFrac)),
-                                        )
-                                    } else {
-                                        drawRect(
-                                            color = highlightColor,
-                                            topLeft = Offset(lLeft + padX + origW * startFrac, lTop),
-                                            size = Size(origW * (endFrac - startFrac), lH),
-                                        )
-                                    }
-                                    break
-                                }
-                                accumulated = lineEnd
-                            }
-                        }
+                    } else {
+                        selection = null
+                        showTapHint = false
                     }
                 } else {
-                    val blockLeft = block.xmin * size.width
-                    val blockTop = block.ymin * size.height
-                    val blockSize = Size(
-                        width = (block.xmax - block.xmin) * size.width,
-                        height = (block.ymax - block.ymin) * size.height,
-                    )
-                    drawRect(
-                        color = if (isActive) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.10f),
-                        topLeft = Offset(blockLeft, blockTop),
-                        size = blockSize,
-                    )
-                    drawRect(
-                        color = borderColor,
-                        topLeft = Offset(blockLeft, blockTop),
-                        size = blockSize,
-                        style = Stroke(width = if (isActive) 2.dp.toPx() else 1.dp.toPx()),
-                    )
+                    selection = null
+                    showTapHint = false
                 }
-            }
-        }
-
-        if (isLoading || error != null) {
-            Surface(
-                modifier = Modifier.align(Alignment.Center),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                tonalElevation = 3.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text(stringResource(MR.strings.screen_lookup_finding_text))
-                    } else {
-                        Text(error.orEmpty())
-                    }
+            },
+            onEmptyTap = {
+                if (selection != null) {
+                    selection = null
+                } else {
+                    onClose()
                 }
-            }
-        }
+            },
+        )
 
-        if (showTapHint && !isLoading && error == null && blocks.isNotEmpty() && selection == null) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 84.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                tonalElevation = 2.dp,
-            ) {
-                Text(
-                    text = stringResource(MR.strings.screen_lookup_tap_text),
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
+        OcrStatusOverlay(
+            isLoading = isLoading,
+            error = error,
+            loadingText = stringResource(MR.strings.screen_lookup_finding_text),
+            modifier = Modifier.align(Alignment.Center),
+        )
+
+        OcrTapHint(
+            visible = showTapHint && blocks.isNotEmpty() && selection == null,
+            hintText = stringResource(MR.strings.screen_lookup_tap_text),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 84.dp),
+        )
 
         val selected = selection
         if (selected != null) {

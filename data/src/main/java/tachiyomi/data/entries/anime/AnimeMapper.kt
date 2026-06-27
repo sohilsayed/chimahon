@@ -112,7 +112,7 @@ object AnimeMapper {
         lastSeen: Long,
         bookmarkCount: Double,
         fillermarkCount: Double,
-        category: Long,
+        categories: String,
     ): LibraryAnime = LibraryAnime(
         anime = mapAnime(
             id,
@@ -147,7 +147,7 @@ object AnimeMapper {
             backgroundUrl,
             backgroundLastModified,
         ),
-        categories = listOf(category),
+        categories = categories.split(",").map { it.toLong() },
         totalEpisodes = totalCount,
         seenCount = seenCount.toLong(),
         bookmarkCount = bookmarkCount.toLong(),

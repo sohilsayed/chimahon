@@ -7,16 +7,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,10 +26,14 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.TabOptions
+import eu.kanade.presentation.category.components.ChangeCategoryDialog
+import eu.kanade.presentation.entries.anime.components.LibraryBottomActionMenu
 import eu.kanade.presentation.entries.anime.library.AnimeLibraryContent
 import eu.kanade.presentation.entries.anime.library.AnimeLibrarySettingsDialog
-import eu.kanade.presentation.components.BulkSelectionToolbar
+import eu.kanade.presentation.library.components.LibraryToolbar
+import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.presentation.util.Tab
+import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryScreenModel
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
 import kotlinx.coroutines.launch
@@ -72,13 +69,15 @@ data object AnimeTab : Tab {
 
         var showSettingsDialog by remember { mutableStateOf(false) }
         var showOpenVideoDialog by remember { mutableStateOf(false) }
-        var showOverflowMenu by remember { mutableStateOf(false) }
         var currentPage by rememberSaveable { mutableIntStateOf(0) }
 
         val displayMode by remember { preferences.displayMode().changes() }
             .collectAsState(initial = preferences.displayMode().get())
 
         val snackbarHostState = remember { SnackbarHostState() }
+
+        val updatingCategoryText = stringResource(MR.strings.updating_category)
+        val onDismissRequest = screenModel::closeDialog
 
         val filePickerLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocument(),
@@ -94,52 +93,55 @@ data object AnimeTab : Tab {
             }
         }
 
-        BackHandler(enabled = state.selectionMode) {
-            screenModel.clearSelection()
+        BackHandler(enabled = state.selectionMode || state.searchQuery != null) {
+            when {
+                state.selectionMode -> screenModel.clearSelection()
+                state.searchQuery != null -> screenModel.search(null)
+            }
         }
 
         Scaffold(
-            topBar = {
-                if (state.selectionMode) {
-                    BulkSelectionToolbar(
-                        selectedCount = state.selection.size,
-                        isRunning = false,
-                        onClickClearSelection = screenModel::clearSelection,
-                        onChangeCategoryClick = { /* TODO: open category picker */ },
-                        onSelectAll = { screenModel.selectAll(currentPage) },
-                        onReverseSelection = { screenModel.invertSelection(currentPage) },
-                    )
-                } else {
-                    TopAppBar(
-                        title = { Text(stringResource(MR.strings.label_anime)) },
-                        actions = {
-                            IconButton(onClick = { showSettingsDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.FilterList,
-                                    contentDescription = "Filter",
-                                )
-                            }
-                            IconButton(onClick = { showOverflowMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.PlayCircle,
-                                    contentDescription = "More",
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showOverflowMenu,
-                                onDismissRequest = { showOverflowMenu = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(MR.strings.action_open_video)) },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        showOpenVideoDialog = true
-                                    },
-                                )
-                            }
-                        },
-                    )
-                }
+            topBar = { scrollBehavior ->
+                LibraryToolbar(
+                    hasActiveFilters = state.hasActiveFilters,
+                    selectedCount = state.selection.size,
+                    title = LibraryToolbarTitle(
+                        text = stringResource(MR.strings.label_anime),
+                    ),
+                    onClickUnselectAll = screenModel::clearSelection,
+                    onClickSelectAll = { screenModel.selectAll(currentPage) },
+                    onClickInvertSelection = { screenModel.invertSelection(currentPage) },
+                    onClickFilter = { showSettingsDialog = true },
+                    onClickRefresh = {
+                        scope.launch {
+                            snackbarHostState.showSnackbar(updatingCategoryText)
+                        }
+                    },
+                    onClickGlobalUpdate = null,
+                    onClickOpenRandomManga = null,
+                    onClickSyncNow = null,
+                    onClickSyncExh = null,
+                    isSyncEnabled = false,
+                    searchQuery = state.searchQuery,
+                    onSearchQueryChange = screenModel::search,
+                    scrollBehavior = scrollBehavior,
+                    onInvalidateDownloadCache = null,
+                    onClickEditCategories = {
+                        navigator.push(CategoryScreen(CategoryScreen.Tab.ANIME))
+                    },
+                    editCategoriesTitle = stringResource(MR.strings.action_edit_categories),
+                )
+            },
+            bottomBar = {
+                LibraryBottomActionMenu(
+                    visible = state.selectionMode,
+                    onChangeCategoryClicked = screenModel::openChangeCategoryDialog,
+                    onMarkAsSeenClicked = { screenModel.markSeenSelection(true) },
+                    onMarkAsUnseenClicked = { screenModel.markSeenSelection(false) },
+                    onDownloadClicked = null,
+                    onDeleteClicked = { screenModel.removeAnime(state.selection.map { it.id }) },
+                    onClickResetInfo = null,
+                )
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { contentPadding ->
@@ -161,7 +163,7 @@ data object AnimeTab : Tab {
                     onToggleSelection = { anime -> screenModel.toggleSelection(anime) },
                     onRefresh = {
                         scope.launch {
-                            snackbarHostState.showSnackbar("Refreshing anime library...")
+                            snackbarHostState.showSnackbar(updatingCategoryText)
                         }
                         false
                     },
@@ -170,6 +172,23 @@ data object AnimeTab : Tab {
                     },
                 )
             }
+        }
+
+        when (val dialog = state.dialog) {
+            is AnimeLibraryScreenModel.Dialog.ChangeCategory -> {
+                ChangeCategoryDialog(
+                    initialSelection = dialog.initialSelection,
+                    onDismissRequest = onDismissRequest,
+                    onEditCategories = {
+                        navigator.push(CategoryScreen(CategoryScreen.Tab.ANIME))
+                    },
+                    onConfirm = { include, exclude ->
+                        screenModel.clearSelection()
+                        screenModel.setAnimeCategories(dialog.anime, include, exclude)
+                    },
+                )
+            }
+            null -> {}
         }
 
         if (showSettingsDialog) {

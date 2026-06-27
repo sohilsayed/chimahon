@@ -1,12 +1,15 @@
 package eu.kanade.tachiyomi.ui.entries.anime.library
 
+import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -15,22 +18,25 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
-import tachiyomi.domain.entries.anime.interactor.GetLibraryAnime
-import tachiyomi.domain.entries.anime.interactor.UpdateAnime
-import tachiyomi.domain.entries.anime.model.AnimeUpdate
-import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.category.interactor.GetAnimeCategories
 import tachiyomi.domain.category.interactor.SetAnimeCategories
 import tachiyomi.domain.category.model.AnimeCategory
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.entries.anime.interactor.GetLibraryAnime
+import tachiyomi.domain.entries.anime.interactor.UpdateAnime
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.interactor.SetSeenStatus
 import tachiyomi.domain.library.model.LibraryAnime
 import tachiyomi.domain.library.model.LibraryGroup
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.service.AnimeLibraryPreferences
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.Collator
@@ -119,10 +125,11 @@ class AnimeLibraryScreenModel(
                     categories = categories,
                     searchQuery = searchQuery,
                     hasActiveFilters = hasActiveFilters,
+                    dialog = null,
                 )
             }.collectLatest { newState ->
                 mutableState.update { oldState ->
-                    newState.copy(selection = oldState.selection)
+                    newState.copy(selection = oldState.selection, dialog = oldState.dialog)
                 }
             }
         }
@@ -217,6 +224,61 @@ class AnimeLibraryScreenModel(
                 setAnimeCategories.await(animeId, categoryIds)
             }
         }
+    }
+
+    fun setAnimeCategories(
+        animeList: List<Anime>,
+        addCategories: List<Long>,
+        removeCategories: List<Long>,
+    ) {
+        screenModelScope.launchNonCancellable {
+            animeList.forEach { anime ->
+                val categoryIds = getAnimeCategories.await(anime.id)
+                    .map { it.id }
+                    .subtract(removeCategories.toSet())
+                    .plus(addCategories)
+                    .toList()
+                setAnimeCategories.await(anime.id, categoryIds)
+            }
+        }
+    }
+
+    fun openChangeCategoryDialog() {
+        screenModelScope.launchIO {
+            val animeList = state.value.selection.map { it.anime }
+            val categories = state.value.categories
+                .filter { it.id != 0L }
+                .map { Category(it.id, it.name, it.order, it.flags, it.hidden) }
+            val common = getCommonCategories(animeList)
+            val mix = getMixCategories(animeList)
+            val preselected = categories.map {
+                when (it) {
+                    in common -> CheckboxState.State.Checked(it)
+                    in mix -> CheckboxState.TriState.Exclude(it)
+                    else -> CheckboxState.State.None(it)
+                }
+            }.toImmutableList()
+            mutableState.update { it.copy(dialog = Dialog.ChangeCategory(animeList, preselected)) }
+        }
+    }
+
+    fun closeDialog() {
+        mutableState.update { it.copy(dialog = null) }
+    }
+
+    private suspend fun getCommonCategories(animes: List<Anime>): Collection<Category> {
+        if (animes.isEmpty()) return emptyList()
+        return animes
+            .map { getAnimeCategories.await(it.id).map { a -> Category(a.id, a.name, a.order, a.flags, a.hidden) }.toSet() }
+            .reduce { set1, set2 -> set1.intersect(set2) }
+    }
+
+    private suspend fun getMixCategories(animes: List<Anime>): Collection<Category> {
+        if (animes.isEmpty()) return emptyList()
+        val animeCategories = animes
+            .map { getAnimeCategories.await(it.id).map { a -> Category(a.id, a.name, a.order, a.flags, a.hidden) }.toSet() }
+        val common = animeCategories.reduce { set1, set2 -> set1.intersect(set2) }
+        return animeCategories.flatten().distinct().subtract(common)
     }
 
     fun removeAnime(animeIds: List<Long>) {
@@ -381,6 +443,14 @@ class AnimeLibraryScreenModel(
         }
     }
 
+    sealed interface Dialog {
+        data class ChangeCategory(
+            val anime: List<Anime>,
+            val initialSelection: ImmutableList<CheckboxState<Category>>,
+        ) : Dialog
+    }
+
+    @Immutable
     data class State(
         val isLoading: Boolean = true,
         val library: Map<AnimeCategory, List<AnimeLibraryItem>> = emptyMap(),
@@ -391,6 +461,7 @@ class AnimeLibraryScreenModel(
         val showCategoryTabs: Boolean = true,
         val showAnimeCount: Boolean = false,
         val showContinueWatchingButton: Boolean = false,
+        val dialog: Dialog? = null,
     ) {
         val selectionMode = selection.isNotEmpty()
 

@@ -86,7 +86,7 @@ import eu.kanade.presentation.manga.components.Button as BottomMenuButton
 import com.canopus.chimareader.ttusync.TtuSyncManager
 import eu.kanade.tachiyomi.data.SyncStatus
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
-import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
+import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
@@ -259,7 +259,7 @@ fun Screen.NovelLibraryScreen(
                 onSearchQueryChange = screenModel::search,
                 scrollBehavior = scrollBehavior,
                 onInvalidateDownloadCache = null,
-                onClickEditCategories = { navigator.push(NovelCategoryScreen()) },
+                onClickEditCategories = { navigator.push(CategoryScreen(CategoryScreen.Tab.NOVELS)) },
                 editCategoriesTitle = stringResource(MR.strings.action_edit_novel_categories),
                 updateCategoryTitle = stringResource(SYMR.strings.label_sync),
                 onClickNovelDefaultCategory = screenModel::showNovelDefaultCategoryDialog,
@@ -469,7 +469,7 @@ fun Screen.NovelLibraryScreen(
             eu.kanade.presentation.category.components.ChangeCategoryDialog(
                 initialSelection = dialog.initialSelection,
                 onDismissRequest = onDismissRequest,
-                onEditCategories = { navigator.push(NovelCategoryScreen()) },
+                onEditCategories = { navigator.push(CategoryScreen(CategoryScreen.Tab.NOVELS)) },
                 onConfirm = { include, exclude ->
                     screenModel.clearSelection()
                     screenModel.setBooksCategories(dialog.books, include, exclude)

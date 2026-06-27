@@ -64,7 +64,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +77,9 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.UUID
 import kotlin.math.roundToInt
+
+/** Fire-and-forget scope for Anki mining jobs — survives popup dismissals */
+private val miningScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
 /** One entry in the recursive-lookup history stack. */
 private data class LookupFrame(
@@ -434,7 +439,7 @@ fun OcrLookupPopup(
         val shouldUseCropMode = screenshotFieldMapped && cropMode == "crop" && onCropTriggered != null
 
         if (shouldUseCropMode) {
-            scope.launch {
+            miningScope.launch {
                 val sentenceAudioBytes = if (sentenceAudioFieldMapped) {
                     onRequestSentenceAudio?.invoke()
                 } else {
@@ -487,7 +492,7 @@ fun OcrLookupPopup(
                 }
             }
         } else {
-            scope.launch {
+            miningScope.launch {
                 val encoding = if (screenshotFieldMapped) {
                     onRequestScreenshot?.invoke()?.let { ImageEncoder.encode(it) }
                 } else {

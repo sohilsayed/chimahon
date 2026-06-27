@@ -1,3 +1,5 @@
+DROP VIEW IF EXISTS animelibView;
+
 CREATE VIEW animelibView AS
 SELECT
     M.*,
@@ -40,13 +42,3 @@ LEFT JOIN (
 ) AS MC
 ON MC.anime_id = M._id
 LEFT JOIN animeseasonstatsView AS ASS ON M._id = ASS.parent_id;
-
-libraryAnime:
-SELECT *
-FROM animelibView
-WHERE favorite = 1;
-
-seenAnimeNonLibrary:
-SELECT *
-FROM animelibView
-WHERE favorite = 0 AND seenCount != 0;

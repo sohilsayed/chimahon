@@ -237,6 +237,7 @@ fun PlayerControls(
     val captureVideoOcr = {
         if (!isCapturingVideoOcr) {
             isCapturingVideoOcr = true
+            viewModel.hideControls()
             scope.launch {
                 val screenshot = viewModel.captureVideoFrameForOcr()
                 isCapturingVideoOcr = false
@@ -244,7 +245,6 @@ fun PlayerControls(
                     context.toast("Could not capture video frame")
                 } else {
                     videoOcrScreenshot = screenshot
-                    viewModel.hideControls()
                 }
             }
         }

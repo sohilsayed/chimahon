@@ -776,6 +776,9 @@ private class ReaderAndroidWebView(
                 var b = document.body;
                 if (!b) { window.hoshiReader.notifyRestoreComplete(); return; }
 
+                window.hoshiReader.pageHeight = ih;
+                window.hoshiReader.pageWidth = iw;
+
                 b.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 b.style.setProperty('margin', '0', 'important');
                 b.style.setProperty('box-sizing', 'border-box', 'important');
@@ -947,6 +950,9 @@ private class ReaderAndroidWebView(
                 var b = document.body;
                 if (!b) { window.hoshiReader.notifyRestoreComplete(); return; }
 
+                window.hoshiReader.pageHeight = ih + bottomOverlap;
+                window.hoshiReader.pageWidth = iw;
+
                 b.style.setProperty(
                     'padding',
                     vPad + 'px ' + hPad + 'px ' + (vPad + bottomOverlap) + 'px ' + hPad + 'px',
@@ -1016,6 +1022,7 @@ private class ReaderAndroidWebView(
                 b.style.setProperty('column-fill', 'auto', 'important');
                 b.style.setProperty('touch-action', 'none', 'important');
                 document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+                b.style.setProperty('overflow', 'hidden', 'important');
 
                 window.hoshiReader.registerCopyText();
 
@@ -1114,6 +1121,18 @@ private class ReaderAndroidWebView(
                         (${if (settings.verticalWriting) "2 * vPad + bottomOverlap" else "2 * hPad"}) + 'px',
                         'important'
                     );
+                    b.style.setProperty('width', iw + 'px', 'important');
+                    b.style.setProperty('column-fill', 'auto', 'important');
+                    b.style.setProperty('touch-action', 'none', 'important');
+                    document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+                    b.style.setProperty('overflow', 'hidden', 'important');
+                    ${if (settings.verticalWriting) """
+                    b.style.setProperty('column-width', ih + 'px', 'important');
+                    b.style.setProperty('min-height', ih + 'px', 'important');
+                    """ else """
+                    b.style.setProperty('column-width', iw + 'px', 'important');
+                    b.style.setProperty('height', ih + 'px', 'important');
+                    """}
                 }
 
                 b.style.setProperty('font-size', '${settings.fontSize}px', 'important');

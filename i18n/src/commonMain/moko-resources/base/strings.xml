@@ -12,7 +12,7 @@
 
     <!-- Models -->
     <string name="name">Name</string>
-    <string name="categories">Manga categories</string>
+    <string name="categories">Categories</string>
     <string name="label_novel_categories">Novel categories</string>
     <string name="manga">Library entries</string>
     <string name="manga_singular">Manga</string>

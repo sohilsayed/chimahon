@@ -99,8 +99,9 @@ import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.entries.anime.model.SeasonDisplayMode
 import tachiyomi.domain.entries.anime.model.applyFilter
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
-import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.GetAnimeCategories
 import tachiyomi.domain.category.interactor.SetAnimeCategories
+import tachiyomi.domain.category.model.AnimeCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.episode.interactor.SetAnimeDefaultEpisodeFlags
@@ -147,7 +148,7 @@ class AnimeScreenModel(
     private val updateEpisode: UpdateEpisode = Injekt.get(),
     private val updateAnime: UpdateAnime = Injekt.get(),
     private val syncEpisodesWithSource: SyncEpisodesWithSource = Injekt.get(),
-    private val getCategories: GetCategories = Injekt.get(),
+    private val getAnimeCategories: GetAnimeCategories = Injekt.get(),
     private val addTracks: AddAnimeTracks = Injekt.get(),
     private val setAnimeCategories: SetAnimeCategories = Injekt.get(),
     private val animeRepository: AnimeRepository = Injekt.get(),
@@ -493,19 +494,27 @@ class AnimeScreenModel(
                 }
 
                 // Now check if user previously set categories, when available
-                val categories = getCategories()
+                val animeCategories = getCategories()
                 val defaultCategoryId = libraryPreferences.defaultCategory().get().toLong()
-                val defaultCategory = categories.find { it.id == defaultCategoryId }
+                val defaultAnimeCategory = animeCategories.find { it.id == defaultCategoryId }
                 when {
                     // Default category set
-                    defaultCategory != null -> {
+                    defaultAnimeCategory != null -> {
                         val result = updateAnime.awaitUpdateFavorite(anime.id, true)
                         if (!result) return@launchIO
-                        moveAnimeToCategory(defaultCategory)
+                        moveAnimeToCategory(
+                            Category(
+                                id = defaultAnimeCategory.id,
+                                name = defaultAnimeCategory.name,
+                                order = defaultAnimeCategory.order,
+                                flags = defaultAnimeCategory.flags,
+                                hidden = defaultAnimeCategory.hidden,
+                            ),
+                        )
                     }
 
                     // Automatic 'Default' or no categories
-                    defaultCategoryId == 0L || categories.isEmpty() -> {
+                    defaultCategoryId == 0L || animeCategories.isEmpty() -> {
                         val result = updateAnime.awaitUpdateFavorite(anime.id, true)
                         if (!result) return@launchIO
                         moveAnimeToCategory(null)
@@ -532,11 +541,20 @@ class AnimeScreenModel(
         screenModelScope.launch {
             val categories = getCategories()
             val selection = getAnimeCategoryIds(anime)
+            val mappedCategories = categories.map { ac ->
+                Category(
+                    id = ac.id,
+                    name = ac.name,
+                    order = ac.order,
+                    flags = ac.flags,
+                    hidden = ac.hidden,
+                )
+            }
             updateSuccessState { successState ->
                 successState.copy(
                     dialog = Dialog.ChangeCategory(
                         anime = anime,
-                        initialSelection = categories.mapAsCheckboxState { it.id in selection }.toImmutableList(),
+                        initialSelection = mappedCategories.mapAsCheckboxState { it.id in selection }.toImmutableList(),
                     ),
                 )
             }
@@ -587,8 +605,8 @@ class AnimeScreenModel(
      *
      * @return List of categories, not including the default category
      */
-    suspend fun getCategories(): List<Category> {
-        return getCategories.await().filterNot { it.isSystemCategory }
+    suspend fun getCategories(): List<AnimeCategory> {
+        return getAnimeCategories.await().filterNot { it.isSystemCategory }
     }
 
     /**
@@ -598,7 +616,7 @@ class AnimeScreenModel(
      * @return Array of category ids the anime is in, if none returns default id
      */
     private suspend fun getAnimeCategoryIds(anime: Anime): List<Long> {
-        return getCategories.await(anime.id)
+        return getAnimeCategories.await(anime.id)
             .map { it.id }
     }
 

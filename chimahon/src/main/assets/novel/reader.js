@@ -1,6 +1,8 @@
 window.hoshiReader = {
     isRtl: false,
     continuousMode: false,
+    pageHeight: 0,
+    pageWidth: 0,
     // Character counting regex: keeps alphanumeric and CJK scripts (Japanese, Chinese, Korean).
     // Added \p{Script=Hangul} to support Korean and clarified the CJK ideograph property.
     ttuRegexNegated: /[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\p{Radical}\p{Unified_Ideograph}\p{Script=Hangul}]+/gimu,
@@ -20,86 +22,64 @@ window.hoshiReader = {
         });
     },
 
+    getScrollContext: function() {
+        var vertical = this.isVertical();
+        var scrollEl = document.body;
+        var pageSize = Math.max(1, vertical ? (this.pageHeight || window.innerHeight) : (this.pageWidth || window.innerWidth));
+        var totalSize = vertical ? scrollEl.scrollHeight : scrollEl.scrollWidth;
+        var maxScroll = Math.max(0, totalSize - pageSize);
+        return { vertical: vertical, scrollEl: scrollEl, pageSize: pageSize, maxScroll: maxScroll };
+    },
+
+    getPagePosition: function(context) {
+        return context.vertical ? context.scrollEl.scrollTop : context.scrollEl.scrollLeft;
+    },
+
+    lockRootViewport: function() {
+        var root = document.documentElement;
+        if (root.scrollTop !== 0) root.scrollTop = 0;
+        if (root.scrollLeft !== 0) root.scrollLeft = 0;
+        if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+    },
+
+    setPagePosition: function(context, position) {
+        var clamped = Math.min(Math.max(0, position), context.maxScroll);
+        if (context.vertical) {
+            context.scrollEl.scrollTop = clamped;
+        } else {
+            context.scrollEl.scrollLeft = clamped;
+        }
+        this.lockRootViewport();
+    },
+
     paginate: function(direction) {
-        var el = document.scrollingElement || document.documentElement;
-        var ph = window.innerHeight;
-        var pw = window.innerWidth;
-        var vOver = el.scrollHeight - ph > 1;
-        var hOver = el.scrollWidth - pw > 1;
+        var context = this.getScrollContext();
+        if (context.pageSize <= 0) return 'limit';
+        var currentScroll = this.getPagePosition(context);
 
-        if (!this.continuousMode && !this.isVertical()) {
-            var x = window.scrollX;
-            var maxX = el.scrollWidth - pw;
-            if (direction === 'forward' && x + pw <= maxX + 1) {
-                window.scrollTo(x + pw, 0);
+        if (direction === 'forward') {
+            if (currentScroll < context.maxScroll - 1) {
+                var target = Math.min(Math.round((currentScroll + context.pageSize) / context.pageSize) * context.pageSize, context.maxScroll);
+                if (target <= currentScroll + 1) return 'limit';
+                this.setPagePosition(context, target);
                 return 'scrolled';
             }
-            if (direction === 'backward' && x > 1) {
-                window.scrollTo(Math.max(0, x - pw), 0);
+            return 'limit';
+        } else {
+            if (currentScroll > 1) {
+                var target = Math.max(0, Math.floor((currentScroll - 1) / context.pageSize) * context.pageSize);
+                this.setPagePosition(context, target);
                 return 'scrolled';
             }
             return 'limit';
         }
-
-        if (!this._logged) {
-            this._logged = true;
-            console.log('[hoshi] scrollH=' + el.scrollHeight + ' scrollW=' + el.scrollWidth +
-                ' innerH=' + ph + ' innerW=' + pw + ' vOver=' + vOver + ' hOver=' + hOver);
-        }
-
-        if (vOver) {
-            var y = Math.round(window.scrollY);
-            var maxY = el.scrollHeight - ph;
-            if (direction === 'forward' && y + ph <= maxY + 1) {
-                window.scrollTo(0, y + ph);
-                return 'scrolled';
-            }
-            if (direction === 'backward' && y > 1) {
-                window.scrollTo(0, Math.max(0, y - ph));
-                return 'scrolled';
-            }
-            return 'limit';
-        }
-
-        if (hOver) {
-            var x = window.scrollX;
-            var maxX = el.scrollWidth - pw;
-            if (this.isRtl) {
-                var absX = Math.abs(x);
-                if (direction === 'forward' && absX + pw <= maxX + 1) {
-                    window.scrollTo(x - pw, 0);
-                    return 'scrolled';
-                }
-                if (direction === 'backward' && absX > 1) {
-                    window.scrollTo(Math.min(0, x + pw), 0);
-                    return 'scrolled';
-                }
-            } else {
-                if (direction === 'forward' && x + pw <= maxX + 1) {
-                    window.scrollTo(x + pw, 0);
-                    return 'scrolled';
-                }
-                if (direction === 'backward' && x > 1) {
-                    window.scrollTo(Math.max(0, x - pw), 0);
-                    return 'scrolled';
-                }
-            }
-            return 'limit';
-        }
-
-        return 'limit';
     },
 
     calculateProgress: function() {
         if (!this.continuousMode) {
-            var el = document.scrollingElement || document.documentElement;
-            var ph = window.innerHeight;
-            var pw = window.innerWidth;
-            var vMax = el.scrollHeight - ph;
-            var hMax = el.scrollWidth - pw;
-            if (vMax > 1) return vMax > 0 ? window.scrollY / vMax : 0;
-            if (hMax > 1) return hMax > 0 ? Math.abs(window.scrollX) / hMax : 0;
-            return 0;
+            var context = this.getScrollContext();
+            if (context.maxScroll <= 0) return 0;
+            return this.getPagePosition(context) / context.maxScroll;
         }
 
         var vertical = this.isVertical();
@@ -116,7 +96,6 @@ window.hoshiReader = {
                 var range = document.createRange();
                 range.selectNodeContents(node);
                 var rect = range.getBoundingClientRect();
-                // If the node is entirely above (or to the right of) the viewport, count it as explored
                 if (vertical ? (rect.left > window.innerWidth) : (rect.bottom < 0)) {
                     exploredChars += nodeLen;
                 }
@@ -131,25 +110,68 @@ window.hoshiReader = {
         var p = Math.min(1, Math.max(0, progress));
 
         if (!this.continuousMode) {
-            var el = document.scrollingElement || document.documentElement;
-            var ph = window.innerHeight;
-            var pw = window.innerWidth;
-            var vMax = el.scrollHeight - ph;
-            var hMax = el.scrollWidth - pw;
-
-            if (vMax > 1) {
-                var target = Math.round(vMax * p);
-                target = Math.round(target / ph) * ph;
-                window.scrollTo(0, Math.min(target, vMax));
-            } else if (hMax > 1) {
-                var target = Math.round(hMax * p);
-                target = Math.round(target / pw) * pw;
-                if (this.isRtl) {
-                    window.scrollTo(-Math.min(target, hMax), 0);
-                } else {
-                    window.scrollTo(Math.min(target, hMax), 0);
-                }
+            var context = this.getScrollContext();
+            if (context.pageSize <= 0) {
+                this.notifyRestoreComplete();
+                return;
             }
+
+            if (p >= 0.99) {
+                this.setPagePosition(context, context.maxScroll);
+                this.notifyRestoreComplete();
+                return;
+            }
+
+            var walker = this.createWalker();
+            var totalChars = 0;
+            var node;
+            while (node = walker.nextNode()) {
+                totalChars += this.countChars(node.textContent);
+            }
+
+            if (totalChars <= 0) {
+                this.setPagePosition(context, Math.round(context.maxScroll * p));
+                this.notifyRestoreComplete();
+                return;
+            }
+
+            var targetCharCount = Math.ceil(totalChars * p);
+            var runningSum = 0;
+            var targetNode = null;
+            var targetOffset = 0;
+
+            walker = this.createWalker();
+            while (node = walker.nextNode()) {
+                var nodeLen = this.countChars(node.textContent);
+                if ((runningSum + nodeLen) > targetCharCount) {
+                    targetNode = node;
+                    targetOffset = Math.max(0, targetCharCount - runningSum);
+                    break;
+                }
+                runningSum += nodeLen;
+            }
+
+            if (targetNode) {
+                var range = document.createRange();
+                var targetText = targetNode.textContent || '';
+                var offset = 0;
+                var charIdx = 0;
+                while (charIdx < targetOffset && offset < targetText.length) {
+                    var codePointLen = String.fromCodePoint(targetText.codePointAt(offset)).length;
+                    offset += codePointLen;
+                    charIdx++;
+                }
+                range.setStart(targetNode, offset);
+                range.setEnd(targetNode, Math.min(targetText.length, offset + 1));
+                var rect = range.getBoundingClientRect();
+                var currentScroll = this.getPagePosition(context);
+                var anchor = (context.vertical ? rect.top : rect.left) + currentScroll;
+                var aligned = Math.floor(Math.max(0, anchor) / context.pageSize) * context.pageSize;
+                this.setPagePosition(context, aligned);
+            } else {
+                this.setPagePosition(context, Math.round(context.maxScroll * p));
+            }
+
             this.notifyRestoreComplete();
             return;
         }

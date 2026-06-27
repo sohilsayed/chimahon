@@ -57,6 +57,14 @@ class AnimeCategoryRepositoryImpl(
         }
     }
 
+    override suspend fun update(updates: List<AnimeCategoryUpdate>) {
+        handler.await(inTransaction = true) {
+            for (update in updates) {
+                updatePartialBlocking(update)
+            }
+        }
+    }
+
     override suspend fun updateAllFlags(flags: Long?) {
         handler.await {
             categoriesQueries.updateAllFlags(flags)

@@ -81,7 +81,7 @@ fun CategoryScreen(
 }
 
 @Composable
-private fun CategoryContent(
+internal fun CategoryContent(
     categories: ImmutableList<Category>,
     lazyListState: LazyListState,
     paddingValues: PaddingValues,

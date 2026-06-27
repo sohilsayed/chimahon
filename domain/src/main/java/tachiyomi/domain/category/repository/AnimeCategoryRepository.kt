@@ -20,5 +20,7 @@ interface AnimeCategoryRepository {
 
     suspend fun update(update: AnimeCategoryUpdate)
 
+    suspend fun update(updates: List<AnimeCategoryUpdate>)
+
     suspend fun updateAllFlags(flags: Long?)
 }

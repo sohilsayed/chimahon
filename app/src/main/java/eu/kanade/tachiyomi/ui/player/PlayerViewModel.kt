@@ -83,9 +83,14 @@ import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils.Companion.getStringRes
 import eu.kanade.tachiyomi.ui.player.utils.JimakuApi
 import eu.kanade.tachiyomi.ui.player.utils.JimakuEntry
 import eu.kanade.tachiyomi.ui.player.utils.JimakuFile
+import eu.kanade.tachiyomi.ui.player.utils.JimakuMediaGuess
 import eu.kanade.tachiyomi.ui.player.utils.TrackSelect
 import eu.kanade.tachiyomi.ui.player.utils.applySubtitleRegexFilters
 import eu.kanade.tachiyomi.ui.player.utils.subtitleRegexFilterOptions
+import eu.kanade.tachiyomi.ui.player.utils.displayName
+import eu.kanade.tachiyomi.ui.player.utils.guessJimakuMedia
+import eu.kanade.tachiyomi.ui.player.utils.matchedSrtFiles
+import eu.kanade.tachiyomi.ui.player.utils.selectBestJimakuEntry
 import eu.kanade.tachiyomi.ui.reader.SaveImageNotifier
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.episode.filterDownloadedEpisodes
@@ -145,29 +150,6 @@ import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 
-private val jimakuEpisodeRegexes = listOf(
-    Regex("""(?i)\bS\d{1,3}E(\d{1,4})\b"""),
-    Regex("""(?i)\b(\d{1,3})x(\d{1,4})\b"""),
-    Regex("""(?i)\b(?:ep|episode|e)\.?\s*(\d{1,4})\b"""),
-    Regex("""\u7b2c\s*(\d{1,4})\s*\u8a71"""),
-    Regex("""(\d{1,4})\s*\u8a71"""),
-    Regex("""第\s*(\d{1,4})\s*話"""),
-    Regex("""(\d{1,4})\s*話"""),
-)
-private val jimakuStandaloneEpisodeRegex = Regex("""(?<![A-Za-z0-9])(\d{1,4})(?![A-Za-z0-9]|p|P)""")
-private val jimakuEpisodeCleanupRegex = Regex(
-    """(?i)\bS\d{1,3}E\d{1,4}\b|\b\d{1,3}x\d{1,4}\b|\b(?:ep|episode|e)\.?\s*\d{1,4}\b|第\s*\d{1,4}\s*話|\d{1,4}\s*話""",
-)
-private val jimakuSeasonRegexes = listOf(
-    Regex("""(?i)\bS(\d{1,3})E\d{1,4}\b"""),
-    Regex("""(?i)\b(\d{1,3})x\d{1,4}\b"""),
-    Regex("""(?i)\bseason[ ._-]*(\d{1,3})\b"""),
-)
-private val jimakuSeasonCleanupRegex = Regex("""(?i)\bseason[ ._-]*\d{1,3}\b""")
-private val jimakuFilenameJunkRegex = Regex(
-    """(?i)\b(?:480p|720p|1080p|2160p|x264|x265|h264|h265|hevc|web[- ]?dl|webrip|bluray|aac|flac|multi|proper|repack)\b|\[[^\]]*]|\([^)]*\)""",
-)
-private val jimakuIgnoredNumbers = setOf(480, 720, 1080, 2160, 264, 265, 10)
 private const val MAX_SUBTITLE_HISTORY = 120
 class PlayerViewModelProviderFactory(
     private val activity: PlayerActivity,
@@ -551,12 +533,6 @@ class PlayerViewModel @JvmOverloads constructor(
         data class Error(val message: String) : JimakuState
     }
 
-    private data class JimakuMediaGuess(
-        val title: String,
-        val episode: Int?,
-        val season: Int? = null,
-    )
-
     fun loadChapters() {
         val chapters = mutableListOf<IndexedSegment>()
         val count = MPVLib.getPropertyInt("chapter-list/count")!!
@@ -810,7 +786,7 @@ class PlayerViewModel @JvmOverloads constructor(
             currentVideo.value?.videoTitle?.takeIf { it.isNotBlank() },
             currentVideo.value?.videoUrl?.takeIf { it.isNotBlank() },
         )
-        val parsedCandidates = candidates.mapNotNull { guessitLite(it) }
+        val parsedCandidates = candidates.mapNotNull { guessJimakuMedia(it) }
         val parsed = parsedCandidates.firstOrNull { it.season != null || it.episode != null }
             ?: parsedCandidates.firstOrNull()
         val title = overrideTitle
@@ -825,164 +801,6 @@ class PlayerViewModel @JvmOverloads constructor(
         val season = parsed?.season
 
         return JimakuMediaGuess(title.trim(), episode, season)
-    }
-
-    private fun guessitLite(value: String): JimakuMediaGuess? {
-        val withoutExtension = value.substringBeforeLast('.', value)
-        val season = jimakuSeasonRegexes.firstNotNullOfOrNull { regex ->
-            regex.find(withoutExtension)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        }
-        val episode = jimakuEpisodeRegexes.firstNotNullOfOrNull { regex ->
-            regex.find(withoutExtension)?.groupValues?.lastOrNull()?.toIntOrNull()
-        } ?: jimakuStandaloneEpisodeRegex.findAll(withoutExtension)
-            .mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }
-            .filterNot { it in jimakuIgnoredNumbers }
-            .lastOrNull()
-
-        val title = withoutExtension
-            .replace(Regex("""\u7b2c\s*\d{1,4}\s*\u8a71|\d{1,4}\s*\u8a71"""), " ")
-            .replace(jimakuEpisodeCleanupRegex, " ")
-            .replace(jimakuSeasonCleanupRegex, " ")
-            .replace(jimakuFilenameJunkRegex, " ")
-            .replace(Regex("""[._-]+"""), " ")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
-
-        return title.takeIf { it.isNotBlank() }?.let { JimakuMediaGuess(it, episode, season) }
-    }
-
-    private fun selectBestJimakuEntry(entries: List<JimakuEntry>, title: String): JimakuEntry? {
-        if (entries.size == 1) return entries.first()
-
-        val target = title.normalizedJimakuText()
-        entries.firstOrNull { entry ->
-            listOf(entry.name, entry.englishName.orEmpty(), entry.japaneseName.orEmpty())
-                .any { it.normalizedJimakuText() == target }
-        }?.let { return it }
-
-        val ranked = entries
-            .map { it to jimakuEntryScore(it, title) }
-            .sortedByDescending { it.second }
-
-        return ranked.firstOrNull()?.first
-    }
-
-    private fun jimakuEntryScore(entry: JimakuEntry, title: String): Int {
-        val target = title.normalizedJimakuText()
-        return listOf(entry.name, entry.englishName.orEmpty(), entry.japaneseName.orEmpty())
-            .filter { it.isNotBlank() }
-            .maxOfOrNull { candidate ->
-                val normalized = candidate.normalizedJimakuText()
-                when {
-                    normalized == target -> 100
-                    normalized.contains(target) || target.contains(normalized) -> 90
-                    else -> {
-                        val targetTokens = target.split(" ").filter { it.isNotBlank() }.toSet()
-                        val candidateTokens = normalized.split(" ").filter { it.isNotBlank() }.toSet()
-                        if (targetTokens.isEmpty() || candidateTokens.isEmpty()) {
-                            0
-                        } else {
-                            (targetTokens.intersect(candidateTokens).size * 100) /
-                                maxOf(targetTokens.size, candidateTokens.size)
-                        }
-                    }
-                }
-            } ?: 0
-    }
-
-    private fun selectBestJimakuFile(files: List<JimakuFile>, guess: JimakuMediaGuess): JimakuFile? {
-        if (files.size == 1) return files.first()
-
-        val ranked = files
-            .map { it to jimakuFileScore(it, guess) }
-            .sortedByDescending { it.second }
-        val best = ranked.firstOrNull() ?: return null
-        val second = ranked.getOrNull(1)?.second ?: Int.MIN_VALUE
-
-        return best.first.takeIf { best.second >= 80 && best.second - second >= 10 }
-    }
-
-    private fun jimakuFileScore(file: JimakuFile, guess: JimakuMediaGuess): Int {
-        val parsed = guessitLite(file.name)
-        val parsedEpisode = parsed?.episode
-        val parsedSeason = parsed?.season
-        var score = 0
-
-        if (guess.season != null) {
-            score += when (parsedSeason) {
-                guess.season -> 60
-                null -> 0
-                else -> -160
-            }
-        }
-
-        if (guess.episode != null) {
-            score += when (parsedEpisode) {
-                guess.episode -> 100
-                null -> 20
-                else -> -80
-            }
-        }
-
-        val fileTitle = parsed?.title?.normalizedJimakuText().orEmpty()
-        val targetTitle = guess.title.normalizedJimakuText()
-        if (fileTitle.isNotBlank() && targetTitle.isNotBlank()) {
-            if (fileTitle.contains(targetTitle) || targetTitle.contains(fileTitle)) {
-                score += 25
-            }
-        }
-
-        val lowerName = file.name.lowercase()
-        if (lowerName.contains("ja-jp") || lowerName.contains("japanese") || lowerName.contains(".ja.")) {
-            score += 25
-        }
-        if (lowerName.endsWith(".ass") || lowerName.endsWith(".srt") || lowerName.endsWith(".ssa")) {
-            score += 10
-        }
-
-        return score
-    }
-
-    private fun List<JimakuFile>.matchedSrtFiles(guess: JimakuMediaGuess, episodeFiltered: Boolean): List<JimakuFile> {
-        return filter { file -> file.name.lowercase().endsWith(".srt") }
-            .filter { file ->
-                val parsed = guessitLite(file.name)
-                val parsedEpisode = parsed?.episode
-                val parsedSeason = parsed?.season
-                val seasonMatches = guess.season == null ||
-                    parsedSeason == null ||
-                    parsedSeason == guess.season
-                seasonMatches && (
-                    guess.episode == null ||
-                    parsedEpisode == guess.episode ||
-                    (episodeFiltered && parsedEpisode == null)
-                    )
-            }
-            .sortedWith(
-                compareByDescending<JimakuFile> { jimakuFileScore(it, guess) }
-                    .thenBy { it.name },
-            )
-    }
-
-    private fun JimakuMediaGuess.displayName(): String {
-        val seasonText = season?.let { " season $it" }.orEmpty()
-        val episodeText = episode?.let { " episode $it" }.orEmpty()
-        return "$title$seasonText$episodeText"
-    }
-
-    private fun String.normalizedJimakuText(): String {
-        var lastWasSpace = true
-        return buildString {
-            for (char in lowercase()) {
-                if (char.isLetterOrDigit()) {
-                    append(char)
-                    lastWasSpace = false
-                } else if (!lastWasSpace) {
-                    append(' ')
-                    lastWasSpace = true
-                }
-            }
-        }.trim()
     }
 
     private fun String.cleanMpvSubtitleText(): String {
@@ -2758,10 +2576,7 @@ class PlayerViewModel @JvmOverloads constructor(
                     "-i \"$input\"",
                     "-vn",
                     "-map 0:a:0",
-                    "-ac 2",
-                    "-ar 44100",
-                    "-c:a aac",
-                    "-b:a 128k",
+                    "-c:a copy",
                     "\"${output.absolutePath.replace("\"", "\\\"")}\"",
                     "-y",
                 )

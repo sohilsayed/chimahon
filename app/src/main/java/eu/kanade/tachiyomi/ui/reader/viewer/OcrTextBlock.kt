@@ -84,7 +84,7 @@ fun OcrTextBlock.toOrderedOffset(rawOffset: Int): Int {
     return (orderedLineStart + offsetInLine).coerceIn(0, orderedFullText.length)
 }
 
-private fun OcrTextBlock.orderedLineIndices(): List<Int> {
+internal fun OcrTextBlock.orderedLineIndices(): List<Int> {
     val geometries = lineGeometries
     if (lines.size <= 1 || geometries == null || geometries.size != lines.size) {
         return lines.indices.toList()

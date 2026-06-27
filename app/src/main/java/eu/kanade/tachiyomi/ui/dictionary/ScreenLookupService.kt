@@ -3,8 +3,10 @@ package eu.kanade.tachiyomi.ui.dictionary
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
@@ -69,8 +71,23 @@ class ScreenLookupService : Service() {
     private var floatingButtonParams: WindowManager.LayoutParams? = null
     private var captureJob: Job? = null
     private var overlayController: ScreenLookupOverlayController? = null
+    private val closeSystemDialogsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS == intent.action) {
+                overlayController?.dismiss()
+            }
+        }
+    }
     private val windowManager: WindowManager
         get() = getSystemService()!!
+
+    override fun onCreate() {
+        super.onCreate()
+        registerReceiver(
+            closeSystemDialogsReceiver,
+            IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS),
+        )
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -105,6 +122,7 @@ class ScreenLookupService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(closeSystemDialogsReceiver) }
         captureJob?.cancel()
         overlayController?.release()
         overlayController = null

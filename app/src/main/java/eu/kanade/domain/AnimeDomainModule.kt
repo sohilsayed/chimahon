@@ -28,6 +28,9 @@ import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.category.interactor.CreateAnimeCategory
 import tachiyomi.domain.category.interactor.DeleteAnimeCategory
 import tachiyomi.domain.category.interactor.GetAnimeCategories
+import tachiyomi.domain.category.interactor.HideAnimeCategory
+import tachiyomi.domain.category.interactor.RenameAnimeCategory
+import tachiyomi.domain.category.interactor.ReorderAnimeCategory
 import tachiyomi.domain.category.interactor.SetAnimeCategories
 import tachiyomi.domain.category.repository.AnimeCategoryRepository
 import eu.kanade.domain.episode.interactor.SyncEpisodesWithSource
@@ -40,7 +43,9 @@ import tachiyomi.domain.episode.interactor.ShouldUpdateDbEpisode
 import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.repository.EpisodeRepository
 import tachiyomi.domain.history.interactor.GetNextEpisodes
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.AnimeLibraryPreferences
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.track.anime.interactor.InsertAnimeTrack
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
@@ -82,8 +87,11 @@ class AnimeDomainModule : InjektModule {
 
         addSingletonFactory<AnimeCategoryRepository> { AnimeCategoryRepositoryImpl(get()) }
         addFactory { GetAnimeCategories(get()) }
-        addFactory { CreateAnimeCategory(get()) }
-        addFactory { DeleteAnimeCategory(get()) }
+        addFactory { CreateAnimeCategory(get(), get()) }
+        addFactory { DeleteAnimeCategory(get(), get(), get()) }
+        addFactory { RenameAnimeCategory(get()) }
+        addFactory { ReorderAnimeCategory(get()) }
+        addFactory { HideAnimeCategory(get()) }
         addFactory { SetAnimeCategories(get()) }
 
         addSingletonFactory { AnimeLibraryPreferences(get()) }
