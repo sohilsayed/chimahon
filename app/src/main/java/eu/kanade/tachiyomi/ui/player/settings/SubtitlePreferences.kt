@@ -20,6 +20,10 @@ class SubtitlePreferences(
     fun subtitleBlacklist() = preferenceStore.getString("pref_subtitle_blacklist", "")
     fun jimakuApiKey() = preferenceStore.getString("pref_jimaku_api_key", "")
     fun jimakuTitle() = preferenceStore.getString("pref_jimaku_title", "")
+    fun jimakuTitleForAnime(animeId: Long?) = animeId
+        ?.takeIf { it > 0 }
+        ?.let { preferenceStore.getString("pref_jimaku_title_anime_$it", "") }
+        ?: jimakuTitle()
 
     // Non-preferences
 

@@ -114,7 +114,7 @@ private fun SubtitleOverlayList(
 
     Column(
         modifier = modifier
-            .padding(start = 24.dp, end = 24.dp, bottom = 84.dp)
+            .padding(start = 24.dp, end = 24.dp, bottom = 132.dp)
             .widthIn(max = 520.dp)
             .fillMaxWidth(0.56f),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -123,13 +123,15 @@ private fun SubtitleOverlayList(
         if (visibleCues.isEmpty()) {
             EmptySubtitleListMessage()
         } else {
-            visibleCues.forEach { cue ->
-                SubtitleCueOverlayRow(
-                    cue = cue,
-                    selected = cue.index == activeCueIndex,
-                    onClick = { onSelectCue(cue.index) },
-                )
-            }
+            visibleCues
+                .filterNot { it.index == activeCueIndex }
+                .forEach { cue ->
+                    SubtitleCueOverlayRow(
+                        cue = cue,
+                        selected = false,
+                        onClick = { onSelectCue(cue.index) },
+                    )
+                }
         }
     }
 }

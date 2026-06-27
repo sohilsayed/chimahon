@@ -502,11 +502,13 @@ class PlayerViewModel @JvmOverloads constructor(
      * or select the first one in the list if trackSelect fails.
      */
     fun onFinishLoadingTracks() {
-        val preferredSubtitle = trackSelect.getPreferredTrackIndex(subtitleTracks.value)
-        (preferredSubtitle ?: subtitleTracks.value.firstOrNull())?.let {
-            activity.player.sid = it.id
-            activity.player.secondarySid = -1
-            applyParsedSubtitleCuesForTrack(it.id)
+        if (!restoreSubtitleSelectionForCurrentEpisode()) {
+            val preferredSubtitle = trackSelect.getPreferredTrackIndex(subtitleTracks.value)
+            (preferredSubtitle ?: subtitleTracks.value.firstOrNull())?.let {
+                activity.player.sid = it.id
+                activity.player.secondarySid = -1
+                applyParsedSubtitleCuesForTrack(it.id)
+            }
         }
 
         val preferredAudio = trackSelect.getPreferredTrackIndex(audioTracks.value, subtitle = false)
@@ -610,12 +612,21 @@ class PlayerViewModel @JvmOverloads constructor(
             ?: return
         val name = if (isContentUri) uri.getFileName(activity) else null
         val parsedCues = parseSubtitleUriOrPath(uri, path, name)
+        val title = name ?: subtitleTitleFromUriOrPath(uri, path)
+        rememberAddedSubtitleForCurrentEpisode(
+            AddedSubtitleTrack(
+                uriString = url,
+                path = path,
+                title = title,
+                isContentUri = isContentUri,
+            ),
+        )
         if (name == null) {
             MPVLib.command(arrayOf("sub-add", path, "cached"))
         } else {
             MPVLib.command(arrayOf("sub-add", path, "cached", name))
         }
-        rememberParsedSubtitleCues(name ?: subtitleTitleFromUriOrPath(uri, path), parsedCues)
+        rememberParsedSubtitleCues(title, parsedCues)
         loadTracks()
     }
 
@@ -624,7 +635,7 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun updateJimakuTitle(title: String) {
-        subtitlePreferences.jimakuTitle().set(title.trim())
+        subtitlePreferences.jimakuTitleForAnime(currentAnime.value?.id).set(title.trim())
     }
 
     fun getCurrentJimakuTitle(): String {
@@ -746,6 +757,14 @@ class PlayerViewModel @JvmOverloads constructor(
                 _jimakuState.update { JimakuState.Downloading(file) }
                 val subtitleFile = jimakuApi.downloadFile(apiKey, file, outputDir)
                 rememberParsedSubtitleFile(subtitleFile, file.name)
+                rememberAddedSubtitleForCurrentEpisode(
+                    AddedSubtitleTrack(
+                        uriString = subtitleFile.toURI().toString(),
+                        path = subtitleFile.absolutePath,
+                        title = file.name,
+                        isContentUri = false,
+                    ),
+                )
                 withUIContext {
                     MPVLib.command(arrayOf("sub-add", subtitleFile.absolutePath, "cached", file.name))
                 }
@@ -796,7 +815,7 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     private fun guessCurrentJimakuMedia(): JimakuMediaGuess {
-        val overrideTitle = subtitlePreferences.jimakuTitle().get().trim()
+        val overrideTitle = subtitlePreferences.jimakuTitleForAnime(currentAnime.value?.id).get().trim()
         val candidates = listOfNotNull(
             currentAnime.value?.title,
             animeTitle.value.takeIf { it.isNotBlank() },
@@ -1343,6 +1362,7 @@ class PlayerViewModel @JvmOverloads constructor(
         activity.player.secondarySid = _selectedSubtitles.value.second
         activity.player.sid = _selectedSubtitles.value.first
         applyParsedSubtitleCuesForSelectedTrack()
+        rememberSubtitleSelectionForCurrentEpisode()
     }
 
     fun updateSubtitle(sid: Int, secondarySid: Int) {
@@ -1943,6 +1963,34 @@ class PlayerViewModel @JvmOverloads constructor(
             field = value
         }
 
+    private var preferredHosterKey = savedState.get<String>("preferred_hoster_key")
+        set(value) {
+            savedState["preferred_hoster_key"] = value
+            field = value
+        }
+
+    private var preferredVideoKey = savedState.get<String>("preferred_video_key")
+        set(value) {
+            savedState["preferred_video_key"] = value
+            field = value
+        }
+
+    private data class AddedSubtitleTrack(
+        val uriString: String,
+        val path: String,
+        val title: String?,
+        val isContentUri: Boolean,
+    )
+
+    private data class SubtitleTrackSelection(
+        val primaryKey: String?,
+        val secondaryKey: String?,
+    )
+
+    private val addedSubtitleTracksByEpisodeId = mutableMapOf<Long, MutableList<AddedSubtitleTrack>>()
+    private val subtitleTrackSelectionsByEpisodeId = mutableMapOf<Long, SubtitleTrackSelection>()
+    private var pendingSubtitleSelectionKey: String? = null
+
     /**
      * The episode id of the currently loaded episode. Used to restore from process kill.
      */
@@ -2061,6 +2109,158 @@ class PlayerViewModel @JvmOverloads constructor(
         message: String,
         val stringResource: StringResource,
     ) : Exception(message)
+
+    private fun Hoster.selectionKey(): String {
+        return hosterName.trim()
+    }
+
+    private fun Video.selectionKey(): String {
+        return listOf(
+            videoTitle,
+            resolution?.toString().orEmpty(),
+            bitrate?.toString().orEmpty(),
+        ).joinToString("\u001f")
+    }
+
+    private fun rememberPreferredVideoSelection(hosterIndex: Int, videoIndex: Int) {
+        val hoster = hosterList.value.getOrNull(hosterIndex) ?: return
+        val video = (_hosterState.value.getOrNull(hosterIndex) as? HosterState.Ready)
+            ?.videoList
+            ?.getOrNull(videoIndex)
+            ?: return
+
+        preferredHosterKey = hoster.selectionKey()
+        preferredVideoKey = video.selectionKey()
+    }
+
+    private fun findRememberedVideoIndex(hoster: Hoster, videoList: List<Video>): Int {
+        val rememberedHosterKey = preferredHosterKey ?: return -1
+        val rememberedVideoKey = preferredVideoKey ?: return -1
+        if (hoster.selectionKey() != rememberedHosterKey) return -1
+        return videoList.indexOfFirst { it.selectionKey() == rememberedVideoKey }
+    }
+
+    private fun findRequestedVideoIndex(
+        hoster: Hoster,
+        videoList: List<Video>,
+        hosterIndex: Int,
+        requestedHosterIndex: Int,
+        requestedVideoIndex: Int,
+    ): Int {
+        if (requestedHosterIndex != -1) {
+            return if (hosterIndex == requestedHosterIndex && requestedVideoIndex in videoList.indices) {
+                requestedVideoIndex
+            } else {
+                -1
+            }
+        }
+
+        return findRememberedVideoIndex(hoster, videoList)
+    }
+
+    private fun subtitleSelectionKey(title: String?, path: String?, language: String? = null): String {
+        val displayName = title?.takeIf { it.isNotBlank() }
+            ?: path?.let { File(it).name }?.takeIf { it.isNotBlank() }
+            ?: path.orEmpty()
+        return listOf(displayName, language.orEmpty()).joinToString("\u001f")
+    }
+
+    private fun VideoTrack.selectionKey(): String {
+        return subtitleSelectionKey(
+            title = name,
+            path = externalFilename,
+            language = language,
+        )
+    }
+
+    private fun AddedSubtitleTrack.selectionKey(): String {
+        return subtitleSelectionKey(
+            title = title,
+            path = if (isContentUri) uriString else path,
+        )
+    }
+
+    private fun currentSubtitleEpisodeId(): Long? {
+        return currentEpisode.value?.id
+    }
+
+    private fun rememberAddedSubtitleForCurrentEpisode(track: AddedSubtitleTrack) {
+        val episodeId = currentSubtitleEpisodeId() ?: return
+        val tracks = addedSubtitleTracksByEpisodeId.getOrPut(episodeId) { mutableListOf() }
+        val sourceKey = if (track.isContentUri) track.uriString else track.path
+        if (tracks.none { existing ->
+                existing.isContentUri == track.isContentUri &&
+                    (if (existing.isContentUri) existing.uriString else existing.path) == sourceKey
+            }
+        ) {
+            tracks += track
+        }
+        pendingSubtitleSelectionKey = track.selectionKey()
+    }
+
+    private fun rememberSubtitleSelectionForCurrentEpisode() {
+        val episodeId = currentSubtitleEpisodeId() ?: return
+        val (primarySid, secondarySid) = selectedSubtitles.value
+        val tracks = subtitleTracks.value
+        subtitleTrackSelectionsByEpisodeId[episodeId] = SubtitleTrackSelection(
+            primaryKey = tracks.firstOrNull { it.id == primarySid }?.selectionKey(),
+            secondaryKey = tracks.firstOrNull { it.id == secondarySid }?.selectionKey(),
+        )
+    }
+
+    fun restoreAddedSubtitlesForCurrentEpisode(): Int {
+        val episodeId = currentSubtitleEpisodeId() ?: return 0
+        val tracks = addedSubtitleTracksByEpisodeId[episodeId].orEmpty()
+        var restored = 0
+        tracks.forEach { track ->
+            val path = if (track.isContentUri) {
+                Uri.parse(track.uriString).openContentFd(activity)
+            } else {
+                track.path
+            } ?: return@forEach
+
+            if (track.title == null) {
+                MPVLib.command(arrayOf("sub-add", path, "cached"))
+            } else {
+                MPVLib.command(arrayOf("sub-add", path, "cached", track.title))
+            }
+            restored += 1
+        }
+        return restored
+    }
+
+    private fun restoreSubtitleSelectionForCurrentEpisode(): Boolean {
+        val episodeId = currentSubtitleEpisodeId() ?: return false
+        val tracks = subtitleTracks.value
+        val savedSelection = subtitleTrackSelectionsByEpisodeId[episodeId]
+
+        if (savedSelection != null && savedSelection.primaryKey == null) {
+            activity.player.secondarySid = -1
+            activity.player.sid = -1
+            _selectedSubtitles.update { Pair(-1, -1) }
+            applyParsedSubtitleCuesForTrack(-1)
+            pendingSubtitleSelectionKey = null
+            return true
+        }
+
+        val primaryKey = savedSelection?.primaryKey
+            ?: pendingSubtitleSelectionKey
+            ?: addedSubtitleTracksByEpisodeId[episodeId]?.lastOrNull()?.selectionKey()
+            ?: return false
+        val primaryTrack = tracks.firstOrNull { it.selectionKey() == primaryKey } ?: return false
+        val secondaryTrack = savedSelection
+            ?.secondaryKey
+            ?.let { secondaryKey ->
+                tracks.firstOrNull { track -> track.id != primaryTrack.id && track.selectionKey() == secondaryKey }
+            }
+
+        activity.player.secondarySid = secondaryTrack?.id ?: -1
+        activity.player.sid = primaryTrack.id
+        _selectedSubtitles.update { Pair(primaryTrack.id, secondaryTrack?.id ?: -1) }
+        applyParsedSubtitleCuesForTrack(primaryTrack.id)
+        pendingSubtitleSelectionKey = null
+        return true
+    }
 
     fun loadStandaloneVideo(video: Video) {
         currentHosterList = null
@@ -2207,6 +2407,7 @@ class PlayerViewModel @JvmOverloads constructor(
      */
     fun loadHosters(source: AnimeSource, hosterList: List<Hoster>, hosterIndex: Int, videoIndex: Int) {
         val hasFoundPreferredVideo = AtomicBoolean(false)
+        val hasRequestedVideo = hosterIndex != -1 || (preferredHosterKey != null && preferredVideoKey != null)
 
         _hosterList.update { _ -> hosterList }
         _hosterExpandedList.update { _ ->
@@ -2239,10 +2440,23 @@ class PlayerViewModel @JvmOverloads constructor(
                             _hosterState.updateAt(hosterIdx, hosterState)
 
                             if (hosterState is HosterState.Ready) {
-                                if (hosterIdx == hosterIndex) {
-                                    hosterState.videoList.getOrNull(videoIndex)?.let {
+                                val targetVideoIndex = findRequestedVideoIndex(
+                                    hoster = hoster,
+                                    videoList = hosterState.videoList,
+                                    hosterIndex = hosterIdx,
+                                    requestedHosterIndex = hosterIndex,
+                                    requestedVideoIndex = videoIndex,
+                                )
+                                if (targetVideoIndex != -1 && hasFoundPreferredVideo.compareAndSet(false, true)) {
+                                    hosterState.videoList.getOrNull(targetVideoIndex)?.let {
                                         hasFoundPreferredVideo.set(true)
-                                        val success = loadVideo(source, it, hosterIndex, videoIndex)
+                                        val success = loadVideo(
+                                            source,
+                                            it,
+                                            hosterIdx,
+                                            targetVideoIndex,
+                                            rememberSelection = hosterIndex != -1,
+                                        )
                                         if (!success) {
                                             hasFoundPreferredVideo.set(false)
                                         }
@@ -2250,7 +2464,7 @@ class PlayerViewModel @JvmOverloads constructor(
                                 }
 
                                 val prefIndex = hosterState.videoList.indexOfFirst { it.preferred }
-                                if (prefIndex != -1 && hosterIndex == -1) {
+                                if (prefIndex != -1 && hosterIndex == -1 && !hasRequestedVideo) {
                                     if (hasFoundPreferredVideo.compareAndSet(false, true)) {
                                         if (selectedHosterVideoIndex.value == Pair(-1, -1)) {
                                             val success =
@@ -2259,6 +2473,7 @@ class PlayerViewModel @JvmOverloads constructor(
                                                     hosterState.videoList[prefIndex],
                                                     hosterIdx,
                                                     prefIndex,
+                                                    rememberSelection = false,
                                                 )
                                             if (!success) {
                                                 hasFoundPreferredVideo.set(false)
@@ -2278,7 +2493,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
                         val video = (hosterState.value[hosterIdx] as HosterState.Ready).videoList[videoIdx]
 
-                        loadVideo(source, video, hosterIdx, videoIdx)
+                        loadVideo(source, video, hosterIdx, videoIdx, rememberSelection = false)
                     }
                 }
             } catch (e: CancellationException) {
@@ -2291,7 +2506,13 @@ class PlayerViewModel @JvmOverloads constructor(
         }
     }
 
-    private suspend fun loadVideo(source: AnimeSource?, video: Video, hosterIndex: Int, videoIndex: Int): Boolean {
+    private suspend fun loadVideo(
+        source: AnimeSource?,
+        video: Video,
+        hosterIndex: Int,
+        videoIndex: Int,
+        rememberSelection: Boolean = false,
+    ): Boolean {
         val selectedHosterState = (_hosterState.value[hosterIndex] as? HosterState.Ready) ?: return false
         updateIsLoadingEpisode(true)
 
@@ -2332,7 +2553,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
                 val newVideo = (hosterState.value[newHosterIdx] as HosterState.Ready).videoList[newVideoIdx]
 
-                return loadVideo(source, newVideo, newHosterIdx, newVideoIdx)
+                return loadVideo(source, newVideo, newHosterIdx, newVideoIdx, rememberSelection = false)
             } else {
                 _selectedHosterVideoIndex.update { _ -> oldSelectedIndex }
                 _hosterState.updateAt(
@@ -2351,6 +2572,9 @@ class PlayerViewModel @JvmOverloads constructor(
         _currentVideo.update { _ -> resolvedVideo }
 
         qualityIndex = Pair(hosterIndex, videoIndex)
+        if (rememberSelection) {
+            rememberPreferredVideoSelection(hosterIndex, videoIndex)
+        }
 
         activity.setVideo(resolvedVideo)
         return true
@@ -2371,7 +2595,13 @@ class PlayerViewModel @JvmOverloads constructor(
         }
 
         viewModelScope.launchIO {
-            val success = loadVideo(currentSource.value, video, hosterIndex, videoIndex)
+            val success = loadVideo(
+                currentSource.value,
+                video,
+                hosterIndex,
+                videoIndex,
+                rememberSelection = true,
+            )
             if (success) {
                 if (sheetShown.value == Sheets.QualityTracks) {
                     dismissSheet()

@@ -80,6 +80,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -161,6 +162,8 @@ fun PlayerControls(
     val subtitleCues by viewModel.subtitleHistory.collectAsState()
     val activeSubtitleCueIndex by viewModel.activeSubtitleCueIndex.collectAsState()
     val primarySubtitleDelaySeconds by viewModel.primarySubtitleDelaySeconds.collectAsState()
+    val panel by viewModel.panelShown.collectAsState()
+    val isSubtitleOverlayListShown = panel == Panels.SubtitleOverlayList
     val activeSubtitleCue = remember(subtitleCues, activeSubtitleCueIndex) {
         subtitleCues.firstOrNull { it.index == activeSubtitleCueIndex }
     }
@@ -194,9 +197,10 @@ fun PlayerControls(
         label = "controls_transparent_overlay",
     )
     val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
+        val currentPanel = viewModel.panelShown.value
         if (
             viewModel.sheetShown.value != Sheets.None ||
-            viewModel.panelShown.value != Panels.None ||
+            (currentPanel != Panels.None && currentPanel != Panels.SubtitleOverlayList) ||
             viewModel.dialogShown.value != Dialogs.None
         ) {
             return@openSubtitleLookup
@@ -260,13 +264,29 @@ fun PlayerControls(
                 viewModel.unpause()
             })
         }
-        PlayerSubtitleTextLayer(
-            text = currentSubtitleText,
-            cue = activeSubtitleCue,
-            subtitleDelaySeconds = primarySubtitleDelaySeconds,
-            request = subtitleLookupRequest,
-            onLookup = openSubtitleLookup,
-        )
+        if (isSubtitleOverlayListShown) {
+            PlayerSubtitleTextLayer(
+                text = activeSubtitleCue?.text ?: currentSubtitleText,
+                cue = activeSubtitleCue,
+                subtitleDelaySeconds = primarySubtitleDelaySeconds,
+                request = subtitleLookupRequest,
+                onLookup = openSubtitleLookup,
+                bottomPadding = 84.dp,
+                widthFraction = 0.56f,
+                maxWidth = 520.dp,
+                fontSizeFactor = 0.42f,
+                minFontSize = 14f,
+                maxFontSize = 30f,
+            )
+        } else {
+            PlayerSubtitleTextLayer(
+                text = currentSubtitleText,
+                cue = activeSubtitleCue,
+                subtitleDelaySeconds = primarySubtitleDelaySeconds,
+                request = subtitleLookupRequest,
+                onLookup = openSubtitleLookup,
+            )
+        }
     }
     DoubleTapToSeekOvals(doubleTapSeekAmount, seekText, interactionSource)
     CompositionLocalProvider(
@@ -719,7 +739,8 @@ fun PlayerControls(
         val subtitles by viewModel.subtitleTracks.collectAsState()
         val selectedSubtitles by viewModel.selectedSubtitles.collectAsState()
         val jimakuState by viewModel.jimakuState.collectAsState()
-        val jimakuTitle by subtitlePreferences.jimakuTitle().collectAsState()
+        val anime by viewModel.currentAnime.collectAsState()
+        val jimakuTitle by subtitlePreferences.jimakuTitleForAnime(anime?.id).collectAsState()
         val audioTracks by viewModel.audioTracks.collectAsState()
         val selectedAudio by viewModel.selectedAudio.collectAsState()
         val isLoadingHosters by viewModel.isLoadingHosters.collectAsState()
@@ -732,7 +753,6 @@ fun PlayerControls(
         val showSubtitles by subtitlePreferences.screenshotSubtitles().collectAsState()
         val showFailedHosters by playerPreferences.showFailedHosters().collectAsState()
         val emptyHosters by playerPreferences.showEmptyHosters().collectAsState()
-        val anime by viewModel.currentAnime.collectAsState()
 
         PlayerSheets(
             sheetShown = sheetShown,
@@ -792,7 +812,6 @@ fun PlayerControls(
             onDismissRequest = { viewModel.showSheet(Sheets.None) },
             dismissSheet = dismissSheet,
         )
-        val panel by viewModel.panelShown.collectAsState()
         PlayerPanels(
             panelShown = panel,
             subtitleCues = subtitleCues.toImmutableList(),
@@ -866,6 +885,12 @@ private fun PlayerSubtitleTextLayer(
     request: SubtitleLookupRequest?,
     onLookup: (SubtitleLookupSelection) -> Unit,
     modifier: Modifier = Modifier,
+    bottomPadding: Dp? = null,
+    widthFraction: Float = 0.92f,
+    maxWidth: Dp = 980.dp,
+    fontSizeFactor: Float = 0.52f,
+    minFontSize: Float = 18f,
+    maxFontSize: Float = 42f,
 ) {
     val subtitleText = remember(text) {
         text.lines()
@@ -887,8 +912,8 @@ private fun PlayerSubtitleTextLayer(
 
     var textLayout by remember(subtitleText) { mutableStateOf<TextLayoutResult?>(null) }
     var textLayerOrigin by remember(subtitleText) { mutableStateOf(Offset.Zero) }
-    val fontSizeSp = (subtitleFontSize * subtitleScale * 0.52f).coerceIn(18f, 42f)
-    val bottomPadding = (28f + (100 - subtitlePos).coerceIn(0, 100) * 2.2f).dp
+    val fontSizeSp = (subtitleFontSize * subtitleScale * fontSizeFactor).coerceIn(minFontSize, maxFontSize)
+    val resolvedBottomPadding = bottomPadding ?: (28f + (100 - subtitlePos).coerceIn(0, 100) * 2.2f).dp
     val outlineWidth = borderSize.coerceAtLeast(1) * 1.8f
     val baseStyle = TextStyle(
         color = Color(textColor),
@@ -903,13 +928,13 @@ private fun PlayerSubtitleTextLayer(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 24.dp)
-            .padding(bottom = bottomPadding),
+            .padding(bottom = resolvedBottomPadding),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 980.dp)
+                .fillMaxWidth(widthFraction)
+                .widthIn(max = maxWidth)
                 .onGloballyPositioned { coordinates ->
                     textLayerOrigin = coordinates.positionInRoot()
                 }

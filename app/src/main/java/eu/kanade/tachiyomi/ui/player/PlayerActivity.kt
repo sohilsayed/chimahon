@@ -1199,13 +1199,21 @@ class PlayerActivity : BaseActivity() {
                     arrayOf(
                         "set",
                         "start",
-                        "${resumePosition.resetIfCompleted(episode.total_seconds) / 1000F}",
+                        "${resumePosition.resetIfCompleted(episode.total_seconds, episode.seen) / 1000F}",
                     ),
                 )
             }
         } else {
             player.timePos?.let {
-                MPVLib.command(arrayOf("set", "start", "${player.timePos}"))
+                val currentPosition = it * 1000L
+                val currentDuration = player.duration?.toLong()?.times(1000L) ?: 0L
+                MPVLib.command(
+                    arrayOf(
+                        "set",
+                        "start",
+                        "${currentPosition.resetIfCompleted(currentDuration) / 1000F}",
+                    ),
+                )
             }
         }
         if (video.videoUrl.startsWith(TorrentServerUtils.hostUrl) ||
@@ -1305,9 +1313,13 @@ class PlayerActivity : BaseActivity() {
         // MPVLib.setOptionString("cache-dir", cacheDir)
     }
 
-    private fun Long.resetIfCompleted(total: Long): Long {
-        if (this <= 0L || total <= 0L) return this.coerceAtLeast(0L)
-        return if (this >= total - COMPLETED_RESUME_GRACE_MS) 0L else this
+    private fun Long.resetIfCompleted(total: Long, seen: Boolean = false): Long {
+        val position = coerceAtLeast(0L)
+        if (position == 0L) return position
+        if (total > 0L) {
+            return if (position >= total - COMPLETED_RESUME_GRACE_MS) 0L else position
+        }
+        return if (seen) 0L else position
     }
 
     /**
@@ -1396,10 +1408,11 @@ class PlayerActivity : BaseActivity() {
 
         val audioTracks = viewModel.currentVideo.value?.audioTracks?.takeIf { it.isNotEmpty() }
         val subtitleTracks = viewModel.currentVideo.value?.subtitleTracks?.takeIf { it.isNotEmpty() }
+        val restoredSubtitleCount = viewModel.restoreAddedSubtitlesForCurrentEpisode()
 
         // If no external audio or subtitle tracks are present, loadTracks() won't be
         // called and we need to call onFinishLoadingTracks() manually
-        if (audioTracks == null && subtitleTracks == null) {
+        if (audioTracks == null && subtitleTracks == null && restoredSubtitleCount == 0) {
             viewModel.onFinishLoadingTracks()
             return
         }
