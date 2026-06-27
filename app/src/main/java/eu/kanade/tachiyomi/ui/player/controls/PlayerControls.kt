@@ -103,6 +103,7 @@ import eu.kanade.tachiyomi.ui.player.controls.components.ControlsButton
 import eu.kanade.tachiyomi.ui.player.controls.components.SeekbarWithTimers
 import eu.kanade.tachiyomi.ui.player.controls.components.TextPlayerUpdate
 import eu.kanade.tachiyomi.ui.player.controls.components.VolumeSlider
+import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitlesBorderStyle
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.toFixed
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
@@ -906,6 +907,8 @@ private fun PlayerSubtitleTextLayer(
     val subtitlePos by subtitlePreferences.subtitlePos().collectAsState()
     val textColor by subtitlePreferences.textColorSubtitles().collectAsState()
     val borderColor by subtitlePreferences.borderColorSubtitles().collectAsState()
+    val backgroundColor by subtitlePreferences.backgroundColorSubtitles().collectAsState()
+    val borderStyle by subtitlePreferences.borderStyleSubtitles().collectAsState()
     val borderSize by subtitlePreferences.subtitleBorderSize().collectAsState()
     val bold by subtitlePreferences.boldSubtitles().collectAsState()
     val italic by subtitlePreferences.italicSubtitles().collectAsState()
@@ -915,6 +918,13 @@ private fun PlayerSubtitleTextLayer(
     val fontSizeSp = (subtitleFontSize * subtitleScale * fontSizeFactor).coerceIn(minFontSize, maxFontSize)
     val resolvedBottomPadding = bottomPadding ?: (28f + (100 - subtitlePos).coerceIn(0, 100) * 2.2f).dp
     val outlineWidth = borderSize.coerceAtLeast(1) * 1.8f
+    val boxBackgroundColor = Color(backgroundColor).let {
+        if (it.alpha == 0f && borderStyle != SubtitlesBorderStyle.OutlineAndShadow) {
+            Color.Black.copy(alpha = 0.78f)
+        } else {
+            it
+        }
+    }
     val baseStyle = TextStyle(
         color = Color(textColor),
         fontSize = fontSizeSp.sp,
@@ -940,6 +950,28 @@ private fun PlayerSubtitleTextLayer(
                 }
                 .drawBehind {
                     val layout = textLayout ?: return@drawBehind
+                    if (borderStyle != SubtitlesBorderStyle.OutlineAndShadow) {
+                        val backgroundRects = when (borderStyle) {
+                            SubtitlesBorderStyle.OpaqueBox -> layout.subtitleLineBackgroundRects(
+                                subtitleText,
+                                fullLineWidth = true,
+                            )
+                            SubtitlesBorderStyle.BackgroundBox -> layout.subtitleLineBackgroundRects(
+                                subtitleText,
+                                fullLineWidth = false,
+                            )
+                            SubtitlesBorderStyle.OutlineAndShadow -> emptyList()
+                        }
+                        backgroundRects.forEach { rect ->
+                            drawRoundRect(
+                                color = boxBackgroundColor,
+                                topLeft = Offset(rect.left, rect.top),
+                                size = Size(rect.width, rect.height),
+                                cornerRadius = CornerRadius(4f, 4f),
+                            )
+                        }
+                    }
+
                     val activeRequest = request?.takeIf { it.fullText == subtitleText } ?: return@drawBehind
                     val start = (activeRequest.charOffset + activeRequest.matchOffset)
                         .coerceIn(0, subtitleText.length)
@@ -973,15 +1005,17 @@ private fun PlayerSubtitleTextLayer(
                     )
                 },
         ) {
-            Text(
-                text = subtitleText,
-                modifier = Modifier.fillMaxWidth(),
-                color = Color(borderColor),
-                style = baseStyle.copy(
+            if (borderStyle == SubtitlesBorderStyle.OutlineAndShadow) {
+                Text(
+                    text = subtitleText,
+                    modifier = Modifier.fillMaxWidth(),
                     color = Color(borderColor),
-                    drawStyle = Stroke(width = outlineWidth),
-                ),
-            )
+                    style = baseStyle.copy(
+                        color = Color(borderColor),
+                        drawStyle = Stroke(width = outlineWidth),
+                    ),
+                )
+            }
 
             Text(
                 text = subtitleText,
@@ -1156,12 +1190,38 @@ private fun TextLayoutResult.highlightRects(text: String, start: Int, end: Int):
     return merged
 }
 
+private fun TextLayoutResult.subtitleLineBackgroundRects(text: String, fullLineWidth: Boolean): List<Rect> {
+    return (0 until lineCount).mapNotNull { lineIndex ->
+        val lineStart = getLineStart(lineIndex).coerceIn(0, text.length)
+        val lineEnd = getLineEnd(lineIndex, visibleEnd = true).coerceIn(lineStart, text.length)
+        if (text.substring(lineStart, lineEnd).isBlank()) return@mapNotNull null
+
+        val rect = if (fullLineWidth) {
+            lineBounds(lineIndex)
+        } else {
+            highlightRects(text, lineStart, lineEnd).reduceOrNull { acc, item -> acc.unionWith(item) }
+                ?: return@mapNotNull null
+        }
+
+        rect.inflate(horizontal = 10f, vertical = 4f)
+    }
+}
+
 private fun TextLayoutResult.lineBounds(lineIndex: Int): Rect {
     return Rect(
         left = getLineLeft(lineIndex),
         top = getLineTop(lineIndex),
         right = getLineRight(lineIndex),
         bottom = getLineBottom(lineIndex),
+    )
+}
+
+private fun Rect.inflate(horizontal: Float, vertical: Float): Rect {
+    return Rect(
+        left = left - horizontal,
+        top = top - vertical,
+        right = right + horizontal,
+        bottom = bottom + vertical,
     )
 }
 
