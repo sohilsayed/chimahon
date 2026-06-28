@@ -151,6 +151,54 @@ object OcrCoordinateMapper {
     }
 
     /**
+     * Remap OCR blocks after seam-augmented OCR.
+     *
+     * When page N's image is augmented with the top of page N+1 before OCR,
+     * all coordinates are normalized to the taller augmented image. This function
+     * rescales y-coordinates back into page N's original [0,1] space and clips
+     * blocks that span the seam boundary.
+     *
+     * Blocks whose remapped ymax exceeds 1.0 are discarded (they belong to the
+     * seam strip, which page N+1 will find on its own).
+     *
+     * @param blocks  OCR blocks normalized to the augmented image
+     * @param originalHeight  pixel height of the unaugmented page
+     * @param augmentedHeight  pixel height of the augmented image (original + seam)
+     */
+    fun remapSeamAugmented(
+        blocks: List<OcrTextBlock>,
+        originalHeight: Int,
+        augmentedHeight: Int,
+    ): List<OcrTextBlock> {
+        if (originalHeight <= 0 || augmentedHeight <= originalHeight) return blocks
+        val ratio = originalHeight.toFloat() / augmentedHeight
+
+        return blocks.mapNotNull { block ->
+            val newYmin = block.ymin / ratio
+            val newYmax = block.ymax / ratio
+
+            if (newYmax <= 0f || newYmin >= 1f) return@mapNotNull null
+
+            val clippedYmin = newYmin.coerceIn(0f, 1f)
+            val clippedYmax = newYmax.coerceIn(0f, 1f)
+            if (clippedYmax <= clippedYmin) return@mapNotNull null
+
+            val newGeometries = block.lineGeometries?.mapNotNull { geo ->
+                val gnYmin = (geo.ymin / ratio).coerceIn(0f, 1f)
+                val gnYmax = (geo.ymax / ratio).coerceIn(0f, 1f)
+                if (gnYmax <= gnYmin) return@mapNotNull null
+                geo.copy(ymin = gnYmin, ymax = gnYmax)
+            }
+
+            block.copy(
+                ymin = clippedYmin,
+                ymax = clippedYmax,
+                lineGeometries = newGeometries,
+            )
+        }
+    }
+
+    /**
      * Remap blocks for Webtoon "splitAndMerge" mode.
      *
      * [ImageUtil.splitAndMerge] splits a wide image and stacks the two halves vertically.

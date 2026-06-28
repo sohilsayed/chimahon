@@ -2304,9 +2304,31 @@ class ReaderViewModel @JvmOverloads constructor(
                 return emptyList()
             }
 
+            // ── Seam-aware augmentation ──────────────────────────
+            var originalImageHeight = 0
+            var ocrBytes = imageBytes
+            val pages = page.chapter.pages
+            val nextIdx = page.index + 1
+            if (pages != null && nextIdx < pages.size) {
+                val nextBytes = try {
+                    withIOContext {
+                        pages[nextIdx].stream?.invoke()?.use { it.readBytes() }
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+                if (nextBytes != null) {
+                    val augmented = ImageUtil.appendTopOverlap(imageBytes, nextBytes)
+                    if (augmented != null) {
+                        originalImageHeight = ImageUtil.getImageHeight(imageBytes)
+                        ocrBytes = augmented
+                    }
+                }
+            }
+
             val ocrResults = retryWithBackoff(times = 3) {
                 eu.kanade.tachiyomi.data.ocr.recognizePage(
-                    bytes = imageBytes,
+                    bytes = ocrBytes,
                     language = ocrLang,
                 )
             }
@@ -2344,12 +2366,24 @@ class ReaderViewModel @JvmOverloads constructor(
                 }
             }
 
+            // ── Remap augmented coordinates ───────────────────────
+            val finalBlocks = if (originalImageHeight > 0) {
+                val augmentedHeight = originalImageHeight + ImageUtil.SEAM_OVERLAP_PX
+                eu.kanade.tachiyomi.ui.reader.viewer.OcrCoordinateMapper.remapSeamAugmented(
+                    blocks = blocks,
+                    originalHeight = originalImageHeight,
+                    augmentedHeight = augmentedHeight,
+                )
+            } else {
+                blocks
+            }
+
             ocrCacheManager.saveOcrBlocks(
                 manga = manga,
                 chapter = domainChapter,
                 source = source,
                 pageIndex = page.index,
-                blocks = blocks.map {
+                blocks = finalBlocks.map {
                     chimahon.ocr.OcrTextBlock(
                         xmin = it.xmin,
                         ymin = it.ymin,
@@ -2367,21 +2401,21 @@ class ReaderViewModel @JvmOverloads constructor(
             )
 
             ocrCacheMutex.withLock {
-                ocrCache[cacheKey] = blocks
+                ocrCache[cacheKey] = finalBlocks
                 trimOcrCacheLocked()
             }
 
             val elapsedMs = SystemClock.elapsedRealtime() - startMs
             if (elapsedMs >= 1200) {
                 logcat(LogPriority.WARN) {
-                    "OCR slow path: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${blocks.size} time=${elapsedMs}ms"
+                    "OCR slow path: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${finalBlocks.size} time=${elapsedMs}ms"
                 }
             } else {
                 logcat {
-                    "OCR success: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${blocks.size} time=${elapsedMs}ms"
+                    "OCR success: chapter=${page.chapter.chapter.id} page=${page.index} blocks=${finalBlocks.size} time=${elapsedMs}ms"
                 }
             }
-            blocks
+            finalBlocks
         } catch (e: Exception) {
             val elapsedMs = SystemClock.elapsedRealtime() - startMs
             logcat(LogPriority.WARN, e) {

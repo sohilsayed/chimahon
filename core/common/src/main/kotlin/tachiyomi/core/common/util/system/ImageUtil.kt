@@ -22,6 +22,7 @@ import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.get
 import androidx.core.graphics.green
 import androidx.core.graphics.red
+import java.io.ByteArrayInputStream
 import androidx.exifinterface.media.ExifInterface
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.util.system.GLUtil
@@ -30,6 +31,7 @@ import okio.Buffer
 import okio.BufferedSource
 import tachiyomi.decoder.Format
 import tachiyomi.decoder.ImageDecoder
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.SecureRandom
@@ -755,6 +757,83 @@ object ImageUtil {
         }
 
         else -> false
+    }
+
+    const val SEAM_OVERLAP_PX = 150
+
+    /**
+     * Returns the pixel height of an image without fully decoding it.
+     */
+    fun getImageHeight(bytes: ByteArray): Int {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        return opts.outHeight
+    }
+
+    /**
+     * Vertically stack [imageBytes] with the top [overlapPx] strip of [nextImageBytes].
+     * Returns the augmented JPEG bytes, or null if augmentation fails.
+     */
+    fun appendTopOverlap(
+        imageBytes: ByteArray,
+        nextImageBytes: ByteArray,
+        overlapPx: Int = SEAM_OVERLAP_PX,
+    ): ByteArray? {
+        val pageBitmap = try {
+            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        } catch (_: Exception) {
+            null
+        } ?: return null
+
+        val w = pageBitmap.width
+        val h = pageBitmap.height
+
+        val decoder = try {
+            getBitmapRegionDecoder(ByteArrayInputStream(nextImageBytes))
+        } catch (_: Exception) {
+            null
+        } ?: run {
+            pageBitmap.recycle()
+            return null
+        }
+
+        val nextH = decoder.height
+        val stripW = minOf(w, decoder.width)
+        val stripH = minOf(overlapPx, nextH)
+
+        if (stripH <= 0) {
+            decoder.recycle()
+            pageBitmap.recycle()
+            return null
+        }
+
+        val topStrip = try {
+            decoder.decodeRegion(Rect(0, 0, stripW, stripH), null)
+        } catch (_: Exception) {
+            null
+        }
+        decoder.recycle()
+
+        if (topStrip == null) {
+            pageBitmap.recycle()
+            return null
+        }
+
+        try {
+            val combinedH = h + stripH
+            val combined = createBitmap(stripW, combinedH)
+            val canvas = Canvas(combined)
+            canvas.drawColor(Color.WHITE)
+            canvas.drawBitmap(pageBitmap, Rect(0, 0, stripW, h), Rect(0, 0, stripW, h), null)
+            canvas.drawBitmap(topStrip, 0f, h.toFloat(), null)
+
+            val output = ByteArrayOutputStream()
+            combined.compress(Bitmap.CompressFormat.JPEG, 95, output)
+            return output.toByteArray()
+        } finally {
+            pageBitmap.recycle()
+            topStrip.recycle()
+        }
     }
 
     // SY -->
