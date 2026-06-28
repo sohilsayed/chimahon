@@ -1733,6 +1733,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
     fun resetHosterState() {
         _pausedState.update { _ -> false }
+        currentHosterList = null
         _hosterState.update { _ -> emptyList() }
         _hosterList.update { _ -> emptyList() }
         _hosterExpandedList.update { _ -> emptyList() }
@@ -2541,32 +2542,36 @@ class PlayerViewModel @JvmOverloads constructor(
 
         val chosenEpisode = currentPlaylist.value.firstOrNull { ep -> ep.id == episodeId } ?: return null
 
-        _currentEpisode.update { _ -> chosenEpisode }
-        updateEpisode(chosenEpisode)
-        applySubtitleDelayForAnime(anime.id)
-
-        return withIOContext {
+        val hosters = withIOContext {
             try {
-                val currentEpisode =
-                    currentEpisode.value
-                        ?: throw ExceptionWithStringResource("No episode loaded", MR.strings.no_episode_loaded)
-                currentHosterList = EpisodeLoader.getHosters(
-                    currentEpisode.toDomainEpisode()!!,
+                EpisodeLoader.getHosters(
+                    chosenEpisode.toDomainEpisode()!!,
                     anime,
                     source,
                 )
-
-                this@PlayerViewModel.episodeId = currentEpisode.id!!
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { e.message ?: "Error getting links" }
+                null
             }
-
-            EpisodeLoadResult(
-                hosterList = currentHosterList,
-                episodeTitle = anime.title + " - " + chosenEpisode.name,
-                source = source,
-            )
         }
+
+        currentHosterList = hosters
+
+        if (!hosters.isNullOrEmpty()) {
+            _currentEpisode.update { _ -> chosenEpisode }
+            updateEpisode(chosenEpisode)
+            applySubtitleDelayForAnime(anime.id)
+
+            this@PlayerViewModel.episodeId = chosenEpisode.id!!
+            updateHasPreviousEpisode(getCurrentEpisodeIndex() != 0)
+            updateHasNextEpisode(getCurrentEpisodeIndex() != currentPlaylist.value.size - 1)
+        }
+
+        return EpisodeLoadResult(
+            hosterList = hosters,
+            episodeTitle = anime.title + " - " + chosenEpisode.name,
+            source = source,
+        )
     }
 
     private fun applySubtitleDelayForAnime(animeId: Long) {
