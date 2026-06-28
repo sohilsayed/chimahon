@@ -3,18 +3,21 @@ package eu.kanade.tachiyomi.ui.dictionary
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
-import android.view.Gravity
 import android.os.Build
+import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -38,6 +42,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import chimahon.DictionaryRepository
+import chimahon.MediaInfo
 import chimahon.ocr.OcrLanguage
 import eu.kanade.tachiyomi.data.ocr.recognizePage
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
@@ -54,8 +59,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import chimahon.MediaInfo
-
 
 private const val TAP_HINT_DURATION_MS = 1_200L
 
@@ -69,6 +72,8 @@ internal class ScreenLookupOverlayController(
     private var screenshot: Bitmap? = null
     private var cachedWebView: WebView? = null
     private var cachedProfile: chimahon.anki.AnkiProfile? = null
+    private var overlayBackHandler: (() -> Boolean)? = null
+    private var overlayBackCallback: Any? = null
 
     val isShowing: Boolean
         get() = overlayView != null
@@ -92,6 +97,18 @@ internal class ScreenLookupOverlayController(
         lifecycleOwner = owner
 
         val view = ComposeView(context).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK) {
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        handleBack()
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -101,6 +118,7 @@ internal class ScreenLookupOverlayController(
                     webView = webView,
                     activeProfile = profile,
                     onClose = { dismiss() },
+                    onBack = { overlayBackHandler = it },
                 )
             }
         }
@@ -125,13 +143,17 @@ internal class ScreenLookupOverlayController(
 
         windowManager.addView(view, params)
         overlayView = view
+        view.requestFocus()
+        registerBackCallback(view)
     }
 
     fun dismiss(recycleScreenshot: Boolean = true, notify: Boolean = true) {
         overlayView?.let { view ->
+            unregisterBackCallback(view)
             runCatching { windowManager.removeView(view) }
         }
         overlayView = null
+        overlayBackHandler = null
         lifecycleOwner?.performDestroy()
         lifecycleOwner = null
         if (recycleScreenshot) {
@@ -146,6 +168,29 @@ internal class ScreenLookupOverlayController(
         cachedWebView?.runCatching { destroy() }
         cachedWebView = null
         cachedProfile = null
+    }
+
+    private fun handleBack() {
+        if (overlayBackHandler?.invoke() != true) {
+            dismiss()
+        }
+    }
+
+    private fun registerBackCallback(view: View) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val callback = OnBackInvokedCallback { handleBack() }
+        overlayBackCallback = callback
+        view.findOnBackInvokedDispatcher()
+            ?.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+    }
+
+    private fun unregisterBackCallback(view: View) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        (overlayBackCallback as? OnBackInvokedCallback)?.let { callback ->
+            view.findOnBackInvokedDispatcher()
+                ?.unregisterOnBackInvokedCallback(callback)
+        }
+        overlayBackCallback = null
     }
 }
 
@@ -190,6 +235,7 @@ internal fun ScreenLookupOverlay(
     webView: WebView,
     activeProfile: chimahon.anki.AnkiProfile,
     onClose: () -> Unit,
+    onBack: ((() -> Boolean) -> Unit)? = null,
     type: String = "screen",
     mediaInfo: MediaInfo? = null,
     titleId: String? = null,
@@ -210,6 +256,17 @@ internal fun ScreenLookupOverlay(
     var selection by remember { mutableStateOf<OcrSelection?>(null) }
     var showTapHint by remember { mutableStateOf(false) }
     var lookupNonce by remember { mutableIntStateOf(0) }
+
+    SideEffect {
+        onBack?.invoke {
+            if (selection != null) {
+                selection = null
+            } else {
+                onClose()
+            }
+            true
+        }
+    }
 
     LaunchedEffect(screenshot, activeProfile.languageCode) {
         isLoading = true
@@ -288,11 +345,8 @@ internal fun ScreenLookupOverlay(
                 }
             },
             onEmptyTap = {
-                if (selection != null) {
-                    selection = null
-                } else {
-                    onClose()
-                }
+                selection = null
+                showTapHint = false
             },
         )
 
@@ -344,4 +398,3 @@ internal fun ScreenLookupOverlay(
         }
     }
 }
-

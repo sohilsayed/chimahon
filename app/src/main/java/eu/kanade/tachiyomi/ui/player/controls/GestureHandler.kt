@@ -141,6 +141,7 @@ fun GestureHandler(
                                 lastTapAt = 0L
                                 return@detectTapGestures
                             }
+                            if (viewModel.suppressTap.value) return@detectTapGestures
 
                             val now = SystemClock.uptimeMillis()
                             val isNearby = kotlin.math.abs(position.x - lastTapX) <= doubleTapDistance &&
@@ -182,6 +183,7 @@ fun GestureHandler(
                             }
                         },
                         onPress = {
+                            if (viewModel.suppressTap.value) return@detectTapGestures
                             if (panelShown != Panels.None && !allowGesturesInPanels) {
                                 viewModel.panelShown.update { Panels.None }
                             }

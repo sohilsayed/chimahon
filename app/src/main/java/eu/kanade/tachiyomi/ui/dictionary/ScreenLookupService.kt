@@ -83,9 +83,11 @@ class ScreenLookupService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        registerReceiver(
+        ContextCompat.registerReceiver(
+            this,
             closeSystemDialogsReceiver,
             IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS),
+            ContextCompat.RECEIVER_EXPORTED,
         )
     }
 

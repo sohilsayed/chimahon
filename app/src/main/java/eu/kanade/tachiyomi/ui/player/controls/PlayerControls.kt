@@ -17,7 +17,6 @@
 
 package eu.kanade.tachiyomi.ui.player.controls
 
-import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -57,7 +56,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -134,8 +132,6 @@ fun PlayerControls(
     onBackPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var showCastSheet by remember { mutableStateOf(false) }
     val castState by castManager.castState.collectAsState()
 
@@ -173,9 +169,6 @@ fun PlayerControls(
     var isSeeking by remember { mutableStateOf(false) }
     var resetControls by remember { mutableStateOf(true) }
     var subtitleLookupRequest by remember { mutableStateOf<SubtitleLookupRequest?>(null) }
-    var videoOcrScreenshot by remember { mutableStateOf<Bitmap?>(null) }
-    var isCapturingVideoOcr by remember { mutableStateOf(false) }
-
     val customButtons by viewModel.customButtons.collectAsState()
     val customButton by viewModel.primaryButton.collectAsState()
 
@@ -237,22 +230,10 @@ fun PlayerControls(
         )
     }
     val dismissVideoOcr = {
-        videoOcrScreenshot = null
+        viewModel.dismissOcrScreenshot()
     }
     val captureVideoOcr = {
-        if (!isCapturingVideoOcr) {
-            isCapturingVideoOcr = true
-            viewModel.hideControls()
-            scope.launch {
-                val screenshot = viewModel.captureVideoFrameForOcr()
-                isCapturingVideoOcr = false
-                if (screenshot == null) {
-                    context.toast("Could not capture video frame")
-                } else {
-                    videoOcrScreenshot = screenshot
-                }
-            }
-        }
+        viewModel.requestOcr()
     }
     GestureHandler(
         viewModel = viewModel,
@@ -643,7 +624,6 @@ fun PlayerControls(
                         onSubtitlesLongClick = { viewModel.showPanel(Panels.SubtitleSettings) },
                         onAudioClick = { viewModel.showSheet(Sheets.AudioTracks) },
                         onAudioLongClick = { viewModel.showPanel(Panels.AudioDelay) },
-                        onOcrClick = captureVideoOcr,
                         onQualityClick = { viewModel.showSheet(Sheets.QualityTracks) },
                         isEpisodeOnline = isEpisodeOnline,
                         onMoreClick = { viewModel.showSheet(Sheets.More) },
@@ -863,9 +843,10 @@ fun PlayerControls(
             brightness = currentBrightness,
         )
 
+        val ocrScreenshot by viewModel.ocrScreenshot.collectAsState()
         PlayerVideoOcrOverlay(
             viewModel = viewModel,
-            screenshot = videoOcrScreenshot,
+            screenshot = ocrScreenshot,
             onDismiss = dismissVideoOcr,
         )
     }

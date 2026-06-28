@@ -2,8 +2,10 @@ package eu.kanade.tachiyomi.ui.dictionary
 
 import android.app.Activity
 import android.content.Intent
+import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -109,9 +111,16 @@ class ScreenLookupPermissionActivity : BaseActivity() {
             finish()
             return
         }
-        projectionLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+        projectionLauncher.launch(mediaProjectionManager.createScreenLookupCaptureIntent())
     }
 
+    private fun MediaProjectionManager.createScreenLookupCaptureIntent(): Intent {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        } else {
+            createScreenCaptureIntent()
+        }
+    }
 }
 
 @Composable

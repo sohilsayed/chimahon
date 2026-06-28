@@ -110,6 +110,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -335,6 +336,13 @@ class PlayerViewModel @JvmOverloads constructor(
     val cachePath: String = activity.cacheDir.path
 
     private val _customButtons = MutableStateFlow<CustomButtonFetchState>(CustomButtonFetchState.Loading)
+
+    private val _ocrScreenshot = MutableStateFlow<Bitmap?>(null)
+    val ocrScreenshot: StateFlow<Bitmap?> = _ocrScreenshot.asStateFlow()
+    private val _isCapturingOcr = MutableStateFlow(false)
+    val isCapturingOcr: StateFlow<Boolean> = _isCapturingOcr.asStateFlow()
+    private val _suppressTap = MutableStateFlow(false)
+    val suppressTap: StateFlow<Boolean> = _suppressTap.asStateFlow()
     val customButtons = _customButtons.asStateFlow()
 
     private val _primaryButtonTitle = MutableStateFlow("")
@@ -1370,6 +1378,30 @@ class PlayerViewModel @JvmOverloads constructor(
     fun hideControls() {
         activity.windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
         _controlsShown.update { false }
+    }
+
+    fun requestOcr() {
+        if (_isCapturingOcr.value) return
+        _isCapturingOcr.value = true
+        _suppressTap.value = true
+        if (_controlsShown.value) {
+            hideControls()
+        }
+        pause()
+        viewModelScope.launch {
+            val screenshot = captureVideoFrameForOcr()
+            _isCapturingOcr.value = false
+            _suppressTap.value = false
+            if (screenshot == null) {
+                eventChannel.send(Event.OcrFailed)
+            } else {
+                _ocrScreenshot.value = screenshot
+            }
+        }
+    }
+
+    fun dismissOcrScreenshot() {
+        _ocrScreenshot.value = null
     }
 
     fun hideSeekBar() {
@@ -3156,6 +3188,7 @@ class PlayerViewModel @JvmOverloads constructor(
         data class SetCoverResult(val result: SetAsCover) : Event()
         data class SavedImage(val result: SaveImageResult) : Event()
         data class ShareImage(val uri: Uri, val seconds: String) : Event()
+        data object OcrFailed : Event()
     }
 
 }

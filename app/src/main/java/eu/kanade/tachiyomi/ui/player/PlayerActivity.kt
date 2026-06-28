@@ -34,6 +34,8 @@ import android.content.pm.PackageManager
 import android.content.res.AssetManager
 import android.content.res.Configuration
 import android.graphics.Rect
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.media.AudioManager
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
@@ -156,6 +158,13 @@ class PlayerActivity : BaseActivity() {
             }
         }
     }
+
+    private val twoFingerTapSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+    private var twoFingerTapTracking = false
+    private var twoFingerTapStartTime = 0L
+    private var twoFingerTapStartX = 0f
+    private var twoFingerTapStartY = 0f
+    private var twoFingerTapStartSpan = 0f
 
     companion object {
         private const val EXTRA_STANDALONE_VIDEO = "standaloneVideo"
@@ -328,6 +337,9 @@ class PlayerActivity : BaseActivity() {
                     is PlayerViewModel.Event.SetCoverResult -> {
                         onSetAsCoverResult(event.result)
                     }
+                    is PlayerViewModel.Event.OcrFailed -> {
+                        toast("Could not capture video frame")
+                    }
                 }
             }
             .launchIn(lifecycleScope)
@@ -363,6 +375,70 @@ class PlayerActivity : BaseActivity() {
         }
 
         onNewIntent(this.intent)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        observeTwoFingerOcrTap(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun observeTwoFingerOcrTap(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                twoFingerTapTracking = false
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount == 2) {
+                    twoFingerTapTracking = true
+                    twoFingerTapStartTime = event.eventTime
+                    twoFingerTapStartX = event.twoFingerFocusX()
+                    twoFingerTapStartY = event.twoFingerFocusY()
+                    twoFingerTapStartSpan = event.twoFingerSpan()
+                } else {
+                    twoFingerTapTracking = false
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (twoFingerTapTracking && !event.isTwoFingerTapCandidate()) {
+                    twoFingerTapTracking = false
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (
+                    twoFingerTapTracking &&
+                    event.pointerCount == 2 &&
+                    event.eventTime - twoFingerTapStartTime <= ViewConfiguration.getDoubleTapTimeout().toLong() &&
+                    event.isTwoFingerTapCandidate()
+                ) {
+                    viewModel.requestOcr()
+                }
+                twoFingerTapTracking = false
+            }
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL,
+            -> {
+                twoFingerTapTracking = false
+            }
+        }
+    }
+
+    private fun MotionEvent.isTwoFingerTapCandidate(): Boolean {
+        if (pointerCount != 2) return false
+        return kotlin.math.abs(twoFingerFocusX() - twoFingerTapStartX) <= twoFingerTapSlop &&
+            kotlin.math.abs(twoFingerFocusY() - twoFingerTapStartY) <= twoFingerTapSlop &&
+            kotlin.math.abs(twoFingerSpan() - twoFingerTapStartSpan) <= twoFingerTapSlop
+    }
+
+    private fun MotionEvent.twoFingerFocusX(): Float {
+        return (getX(0) + getX(1)) / 2f
+    }
+
+    private fun MotionEvent.twoFingerFocusY(): Float {
+        return (getY(0) + getY(1)) / 2f
+    }
+
+    private fun MotionEvent.twoFingerSpan(): Float {
+        return kotlin.math.hypot(getX(0) - getX(1), getY(0) - getY(1))
     }
 
     override fun onDestroy() {
