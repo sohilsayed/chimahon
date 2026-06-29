@@ -17,6 +17,7 @@ data class RestoreOptions(
     // Chimahon -->
     val novels: Boolean = true,
     // Chimahon <--
+    val animeEntries: Boolean = true,
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -31,6 +32,7 @@ data class RestoreOptions(
         // Chimahon -->
         novels,
         // Chimahon <--
+        animeEntries,
     )
 
     fun canRestore() =
@@ -40,7 +42,8 @@ data class RestoreOptions(
             extensionRepoSettings ||
             sourceSettings /* SY --> */ ||
             savedSearchesFeeds /* SY <-- */ ||
-            novels
+            novels ||
+            animeEntries
 
     companion object {
         val options = persistentListOf(
@@ -48,6 +51,11 @@ data class RestoreOptions(
                 label = MR.strings.label_library,
                 getter = RestoreOptions::libraryEntries,
                 setter = { options, enabled -> options.copy(libraryEntries = enabled) },
+            ),
+            Entry(
+                label = MR.strings.label_anime,
+                getter = RestoreOptions::animeEntries,
+                setter = { options, enabled -> options.copy(animeEntries = enabled) },
             ),
             Entry(
                 label = MR.strings.categories,
@@ -99,6 +107,7 @@ data class RestoreOptions(
             // Chimahon -->
             novels = array.getOrElse(6) { true },
             // Chimahon <--
+            animeEntries = array.getOrElse(7) { true },
         )
     }
 

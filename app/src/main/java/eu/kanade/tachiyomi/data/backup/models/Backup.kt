@@ -12,6 +12,11 @@ data class Backup(
     @ProtoNumber(104) var backupPreferences: List<BackupPreference> = emptyList(),
     @ProtoNumber(105) var backupSourcePreferences: List<BackupSourcePreferences> = emptyList(),
     @ProtoNumber(106) var backupExtensionRepo: List<BackupExtensionRepos> = emptyList(),
+    // Aniyomi/Anikku anime values
+    @ProtoNumber(501) val backupAnime: List<BackupAnime> = emptyList(),
+    @ProtoNumber(502) var backupAnimeCategories: List<BackupCategory> = emptyList(),
+    @ProtoNumber(503) var backupAnimeSources: List<BackupAnimeSource> = emptyList(),
+    @ProtoNumber(505) var backupAnimeExtensionRepo: List<BackupExtensionRepos> = emptyList(),
     // SY specific values
     @ProtoNumber(600) var backupSavedSearches: List<BackupSavedSearch> = emptyList(),
     // KMK -->

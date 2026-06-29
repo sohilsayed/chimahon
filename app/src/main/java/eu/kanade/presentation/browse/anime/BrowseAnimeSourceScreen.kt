@@ -119,7 +119,7 @@ fun BrowseAnimeSourceContent(
     }
 
     when (displayMode) {
-        LibraryDisplayMode.ComfortableGrid -> {
+        LibraryDisplayMode.ComfortableGrid, LibraryDisplayMode.ComfortableGridPanorama -> {
             BrowseAnimeSourceComfortableGrid(
                 animeList = animeList,
                 columns = columns,
@@ -138,15 +138,6 @@ fun BrowseAnimeSourceContent(
                 onAnimeLongClick = onAnimeLongClick,
             )
         }
-        LibraryDisplayMode.ComfortableGridPanorama -> {
-            BrowseAnimeSourceComfortableGrid(
-                animeList = animeList,
-                columns = columns,
-                contentPadding = contentPadding,
-                onAnimeClick = onAnimeClick,
-                onAnimeLongClick = onAnimeLongClick,
-            )
-        }
         LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
             BrowseAnimeSourceCompactGrid(
                 animeList = animeList,
@@ -160,7 +151,7 @@ fun BrowseAnimeSourceContent(
 }
 
 @Composable
-fun MissingSourceScreen(
+internal fun MissingSourceScreen(
     source: StubAnimeSource,
     navigateUp: () -> Unit,
 ) {

@@ -51,6 +51,7 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.ui.browse.animesource.browse.BrowseAnimeSourceScreen
 import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.GlobalAnimeSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
+import eu.kanade.tachiyomi.ui.entries.anime.track.AnimeTrackInfoDialogHomeScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.player.ExternalIntents
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
@@ -291,7 +292,14 @@ class AnimeScreen(
                 onSetAsDefault = screenModel::setSeasonSettingsAsDefault,
             )
             AnimeScreenModel.Dialog.TrackSheet -> {
-                UnsupportedAnimeFeatureDialog(onDismissRequest = onDismissRequest)
+                NavigatorAdaptiveSheet(
+                    screen = AnimeTrackInfoDialogHomeScreen(
+                        animeId = successState.anime.id,
+                        sourceId = successState.source.id,
+                    ),
+                    enableSwipeDismiss = { it.lastItem is AnimeTrackInfoDialogHomeScreen },
+                    onDismissRequest = onDismissRequest,
+                )
             }
             AnimeScreenModel.Dialog.FullImages -> {
                 val sm = rememberScreenModel { AnimeImageScreenModel(successState.anime.id) }

@@ -24,6 +24,7 @@ data class BackupOptions(
     // Chimahon -->
     val novels: Boolean = true,
     // Chimahon <--
+    val animeEntries: Boolean = true,
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -44,10 +45,11 @@ data class BackupOptions(
         // Chimahon -->
         novels,
         // Chimahon <--
+        animeEntries,
     )
 
     fun canCreate() =
-        libraryEntries || categories || appSettings || extensionRepoSettings || sourceSettings || savedSearchesFeeds || novels
+        libraryEntries || animeEntries || categories || appSettings || extensionRepoSettings || sourceSettings || savedSearchesFeeds || novels
 
     companion object {
         val libraryOptions = persistentListOf(
@@ -55,6 +57,11 @@ data class BackupOptions(
                 label = MR.strings.manga,
                 getter = BackupOptions::libraryEntries,
                 setter = { options, enabled -> options.copy(libraryEntries = enabled) },
+            ),
+            Entry(
+                label = MR.strings.label_anime,
+                getter = BackupOptions::animeEntries,
+                setter = { options, enabled -> options.copy(animeEntries = enabled) },
             ),
             Entry(
                 label = MR.strings.chapters,
@@ -151,6 +158,7 @@ data class BackupOptions(
             // Chimahon -->
             novels = array.getOrElse(12) { true },
             // Chimahon <--
+            animeEntries = array.getOrElse(13) { true },
         )
     }
 
