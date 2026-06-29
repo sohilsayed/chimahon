@@ -29,7 +29,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -69,6 +71,7 @@ import eu.kanade.presentation.entries.anime.components.AnimeSeasonListItem
 import eu.kanade.presentation.entries.anime.components.EpisodeDownloadAction
 import eu.kanade.presentation.entries.anime.components.ExpandableAnimeDescription
 import eu.kanade.presentation.entries.anime.components.NextEpisodeAiringListItem
+import eu.kanade.presentation.entries.anime.components.RelatedAnimeRow
 import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.presentation.entries.components.EntryToolbar
 import eu.kanade.presentation.entries.components.ItemHeader
@@ -80,6 +83,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 import eu.kanade.tachiyomi.source.getNameForAnimeInfo
 import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeSourcePreferencesScreen
+import eu.kanade.tachiyomi.ui.entries.anime.RelatedAnime
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreenModel
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeSeasonItem
 import eu.kanade.tachiyomi.ui.entries.anime.EpisodeList
@@ -98,6 +102,7 @@ import tachiyomi.presentation.core.components.TwoPanelBox
 import tachiyomi.presentation.core.components.material.ExtendedFloatingActionButton
 import tachiyomi.presentation.core.components.material.PullRefresh
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.shouldExpandFAB
 import tachiyomi.source.local.entries.anime.isLocal
@@ -514,6 +519,21 @@ private fun AnimeScreenSmallImpl(
                         )
                     }
 
+                    if (state.relatedAnimeSorted?.isNotEmpty() != false) {
+                        item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                        item(
+                            key = EntryScreenItem.RELATED_ANIME,
+                            contentType = EntryScreenItem.RELATED_ANIME,
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            RelatedAnimeSection(
+                                relatedAnime = state.relatedAnimeSorted,
+                                modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                            )
+                        }
+                        item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                    }
+
                     item(
                         key = EntryScreenItem.ITEM_HEADER,
                         contentType = EntryScreenItem.ITEM_HEADER,
@@ -839,6 +859,21 @@ fun AnimeScreenLargeImpl(
                                 bottom = contentPadding.calculateBottomPadding(),
                             ),
                         ) {
+                            if (state.relatedAnimeSorted?.isNotEmpty() != false) {
+                                item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                                item(
+                                    key = EntryScreenItem.RELATED_ANIME,
+                                    contentType = EntryScreenItem.RELATED_ANIME,
+                                    span = { GridItemSpan(maxLineSpan) },
+                                ) {
+                                    RelatedAnimeSection(
+                                        relatedAnime = state.relatedAnimeSorted,
+                                        modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                                    )
+                                }
+                                item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                            }
+
                             item(
                                 key = EntryScreenItem.ITEM_HEADER,
                                 contentType = EntryScreenItem.ITEM_HEADER,
@@ -1151,6 +1186,36 @@ private fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): Strin
 }
 
 private val GRID_PADDING = 14.dp
+@Composable
+private fun RelatedAnimeSection(
+    relatedAnime: List<RelatedAnime>?,
+    modifier: Modifier = Modifier,
+) {
+    val navigator = LocalNavigator.currentOrThrow
+
+    Column(modifier = modifier) {
+        Text(
+            text = stringResource(MR.strings.related_anime),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(
+                start = MaterialTheme.padding.medium,
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.medium,
+                bottom = MaterialTheme.padding.extraSmall,
+            ),
+        )
+        RelatedAnimeRow(
+            relatedAnime = relatedAnime,
+            onAnimeClick = {
+                navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen(it.id))
+            },
+            onAnimeLongClick = {
+                navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen(it.id))
+            },
+        )
+    }
+}
+
 private fun Modifier.ignorePadding(gridPadding: Int) = layout { measurable, constraints ->
     val looseConstraints = constraints.offset(gridPadding * 2, 0)
     val placeable = measurable.measure(looseConstraints)
