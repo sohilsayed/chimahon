@@ -103,7 +103,6 @@ enum class Sheets {
 enum class Panels {
     None,
     SubtitleSideList,
-    SubtitleOverlayList,
     SubtitleSettings,
     SubtitleDelay,
     SubtitleRegex,

@@ -4,17 +4,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -39,14 +36,8 @@ import eu.kanade.tachiyomi.ui.player.PlayerViewModel.SubtitleCue
 import kotlinx.collections.immutable.ImmutableList
 import tachiyomi.presentation.core.components.material.padding
 
-enum class SubtitleListPanelMode {
-    SideList,
-    Overlay,
-}
-
 @Composable
 fun SubtitleListPanel(
-    mode: SubtitleListPanelMode,
     cues: ImmutableList<SubtitleCue>,
     activeCueIndex: Int?,
     onSelectCue: (Int) -> Unit,
@@ -56,20 +47,12 @@ fun SubtitleListPanel(
     BackHandler(onBack = onDismissRequest)
 
     Box(modifier = modifier.fillMaxSize()) {
-        when (mode) {
-            SubtitleListPanelMode.SideList -> SubtitleSideList(
-                cues = cues,
-                activeCueIndex = activeCueIndex,
-                onSelectCue = onSelectCue,
-                modifier = Modifier.align(Alignment.CenterEnd),
-            )
-            SubtitleListPanelMode.Overlay -> SubtitleOverlayList(
-                cues = cues,
-                activeCueIndex = activeCueIndex,
-                onSelectCue = onSelectCue,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-        }
+        SubtitleSideList(
+            cues = cues,
+            activeCueIndex = activeCueIndex,
+            onSelectCue = onSelectCue,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
     }
 }
 
@@ -88,7 +71,6 @@ private fun SubtitleSideList(
         cues = cues,
         activeCueIndex = activeCueIndex,
         onSelectCue = onSelectCue,
-        mode = SubtitleCueRowMode.Side,
         modifier = modifier
             .padding(end = 8.dp, top = 36.dp, bottom = 36.dp)
             .width(width)
@@ -97,55 +79,10 @@ private fun SubtitleSideList(
 }
 
 @Composable
-private fun SubtitleOverlayList(
-    cues: ImmutableList<SubtitleCue>,
-    activeCueIndex: Int?,
-    onSelectCue: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val activePosition = activePosition(cues, activeCueIndex)
-    val visibleCues = if (cues.isEmpty()) {
-        emptyList()
-    } else {
-        cues
-            .drop((activePosition - 3).coerceAtLeast(0))
-            .take(7)
-    }
-
-    Column(
-        modifier = modifier
-            .padding(start = 24.dp, end = 24.dp, bottom = 132.dp)
-            .widthIn(max = 520.dp)
-            .fillMaxWidth(0.56f),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        if (visibleCues.isEmpty()) {
-            EmptySubtitleListMessage()
-        } else {
-            visibleCues
-                .filterNot { it.index == activeCueIndex }
-                .forEach { cue ->
-                    SubtitleCueOverlayRow(
-                        cue = cue,
-                        selected = false,
-                        onClick = { onSelectCue(cue.index) },
-                    )
-                }
-        }
-    }
-}
-
-private enum class SubtitleCueRowMode {
-    Side,
-}
-
-@Composable
 private fun SubtitleCueLazyList(
     cues: ImmutableList<SubtitleCue>,
     activeCueIndex: Int?,
     onSelectCue: (Int) -> Unit,
-    mode: SubtitleCueRowMode,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -170,13 +107,11 @@ private fun SubtitleCueLazyList(
             contentPadding = PaddingValues(vertical = maxHeight * 0.5f),
         ) {
             items(cues, key = { it.index }) { cue ->
-                when (mode) {
-                    SubtitleCueRowMode.Side -> SubtitleCueSideRow(
-                        cue = cue,
-                        selected = cue.index == activeCueIndex,
-                        onClick = { onSelectCue(cue.index) },
-                    )
-                }
+                SubtitleCueSideRow(
+                    cue = cue,
+                    selected = cue.index == activeCueIndex,
+                    onClick = { onSelectCue(cue.index) },
+                )
             }
         }
     }
@@ -221,28 +156,6 @@ private fun SubtitleCueSideRow(
 }
 
 @Composable
-private fun SubtitleCueOverlayRow(
-    cue: SubtitleCue,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Text(
-        text = cue.text,
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .background(activeLineColor(selected), RoundedCornerShape(2.dp))
-            .padding(horizontal = 10.dp, vertical = if (selected) 5.dp else 3.dp),
-        style = subtitleOverlayTextStyle(selected),
-        color = Color.White.copy(alpha = if (selected) 1f else 0.78f),
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-        maxLines = if (selected) 2 else 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
-@Composable
 private fun EmptySubtitleListMessage(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier.fillMaxWidth(),
@@ -260,17 +173,6 @@ private fun EmptySubtitleListMessage(modifier: Modifier = Modifier) {
 @Composable
 private fun subtitleLogTextStyle(): TextStyle {
     return MaterialTheme.typography.bodyLarge.copy(
-        shadow = Shadow(
-            color = Color.Black.copy(alpha = 0.95f),
-            blurRadius = 8f,
-        ),
-    )
-}
-
-@Composable
-private fun subtitleOverlayTextStyle(selected: Boolean): TextStyle {
-    return (if (selected) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium).copy(
-        textAlign = TextAlign.Center,
         shadow = Shadow(
             color = Color.Black.copy(alpha = 0.95f),
             blurRadius = 8f,

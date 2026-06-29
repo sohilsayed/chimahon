@@ -38,7 +38,6 @@ import eu.kanade.tachiyomi.ui.player.PlayerViewModel.SubtitleCue
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.AudioDelayPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleDelayPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleListPanel
-import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleListPanelMode
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleRegexPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitleSettingsPanel
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.VideoFiltersPanel
@@ -76,16 +75,6 @@ fun PlayerPanels(
             }
             Panels.SubtitleSideList -> {
                 SubtitleListPanel(
-                    mode = SubtitleListPanelMode.SideList,
-                    cues = subtitleCues,
-                    activeCueIndex = activeSubtitleCueIndex,
-                    onSelectCue = onSelectSubtitleCue,
-                    onDismissRequest = onDismissRequest,
-                )
-            }
-            Panels.SubtitleOverlayList -> {
-                SubtitleListPanel(
-                    mode = SubtitleListPanelMode.Overlay,
                     cues = subtitleCues,
                     activeCueIndex = activeSubtitleCueIndex,
                     onSelectCue = onSelectSubtitleCue,

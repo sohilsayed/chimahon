@@ -75,10 +75,11 @@ fun customSubtitleRegex(pattern: String): Regex? {
     }.getOrNull()
 }
 
-private val speakerNameInParenthesesRegex = Regex("""(?m)^\s*\([^()\n]{1,48}\)\s*:?\s*""")
+private val speakerNameInParenthesesRegex =
+    Regex("""(?m)^\s*[\u0028\uff08][^\u0028\u0029\uff08\uff09\r\n]{1,48}[\u0029\uff09]\s*:?\s*""")
 private val bracketedTextRegex = Regex("""\[[^\[\]\n]*]""")
 private val curlyBracedTextRegex = Regex("""\{[^{}\n]*\}""")
-private val musicSymbolsRegex = Regex("""[♪♫♬♩♭♯#~〜]+""")
+private val musicSymbolsRegex = Regex("""[\u266a\u266b\u266c\u2669\u266d\u266f#~\u301c\uff5e]+""")
 
 private fun String.cleanSubtitleRegexFilterResult(): String {
     return lines()

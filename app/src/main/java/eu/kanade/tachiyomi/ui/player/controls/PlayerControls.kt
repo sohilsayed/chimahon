@@ -44,7 +44,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
@@ -160,7 +159,6 @@ fun PlayerControls(
     val activeSubtitleCueIndex by viewModel.activeSubtitleCueIndex.collectAsState()
     val primarySubtitleDelaySeconds by viewModel.primarySubtitleDelaySeconds.collectAsState()
     val panel by viewModel.panelShown.collectAsState()
-    val isSubtitleOverlayListShown = panel == Panels.SubtitleOverlayList
     val activeSubtitleCue = remember(subtitleCues, activeSubtitleCueIndex) {
         subtitleCues.firstOrNull { it.index == activeSubtitleCueIndex }
     }
@@ -194,7 +192,7 @@ fun PlayerControls(
         val currentPanel = viewModel.panelShown.value
         if (
             viewModel.sheetShown.value != Sheets.None ||
-            (currentPanel != Panels.None && currentPanel != Panels.SubtitleOverlayList) ||
+            currentPanel != Panels.None ||
             viewModel.dialogShown.value != Dialogs.None
         ) {
             return@openSubtitleLookup
@@ -246,29 +244,13 @@ fun PlayerControls(
                 viewModel.unpause()
             })
         }
-        if (isSubtitleOverlayListShown) {
-            PlayerSubtitleTextLayer(
-                text = activeSubtitleCue?.text ?: currentSubtitleText,
-                cue = activeSubtitleCue,
-                subtitleDelaySeconds = primarySubtitleDelaySeconds,
-                request = subtitleLookupRequest,
-                onLookup = openSubtitleLookup,
-                bottomPadding = 84.dp,
-                widthFraction = 0.56f,
-                maxWidth = 520.dp,
-                fontSizeFactor = 0.42f,
-                minFontSize = 14f,
-                maxFontSize = 30f,
-            )
-        } else {
-            PlayerSubtitleTextLayer(
-                text = currentSubtitleText,
-                cue = activeSubtitleCue,
-                subtitleDelaySeconds = primarySubtitleDelaySeconds,
-                request = subtitleLookupRequest,
-                onLookup = openSubtitleLookup,
-            )
-        }
+        PlayerSubtitleTextLayer(
+            text = currentSubtitleText,
+            cue = activeSubtitleCue,
+            subtitleDelaySeconds = primarySubtitleDelaySeconds,
+            request = subtitleLookupRequest,
+            onLookup = openSubtitleLookup,
+        )
     }
     DoubleTapToSeekOvals(doubleTapSeekAmount, seekText, interactionSource)
     CompositionLocalProvider(
@@ -510,23 +492,12 @@ fun PlayerControls(
                         bottom.linkTo(parent.bottom)
                     },
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.medium),
-                    ) {
-                        ControlsButton(
-                            icon = Icons.Default.FormatListBulleted,
-                            onClick = { togglePanel(Panels.SubtitleSideList) },
-                            horizontalSpacing = MaterialTheme.padding.mediumSmall,
-                            iconSize = MaterialTheme.padding.large,
-                        )
-                        ControlsButton(
-                            icon = Icons.Default.Subtitles,
-                            onClick = { togglePanel(Panels.SubtitleOverlayList) },
-                            horizontalSpacing = MaterialTheme.padding.mediumSmall,
-                            iconSize = MaterialTheme.padding.large,
-                        )
-                    }
+                    ControlsButton(
+                        icon = Icons.Default.FormatListBulleted,
+                        onClick = { togglePanel(Panels.SubtitleSideList) },
+                        horizontalSpacing = MaterialTheme.padding.mediumSmall,
+                        iconSize = MaterialTheme.padding.large,
+                    )
                 }
                 AnimatedVisibility(
                     visible = (controlsShown || seekBarShown) && !areControlsLocked,

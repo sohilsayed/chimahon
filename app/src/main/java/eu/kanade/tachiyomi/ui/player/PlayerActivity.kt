@@ -85,6 +85,7 @@ import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils.Companion.getStringRes
+import eu.kanade.tachiyomi.ui.player.utils.safeResumePositionMillis
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import `is`.xyz.mpv.MPVLib
@@ -115,8 +116,6 @@ import java.io.OutputStream
 import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.floor
-
-private const val COMPLETED_RESUME_GRACE_MS = 1_500L
 
 class PlayerActivity : BaseActivity() {
     private val viewModel by viewModels<PlayerViewModel>(factoryProducer = { PlayerViewModelProviderFactory(this) })
@@ -1276,7 +1275,13 @@ class PlayerActivity : BaseActivity() {
                     arrayOf(
                         "set",
                         "start",
-                        "${resumePosition.resetIfCompleted(episode.total_seconds, episode.seen) / 1000F}",
+                        "${
+                            resumePosition.safeResumePositionMillis(
+                                totalMillis = episode.total_seconds,
+                                seen = episode.seen,
+                                resetWhenDurationUnknown = true,
+                            ) / 1000F
+                        }",
                     ),
                 )
             }
@@ -1288,7 +1293,7 @@ class PlayerActivity : BaseActivity() {
                     arrayOf(
                         "set",
                         "start",
-                        "${currentPosition.resetIfCompleted(currentDuration) / 1000F}",
+                        "${currentPosition.safeResumePositionMillis(currentDuration) / 1000F}",
                     ),
                 )
             }
@@ -1388,15 +1393,6 @@ class PlayerActivity : BaseActivity() {
         // MPVLib.setOptionString("cache-on-disk", "yes")
         // val cacheDir = File(applicationContext.filesDir, "media").path
         // MPVLib.setOptionString("cache-dir", cacheDir)
-    }
-
-    private fun Long.resetIfCompleted(total: Long, seen: Boolean = false): Long {
-        val position = coerceAtLeast(0L)
-        if (position == 0L) return position
-        if (total > 0L) {
-            return if (position >= total - COMPLETED_RESUME_GRACE_MS) 0L else position
-        }
-        return if (seen) 0L else position
     }
 
     /**
