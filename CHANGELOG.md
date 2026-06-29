@@ -4,6 +4,46 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v2.1.0]
+
+### Added
+- Built-in YouTube anime extension
+- Anime categories and unified category management screen
+- Season infrastructure for anime entries, including season display/settings defaults
+- Episode options dialog with video quality and hoster selection
+- Two-finger tap OCR lookup in the anime player
+- Subtitle regex filters for speaker names, bracketed text, uppercase lines, music symbols, curly-braced text, multiline merging, and custom regex
+
+### Changed
+- Modernized anime library UI with updated toolbar, bottom actions, grids/lists, and tabs
+- Reworked anime details UI to align with Anikku-style layouts
+- Improved anime image handling with unified cover/background fetching
+- Improved Jimaku title, season, episode, filename, and SRT matching
+- Refactored OCR overlay components for reuse across screen lookup and video OCR
+- Improved sentence audio mining by avoiding re-encoding and letting mining jobs continue after popup dismissal
+- Player now remembers selected server/quality across episode changes
+- Player now restores manually added and Jimaku subtitles after server/quality reloads
+- Mini subtitle overlay now replaces the active subtitle line and supports lookup/mining
+
+### Fixed
+- App hang on startup from anime source manager initialization
+- Anime extension classloader fallback for some devices/extensions
+- Player subtitle selection resetting after video reload
+- Mini subtitle overlay duplicating the active subtitle line
+- Subtitle opaque box and background box styles in the Compose subtitle renderer
+- Completed/stale episodes reopening at video end and leaving the player on a black screen
+- Jimaku title overrides leaking between unrelated anime entries
+- Host-loading failure updating the player to the wrong episode while the old video kept playing
+- Korean OCR text cut off across webtoon page seams
+- Video OCR line ordering and dictionary sentence order
+- Anime browse settings button opening source preferences
+- Mokuro sidecar copier injection crash
+- Novel reader horizontal text page skip and margin bugs
+- Word-audio/import issues on some devices
+- Dictionary popup font size consistency across dictionaries
+- Frequency chips staying unreadable in light theme
+- Custom dictionary font fallback/loading reliability
+
 ## [v2.0.1]
 
 ### Added
