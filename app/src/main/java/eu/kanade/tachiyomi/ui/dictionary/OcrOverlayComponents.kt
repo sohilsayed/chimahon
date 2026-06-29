@@ -36,7 +36,6 @@ data class OcrSelection(
 )
 
 private val borderColor = Color(0, 170, 255, 180)
-private val highlightColor = Color(130, 150, 200, 100)
 
 @Composable
 fun OcrBlockCanvas(
@@ -51,6 +50,8 @@ fun OcrBlockCanvas(
     onEmptyTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+
     Canvas(
         modifier = modifier
             .fillMaxSize()
@@ -89,6 +90,7 @@ fun OcrBlockCanvas(
                             selection = selection,
                             boxScaleX = boxScaleX,
                             boxScaleY = boxScaleY,
+                            highlightColor = highlightColor,
                         )
                     }
                 }
@@ -163,6 +165,7 @@ private fun DrawScope.drawMatchHighlight(
     selection: OcrSelection,
     boxScaleX: Float,
     boxScaleY: Float,
+    highlightColor: Color,
 ) {
     val orderedIndices = block.orderedLineIndices()
     val orderedSentence = orderedIndices.joinToString("") { block.lines[it] }
