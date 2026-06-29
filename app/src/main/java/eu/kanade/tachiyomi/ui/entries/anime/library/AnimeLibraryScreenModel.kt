@@ -276,6 +276,7 @@ class AnimeLibraryScreenModel(
                     .map { it.id }
                     .subtract(removeCategories.toSet())
                     .plus(addCategories)
+                    .distinct()
                     .toList()
                 setAnimeCategories.await(anime.id, categoryIds)
             }
@@ -298,6 +299,14 @@ class AnimeLibraryScreenModel(
                 }
             }.toImmutableList()
             mutableState.update { it.copy(dialog = Dialog.ChangeCategory(animeList, preselected)) }
+        }
+    }
+
+    fun updateActiveCategoryIndex(index: Int) {
+        val maxIndex = (state.value.displayCategories.size - 1).coerceAtLeast(0)
+        val coerced = index.coerceIn(0, maxIndex)
+        if (coerced != activeCategoryIndex) {
+            activeCategoryIndex = coerced
         }
     }
 
@@ -523,7 +532,7 @@ class AnimeLibraryScreenModel(
                         items.filter { item -> category.id in item.libraryAnime.categories }
                     }
                     val result = mutableMapOf<AnimeCategory, List<AnimeLibraryItem>>()
-                    if (uncategorized.isNotEmpty() || categorized.isEmpty()) {
+                    if (uncategorized.isNotEmpty()) {
                         val systemCategory = categories.find { it.isSystemCategory } ?: AnimeCategory(
                             id = AnimeCategory.UNCATEGORIZED_ID,
                             name = "Default",

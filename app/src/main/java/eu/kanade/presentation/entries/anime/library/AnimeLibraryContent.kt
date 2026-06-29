@@ -61,10 +61,15 @@ fun AnimeLibraryContent(
         val scope = rememberCoroutineScope()
         var isRefreshing by remember(pagerState.currentPage) { mutableStateOf(false) }
 
-        if (showPageTabs && categories.size > 1) {
+        if (showPageTabs && categories.isNotEmpty() && (categories.size > 1 || !categories.first().isSystemCategory)) {
             LaunchedEffect(categories) {
-                if (categories.size <= pagerState.currentPage) {
-                    pagerState.scrollToPage(categories.size - 1)
+                val targetPage = when {
+                    categories.isEmpty() -> 0
+                    pagerState.currentPage >= categories.size -> categories.size - 1
+                    else -> pagerState.currentPage
+                }
+                if (targetPage != pagerState.currentPage) {
+                    pagerState.scrollToPage(targetPage)
                 }
             }
             val categoryItems = categories.map { animeCategory ->

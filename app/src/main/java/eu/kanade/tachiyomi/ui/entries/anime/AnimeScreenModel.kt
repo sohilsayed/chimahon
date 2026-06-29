@@ -494,7 +494,7 @@ class AnimeScreenModel(
 
                 // Now check if user previously set categories, when available
                 val animeCategories = getCategories()
-                val defaultCategoryId = libraryPreferences.defaultCategory().get().toLong()
+                val defaultCategoryId = libraryPreferences.defaultAnimeCategory().get().toLong()
                 val defaultAnimeCategory = animeCategories.find { it.id == defaultCategoryId }
                 when {
                     // Default category set

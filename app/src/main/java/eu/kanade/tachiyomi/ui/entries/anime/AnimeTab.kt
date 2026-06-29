@@ -71,7 +71,7 @@ data object AnimeTab : Tab {
     override val options: TabOptions
         @Composable
         get() {
-            val title = MR.strings.label_anime_library
+            val title = MR.strings.label_anime
             val isSelected = LocalTabNavigator.current.current.key == key
             val image = AnimatedImageVector.animatedVectorResource(
                 R.drawable.anim_animelibrary_leave,
@@ -138,7 +138,7 @@ data object AnimeTab : Tab {
                     onClickFilter = screenModel::showSettingsDialog,
                     onClickRefresh = {
                         onClickRefresh(
-                            state.categories.getOrNull(screenModel.activeCategoryIndex),
+                            state.displayCategories.getOrNull(screenModel.activeCategoryIndex),
                         )
                     },
                     onClickGlobalUpdate = { onClickRefresh(null) },
@@ -199,14 +199,14 @@ data object AnimeTab : Tab {
                 }
                 else -> {
                     AnimeLibraryContent(
-                        categories = state.categories,
+                        categories = state.displayCategories,
                         searchQuery = state.searchQuery,
                         selection = state.selection,
                         contentPadding = contentPadding,
                         currentPage = { screenModel.activeCategoryIndex },
                         hasActiveFilters = state.hasActiveFilters,
                         showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
-                        onChangeCurrentPage = { screenModel.activeCategoryIndex = it },
+                        onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
                         onAnimeClicked = { navigator.push(AnimeScreen(it)) },
                         onContinueWatchingClicked = { it: LibraryAnime ->
                             scope.launchIO {
@@ -241,7 +241,7 @@ data object AnimeTab : Tab {
         val onDismissRequest = screenModel::closeDialog
         when (val dialog = state.dialog) {
             is AnimeLibraryScreenModel.Dialog.SettingsSheet -> run {
-                val category = state.categories.getOrNull(screenModel.activeCategoryIndex)
+                val category = state.displayCategories.getOrNull(screenModel.activeCategoryIndex)
                 if (category == null) {
                     onDismissRequest()
                     return@run
