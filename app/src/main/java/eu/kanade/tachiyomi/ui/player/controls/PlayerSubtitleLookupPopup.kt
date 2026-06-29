@@ -4,6 +4,7 @@ import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -13,8 +14,11 @@ import chimahon.DictionaryRepository
 import chimahon.MediaInfo
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.ui.player.PlayerViewModel
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -49,8 +53,6 @@ internal fun PlayerSubtitleLookupPopup(
     onTermMatched: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (request == null) return
-
     val context = LocalContext.current
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
     val repository = remember { Injekt.get<DictionaryRepository>() }
@@ -67,26 +69,34 @@ internal fun PlayerSubtitleLookupPopup(
         DictionaryPopupWebViewWarmup.acquire(context, activeProfile.languageCode)
     }
 
+    LaunchedEffect(activeProfile) {
+        withContext(Dispatchers.IO) {
+            repository.warmUp(getDictionaryPaths(context, activeProfile), activeProfile.id)
+        }
+    }
+
     DisposableEffect(webView) {
         onDispose {
             DictionaryPopupWebViewWarmup.recycle(context, webView)
         }
     }
 
-    BackHandler(onBack = onDismiss)
+    BackHandler(enabled = request != null, onBack = onDismiss)
+
+    val visible = request != null
 
     OcrLookupPopup(
-        visible = true,
-        lookupString = request.lookupString,
-        fullText = request.fullText,
-        charOffset = request.charOffset,
+        visible = visible,
+        lookupString = request?.lookupString.orEmpty(),
+        fullText = request?.fullText.orEmpty(),
+        charOffset = request?.charOffset ?: 0,
         onDismiss = onDismiss,
         webView = webView,
         repository = repository,
-        anchorX = request.anchorX,
-        anchorY = request.anchorY,
-        anchorWidth = request.anchorWidth,
-        anchorHeight = request.anchorHeight,
+        anchorX = request?.anchorX ?: 0f,
+        anchorY = request?.anchorY ?: 0f,
+        anchorWidth = request?.anchorWidth ?: 0f,
+        anchorHeight = request?.anchorHeight ?: 0f,
         isVertical = false,
         activeProfile = activeProfile,
         type = "anime",
@@ -99,8 +109,8 @@ internal fun PlayerSubtitleLookupPopup(
         },
         onRequestSentenceAudio = {
             viewModel.captureSubtitleAudioForAnki(
-                startSeconds = request.cueStartSeconds,
-                endSeconds = request.cueEndSeconds,
+                startSeconds = request?.cueStartSeconds,
+                endSeconds = request?.cueEndSeconds,
             )
         },
         usePopup = false,

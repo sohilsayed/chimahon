@@ -191,6 +191,11 @@ fun PlayerControls(
         label = "controls_transparent_overlay",
     )
     val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
+        if (subtitleLookupRequest?.matchesTap(subtitleLookup) == true) {
+            subtitleLookupRequest = null
+            viewModel.unpause()
+            return@openSubtitleLookup
+        }
         val currentPanel = viewModel.panelShown.value
         if (
             viewModel.sheetShown.value != Sheets.None ||
@@ -1084,6 +1089,21 @@ private fun SubtitleLookupSelection.offsetBy(offset: Offset): SubtitleLookupSele
         lineLeft = lineLeft + offset.x,
         lineTop = lineTop + offset.y,
     )
+}
+
+private fun SubtitleLookupRequest.matchesTap(selection: SubtitleLookupSelection): Boolean {
+    if (fullText != selection.fullText || lineIndex != selection.lineIndex) return false
+
+    val start = (charOffset + matchOffset).coerceIn(0, fullText.length)
+    val count = matchedCharCount.takeIf { it > 0 } ?: 1
+    val end = (start + count).coerceIn(start + 1, fullText.length)
+
+    return selection.tapCharOffset in start until end ||
+        (
+            selection.lookupString == lookupString &&
+                selection.tapCharOffset == tapCharOffset &&
+                selection.lineStartOffset == lineStartOffset
+            )
 }
 
 private fun TextLayoutResult.lookupOffsetForPosition(text: String, position: Offset): Int? {
