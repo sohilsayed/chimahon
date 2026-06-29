@@ -55,4 +55,7 @@ dependencies {
     // Mihon core
     implementation(projects.core.common)
     implementation(libs.unifile)
+
+    testImplementation(libs.bundles.test)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
