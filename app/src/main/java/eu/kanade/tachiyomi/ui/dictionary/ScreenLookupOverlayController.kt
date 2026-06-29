@@ -52,7 +52,11 @@ import eu.kanade.tachiyomi.ui.reader.viewer.fullText
 import eu.kanade.tachiyomi.ui.reader.viewer.isLookupStartChar
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource as contextStringResource
 import tachiyomi.i18n.MR
@@ -74,6 +78,8 @@ internal class ScreenLookupOverlayController(
     private var cachedProfile: chimahon.anki.AnkiProfile? = null
     private var overlayBackHandler: (() -> Boolean)? = null
     private var overlayBackCallback: Any? = null
+    private val lookupWarmupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var lookupWarmupJob: Job? = null
 
     val isShowing: Boolean
         get() = overlayView != null
@@ -88,6 +94,10 @@ internal class ScreenLookupOverlayController(
         val webView = cachedWebView
             ?: prepareDictionaryWebViewShell(context, languageCode = profile.languageCode)
                 .also { cachedWebView = it }
+        lookupWarmupJob?.cancel()
+        lookupWarmupJob = lookupWarmupScope.launch {
+            Injekt.get<DictionaryRepository>().warmUp(getDictionaryPaths(context, profile), profile.id)
+        }
 
         val owner = OverlayLifecycleOwner().also {
             it.performCreate()
@@ -165,6 +175,8 @@ internal class ScreenLookupOverlayController(
 
     fun release() {
         dismiss(recycleScreenshot = true, notify = false)
+        lookupWarmupJob?.cancel()
+        lookupWarmupJob = null
         cachedWebView?.runCatching { destroy() }
         cachedWebView = null
         cachedProfile = null
@@ -318,7 +330,12 @@ internal fun ScreenLookupOverlay(
             onBlockTapped = { tapped, tapX, tapY ->
                 val charOffset = tapped.screenLookupCharOffset(tapX, tapY)
                 val text = tapped.fullText
-                if (charOffset in text.indices && isLookupStartChar(text[charOffset])) {
+                if (selection?.block == tapped && selection?.sentenceOffset == charOffset) {
+                    selection = null
+                    showTapHint = false
+                    matchedCharCount = 0
+                    matchOffset = 0
+                } else if (charOffset in text.indices && isLookupStartChar(text[charOffset])) {
                     val lookupString = extractOcrLookupString(text, charOffset)
                     if (lookupString.isNotBlank()) {
                         lookupNonce++

@@ -191,6 +191,11 @@ fun PlayerControls(
         label = "controls_transparent_overlay",
     )
     val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
+        if (subtitleLookupRequest?.matchesTap(subtitleLookup) == true) {
+            subtitleLookupRequest = null
+            viewModel.unpause()
+            return@openSubtitleLookup
+        }
         val currentPanel = viewModel.panelShown.value
         if (
             viewModel.sheetShown.value != Sheets.None ||
@@ -900,6 +905,7 @@ private fun PlayerSubtitleTextLayer(
     val fontSizeSp = (subtitleFontSize * subtitleScale * fontSizeFactor).coerceIn(minFontSize, maxFontSize)
     val resolvedBottomPadding = bottomPadding ?: (28f + (100 - subtitlePos).coerceIn(0, 100) * 2.2f).dp
     val outlineWidth = borderSize.coerceAtLeast(1) * 1.8f
+    val lookupHighlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
     val boxBackgroundColor = Color(backgroundColor).let {
         if (it.alpha == 0f && borderStyle != SubtitlesBorderStyle.OutlineAndShadow) {
             Color.Black.copy(alpha = 0.78f)
@@ -954,16 +960,17 @@ private fun PlayerSubtitleTextLayer(
                         }
                     }
 
-                    val activeRequest = request?.takeIf { it.fullText == subtitleText } ?: return@drawBehind
+                    val activeRequest = request?.takeIf {
+                        it.fullText == subtitleText && it.matchedCharCount > 0
+                    } ?: return@drawBehind
                     val start = (activeRequest.charOffset + activeRequest.matchOffset)
                         .coerceIn(0, subtitleText.length)
                     if (start >= subtitleText.length) return@drawBehind
-                    val fallbackCount = activeRequest.lookupString.length.coerceAtLeast(1)
-                    val count = activeRequest.matchedCharCount.takeIf { it > 0 } ?: fallbackCount
+                    val count = activeRequest.matchedCharCount
                     val end = (start + count).coerceIn(start + 1, subtitleText.length)
                     layout.highlightRects(subtitleText, start, end).forEach { rect ->
                         drawRoundRect(
-                            color = Color(130, 150, 200, 0x8A),
+                            color = lookupHighlightColor,
                             topLeft = Offset(rect.left, rect.top),
                             size = Size(rect.width, rect.height),
                             cornerRadius = CornerRadius(6f, 6f),
@@ -1084,6 +1091,21 @@ private fun SubtitleLookupSelection.offsetBy(offset: Offset): SubtitleLookupSele
         lineLeft = lineLeft + offset.x,
         lineTop = lineTop + offset.y,
     )
+}
+
+private fun SubtitleLookupRequest.matchesTap(selection: SubtitleLookupSelection): Boolean {
+    if (fullText != selection.fullText || lineIndex != selection.lineIndex) return false
+
+    val start = (charOffset + matchOffset).coerceIn(0, fullText.length)
+    val count = matchedCharCount.takeIf { it > 0 } ?: 1
+    val end = (start + count).coerceIn(start + 1, fullText.length)
+
+    return selection.tapCharOffset in start until end ||
+        (
+            selection.lookupString == lookupString &&
+                selection.tapCharOffset == tapCharOffset &&
+                selection.lineStartOffset == lineStartOffset
+            )
 }
 
 private fun TextLayoutResult.lookupOffsetForPosition(text: String, position: Offset): Int? {

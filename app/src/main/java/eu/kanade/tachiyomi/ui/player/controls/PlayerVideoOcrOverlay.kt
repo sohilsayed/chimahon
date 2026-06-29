@@ -31,6 +31,7 @@ import eu.kanade.tachiyomi.ui.dictionary.OcrBlockCanvas
 import eu.kanade.tachiyomi.ui.dictionary.OcrSelection
 import eu.kanade.tachiyomi.ui.dictionary.OcrStatusOverlay
 import eu.kanade.tachiyomi.ui.dictionary.OcrTapHint
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.ui.dictionary.screenLookupCharOffset
 import eu.kanade.tachiyomi.ui.dictionary.toScreenLookupBlocks
 import eu.kanade.tachiyomi.ui.player.PlayerViewModel
@@ -78,6 +79,12 @@ internal fun PlayerVideoOcrOverlay(
     }
     val boxScaleX = dictionaryPreferences.ocrBoxScaleX().get()
     val boxScaleY = dictionaryPreferences.ocrBoxScaleY().get()
+
+    LaunchedEffect(activeProfile) {
+        withContext(Dispatchers.IO) {
+            repository.warmUp(getDictionaryPaths(context, activeProfile), activeProfile.id)
+        }
+    }
 
     DisposableEffect(webView) {
         onDispose {
@@ -146,7 +153,12 @@ internal fun PlayerVideoOcrOverlay(
                 val charOffset = tapped.screenLookupCharOffset(tapX, tapY)
                 val orderedCharOffset = tapped.toOrderedOffset(charOffset)
                 val text = tapped.orderedFullText
-                if (orderedCharOffset in text.indices && isLookupStartChar(text[orderedCharOffset])) {
+                if (selection?.block == tapped && selection?.sentenceOffset == orderedCharOffset) {
+                    selection = null
+                    showTapHint = false
+                    matchedCharCount = 0
+                    matchOffset = 0
+                } else if (orderedCharOffset in text.indices && isLookupStartChar(text[orderedCharOffset])) {
                     val lookupString = extractOcrLookupString(text, orderedCharOffset)
                     if (lookupString.isNotBlank()) {
                         lookupNonce++
