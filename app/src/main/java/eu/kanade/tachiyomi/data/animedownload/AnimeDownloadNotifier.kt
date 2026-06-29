@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.animedownload
 
+import android.app.PendingIntent
 import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -64,6 +65,11 @@ internal class AnimeDownloadNotifier(private val context: Context) {
                     context.stringResource(MR.strings.action_pause),
                     NotificationReceiver.pauseDownloadsPendingBroadcast(context),
                 )
+                addAction(
+                    R.drawable.ic_book_24dp,
+                    context.stringResource(MR.strings.action_show_anime),
+                    NotificationReceiver.openAnimeEntryPendingActivity(context, download.anime.id),
+                )
             }
 
             val title = if (preferences.hideNotificationContent().get()) {
@@ -115,6 +121,31 @@ internal class AnimeDownloadNotifier(private val context: Context) {
     fun onComplete() {
         dismissProgress()
         context.cancelNotification(Notifications.ID_ANIME_DOWNLOAD_ERROR)
+        isDownloading = false
+    }
+
+    fun onWarning(reason: String, timeout: Long? = null, contentIntent: PendingIntent? = null, animeId: Long? = null) {
+        with(errorNotificationBuilder) {
+            setContentTitle(context.stringResource(MR.strings.download_notifier_downloader_title))
+            setStyle(NotificationCompat.BigTextStyle().bigText(reason))
+            setSmallIcon(R.drawable.ic_warning_white_24dp)
+            setAutoCancel(true)
+            clearActions()
+            setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
+            if (animeId != null) {
+                addAction(
+                    R.drawable.ic_book_24dp,
+                    context.stringResource(MR.strings.action_show_anime),
+                    NotificationReceiver.openAnimeEntryPendingActivity(context, animeId),
+                )
+            }
+            setProgress(0, 0, false)
+            timeout?.let { setTimeoutAfter(it) }
+            contentIntent?.let { setContentIntent(it) }
+
+            show(Notifications.ID_ANIME_DOWNLOAD_ERROR)
+        }
+
         isDownloading = false
     }
 

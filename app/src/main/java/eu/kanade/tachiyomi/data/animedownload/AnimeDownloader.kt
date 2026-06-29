@@ -140,21 +140,22 @@ class AnimeDownloader(
         downloaderJob?.cancel()
         downloaderJob = null
 
-        if (_queueState.value.isEmpty()) {
-            notifier.onComplete()
+        _queueState.value
+            .filter { it.status == AnimeDownload.State.DOWNLOADING }
+            .forEach { it.status = AnimeDownload.State.ERROR }
+
+        if (reason != null) {
+            notifier.onWarning(reason)
             return
         }
 
-        if (reason != null) {
+        if (_queueState.value.isNotEmpty()) {
             notifier.onPaused()
         } else {
             notifier.onComplete()
         }
 
-        _queueState.value
-            .filter { it.status == AnimeDownload.State.DOWNLOADING }
-            .forEach { it.status = AnimeDownload.State.QUEUE }
-        notifyQueueChanged()
+        AnimeDownloadJob.stop(context)
     }
 
     fun pause() {
@@ -165,7 +166,6 @@ class AnimeDownloader(
             .filter { it.status == AnimeDownload.State.DOWNLOADING }
             .forEach { it.status = AnimeDownload.State.QUEUE }
         notifyQueueChanged()
-        notifier.onPaused()
     }
 
     fun clearQueue() {
@@ -211,14 +211,36 @@ class AnimeDownloader(
     fun removeFromQueue(episodes: List<Episode>) {
         val episodeIds = episodes.map { it.id }.toSet()
         val removed = _queueState.value.filter { it.episode.id in episodeIds }
+        if (removed.isEmpty()) return
+
         store.removeAll(removed)
+        removed.forEach { download ->
+            if (download.status == AnimeDownload.State.DOWNLOADING || download.status == AnimeDownload.State.QUEUE) {
+                download.status = AnimeDownload.State.NOT_DOWNLOADED
+            }
+        }
         _queueState.update { queue -> queue.filter { it.episode.id !in episodeIds } }
+        notifyQueueChanged()
+        if (_queueState.value.isEmpty()) {
+            notifier.dismissProgress()
+        }
     }
 
     fun removeFromQueue(anime: Anime) {
         val removed = _queueState.value.filter { it.anime.id == anime.id }
+        if (removed.isEmpty()) return
+
         store.removeAll(removed)
+        removed.forEach { download ->
+            if (download.status == AnimeDownload.State.DOWNLOADING || download.status == AnimeDownload.State.QUEUE) {
+                download.status = AnimeDownload.State.NOT_DOWNLOADED
+            }
+        }
         _queueState.update { queue -> queue.filter { it.anime.id != anime.id } }
+        notifyQueueChanged()
+        if (_queueState.value.isEmpty()) {
+            notifier.dismissProgress()
+        }
     }
 
     private fun addAllToQueue(downloads: List<AnimeDownload>) {
