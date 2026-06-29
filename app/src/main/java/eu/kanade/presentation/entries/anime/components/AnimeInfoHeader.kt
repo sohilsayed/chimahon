@@ -582,12 +582,18 @@ private fun AnimeSummary(
                 )
             },
             {
-                MarkdownRender(content = expandedDescription)
+                Text(
+                    text = expandedDescription,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             },
             {
                 SelectionContainer {
-                    MarkdownRender(
-                        content = if (expanded) expandedDescription else shrunkDescription,
+                    Text(
+                        text = if (expanded) expandedDescription else shrunkDescription,
+                        maxLines = Int.MAX_VALUE,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.secondaryItemAlpha(),
                     )
                 }
