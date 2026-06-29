@@ -2,8 +2,10 @@ package eu.kanade.tachiyomi.animeextension
 
 import android.content.Context
 import android.graphics.drawable.Drawable
+import androidx.core.content.ContextCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.animeextension.api.AnimeExtensionApi
 import eu.kanade.tachiyomi.animeextension.api.AnimeExtensionUpdateNotifier
 import eu.kanade.tachiyomi.animeextension.model.AnimeExtension
@@ -12,6 +14,7 @@ import eu.kanade.tachiyomi.animeextension.util.AnimeExtensionInstallReceiver
 import eu.kanade.tachiyomi.animeextension.util.AnimeExtensionInstaller
 import eu.kanade.tachiyomi.animeextension.util.AnimeExtensionLoader
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.ui.youtube.YouTubeExtension
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -47,9 +50,14 @@ class AnimeExtensionManager(
     private val installer by lazy { AnimeExtensionInstaller(context) }
 
     private val iconMap = mutableMapOf<String, Drawable>()
+    private val builtInYouTubeExtension by lazy {
+        YouTubeExtension.copy(icon = ContextCompat.getDrawable(context, R.drawable.ic_youtube))
+    }
 
     private val installedExtensionMapFlow = MutableStateFlow(emptyMap<String, AnimeExtension.Installed>())
-    val installedExtensionsFlow = installedExtensionMapFlow.mapExtensions(scope)
+    val installedExtensionsFlow = installedExtensionMapFlow
+        .map { (it + builtInYouTubeExtension).values.toList() }
+        .stateIn(scope, SharingStarted.Lazily, (installedExtensionMapFlow.value + builtInYouTubeExtension).values.toList())
 
     private val availableExtensionMapFlow = MutableStateFlow(emptyMap<String, AnimeExtension.Available>())
     val availableExtensionsFlow = availableExtensionMapFlow.map { it.values.toList() }
@@ -81,6 +89,7 @@ class AnimeExtensionManager(
 
     fun getAppIconForSource(sourceId: Long): Drawable? {
         val pkgName = getExtensionPackage(sourceId) ?: return null
+        if (pkgName == YouTubeExtension.pkgName) return ContextCompat.getDrawable(context, R.drawable.ic_youtube)
         return iconMap[pkgName] ?: iconMap.getOrPut(pkgName) {
             AnimeExtensionLoader.getExtensionPackageInfoFromPkgName(context, pkgName)!!.applicationInfo!!
                 .loadIcon(context.packageManager)
@@ -187,6 +196,7 @@ class AnimeExtensionManager(
     }
 
     fun uninstallExtension(extension: AnimeExtension) {
+        if (extension.pkgName == YouTubeExtension.pkgName) return
         installer.uninstallApk(extension.pkgName)
     }
 

@@ -390,6 +390,9 @@ dependencies {
 
     // ZXing Android Embedded
     implementation(sylibs.zxing.android.embedded)
+
+    // NewPipe Extractor for YouTube stream resolution
+    implementation(libs.newpipe.extractor)
 }
 
 androidComponents {

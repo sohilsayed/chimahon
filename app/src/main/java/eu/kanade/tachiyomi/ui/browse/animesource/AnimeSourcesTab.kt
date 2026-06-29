@@ -27,8 +27,8 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.presentation.browse.components.BaseBrowseItem
 import eu.kanade.presentation.browse.components.AnimeExtensionIcon
+import eu.kanade.presentation.browse.components.BaseBrowseItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
@@ -36,9 +36,9 @@ import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesFilterScreen
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel.AnimeSourceUiModel
 import eu.kanade.tachiyomi.ui.browse.animesource.browse.BrowseAnimeSourceScreen
 import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.GlobalAnimeSearchScreen
-import tachiyomi.domain.source.anime.interactor.GetRemoteAnime
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.persistentListOf
+import tachiyomi.domain.source.anime.interactor.GetRemoteAnime
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.padding
@@ -80,7 +80,7 @@ fun Screen.animeSourcesTab(): TabContent {
                         items = stateValue.items,
                         contentPadding = contentPadding,
                         onClickSource = { source ->
-                            navigator.push(BrowseAnimeSourceScreen(source.id, GetRemoteAnime.QUERY_POPULAR))
+                            navigator.push(source.createBrowseScreen(GetRemoteAnime.QUERY_POPULAR))
                         },
                     )
                 }
@@ -88,6 +88,10 @@ fun Screen.animeSourcesTab(): TabContent {
         },
     )
 }
+
+private fun AnimeCatalogueSource.createBrowseScreen(listingQuery: String?) =
+    (this as? AnimeSourceScreenProvider)?.createBrowseScreen(listingQuery)
+        ?: BrowseAnimeSourceScreen(id, listingQuery)
 
 @Composable
 private fun AnimeSourcesList(

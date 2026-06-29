@@ -38,6 +38,7 @@ class AnimeSourcesScreenModel(
                 sources
                     .filter {
                         it.id == LocalAnimeSource.ID ||
+                            it is AlwaysVisibleAnimeSource ||
                             it.lang in enabledLanguages ||
                             enabledLanguages.isEmpty()
                     }

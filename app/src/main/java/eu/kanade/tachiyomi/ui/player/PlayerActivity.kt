@@ -302,6 +302,7 @@ class PlayerActivity : BaseActivity() {
             videoUrl = uriString,
             videoTitle = title,
             initialized = true,
+            videoPageUrl = getStringExtra("youtube_page_url") ?: "",
         )
     }
 

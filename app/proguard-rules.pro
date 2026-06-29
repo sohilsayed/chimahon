@@ -22,6 +22,10 @@
 -keep class is.xyz.mpv.** { *; }
 -keepclassmembers class is.xyz.mpv.** { *; }
 
+# Rhino (NewPipe Extractor dependency)
+-keep class org.mozilla.javascript.** { *; }
+-dontwarn org.mozilla.javascript.tools.**
+
 # Injekt type resolution - FullTypeReference needs generic type info
 -keep class * extends uy.kohesive.injekt.api.TypeReference { *; }
 -keep class * extends uy.kohesive.injekt.api.FullTypeReference { *; }

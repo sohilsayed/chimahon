@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -161,6 +162,17 @@ fun AnimeExtensionIcon(
             )
         }
         is AnimeExtension.Installed -> {
+            extension.icon?.let { drawable ->
+                val bitmap = remember(drawable) {
+                    drawable.toBitmap().asImageBitmap()
+                }
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = modifier,
+                )
+                return
+            }
             val icon by extension.getIcon(density)
             when (icon) {
                 is Result.Loading -> Box(modifier = modifier)
@@ -199,7 +211,12 @@ private fun AnimeExtension.getIcon(density: Int = DisplayMetrics.DENSITY_DEFAULT
                         .asImageBitmap(),
                 )
             } catch (e: Exception) {
-                Result.Error
+                val cached = (this@getIcon as? AnimeExtension.Installed)?.icon
+                if (cached != null) {
+                    Result.Success(cached.toBitmap().asImageBitmap())
+                } else {
+                    Result.Error
+                }
             }
         }
     }

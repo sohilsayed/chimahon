@@ -78,6 +78,9 @@ import eu.kanade.tachiyomi.ui.player.loader.HosterLoader
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
+import eu.kanade.tachiyomi.ui.youtube.YouTubePreferences
+import eu.kanade.tachiyomi.ui.youtube.YoutubeResolver
+import eu.kanade.tachiyomi.ui.youtube.allowsExternalSubtitleLookup
 import eu.kanade.tachiyomi.ui.player.utils.AniSkipApi
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils.Companion.getStringRes
 import eu.kanade.tachiyomi.ui.player.utils.JimakuApi
@@ -103,12 +106,14 @@ import eu.kanade.tachiyomi.util.system.toast
 import `is`.xyz.mpv.MPVLib
 import `is`.xyz.mpv.Utils
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -267,6 +272,7 @@ class PlayerViewModel @JvmOverloads constructor(
     val selectedHosterVideoIndex = _selectedHosterVideoIndex.asStateFlow()
     private val _currentVideo = MutableStateFlow<Video?>(null)
     val currentVideo = _currentVideo.asStateFlow()
+    private var videoClickHandler: (Int, Int) -> Unit = ::onSourceVideoClicked
 
     private val _chapters = MutableStateFlow<List<IndexedSegment>>(emptyList())
     val chapters = _chapters.asStateFlow()
@@ -633,6 +639,8 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun searchJimakuSubtitles() {
+        if (!currentVideoAllowsExternalSubtitleLookup()) return
+
         val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
         if (apiKey.isBlank()) {
             activity.toast("Add your Jimaku API key in player subtitle settings first")
@@ -649,6 +657,8 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun autoLoadJimakuSubtitlesOnVideoOpen() {
+        if (!currentVideoAllowsExternalSubtitleLookup()) return
+
         val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
         if (apiKey.isBlank()) return
 
@@ -709,6 +719,8 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun loadJimakuFiles(entry: JimakuEntry) {
+        if (!currentVideoAllowsExternalSubtitleLookup()) return
+
         val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
         val guess = guessCurrentJimakuMedia()
         val episode = guess.episode
@@ -733,10 +745,16 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun downloadJimakuSubtitle(file: JimakuFile) {
+        if (!currentVideoAllowsExternalSubtitleLookup()) return
+
         val apiKey = subtitlePreferences.jimakuApiKey().get().trim()
         viewModelScope.launchIO {
             downloadJimakuSubtitles(apiKey, listOf(file), showFeedback = true)
         }
+    }
+
+    private fun currentVideoAllowsExternalSubtitleLookup(): Boolean {
+        return currentVideo.value?.allowsExternalSubtitleLookup() ?: true
     }
 
     private suspend fun downloadJimakuSubtitles(apiKey: String, files: List<JimakuFile>, showFeedback: Boolean) {
@@ -2206,12 +2224,89 @@ class PlayerViewModel @JvmOverloads constructor(
         updateIsLoadingHosters(false)
         isLoading.update { false }
 
+        when {
+            video.videoPageUrl.isNotEmpty() -> {
+                _jimakuState.update { JimakuState.Idle }
+                loadYoutubeStandalone(video)
+            }
+            else -> {
+                videoClickHandler = ::onSourceVideoClicked
+                loadNormalStandalone(video)
+            }
+        }
+    }
+
+    private fun loadNormalStandalone(video: Video) {
         val title = video.videoTitle.ifBlank { video.videoUrl.substringAfterLast('/').substringBefore('?') }
         animeTitle.update { title }
         mediaTitle.update { title }
         MPVLib.setPropertyString("user-data/current-anime/anime-title", title)
 
         activity.setVideo(video, position = 0L)
+    }
+
+    private fun loadYoutubeStandalone(video: Video) {
+        videoClickHandler = ::onStandaloneYoutubeVideoClicked
+        updateIsLoadingHosters(true)
+        viewModelScope.launchIO {
+            try {
+                val prefs = YouTubePreferences(Injekt.get<Application>())
+                val streams = YoutubeResolver.resolveAllStreams(video.videoPageUrl, prefs.preferredQuality)
+                if (streams.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        updateIsLoadingHosters(false)
+                        activity.toast("No video streams found")
+                    }
+                    return@launchIO
+                }
+
+                val hoster = Hoster(hosterName = "YouTube", videoList = streams)
+                _hosterList.update { listOf(hoster) }
+                _hosterState.update {
+                    listOf(
+                        HosterState.Ready(
+                            "YouTube",
+                            streams,
+                            List(streams.size) { Video.State.READY },
+                        ),
+                    )
+                }
+                _hosterExpandedList.update { listOf(true) }
+                _isEpisodeOnline.update { true }
+
+                val title = video.videoTitle.ifBlank { "YouTube" }
+                animeTitle.update { title }
+                mediaTitle.update { title }
+                MPVLib.setPropertyString("user-data/current-anime/anime-title", title)
+
+                withContext(Dispatchers.Main) {
+                    updateIsLoadingHosters(false)
+                    val selected = streams.firstOrNull { it.preferred }
+                        ?: selectYouTubeStream(streams, prefs.preferredQuality)
+                    val index = streams.indexOf(selected)
+                    _selectedHosterVideoIndex.update { Pair(0, index) }
+                    qualityIndex = Pair(0, index)
+                    _currentVideo.update { selected }
+                    activity.setVideo(selected, position = 0L)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    updateIsLoadingHosters(false)
+                    activity.toast("Failed to load video: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun selectYouTubeStream(streams: List<Video>, targetQuality: String): Video {
+        if (targetQuality == YouTubePreferences.QUALITY_AUTO) {
+            return streams.maxByOrNull { YoutubeResolver.parseResolution(it.videoTitle) } ?: streams.first()
+        }
+        val targetPixels = YoutubeResolver.parseResolution(targetQuality)
+        return streams.filter { YoutubeResolver.parseResolution(it.videoTitle) <= targetPixels }
+            .maxByOrNull { YoutubeResolver.parseResolution(it.videoTitle) }
+            ?: streams.minByOrNull { YoutubeResolver.parseResolution(it.videoTitle) }
+            ?: streams.first()
     }
 
     suspend fun init(
@@ -2505,6 +2600,10 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun onVideoClicked(hosterIndex: Int, videoIndex: Int) {
+        videoClickHandler(hosterIndex, videoIndex)
+    }
+
+    private fun onSourceVideoClicked(hosterIndex: Int, videoIndex: Int) {
         val hosterState = _hosterState.value[hosterIndex] as? HosterState.Ready
         val video = hosterState?.videoList
             ?.getOrNull(videoIndex)
@@ -2533,6 +2632,31 @@ class PlayerViewModel @JvmOverloads constructor(
             } else {
                 updateIsLoadingEpisode(false)
             }
+        }
+    }
+
+    private fun onStandaloneYoutubeVideoClicked(hosterIndex: Int, videoIndex: Int) {
+        val hosterState = _hosterState.value[hosterIndex] as? HosterState.Ready
+        val video = hosterState?.videoList
+            ?.getOrNull(videoIndex)
+            ?: return
+
+        val videoState = hosterState.videoState
+            .getOrNull(videoIndex)
+            ?: return
+
+        if (videoState == Video.State.ERROR) {
+            return
+        }
+
+        updatePausedState()
+        pause()
+        _selectedHosterVideoIndex.update { Pair(hosterIndex, videoIndex) }
+        _currentVideo.update { video }
+        qualityIndex = Pair(hosterIndex, videoIndex)
+        activity.setVideo(video)
+        if (sheetShown.value == Sheets.QualityTracks) {
+            dismissSheet()
         }
     }
 

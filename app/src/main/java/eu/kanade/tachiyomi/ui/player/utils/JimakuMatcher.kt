@@ -173,15 +173,15 @@ private val jimakuReleaseInfoPattern = listOf(
     "yye?ts",
 ).joinToString("|")
 private val jimakuFilenameReleaseTailRegex = Regex(
-    """(?i)(?<=\S)(?:[\s._-]+|[\[(]\s*)(?:$jimakuReleaseInfoPattern)(?=${'$'}|[\s._-]|\]|\)|}).*${'$'}""",
+    """(?i)(?<=\S)(?:[\s._-]+|[\[(]\s*)(?:$jimakuReleaseInfoPattern)(?=${'$'}|[\s._-]|\]|\)|\}).*${'$'}""",
 )
 private val jimakuFilenameJunkRegex = Regex(
-    """(?i)(?:^|[\s._-])(?:$jimakuReleaseInfoPattern)(?=${'$'}|[\s._-])|\[[^\]]*]|\([^)]*\)|\{[^}]*}""",
+    """(?i)(?:^|[\s._-])(?:$jimakuReleaseInfoPattern)(?=${'$'}|[\s._-])|\[[^\]]*]|\([^)]*\)|\{[^}]*\}""",
 )
 private val jimakuTrailingEpisodeCleanupRegex = Regex(
     """(?i)(?<=\S)\s*(?:[-._]+\s*(?:ep|episode|e)?\.?|(?:ep|episode|e)\.?\s*)\d{1,4}\s*${'$'}""",
 )
-private val jimakuLeadingReleaseGroupRegex = Regex("""^\s*(?:\[[^\]]{1,80}]|\([^)]{1,80}\)|\{[^}]{1,80}})\s*""")
+private val jimakuLeadingReleaseGroupRegex = Regex("""^\s*(?:\[[^\]]{1,80}]|\([^)]{1,80}\)|\{[^}]{1,80}\})\s*""")
 private val jimakuTrailingReleaseGroupRegex = Regex("""(?i)(?<=\S)-[A-Za-z0-9][A-Za-z0-9._-]{1,40}${'$'}""")
 private val jimakuHashRegex = Regex("""(?i)[\[(]?[A-F0-9]{8}(?:[A-F0-9]{8})?[\])]?(?=${'$'}|[\s._-])""")
 private val jimakuWebsiteRegex = Regex("""(?i)\b(?:www\.)?[A-Za-z0-9-]+\.(?:com|net|org|ru|cc|tv)\b""")

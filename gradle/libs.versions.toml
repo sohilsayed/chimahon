@@ -1,5 +1,6 @@
 [versions]
 aboutlib_version = "13.2.1"
+newpipe-extractor = "v0.26.3"
 leakcanary = "2.14"
 moko = "0.26.0"
 okhttp_version = "5.3.2"
@@ -42,6 +43,8 @@ datastore-preferences = { module = "androidx.datastore:datastore-preferences", v
 quickjs-android = { group = "com.github.zhanghai.quickjs-java", name = "quickjs-android", version = "547f5b1597" }
 
 jsoup = "org.jsoup:jsoup:1.22.1"
+
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe-extractor" }
 
 disklrucache = "com.jakewharton:disklrucache:2.0.2"
 unifile = "com.github.komikku-app:UniFile:084a54140a"

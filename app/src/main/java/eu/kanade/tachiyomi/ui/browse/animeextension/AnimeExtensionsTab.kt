@@ -20,6 +20,8 @@ import eu.kanade.presentation.more.settings.screen.browse.AnimeExtensionReposScr
 import eu.kanade.tachiyomi.animeextension.model.AnimeExtension
 import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
+import eu.kanade.tachiyomi.ui.youtube.YouTubeExtension
+import eu.kanade.tachiyomi.ui.youtube.YouTubeSettingsScreen
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
@@ -34,6 +36,12 @@ fun animeExtensionsTab(
 
     val state by animeExtensionsScreenModel.state.collectAsState()
     var privateExtensionToUninstall by remember { mutableStateOf<AnimeExtension?>(null) }
+    val builtInScreens = remember {
+        mapOf(YouTubeExtension.pkgName to { YouTubeSettingsScreen() })
+    }
+    val builtInPackages = remember {
+        builtInScreens.keys
+    }
 
     return TabContent(
         titleRes = MR.strings.label_anime_extensions,
@@ -64,7 +72,7 @@ fun animeExtensionsTab(
                 onLongClickItem = { extension ->
                     when (extension) {
                         is AnimeExtension.Available -> animeExtensionsScreenModel.installExtension(extension)
-                        else -> {
+                        else -> if (extension.pkgName !in builtInPackages) {
                             if (context.isPackageInstalled(extension.pkgName)) {
                                 animeExtensionsScreenModel.uninstallExtension(extension)
                             } else {
@@ -87,9 +95,18 @@ fun animeExtensionsTab(
                     }
                 },
                 onInstallExtension = animeExtensionsScreenModel::installExtension,
-                onOpenExtension = { navigator.push(AnimeExtensionDetailsScreen(it.pkgName)) },
+                onOpenExtension = { extension ->
+                    navigator.push(
+                        builtInScreens[extension.pkgName]?.invoke()
+                            ?: AnimeExtensionDetailsScreen(extension.pkgName),
+                    )
+                },
                 onTrustExtension = { animeExtensionsScreenModel.trustExtension(it) },
-                onUninstallExtension = { animeExtensionsScreenModel.uninstallExtension(it) },
+                onUninstallExtension = { extension ->
+                    if (extension.pkgName !in builtInPackages) {
+                        animeExtensionsScreenModel.uninstallExtension(extension)
+                    }
+                },
                 onUpdateExtension = animeExtensionsScreenModel::updateExtension,
                 onRefresh = animeExtensionsScreenModel::findAvailableExtensions,
             )

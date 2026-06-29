@@ -69,7 +69,9 @@ class AnimeExtensionsScreenModel(
                         put(AnimeExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending), updates)
                     }
 
-                    val installed = _installed.filter(predicate).map(extensionMapper(downloads))
+                    val installed = _installed
+                        .filter(predicate)
+                        .map(extensionMapper(downloads))
                     val untrusted = _untrusted.filter(predicate).map(extensionMapper(downloads))
                     if (installed.isNotEmpty() || untrusted.isNotEmpty()) {
                         put(AnimeExtensionUiModel.Header.Resource(MR.strings.ext_installed), installed + untrusted)
