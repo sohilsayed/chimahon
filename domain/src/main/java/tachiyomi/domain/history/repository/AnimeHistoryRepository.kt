@@ -19,5 +19,7 @@ interface AnimeHistoryRepository {
 
     suspend fun deleteAllHistory(): Boolean
 
+    suspend fun deleteResetHistory()
+
     suspend fun upsertHistory(historyUpdate: AnimeHistoryUpdate)
 }

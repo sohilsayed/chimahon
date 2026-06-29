@@ -37,6 +37,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.source.service.SourcePreferences.DataSaver
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.screen.advanced.ClearAnimeDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
 import eu.kanade.tachiyomi.R
@@ -277,6 +278,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_clear_database),
                     subtitle = stringResource(MR.strings.pref_clear_database_summary),
                     onClick = { navigator.push(ClearDatabaseScreen()) },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_clear_anime_database),
+                    subtitle = stringResource(MR.strings.pref_clear_anime_database_summary),
+                    onClick = { navigator.push(ClearAnimeDatabaseScreen()) },
                 ),
             ),
         )

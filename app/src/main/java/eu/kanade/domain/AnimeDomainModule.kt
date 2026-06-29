@@ -25,6 +25,7 @@ import tachiyomi.domain.entries.anime.interactor.SetAnimeSeasonFlags
 import tachiyomi.domain.entries.anime.interactor.UpdateAnime as DomainUpdateAnime
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.entries.anime.repository.CustomAnimeRepository
+import tachiyomi.domain.source.anime.interactor.GetAnimeSourcesWithNonLibraryAnime
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.category.interactor.CreateAnimeCategory
 import tachiyomi.domain.category.interactor.DeleteAnimeCategory
@@ -76,6 +77,7 @@ class AnimeDomainModule : InjektModule {
         addFactory { SetAnimeEpisodeFlags(get()) }
         addFactory { SetAnimeSeasonFlags(get()) }
         addFactory { GetDuplicateLibraryAnime(get()) }
+        addFactory { GetAnimeSourcesWithNonLibraryAnime(get()) }
 
         addSingletonFactory<EpisodeRepository> { EpisodeRepositoryImpl(get()) }
         addFactory { GetEpisode(get()) }

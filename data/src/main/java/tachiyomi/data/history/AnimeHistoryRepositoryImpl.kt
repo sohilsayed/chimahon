@@ -53,6 +53,14 @@ class AnimeHistoryRepositoryImpl(
         }
     }
 
+    override suspend fun deleteResetHistory() {
+        try {
+            handler.await { animehistoryQueries.removeResettedHistory() }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, throwable = e)
+        }
+    }
+
     override suspend fun upsertHistory(historyUpdate: AnimeHistoryUpdate) {
         try {
             handler.await {
