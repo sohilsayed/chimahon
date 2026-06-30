@@ -10,11 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FlipToBack
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -37,6 +35,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.browse.anime.components.AnimeSourceIcon
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
@@ -204,12 +203,12 @@ class ClearAnimeDatabaseScreen : Screen() {
                 .height(56.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = Icons.Outlined.PlayCircle,
-                contentDescription = null,
-                modifier = Modifier.padding(end = 8.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
+            AnimeSourceIcon(source = source)
+            Column(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .weight(1f),
+            ) {
                 Text(
                     text = source.visualName,
                     style = MaterialTheme.typography.bodyMedium,
