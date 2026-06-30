@@ -1056,6 +1056,7 @@
     <string name="paused">Paused</string>
     <string name="plan_to_read">Plan to read</string>
     <string name="plan_to_watch">Plan to watch</string>
+    <string name="not_interesting">Not interesting</string>
     <string name="considering">Considering</string>
     <string name="repeating">Rereading</string>
     <string name="rewatching">Rewatching</string>
