@@ -46,6 +46,7 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.ocr.ModelDownloader
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.library.MetadataUpdateJob
+import eu.kanade.tachiyomi.data.library.anime.AnimeMetadataUpdateJob
 import eu.kanade.tachiyomi.data.updater.AppUpdateJob
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.NetworkPreferences
@@ -395,7 +396,10 @@ object SettingsAdvancedScreen : SearchableSettings {
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_refresh_library_covers),
-                    onClick = { MetadataUpdateJob.startNow(context) },
+                    onClick = {
+                        MetadataUpdateJob.startNow(context)
+                        AnimeMetadataUpdateJob.startNow(context)
+                    },
                 ),
                 // KMK -->
                 Preference.PreferenceItem.SwitchPreference(
