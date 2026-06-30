@@ -129,14 +129,10 @@ fun AnimeInfoBox(
                 .drawWithContent {
                     drawContent()
                     drawRect(
-                        brush = Brush.verticalGradient(
-                            colors = backdropGradientColors,
-                            startY = size.height / 2,
-                        ),
+                        brush = Brush.verticalGradient(colors = backdropGradientColors),
                     )
                 }
-                .background(MaterialTheme.colorScheme.surfaceTint.copy(alpha = 0.4f))
-                .blur(7.dp)
+                .blur(4.dp)
                 .alpha(0.2f),
         )
 
