@@ -286,6 +286,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                                             val episodesToDownload = filterEpisodesForDownload.await(anime, newEpisodes)
 
                                             if (episodesToDownload.isNotEmpty()) {
+                                                downloadEpisodes(anime, episodesToDownload)
                                                 hasDownloads.set(true)
                                             }
 
@@ -345,6 +346,11 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         val dbAnime = getAnime.await(anime.id)?.takeIf { it.parentId != null || it.favorite } ?: return emptyList()
 
         return syncEpisodesWithSource.await(episodes, dbAnime, source, false, fetchWindow)
+    }
+
+    private fun downloadEpisodes(anime: Anime, episodes: List<Episode>) {
+        // Avoid starting downloads while the library update still has active source requests.
+        downloadManager.downloadEpisodes(anime, episodes, autoStart = false)
     }
 
     private suspend fun withUpdateNotification(
