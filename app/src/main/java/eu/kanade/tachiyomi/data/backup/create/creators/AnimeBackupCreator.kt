@@ -26,6 +26,10 @@ class AnimeBackupCreator(
     private suspend fun backupAnime(anime: Anime, options: BackupOptions): BackupAnime {
         val animeObject = anime.toBackupAnime()
 
+        animeObject.excludedScanlators = handler.awaitList {
+            excluded_anime_scanlatorsQueries.getExcludedScanlatorsByAnimeId(anime.id)
+        }
+
         if (options.chapters) {
             handler.awaitList {
                 episodesQueries.getEpisodesByAnimeId(

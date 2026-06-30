@@ -79,6 +79,7 @@ class AnimeRestorer(
                 backupCategories = backupCategories,
                 history = backupAnime.history,
                 tracks = backupAnime.tracking,
+                excludedScanlators = backupAnime.excludedScanlators,
             )
 
             animesQueries.resetIsSyncing()
@@ -202,11 +203,13 @@ class AnimeRestorer(
         backupCategories: List<BackupCategory>,
         history: List<BackupAnimeHistory>,
         tracks: List<BackupAnimeTracking>,
+        excludedScanlators: List<String>,
     ): Anime {
         restoreCategories(anime, categories, backupCategories)
         restoreEpisodes(anime, episodes)
         restoreTracking(anime, tracks)
         restoreHistory(history)
+        restoreExcludedScanlators(anime, excludedScanlators)
         updateAnimeInteractor.awaitUpdateFetchInterval(anime, now, currentFetchWindow)
         return anime
     }
@@ -413,4 +416,20 @@ class AnimeRestorer(
     }
 
     private fun AnimeTrack.forComparison() = copy(id = 0L, animeId = 0L)
+
+    private suspend fun restoreExcludedScanlators(anime: Anime, excludedScanlators: List<String>) {
+        if (excludedScanlators.isEmpty()) return
+
+        val existingExcludedScanlators = handler.awaitList {
+            excluded_anime_scanlatorsQueries.getExcludedScanlatorsByAnimeId(anime.id)
+        }.toSet()
+        val toInsert = excludedScanlators.toSet().subtract(existingExcludedScanlators)
+        if (toInsert.isNotEmpty()) {
+            handler.await(true) {
+                toInsert.forEach {
+                    excluded_anime_scanlatorsQueries.insert(anime.id, it)
+                }
+            }
+        }
+    }
 }
