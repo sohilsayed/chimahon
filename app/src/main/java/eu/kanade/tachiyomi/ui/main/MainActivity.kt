@@ -82,6 +82,7 @@ import eu.kanade.tachiyomi.data.coil.MangaCoverMetadata
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
+import eu.kanade.tachiyomi.data.library.anime.AnimeLibraryUpdateJob
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.data.updater.AppUpdateJob
@@ -515,6 +516,9 @@ class MainActivity : BaseActivity() {
                 try {
                     if (!LibraryUpdateJob.isPeriodicUpdateScheduled(context)) {
                         LibraryUpdateJob.setupTask(context)
+                    }
+                    if (!AnimeLibraryUpdateJob.isPeriodicUpdateScheduled(context)) {
+                        AnimeLibraryUpdateJob.setupTask(context)
                     }
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)

@@ -28,6 +28,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.workManager
+import exh.util.WorkerUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -449,6 +450,10 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                         setupTask(context)
                     }
                 }
+        }
+
+        suspend fun isPeriodicUpdateScheduled(context: Context): Boolean {
+            return WorkerUtil.isPeriodicJobScheduled(context, WORK_NAME_AUTO)
         }
     }
 }
