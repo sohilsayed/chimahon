@@ -262,7 +262,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                                 val anime = libraryAnime.anime
                                 ensureActive()
 
-                                if (getAnime.await(anime.id)?.favorite != true) {
+                                if (anime.parentId == null && getAnime.await(anime.id)?.favorite != true) {
                                     return@forEach
                                 }
 
@@ -331,7 +331,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
 
         val episodes = source.getEpisodeList(anime.toSAnime())
 
-        val dbAnime = getAnime.await(anime.id)?.takeIf { it.favorite } ?: return emptyList()
+        val dbAnime = getAnime.await(anime.id)?.takeIf { it.parentId != null || it.favorite } ?: return emptyList()
 
         return syncEpisodesWithSource.await(episodes, dbAnime, source, false, fetchWindow)
     }
