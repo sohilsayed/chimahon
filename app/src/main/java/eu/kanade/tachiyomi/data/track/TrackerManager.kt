@@ -45,17 +45,31 @@ class TrackerManager {
     val simkl = Simkl(SIMKL)
     val jellyfin = Jellyfin(JELLYFIN)
 
-    val trackers =
+    private val mangaTrackers: List<BaseTracker> =
         listOf(
             mdList, myAnimeList, aniList, kitsu, shikimori, bangumi,
-            komga, mangaUpdates, kavita, suwayomi, mangabaka, simkl, jellyfin,
+            komga, mangaUpdates, kavita, suwayomi, mangabaka,
         )
 
-    fun loggedInTrackers() = trackers.filter { it.isLoggedIn }
+    private val animeTrackers: List<BaseTracker> =
+        listOf(myAnimeList, aniList, kitsu, shikimori, bangumi, simkl, jellyfin)
 
-    fun loggedInTrackersFlow() = combine(trackers.map { it.isLoggedInFlow }) {
+    val trackers =
+        (mangaTrackers + animeTrackers).distinctBy { it.id }
+
+    fun loggedInTrackers() = mangaTrackers.filter { it.isLoggedIn }
+
+    fun loggedInTrackersFlow() = combine(mangaTrackers.map { it.isLoggedInFlow }) {
         it.mapIndexedNotNull { index, isLoggedIn ->
-            if (isLoggedIn) trackers[index] else null
+            if (isLoggedIn) mangaTrackers[index] else null
+        }
+    }
+
+    fun loggedInAnimeTrackers() = animeTrackers.filter { it.isLoggedIn }
+
+    fun loggedInAnimeTrackersFlow() = combine(animeTrackers.map { it.isLoggedInFlow }) {
+        it.mapIndexedNotNull { index, isLoggedIn ->
+            if (isLoggedIn) animeTrackers[index] else null
         }
     }
 

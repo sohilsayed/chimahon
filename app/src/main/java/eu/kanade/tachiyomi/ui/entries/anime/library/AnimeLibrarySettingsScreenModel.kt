@@ -26,11 +26,11 @@ class AnimeLibrarySettingsScreenModel(
     trackerManager: TrackerManager = Injekt.get(),
 ) : ScreenModel {
 
-    val trackersFlow = trackerManager.loggedInTrackersFlow()
+    val trackersFlow = trackerManager.loggedInAnimeTrackersFlow()
         .stateIn(
             scope = screenModelScope,
             started = SharingStarted.WhileSubscribed(5.seconds.inWholeMilliseconds),
-            initialValue = trackerManager.loggedInTrackers(),
+            initialValue = trackerManager.loggedInAnimeTrackers(),
         )
 
     fun toggleFilter(preference: (AnimeLibraryPreferences) -> Preference<TriState>) {

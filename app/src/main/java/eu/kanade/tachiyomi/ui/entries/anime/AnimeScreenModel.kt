@@ -1273,7 +1273,7 @@ class AnimeScreenModel(
         screenModelScope.launchIO {
             combine(
                 animeTrackRepository.getTracksByAnimeIdAsFlow(anime.id).catch { logcat(LogPriority.ERROR, it) },
-                trackerManager.loggedInTrackersFlow(),
+                trackerManager.loggedInAnimeTrackersFlow(),
             ) { animeTracks, loggedInTrackers ->
                 // Show only if the service supports this anime's source
                 val supportedTrackers = loggedInTrackers.filter {
@@ -1298,7 +1298,7 @@ class AnimeScreenModel(
         screenModelScope.launchIO {
             combine(
                 animeTrackRepository.getTracksByAnimeIdAsFlow(anime.id).catch { logcat(LogPriority.ERROR, it) },
-                trackerManager.loggedInTrackersFlow(),
+                trackerManager.loggedInAnimeTrackersFlow(),
             ) { animeTracks, loggedInTrackers ->
                 loggedInTrackers
                     .map { service ->

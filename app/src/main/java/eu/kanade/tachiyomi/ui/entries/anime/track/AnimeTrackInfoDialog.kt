@@ -106,7 +106,7 @@ data class AnimeTrackInfoDialogHomeScreen(
             screenModelScope.launch {
                 combine(
                     animeTrackRepository.getTracksByAnimeIdAsFlow(animeId).catch { logcat(LogPriority.ERROR, it) },
-                    trackerManager.loggedInTrackersFlow(),
+                    trackerManager.loggedInAnimeTrackersFlow(),
                 ) { animeTracks, loggedInTrackers ->
                     loggedInTrackers
                         .filterIsInstance<BaseTracker>()
