@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import tachiyomi.domain.source.anime.model.AnimeSource
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.icons.FlagEmoji
 import tachiyomi.presentation.core.util.secondaryItemAlpha
 
 @Composable
@@ -27,9 +28,9 @@ fun BaseAnimeSourceItem(
     action: @Composable RowScope.(AnimeSource) -> Unit = {},
     content: @Composable RowScope.(AnimeSource, String?) -> Unit = defaultContent,
 ) {
-    val sourceLangString = LocaleHelper.getSourceDisplayName(source.lang, LocalContext.current).takeIf {
-        showLanguageInContent
-    }
+    val sourceLangString = LocaleHelper.getSourceDisplayName(source.lang, LocalContext.current)
+        .takeIf { showLanguageInContent }
+        ?.let { "${FlagEmoji.getEmojiLangFlag(source.lang)} $it" }
     BaseBrowseItem(
         modifier = modifier,
         onClickItem = onClickItem,
