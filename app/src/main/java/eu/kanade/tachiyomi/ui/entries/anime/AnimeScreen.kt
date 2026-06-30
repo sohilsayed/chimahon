@@ -12,8 +12,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +41,7 @@ import eu.kanade.presentation.entries.anime.EpisodeOptionsDialogScreen
 import eu.kanade.presentation.entries.anime.EpisodeSettingsDialog
 import eu.kanade.presentation.entries.anime.SeasonSettingsDialog
 import eu.kanade.presentation.entries.anime.components.AnimeImagesDialog
+import eu.kanade.presentation.entries.anime.components.AnimeScanlatorFilterDialog
 import eu.kanade.presentation.entries.components.DeleteItemsDialog
 import eu.kanade.presentation.entries.components.SetIntervalDialog
 import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsGesturesScreen.SkipIntroLengthDialog
@@ -106,6 +110,7 @@ class AnimeScreen(
 
         val successState = state as AnimeScreenModel.State.Success
         val isAnimeHttpSource = remember { successState.source is AnimeHttpSource }
+        var showScanlatorFilterDialog by rememberSaveable { mutableStateOf(false) }
 
         LaunchedEffect(successState.anime, screenModel.source) {
             if (isAnimeHttpSource) {
@@ -267,6 +272,8 @@ class AnimeScreen(
                 onUnseenFilterChanged = screenModel::setUnseenFilter,
                 onBookmarkedFilterChanged = screenModel::setBookmarkedFilter,
                 onFillermarkedFilterChanged = screenModel::setFillermarkedFilter,
+                scanlatorFilterActive = successState.scanlatorFilterActive,
+                onScanlatorFilterClicked = { showScanlatorFilterDialog = true },
                 onSortModeChanged = screenModel::setSorting,
                 onDisplayModeChanged = screenModel::setDisplayMode,
                 onSetAsDefault = screenModel::setCurrentSettingsAsDefault,
@@ -383,6 +390,15 @@ class AnimeScreen(
                     onDismissRequest = onDismissRequest,
                 )
             }
+        }
+
+        if (showScanlatorFilterDialog) {
+            AnimeScanlatorFilterDialog(
+                availableScanlators = successState.availableScanlators,
+                excludedScanlators = successState.excludedScanlators,
+                onDismissRequest = { showScanlatorFilterDialog = false },
+                onConfirm = screenModel::setExcludedScanlators,
+            )
         }
     }
 

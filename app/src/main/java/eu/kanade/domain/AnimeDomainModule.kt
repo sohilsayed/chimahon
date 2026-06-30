@@ -6,6 +6,9 @@ import eu.kanade.domain.entries.anime.interactor.UpdateAnime as AppUpdateAnime
 import eu.kanade.domain.episode.interactor.SetSeenStatus as AppSetSeenStatus
 import eu.kanade.domain.track.interactor.SyncEpisodeProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackEpisode
+import eu.kanade.domain.episode.interactor.GetAvailableAnimeScanlators
+import eu.kanade.domain.episode.interactor.GetExcludedAnimeScanlators
+import eu.kanade.domain.episode.interactor.SetExcludedAnimeScanlators
 import mihon.domain.animemigration.usecases.MigrateAnimeUseCase
 import tachiyomi.data.entries.anime.CustomAnimeRepositoryImpl
 import tachiyomi.data.entries.anime.AnimeRepositoryImpl
@@ -87,6 +90,9 @@ class AnimeDomainModule : InjektModule {
         addSingletonFactory<EpisodeRepository> { EpisodeRepositoryImpl(get()) }
         addFactory { GetEpisode(get()) }
         addFactory { GetEpisodesByAnimeId(get()) }
+        addFactory { GetAvailableAnimeScanlators(get()) }
+        addFactory { GetExcludedAnimeScanlators(get()) }
+        addFactory { SetExcludedAnimeScanlators(get()) }
         addFactory { UpdateEpisode(get()) }
         addFactory { SetAnimeDefaultEpisodeFlags(get(), get(), get()) }
         addFactory { SetAnimeDefaultSeasonFlags(get(), get(), get()) }

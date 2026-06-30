@@ -24,7 +24,10 @@ import eu.kanade.domain.entries.anime.model.seasonUnseenFilter
 import eu.kanade.domain.entries.anime.model.seasonsFiltered
 import eu.kanade.domain.entries.anime.model.toDomainAnime
 import eu.kanade.domain.entries.anime.model.toSAnime
+import eu.kanade.domain.episode.interactor.GetAvailableAnimeScanlators
+import eu.kanade.domain.episode.interactor.GetExcludedAnimeScanlators
 import eu.kanade.domain.episode.interactor.SetSeenStatus
+import eu.kanade.domain.episode.interactor.SetExcludedAnimeScanlators
 import eu.kanade.domain.episode.interactor.SyncEpisodesWithSource
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
 import eu.kanade.domain.track.interactor.TrackEpisode
@@ -59,7 +62,10 @@ import eu.kanade.tachiyomi.util.system.toast
 import exh.util.nullIfEmpty
 import exh.util.trimOrNull
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableSet
+import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.catch
@@ -144,6 +150,9 @@ class AnimeScreenModel(
     private val setAnimeDefaultEpisodeFlags: SetAnimeDefaultEpisodeFlags = Injekt.get(),
     private val setAnimeDefaultSeasonFlags: SetAnimeDefaultSeasonFlags = Injekt.get(),
     private val setSeenStatus: SetSeenStatus = Injekt.get(),
+    private val getAvailableAnimeScanlators: GetAvailableAnimeScanlators = Injekt.get(),
+    private val getExcludedAnimeScanlators: GetExcludedAnimeScanlators = Injekt.get(),
+    private val setExcludedAnimeScanlators: SetExcludedAnimeScanlators = Injekt.get(),
     private val updateEpisode: UpdateEpisode = Injekt.get(),
     private val updateAnime: UpdateAnime = Injekt.get(),
     private val syncEpisodesWithSource: SyncEpisodesWithSource = Injekt.get(),
@@ -215,7 +224,7 @@ class AnimeScreenModel(
     init {
         screenModelScope.launchIO {
             combine(
-                getAnimeAndEpisodes.subscribe(animeId).distinctUntilChanged(),
+                getAnimeAndEpisodes.subscribe(animeId, applyScanlatorFilter = true).distinctUntilChanged(),
                 animeDownloadCache.changes,
                 animeDownloadManager.queueState,
                 animeRepository.getAnimeSeasonsByIdAsFlow(animeId),
@@ -233,11 +242,33 @@ class AnimeScreenModel(
                 }
         }
 
+        screenModelScope.launchIO {
+            getExcludedAnimeScanlators.subscribe(animeId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { excludedScanlators ->
+                    updateSuccessState {
+                        it.copy(excludedScanlators = excludedScanlators.toImmutableSet())
+                    }
+                }
+        }
+
+        screenModelScope.launchIO {
+            getAvailableAnimeScanlators.subscribe(animeId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { availableScanlators ->
+                    updateSuccessState {
+                        it.copy(availableScanlators = availableScanlators.toImmutableSet())
+                    }
+                }
+        }
+
         observeDownloads()
 
         screenModelScope.launchIO {
             val anime = getAnimeAndEpisodes.awaitManga(animeId)
-            val episodes = getAnimeAndEpisodes.awaitChapters(animeId)
+            val episodes = getAnimeAndEpisodes.awaitChapters(animeId, applyScanlatorFilter = true)
                 .toEpisodeListItems(anime)
 
             if (!anime.favorite) {
@@ -267,6 +298,8 @@ class AnimeScreenModel(
                     isFromSource = isFromSource,
                     episodes = episodes,
                     seasons = seasons,
+                    availableScanlators = getAvailableAnimeScanlators.await(animeId).toImmutableSet(),
+                    excludedScanlators = getExcludedAnimeScanlators.await(animeId).toImmutableSet(),
                     isRefreshingData = needRefreshInfo || needRefreshEpisode,
                     dialog = null,
                 )
@@ -838,7 +871,7 @@ class AnimeScreenModel(
     }
 
     suspend fun getNextUnseenEpisode(anime: Anime): Episode? {
-        val episodes = getAnimeAndEpisodes.awaitChapters(anime.id)
+        val episodes = getAnimeAndEpisodes.awaitChapters(anime.id, applyScanlatorFilter = true)
         return episodes.firstOrNull { !it.seen }
     }
 
@@ -1412,6 +1445,12 @@ class AnimeScreenModel(
         }
     }
 
+    fun setExcludedScanlators(excludedScanlators: Set<String>) {
+        screenModelScope.launchIO {
+            setExcludedAnimeScanlators.await(animeId, excludedScanlators)
+        }
+    }
+
     fun showSeasonSettingsDialog() {
         updateSuccessState { it.copy(dialog = Dialog.SeasonSettingsSheet) }
     }
@@ -1599,6 +1638,8 @@ class AnimeScreenModel(
             val hasLoggedInTrackers: Boolean = false,
             val isRefreshingData: Boolean = false,
             val dialog: Dialog? = null,
+            val availableScanlators: ImmutableSet<String> = persistentSetOf(),
+            val excludedScanlators: ImmutableSet<String> = persistentSetOf(),
             val hasPromptedToAddBefore: Boolean = false,
             val trackItems: List<TrackItem> = emptyList(),
             val isRelatedAnimeFetched: Boolean? = null,
@@ -1665,8 +1706,12 @@ class AnimeScreenModel(
             val filterActive: Boolean
                 get() = when (anime.fetchType) {
                     eu.kanade.tachiyomi.animesource.model.FetchType.Seasons -> anime.seasonsFiltered()
-                    eu.kanade.tachiyomi.animesource.model.FetchType.Episodes -> anime.episodesFiltered()
+                    eu.kanade.tachiyomi.animesource.model.FetchType.Episodes -> scanlatorFilterActive ||
+                        anime.episodesFiltered()
                 }
+
+            val scanlatorFilterActive: Boolean
+                get() = excludedScanlators.intersect(availableScanlators).isNotEmpty()
 
             val nextUnseenEpisode: Episode?
                 get() = processedEpisodes.firstOrNull { !it.episode.seen }?.episode
