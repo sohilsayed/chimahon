@@ -500,10 +500,14 @@
 
     <string name="pref_library_update_smart_update">Smart update</string>
     <string name="pref_update_only_completely_read">Skip entries with unread chapter(s)</string>
+    <string name="pref_update_only_completely_seen">Skip anime with unseen episodes</string>
     <string name="pref_update_only_non_completed">Skip entries with \"Completed\" status</string>
     <string name="pref_update_only_started">Skip unstarted entries</string>
     <string name="pref_update_only_in_release_period">Predict next release time</string>
+    <string name="pref_anime_library_update_smart_update">Anime smart update</string>
     <string name="pref_library_update_show_tab_badge">Show unread count on Updates icon</string>
+    <string name="pref_library_season">Seasons</string>
+    <string name="pref_update_seasons_update">Update seasons during library update</string>
 
     <string name="pref_library_update_refresh_metadata">Automatically refresh metadata</string>
     <string name="pref_library_update_refresh_metadata_summary">Check for new cover and details when updating library</string>
@@ -512,6 +516,10 @@
     <string name="default_category_summary">Always ask</string>
     <string name="categorized_display_settings">Per-category settings for sort</string>
     <string name="pref_library_update_categories_details">Entries in excluded categories will not be updated even if they are also in included categories.</string>
+    <string name="pref_manga_library_update_categories_details">Manga in excluded categories will not be updated even if they are also in included categories.</string>
+    <string name="pref_anime_library_update_categories_details">Anime in excluded categories will not be updated even if they are also in included categories.</string>
+    <string name="anime_categories">Anime categories</string>
+    <string name="manga_categories">Manga categories</string>
     <string name="all">All</string>
     <string name="none">None</string>
     <string name="include">Include: %s</string>
