@@ -1,6 +1,7 @@
 package eu.kanade.domain
 
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
+import eu.kanade.domain.track.anime.interactor.RefreshAnimeTracks
 import eu.kanade.domain.entries.anime.interactor.UpdateAnime as AppUpdateAnime
 import eu.kanade.domain.episode.interactor.SetSeenStatus as AppSetSeenStatus
 import eu.kanade.domain.track.interactor.SyncEpisodeProgressWithTrack
@@ -113,6 +114,7 @@ class AnimeDomainModule : InjektModule {
         addFactory { GetTracksPerAnime(get()) }
         addFactory { SyncEpisodeProgressWithTrack(get(), get(), get()) }
         addFactory { AddAnimeTracks(get(), get(), get(), get()) }
+        addFactory { RefreshAnimeTracks(get(), get(), get(), get()) }
         addFactory { TrackEpisode(get(), get(), get(), get()) }
     }
 }

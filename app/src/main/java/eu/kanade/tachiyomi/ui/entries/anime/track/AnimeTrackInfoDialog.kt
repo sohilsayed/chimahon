@@ -24,6 +24,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
+import eu.kanade.domain.track.anime.interactor.RefreshAnimeTracks
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.data.track.AnimeTracker
 import eu.kanade.tachiyomi.data.track.BaseTracker
@@ -88,6 +89,25 @@ data class AnimeTrackInfoDialogHomeScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else {
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        screenModel.refreshTrackers { hasFailures ->
+                            context.toast(
+                                context.contextStringResource(
+                                    if (hasFailures) {
+                                        MR.strings.internal_error
+                                    } else {
+                                        MR.strings.trackers_updated_summary_anime
+                                    },
+                                ),
+                            )
+                        }
+                    },
+                ) {
+                    Text(text = stringResource(MR.strings.action_webview_refresh))
+                }
             }
         }
     }
@@ -100,6 +120,7 @@ data class AnimeTrackInfoDialogHomeScreen(
         private val trackerManager: TrackerManager = Injekt.get(),
         private val animeTrackRepository: AnimeTrackRepository = Injekt.get(),
         private val addTracks: AddAnimeTracks = Injekt.get(),
+        private val refreshAnimeTracks: RefreshAnimeTracks = Injekt.get(),
     ) : StateScreenModel<State>(State()) {
 
         init {
@@ -128,6 +149,18 @@ data class AnimeTrackInfoDialogHomeScreen(
             screenModelScope.launch {
                 val anime = getAnime.await(animeId) ?: return@launch
                 addTracks.bindEnhancedTrackers(anime, animeSourceManager.getOrStub(sourceId))
+            }
+        }
+
+        fun refreshTrackers(onComplete: (hasFailures: Boolean) -> Unit) {
+            screenModelScope.launch {
+                val hasFailures = try {
+                    refreshAnimeTracks.await(animeId).isNotEmpty()
+                } catch (e: Throwable) {
+                    logcat(LogPriority.ERROR, e)
+                    true
+                }
+                onComplete(hasFailures)
             }
         }
     }
