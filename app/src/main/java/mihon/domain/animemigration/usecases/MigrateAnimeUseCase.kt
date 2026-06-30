@@ -41,7 +41,7 @@ class MigrateAnimeUseCase(
     private val coverCache: CoverCache,
     private val backgroundCache: AnimeBackgroundCache,
 ) {
-    private val enhancedServices by lazy { trackerManager.trackers.filterIsInstance<EnhancedAnimeTracker>() }
+    private val enhancedServices by lazy { trackerManager.loggedInAnimeTrackers().filterIsInstance<EnhancedAnimeTracker>() }
 
     suspend operator fun invoke(
         current: Anime,
