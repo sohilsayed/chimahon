@@ -227,9 +227,14 @@ class AnimeRepositoryImpl(
         }
     }
 
-    override suspend fun deleteAnimesNotInLibraryByAnimeIds(animeIds: List<Long>) {
+    override suspend fun deleteAnimesNotInLibraryByAnimeIds(animeIds: List<Long>, keepSeenAnime: Boolean) {
         if (animeIds.isEmpty()) return
-        handler.await { animesQueries.deleteAnimesNotInLibraryByAnimeIds(animeIds) }
+        handler.await {
+            animesQueries.deleteAnimesNotInLibraryByAnimeIds(
+                animeIds = animeIds,
+                keepSeenAnime = if (keepSeenAnime) 1L else 0L,
+            )
+        }
     }
 
     // SY -->

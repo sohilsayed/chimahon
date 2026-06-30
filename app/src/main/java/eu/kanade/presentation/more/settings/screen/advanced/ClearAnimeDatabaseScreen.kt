@@ -1,7 +1,9 @@
 package eu.kanade.presentation.more.settings.screen.advanced
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,13 +16,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -75,15 +81,43 @@ class ClearAnimeDatabaseScreen : Screen() {
             is ClearAnimeDatabaseScreenModel.State.Loading -> LoadingScreen()
             is ClearAnimeDatabaseScreenModel.State.Ready -> {
                 if (s.showConfirmation) {
+                    var keepSeenAnime by remember { mutableStateOf(true) }
                     AlertDialog(
                         title = { Text(text = stringResource(MR.strings.are_you_sure)) },
-                        text = { Text(text = stringResource(MR.strings.clear_anime_database_confirmation)) },
+                        text = {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                            ) {
+                                Text(text = stringResource(MR.strings.clear_anime_database_confirmation))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.strings.clear_db_exclude_seen),
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Switch(
+                                        checked = keepSeenAnime,
+                                        onCheckedChange = { keepSeenAnime = it },
+                                    )
+                                }
+                                if (!keepSeenAnime) {
+                                    Text(
+                                        text = stringResource(MR.strings.clear_database_seen_history_warning),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        },
                         onDismissRequest = model::hideConfirmation,
                         confirmButton = {
                             TextButton(
                                 onClick = {
                                     scope.launchUI {
-                                        model.removeAnimeBySourceId()
+                                        model.removeAnimeBySourceId(keepSeenAnime)
                                         model.clearSelection()
                                         model.hideConfirmation()
                                         context.toast(MR.strings.clear_database_completed)
@@ -254,7 +288,7 @@ private class ClearAnimeDatabaseScreenModel : StateScreenModel<ClearAnimeDatabas
         return ids to orphaned
     }
 
-    suspend fun removeAnimeBySourceId() = withNonCancellableContext {
+    suspend fun removeAnimeBySourceId(keepSeenAnime: Boolean) = withNonCancellableContext {
         val state = state.value as? State.Ready ?: return@withNonCancellableContext
         val selected = state.items.filter { it.id in state.selection }
 
@@ -262,7 +296,7 @@ private class ClearAnimeDatabaseScreenModel : StateScreenModel<ClearAnimeDatabas
         val orphaned = selected.flatMap { it.orphaned }
             .filterNot { it in animeIds }
 
-        animeRepository.deleteAnimesNotInLibraryByAnimeIds(animeIds)
+        animeRepository.deleteAnimesNotInLibraryByAnimeIds(animeIds, keepSeenAnime)
         animeRepository.removeParentIdByIds(orphaned)
         historyRepository.deleteResetHistory()
     }

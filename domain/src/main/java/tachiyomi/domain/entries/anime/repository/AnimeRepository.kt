@@ -51,7 +51,7 @@ interface AnimeRepository {
 
     fun getDeletableParentAnime(): Flow<List<DeletableAnime>>
 
-    suspend fun deleteAnimesNotInLibraryByAnimeIds(animeIds: List<Long>)
+    suspend fun deleteAnimesNotInLibraryByAnimeIds(animeIds: List<Long>, keepSeenAnime: Boolean)
 
     // SY -->
     suspend fun getAnimeBySourceId(sourceId: Long): List<Anime>
