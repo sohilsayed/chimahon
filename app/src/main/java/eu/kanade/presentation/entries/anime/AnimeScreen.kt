@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -1193,7 +1194,12 @@ private fun RelatedAnimeSection(
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f))
+            .padding(vertical = MaterialTheme.padding.extraSmall),
+    ) {
         Text(
             text = stringResource(MR.strings.related_anime),
             style = MaterialTheme.typography.titleMedium,
