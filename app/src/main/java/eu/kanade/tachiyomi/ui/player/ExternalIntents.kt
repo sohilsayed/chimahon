@@ -11,10 +11,10 @@ import android.os.Bundle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import eu.kanade.domain.base.BasePreferences
-import eu.kanade.domain.track.model.toDbTrack
-import eu.kanade.domain.track.service.DelayedTrackingUpdateJob
+import eu.kanade.domain.track.anime.model.toDbTrack
+import eu.kanade.domain.track.service.DelayedAnimeTrackingUpdateJob
 import eu.kanade.domain.track.service.TrackPreferences
-import eu.kanade.domain.track.store.DelayedTrackingStore
+import eu.kanade.domain.track.store.DelayedAnimeTrackingStore
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.AnimeTracker
@@ -45,8 +45,8 @@ import tachiyomi.domain.episode.model.EpisodeUpdate
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.track.interactor.GetTracks
-import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
+import tachiyomi.domain.track.anime.interactor.InsertAnimeTrack
 import tachiyomi.i18n.ank.AMR
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
 import uy.kohesive.injekt.Injekt
@@ -440,10 +440,10 @@ class ExternalIntents {
     private val getAnime: GetAnime = Injekt.get()
     private val sourceManager: SourceManager = Injekt.get()
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get()
-    private val getTracks: GetTracks = Injekt.get()
-    private val insertTrack: InsertTrack = Injekt.get()
+    private val getTracks: GetAnimeTracks = Injekt.get()
+    private val insertTrack: InsertAnimeTrack = Injekt.get()
     private val downloadManager: DownloadManager by injectLazy()
-    private val delayedTrackingStore: DelayedTrackingStore = Injekt.get()
+    private val delayedTrackingStore: DelayedAnimeTrackingStore = Injekt.get()
     private val playerPreferences: PlayerPreferences = Injekt.get()
     private val downloadPreferences: DownloadPreferences = Injekt.get()
     private val trackPreferences: TrackPreferences = Injekt.get()
@@ -552,9 +552,9 @@ class ExternalIntents {
                     if (tracker != null &&
                         tracker.isLoggedIn &&
                         tracker is AnimeTracker &&
-                        episodeNumber > track.lastChapterRead
+                        episodeNumber > track.lastEpisodeSeen
                     ) {
-                        val updatedTrack = track.copy(lastChapterRead = episodeNumber)
+                        val updatedTrack = track.copy(lastEpisodeSeen = episodeNumber)
 
                         // We want these to execute even if the presenter is destroyed and leaks
                         // for a while. The view can still be garbage collected.
@@ -564,8 +564,8 @@ class ExternalIntents {
                                     tracker.update(updatedTrack.toDbTrack(), true)
                                     insertTrack.await(updatedTrack)
                                 } else {
-                                    delayedTrackingStore.add(track.id, lastChapterRead = episodeNumber)
-                                    DelayedTrackingUpdateJob.setupTask(context)
+                                    delayedTrackingStore.add(track.id, lastEpisodeSeen = episodeNumber)
+                                    DelayedAnimeTrackingUpdateJob.setupTask(context)
                                 }
                             }
                         }

@@ -52,6 +52,7 @@ import tachiyomi.domain.library.service.AnimeLibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.track.anime.interactor.InsertAnimeTrack
 import tachiyomi.domain.track.anime.interactor.DeleteAnimeTrack
+import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.domain.track.anime.interactor.GetTracksPerAnime
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
@@ -108,9 +109,10 @@ class AnimeDomainModule : InjektModule {
 
         addFactory { InsertAnimeTrack(get()) }
         addFactory { DeleteAnimeTrack(get()) }
+        addFactory { GetAnimeTracks(get()) }
         addFactory { GetTracksPerAnime(get()) }
         addFactory { SyncEpisodeProgressWithTrack(get(), get(), get()) }
         addFactory { AddAnimeTracks(get(), get(), get(), get()) }
-        addFactory { TrackEpisode() }
+        addFactory { TrackEpisode(get(), get(), get(), get()) }
     }
 }

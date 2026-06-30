@@ -144,7 +144,7 @@ import tachiyomi.domain.history.interactor.GetNextEpisodes
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
-import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.i18n.MR
 import tachiyomi.source.local.entries.anime.isLocal
 import uy.kohesive.injekt.Injekt
@@ -178,7 +178,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val getNextEpisodes: GetNextEpisodes = Injekt.get(),
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
     private val getAnimeCategories: GetCategories = Injekt.get(),
-    private val getTracks: GetTracks = Injekt.get(),
+    private val getTracks: GetAnimeTracks = Injekt.get(),
     private val upsertHistory: UpsertHistory = Injekt.get(),
     private val updateEpisode: UpdateEpisode = Injekt.get(),
     private val setAnimeViewerFlags: SetAnimeViewerFlags = Injekt.get(),
