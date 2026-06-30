@@ -73,6 +73,7 @@ class SyncPreferences(
             // Chimahon -->
             novels = preferenceStore.getBoolean("sync_novels", true).get(),
             // Chimahon <--
+            animeEntries = preferenceStore.getBoolean("anime_entries", true).get(),
         )
     }
 
@@ -95,6 +96,7 @@ class SyncPreferences(
         // Chimahon -->
         preferenceStore.getBoolean("sync_novels", true).set(syncSettings.novels)
         // Chimahon <--
+        preferenceStore.getBoolean("anime_entries", true).set(syncSettings.animeEntries)
     }
 
     fun getSyncTriggerOptions(): SyncTriggerOptions {

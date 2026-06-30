@@ -101,6 +101,7 @@ class SyncManager(
             // Chimahon -->
             novels = syncOptions.novels,
             // Chimahon <--
+            animeEntries = syncOptions.animeEntries,
         )
 
         logcat(LogPriority.DEBUG) { "Begin create backup" }
