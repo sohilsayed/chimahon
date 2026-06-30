@@ -21,6 +21,7 @@ import eu.kanade.domain.source.interactor.GetEnabledSources
 import eu.kanade.domain.source.anime.interactor.GetAnimeIncognitoState
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.interactor.GetLanguagesWithSources
+import eu.kanade.domain.source.anime.interactor.GetAnimeSourcesWithFavoriteCount
 import eu.kanade.domain.source.interactor.GetSourcesWithFavoriteCount
 import eu.kanade.domain.source.interactor.SetMigrateSorting
 import eu.kanade.domain.source.interactor.ToggleIncognito
@@ -267,6 +268,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<AnimeExtensionRepoRepository> { AnimeExtensionRepoRepositoryImpl(get()) }
         addSingletonFactory<StubAnimeSourceRepository> { StubAnimeSourceRepositoryImpl(get()) }
         addSingletonFactory<AnimeSourceRepository> { AnimeSourceRepositoryImpl(get(), get()) }
+        addFactory { GetAnimeSourcesWithFavoriteCount(get(), get()) }
         addFactory { GetRemoteAnime(get()) }
         addFactory { GetAnimeExtensionRepo(get()) }
         addFactory { GetAnimeExtensionRepoCount(get()) }
