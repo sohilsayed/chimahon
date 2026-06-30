@@ -23,8 +23,10 @@ import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import eu.kanade.tachiyomi.util.storage.getUriCompat
+import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.workManager
@@ -64,6 +66,7 @@ import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.util.concurrent.CopyOnWriteArrayList
@@ -317,7 +320,11 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         }
 
         if (failedUpdates.isNotEmpty()) {
-            notifier.showUpdateErrorNotification(failedUpdates.size)
+            val errorFile = writeErrorFile(failedUpdates)
+            notifier.showUpdateErrorNotification(
+                failedUpdates.size,
+                errorFile.getUriCompat(context),
+            )
         }
     }
 
@@ -364,10 +371,38 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         )
     }
 
+    private fun writeErrorFile(errors: List<Pair<Anime, String?>>): File {
+        try {
+            if (errors.isNotEmpty()) {
+                val file = context.createFileInCacheDir("chimahon_anime_update_errors.txt")
+                file.bufferedWriter().use { out ->
+                    out.write(
+                        context.stringResource(MR.strings.library_errors_help, ERROR_LOG_HELP_URL) + "\n\n",
+                    )
+                    errors.groupBy({ it.second }, { it.first }).forEach { (error, anime) ->
+                        out.write("\n! ${error ?: "Unknown error"}\n")
+                        anime.groupBy { it.source }.forEach { (sourceId, sourceAnime) ->
+                            val source = sourceManager.getOrStub(sourceId)
+                            out.write("  # $source\n")
+                            sourceAnime.forEach {
+                                out.write("    - ${it.title}\n")
+                            }
+                        }
+                    }
+                }
+                return file
+            }
+        } catch (_: Exception) {
+        }
+        return File("")
+    }
+
     companion object {
         private const val TAG = "AnimeLibraryUpdate"
         private const val WORK_NAME_AUTO = "AnimeLibraryUpdate-auto"
         private const val WORK_NAME_MANUAL = "AnimeLibraryUpdate-manual"
+
+        private const val ERROR_LOG_HELP_URL = "https://aniyomi.org/docs/guides/troubleshooting/"
 
         private const val KEY_CATEGORY = "animeCategory"
 

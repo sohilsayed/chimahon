@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import eu.kanade.tachiyomi.R
@@ -47,6 +48,10 @@ class AnimeLibraryUpdateNotifier(
         BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
     }
 
+    private val cancelIntent by lazy {
+        NotificationReceiver.cancelLibraryUpdatePendingBroadcast(context)
+    }
+
     val progressNotificationBuilder by lazy {
         context.notificationBuilder(Notifications.CHANNEL_LIBRARY_PROGRESS) {
             setContentTitle(context.stringResource(MR.strings.app_name))
@@ -55,6 +60,11 @@ class AnimeLibraryUpdateNotifier(
             setLargeIcon(notificationBitmap)
             setOngoing(true)
             setOnlyAlertOnce(true)
+            addAction(
+                R.drawable.ic_close_24dp,
+                context.stringResource(MR.strings.action_cancel),
+                cancelIntent,
+            )
         }
     }
 
@@ -105,7 +115,7 @@ class AnimeLibraryUpdateNotifier(
         }
     }
 
-    fun showUpdateErrorNotification(failed: Int) {
+    fun showUpdateErrorNotification(failed: Int, uri: Uri) {
         if (failed == 0) {
             return
         }
@@ -118,22 +128,22 @@ class AnimeLibraryUpdateNotifier(
             setContentText(context.stringResource(MR.strings.action_show_errors))
             setSmallIcon(R.drawable.ic_chimahon)
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
-            setContentIntent(NotificationReceiver.openErrorLogPendingActivity(context))
+            setContentIntent(NotificationReceiver.openErrorLogPendingActivity(context, uri))
         }
     }
 
     fun showUpdateNotifications(updates: List<Pair<Anime, Array<Episode>>>) {
         context.notify(
             Notifications.ID_NEW_EPISODES,
-            Notifications.CHANNEL_NEW_CHAPTERS,
+            Notifications.CHANNEL_NEW_EPISODES,
         ) {
-            setContentTitle(context.stringResource(MR.strings.notification_new_chapters))
+            setContentTitle(context.stringResource(MR.strings.notification_new_episodes))
             if (updates.size == 1 && !securityPreferences.hideNotificationContent().get()) {
                 setContentText(updates.first().first.title.chop(NOTIF_TITLE_MAX_LEN))
             } else {
                 setContentText(
                     context.pluralStringResource(
-                        MR.plurals.notification_new_chapters_summary,
+                        MR.plurals.notification_new_episodes_summary,
                         updates.size,
                         updates.size,
                     ),
@@ -152,7 +162,7 @@ class AnimeLibraryUpdateNotifier(
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
             setLargeIcon(notificationBitmap)
 
-            setGroup(Notifications.GROUP_NEW_CHAPTERS)
+            setGroup(Notifications.GROUP_NEW_EPISODES)
             setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
             setGroupSummary(true)
             priority = NotificationCompat.PRIORITY_HIGH

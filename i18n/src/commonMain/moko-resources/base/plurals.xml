@@ -95,6 +95,10 @@
         <item quantity="one">For %d entry</item>
         <item quantity="other">For %d entries</item>
     </plurals>
+    <plurals name="notification_new_episodes_summary">
+        <item quantity="one">For %d entry</item>
+        <item quantity="other">For %d entries</item>
+    </plurals>
     <plurals name="notification_chapters_generic">
         <item quantity="one">%1$d new chapter</item>
         <item quantity="other">%1$d new chapters</item>
