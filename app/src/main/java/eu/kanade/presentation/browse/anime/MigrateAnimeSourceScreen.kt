@@ -1,21 +1,16 @@
 package eu.kanade.presentation.browse.anime
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Numbers
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.SortByAlpha
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,12 +19,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.domain.source.interactor.SetMigrateSorting
-import eu.kanade.domain.source.model.icon
-import eu.kanade.presentation.browse.components.BaseBrowseItem
+import eu.kanade.presentation.browse.anime.components.AnimeSourceIcon
+import eu.kanade.presentation.browse.anime.components.BaseAnimeSourceItem
 import eu.kanade.tachiyomi.ui.browse.animemigration.sources.MigrateAnimeSourceScreenModel
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import kotlinx.collections.immutable.ImmutableList
@@ -47,7 +42,6 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.theme.header
 import tachiyomi.presentation.core.util.plus
 import tachiyomi.presentation.core.util.secondaryItemAlpha
-import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun MigrateAnimeSourceScreen(
@@ -157,8 +151,10 @@ private fun MigrateAnimeSourceItem(
     onLongClickItem: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BaseBrowseItem(
+    BaseAnimeSourceItem(
         modifier = modifier,
+        source = source,
+        showLanguageInContent = source.lang.isNotBlank(),
         onClickItem = onClickItem,
         onLongClickItem = onLongClickItem,
         icon = { AnimeSourceIcon(source = source) },
@@ -167,7 +163,7 @@ private fun MigrateAnimeSourceItem(
                 Badge(text = "$count")
             }
         },
-        content = {
+        content = { _, sourceLangString ->
             Column(
                 modifier = Modifier
                     .padding(horizontal = MaterialTheme.padding.medium)
@@ -183,10 +179,10 @@ private fun MigrateAnimeSourceItem(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (source.lang.isNotBlank()) {
+                    if (sourceLangString != null) {
                         Text(
                             modifier = Modifier.secondaryItemAlpha(),
-                            text = source.lang.uppercase(),
+                            text = sourceLangString,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodySmall,
@@ -206,41 +202,4 @@ private fun MigrateAnimeSourceItem(
             }
         },
     )
-}
-
-@Composable
-private fun AnimeSourceIcon(
-    source: AnimeSource,
-    modifier: Modifier = Modifier,
-) {
-    val icon = source.icon
-    val iconModifier = modifier
-        .height(40.dp)
-        .aspectRatio(1f)
-
-    when {
-        source.isStub && icon == null -> {
-            Image(
-                imageVector = Icons.Filled.Warning,
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.error),
-                modifier = iconModifier,
-            )
-        }
-        icon != null -> {
-            Image(
-                bitmap = icon,
-                contentDescription = null,
-                modifier = iconModifier,
-            )
-        }
-        else -> {
-            Icon(
-                imageVector = Icons.Outlined.PlayCircle,
-                contentDescription = null,
-                modifier = iconModifier,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
 }

@@ -4,15 +4,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -25,10 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import eu.kanade.presentation.browse.components.AnimeExtensionIcon
-import eu.kanade.presentation.browse.components.BaseBrowseItem
+import eu.kanade.presentation.browse.anime.components.BaseAnimeSourceItem
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel.AnimeSourceUiModel
@@ -43,7 +37,6 @@ import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.theme.header
 import tachiyomi.presentation.core.util.plus
-import tachiyomi.presentation.core.util.secondaryItemAlpha
 import tachiyomi.source.local.entries.anime.LocalAnimeSource
 
 @Composable
@@ -125,30 +118,10 @@ private fun AnimeSourceItem(
     onClickLatest: () -> Unit,
     onClickPin: () -> Unit,
 ) {
-    BaseBrowseItem(
+    BaseAnimeSourceItem(
+        source = item.source,
         onClickItem = onClick,
         onLongClickItem = onLongClick,
-        icon = {
-            val iconModifier = Modifier
-                .height(40.dp)
-                .aspectRatio(1f)
-            if (item.extension != null) {
-                AnimeExtensionIcon(
-                    extension = item.extension,
-                    modifier = iconModifier,
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Outlined.PlayCircle,
-                    contentDescription = null,
-                    modifier = iconModifier,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-        },
-        content = {
-            AnimeSourceItemContent(item.source)
-        },
         action = {
             if (item.source.supportsLatest) {
                 TextButton(onClick = onClickLatest) {
@@ -185,30 +158,6 @@ private fun AnimeSourcePinButton(
             imageVector = icon,
             tint = tint,
             contentDescription = stringResource(description),
-        )
-    }
-}
-
-@Composable
-private fun RowScope.AnimeSourceItemContent(source: AnimeCatalogueSource) {
-    val context = LocalContext.current
-    Column(
-        modifier = Modifier
-            .padding(horizontal = MaterialTheme.padding.medium)
-            .weight(1f),
-    ) {
-        Text(
-            text = source.name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = LocaleHelper.getSourceDisplayName(source.lang, context),
-            modifier = Modifier.secondaryItemAlpha(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodySmall,
         )
     }
 }
