@@ -4,10 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -50,6 +55,7 @@ internal fun Screen.MigrateAnimeDialog(
     onComplete: () -> Unit = onDismissRequest,
 ) {
     val scope = rememberCoroutineScope()
+    val canMigrate = current.fetchType == target.fetchType
 
     val screenModel = rememberScreenModel { MigrateAnimeDialogScreenModel() }
     LaunchedEffect(current, target) {
@@ -75,12 +81,30 @@ internal fun Screen.MigrateAnimeDialog(
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
-                state.applicableFlags.forEach { flag ->
-                    LabeledCheckbox(
-                        label = stringResource(flag.getLabel()),
-                        checked = flag in state.selectedFlags,
-                        onCheckedChange = { screenModel.toggleSelection(flag) },
-                    )
+                if (canMigrate) {
+                    state.applicableFlags.forEach { flag ->
+                        LabeledCheckbox(
+                            label = stringResource(flag.getLabel()),
+                            checked = flag in state.selectedFlags,
+                            onCheckedChange = { screenModel.toggleSelection(flag) },
+                        )
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                        Text(
+                            text = "These entries need matching target types before migration.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
         },
@@ -96,25 +120,27 @@ internal fun Screen.MigrateAnimeDialog(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                TextButton(
-                    onClick = {
-                        scope.launchIO {
-                            screenModel.migrateAnime(replace = false)
-                            withUIContext { onComplete() }
-                        }
-                    },
-                ) {
-                    Text(text = stringResource(MR.strings.copy))
-                }
-                TextButton(
-                    onClick = {
-                        scope.launchIO {
-                            screenModel.migrateAnime(replace = true)
-                            withUIContext { onComplete() }
-                        }
-                    },
-                ) {
-                    Text(text = stringResource(MR.strings.migrate))
+                if (canMigrate) {
+                    TextButton(
+                        onClick = {
+                            scope.launchIO {
+                                screenModel.migrateAnime(replace = false)
+                                withUIContext { onComplete() }
+                            }
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.copy))
+                    }
+                    TextButton(
+                        onClick = {
+                            scope.launchIO {
+                                screenModel.migrateAnime(replace = true)
+                                withUIContext { onComplete() }
+                            }
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.migrate))
+                    }
                 }
             }
         },
