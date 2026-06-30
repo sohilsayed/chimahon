@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.database.models.anime.AnimeTrack
 import eu.kanade.tachiyomi.data.track.AnimeTracker
 import eu.kanade.tachiyomi.data.track.BaseTracker
+import eu.kanade.tachiyomi.data.track.DeletableAnimeTracker
 import eu.kanade.tachiyomi.data.track.DeletableTracker
 import eu.kanade.tachiyomi.data.track.model.AnimeTrackSearch
 import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
@@ -20,7 +21,7 @@ import uy.kohesive.injekt.injectLazy
 import tachiyomi.domain.track.anime.model.AnimeTrack as DomainAnimeTrack
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker, AnimeTracker {
+class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker, AnimeTracker, DeletableAnimeTracker {
 
     companion object {
         const val READING = 1L
@@ -69,12 +70,12 @@ class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker, 
     }
 
     override fun getStatusForAnime(status: Long): StringResource? = when (status) {
-        WATCHING -> MR.strings.reading
-        PLAN_TO_WATCH -> MR.strings.plan_to_read
+        WATCHING -> MR.strings.watching
+        PLAN_TO_WATCH -> MR.strings.plan_to_watch
         COMPLETED -> MR.strings.completed
         ON_HOLD -> MR.strings.on_hold
         DROPPED -> MR.strings.dropped
-        REWATCHING -> MR.strings.repeating
+        REWATCHING -> MR.strings.rewatching
         else -> null
     }
 
@@ -150,7 +151,7 @@ class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker, 
         api.deleteItem(track)
     }
 
-    suspend fun delete(track: DomainAnimeTrack) {
+    override suspend fun delete(track: DomainAnimeTrack) {
         api.deleteAnimeItem(track)
     }
 
