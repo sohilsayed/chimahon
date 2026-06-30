@@ -10,6 +10,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.anime.MigrateAnimeScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.ui.browse.animemigration.search.MigrateAnimeSearchScreen
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.flow.collectLatest
@@ -36,7 +37,7 @@ data class MigrateAnimeScreen(
             navigateUp = navigator::pop,
             title = state.source!!.name,
             state = state,
-            onClickItem = { navigator.push(AnimeScreen(it.id)) },
+            onClickItem = { navigator.push(MigrateAnimeSearchScreen(it.id)) },
             onClickCover = { navigator.push(AnimeScreen(it.id)) },
         )
 
