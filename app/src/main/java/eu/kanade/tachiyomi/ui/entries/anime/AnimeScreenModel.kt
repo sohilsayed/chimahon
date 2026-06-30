@@ -765,10 +765,18 @@ class AnimeScreenModel(
             }
             AnimeSeasonItem(
                 seasonAnime = seasonAnime,
-                downloadCount = downloadedCount.toLong() + downloadingCount.toLong(),
-                unseenCount = seasonAnime.unseenCount,
+                downloadCount = if (anime.seasonDownloadedOverlay) {
+                    downloadedCount.toLong() + downloadingCount.toLong()
+                } else {
+                    -1L
+                },
+                unseenCount = if (anime.seasonUnseenOverlay) seasonAnime.unseenCount else -1L,
                 isLocal = seasonAnime.anime.isLocal(),
-                sourceLanguage = "",
+                sourceLanguage = if (anime.seasonLangOverlay) {
+                    animeSourceManager.getOrStub(seasonAnime.anime.source).lang
+                } else {
+                    ""
+                },
                 showContinueOverlay = anime.seasonContinueOverlay &&
                     seasonAnime.unseenCount > 0 &&
                     seasonAnime.seenCount > 0,

@@ -13,7 +13,7 @@ import eu.kanade.presentation.library.components.AnimeCompactGridItem
 import eu.kanade.presentation.library.components.DownloadsBadge
 import eu.kanade.presentation.library.components.LanguageBadge
 import eu.kanade.presentation.library.components.LazyLibraryGrid
-import eu.kanade.presentation.library.components.UnreadBadge
+import eu.kanade.presentation.library.components.UnviewedBadge
 import eu.kanade.presentation.library.components.globalSearchItem
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryItem
 import tachiyomi.domain.entries.anime.model.AnimeCover
@@ -65,7 +65,7 @@ fun AnimeLibraryCompactGrid(
                 ),
                 coverBadgeStart = {
                     if (showDownloadBadge) DownloadsBadge(count = libraryItem.downloadCount)
-                    if (showUnseenBadge) UnreadBadge(count = libraryItem.unseenCount)
+                    if (showUnseenBadge) UnviewedBadge(count = libraryItem.unseenCount)
                 },
                 coverBadgeEnd = {
                     if (showLocalBadge) AnimeSourceIconBadge(source = libraryItem.source)
