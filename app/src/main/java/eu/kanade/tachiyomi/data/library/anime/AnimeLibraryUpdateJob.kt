@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.data.library.anime
 
 import android.content.Context
 import android.content.pm.ServiceInfo
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -423,8 +425,15 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                 } else {
                     NetworkType.CONNECTED
                 }
+                val networkRequestBuilder = NetworkRequest.Builder()
+                if (DEVICE_ONLY_ON_WIFI in restrictions) {
+                    networkRequestBuilder.addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                }
+                if (DEVICE_NETWORK_NOT_METERED in restrictions) {
+                    networkRequestBuilder.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                }
                 val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(networkType)
+                    .setRequiredNetworkRequest(networkRequestBuilder.build(), networkType)
                     .setRequiresCharging(DEVICE_CHARGING in restrictions)
                     .setRequiresBatteryNotLow(true)
                     .build()
