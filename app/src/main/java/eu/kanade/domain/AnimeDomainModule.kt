@@ -6,6 +6,7 @@ import eu.kanade.domain.entries.anime.interactor.UpdateAnime as AppUpdateAnime
 import eu.kanade.domain.episode.interactor.SetSeenStatus as AppSetSeenStatus
 import eu.kanade.domain.track.interactor.SyncEpisodeProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackEpisode
+import mihon.domain.animemigration.usecases.MigrateAnimeUseCase
 import tachiyomi.data.entries.anime.CustomAnimeRepositoryImpl
 import tachiyomi.data.entries.anime.AnimeRepositoryImpl
 import tachiyomi.data.category.AnimeCategoryRepositoryImpl
@@ -116,5 +117,6 @@ class AnimeDomainModule : InjektModule {
         addFactory { AddAnimeTracks(get(), get(), get(), get()) }
         addFactory { RefreshAnimeTracks(get(), get(), get(), get()) }
         addFactory { TrackEpisode(get(), get(), get(), get()) }
+        addFactory { MigrateAnimeUseCase(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     }
 }
