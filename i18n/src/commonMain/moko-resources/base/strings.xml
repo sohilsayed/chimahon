@@ -40,6 +40,7 @@
     <string name="label_dictionary">Dictionary</string>
     <string name="label_novels">Novels</string>
     <string name="label_anime">Anime</string>
+    <string name="label_anime_updates">Anime updates</string>
     <string name="anime_empty_message">No anime yet — tap + to open a video</string>
     <string name="action_open_video">Open video</string>
     <string name="action_pick_local_file">Pick local file</string>

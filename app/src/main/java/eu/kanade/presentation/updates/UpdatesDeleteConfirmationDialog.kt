@@ -11,10 +11,15 @@ import tachiyomi.presentation.core.i18n.stringResource
 fun UpdatesDeleteConfirmationDialog(
     onDismissRequest: () -> Unit,
     onConfirm: () -> Unit,
+    isManga: Boolean = true,
 ) {
     AlertDialog(
         text = {
-            Text(text = stringResource(MR.strings.confirm_delete_chapters))
+            Text(
+                text = stringResource(
+                    if (isManga) MR.strings.confirm_delete_chapters else MR.strings.confirm_delete_episodes,
+                ),
+            )
         },
         onDismissRequest = onDismissRequest,
         confirmButton = {
