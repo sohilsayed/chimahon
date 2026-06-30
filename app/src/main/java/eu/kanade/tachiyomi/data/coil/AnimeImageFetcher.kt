@@ -284,16 +284,18 @@ class AnimeImageFetcher(
 
         override fun create(data: Anime, options: Options, imageLoader: ImageLoader): Fetcher {
             val isBackground = options.useBackground
-            val url = if (isBackground) data.backgroundUrl else data.thumbnailUrl
+            val customBackgroundFile by lazy { backgroundCache.getCustomBackgroundFile(data.id) }
+            val useBackgroundImage = isBackground && (data.backgroundUrl != null || customBackgroundFile.exists())
+            val url = if (useBackgroundImage) data.backgroundUrl else data.thumbnailUrl
 
-            val coverCacheLazy = if (isBackground) {
+            val coverCacheLazy = if (useBackgroundImage) {
                 lazy { backgroundCache.getBackgroundFile(url) }
             } else {
                 lazy { coverCache.getCoverFile(url) }
             }
 
-            val customCoverCacheLazy = if (isBackground) {
-                lazy { backgroundCache.getCustomBackgroundFile(data.id) }
+            val customCoverCacheLazy = if (useBackgroundImage) {
+                lazy { customBackgroundFile }
             } else {
                 lazy { coverCache.getCustomCoverFile(data.id) }
             }

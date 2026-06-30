@@ -140,7 +140,7 @@ private fun getMarkdownTypography(): MarkdownTypography {
 }
 
 private val markdownPadding = object : MarkdownPadding {
-    override val block: Dp = 2.dp
+    override val block: Dp = 0.dp
     override val blockQuote: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
     override val blockQuoteBar: PaddingValues.Absolute = PaddingValues.Absolute(
         left = 4.dp,
