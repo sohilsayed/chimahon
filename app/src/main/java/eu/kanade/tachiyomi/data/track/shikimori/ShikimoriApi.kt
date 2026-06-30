@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.compose.ui.util.fastAny
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.data.database.models.Track
+import eu.kanade.tachiyomi.data.database.models.anime.AnimeTrack
+import eu.kanade.tachiyomi.data.track.model.AnimeTrackSearch
 import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMAddMangaResponse
@@ -27,6 +29,7 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.anime.model.AnimeTrack as DomainAnimeTrack
 import tachiyomi.domain.track.model.Track as DomainTrack
 
 class ShikimoriApi(
@@ -78,6 +81,44 @@ class ShikimoriApi(
         }
     }
 
+    suspend fun addLibAnime(track: AnimeTrack, userId: String): AnimeTrack {
+        return withIOContext {
+            with(json) {
+                val payload = buildJsonObject {
+                    putJsonObject("user_rate") {
+                        put("user_id", userId)
+                        put("target_id", track.remote_id)
+                        put("target_type", "Anime")
+                        put("episodes", track.last_episode_seen.toInt())
+                        put("score", track.score.toInt())
+                        put("status", track.toShikimoriStatus())
+                    }
+                }
+                authClient.newCall(
+                    POST(
+                        "$API_URL/v2/user_rates",
+                        body = payload.toString().toRequestBody(jsonMime),
+                    ),
+                ).awaitSuccess()
+                    .parseAs<SMAddMangaResponse>()
+                    .let {
+                        track.library_id = it.id
+                    }
+                track
+            }
+        }
+    }
+
+    suspend fun updateLibAnime(track: AnimeTrack, userId: String): AnimeTrack = addLibAnime(track, userId)
+
+    suspend fun deleteLibAnime(track: DomainAnimeTrack) {
+        withIOContext {
+            authClient
+                .newCall(DELETE("$API_URL/v2/user_rates/${track.libraryId}"))
+                .awaitSuccess()
+        }
+    }
+
     suspend fun search(search: String): List<TrackSearch> {
         return withIOContext {
             val url = "$API_URL/mangas".toUri().buildUpon()
@@ -90,6 +131,22 @@ class ShikimoriApi(
                     .awaitSuccess()
                     .parseAs<List<SMManga>>()
                     .map { it.toTrack(trackId) }
+            }
+        }
+    }
+
+    suspend fun searchAnime(search: String): List<AnimeTrackSearch> {
+        return withIOContext {
+            val url = "$API_URL/animes".toUri().buildUpon()
+                .appendQueryParameter("order", "popularity")
+                .appendQueryParameter("search", search)
+                .appendQueryParameter("limit", "20")
+                .build()
+            with(json) {
+                authClient.newCall(GET(url.toString()))
+                    .awaitSuccess()
+                    .parseAs<List<SMManga>>()
+                    .map { it.toAnimeTrack(trackId) }
             }
         }
     }
@@ -120,6 +177,38 @@ class ShikimoriApi(
                         }
                         entries
                             .map { it.toTrack(trackId, manga) }
+                            .firstOrNull()
+                    }
+            }
+        }
+    }
+
+    suspend fun findLibAnime(track: AnimeTrack, userId: String): AnimeTrack? {
+        return withIOContext {
+            val urlAnimes = "$API_URL/animes".toUri().buildUpon()
+                .appendPath(track.remote_id.toString())
+                .build()
+            val anime = with(json) {
+                authClient.newCall(GET(urlAnimes.toString()))
+                    .awaitSuccess()
+                    .parseAs<SMManga>()
+            }
+
+            val url = "$API_URL/v2/user_rates".toUri().buildUpon()
+                .appendQueryParameter("user_id", userId)
+                .appendQueryParameter("target_id", track.remote_id.toString())
+                .appendQueryParameter("target_type", "Anime")
+                .build()
+            with(json) {
+                authClient.newCall(GET(url.toString()))
+                    .awaitSuccess()
+                    .parseAs<List<SMUserListEntry>>()
+                    .let { entries ->
+                        if (entries.size > 1) {
+                            throw Exception("Too many anime in response")
+                        }
+                        entries
+                            .map { it.toAnimeTrack(trackId, anime) }
                             .firstOrNull()
                     }
             }
