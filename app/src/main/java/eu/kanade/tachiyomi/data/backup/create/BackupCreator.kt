@@ -201,7 +201,7 @@ class BackupCreator(
         if (!options.animeEntries) return emptyList()
 
         val favoriteAnime = getFavoriteAnime.await()
-        val seenAnime = animeRepository.getSeenAnimeNotInLibrary()
+        val seenAnime = if (options.readEntries) animeRepository.getSeenAnimeNotInLibrary() else emptyList()
         val seasons = favoriteAnime
             .flatMap { getAnimeSeasonsByParentId.await(it.id).map { season -> season.anime } }
         return animeBackupCreator((favoriteAnime + seenAnime + seasons).distinctBy { it.id }, options)

@@ -67,19 +67,19 @@ data class BackupOptions(
                 label = MR.strings.chapters,
                 getter = BackupOptions::chapters,
                 setter = { options, enabled -> options.copy(chapters = enabled) },
-                enabled = { it.libraryEntries },
+                enabled = { it.libraryEntries || it.animeEntries },
             ),
             Entry(
                 label = MR.strings.track,
                 getter = BackupOptions::tracking,
                 setter = { options, enabled -> options.copy(tracking = enabled) },
-                enabled = { it.libraryEntries },
+                enabled = { it.libraryEntries || it.animeEntries },
             ),
             Entry(
                 label = MR.strings.history,
                 getter = BackupOptions::history,
                 setter = { options, enabled -> options.copy(history = enabled) },
-                enabled = { it.libraryEntries },
+                enabled = { it.libraryEntries || it.animeEntries },
             ),
             Entry(
                 label = MR.strings.categories,
@@ -90,7 +90,7 @@ data class BackupOptions(
                 label = MR.strings.non_library_settings,
                 getter = BackupOptions::readEntries,
                 setter = { options, enabled -> options.copy(readEntries = enabled) },
-                enabled = { it.libraryEntries },
+                enabled = { it.libraryEntries || it.animeEntries },
             ),
             // SY -->
             Entry(
