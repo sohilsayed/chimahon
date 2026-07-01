@@ -89,6 +89,7 @@ class NotificationReceiver : BroadcastReceiver() {
             ACTION_CANCEL_SYNC -> cancelSync(context)
             // Cancel library update and dismiss notification
             ACTION_CANCEL_LIBRARY_UPDATE -> cancelLibraryUpdate(context)
+            ACTION_CANCEL_ANIME_LIBRARY_UPDATE -> cancelAnimeLibraryUpdate(context)
             // Start downloading app update
             ACTION_START_APP_UPDATE -> startDownloadAppUpdate(context, intent)
             // Cancel downloading app update
@@ -202,6 +203,10 @@ class NotificationReceiver : BroadcastReceiver() {
         AnimeLibraryUpdateJob.stop(context)
     }
 
+    private fun cancelAnimeLibraryUpdate(context: Context) {
+        AnimeLibraryUpdateJob.stop(context)
+    }
+
     private fun startDownloadAppUpdate(context: Context, intent: Intent) {
         val url = intent.getStringExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_URL) ?: return
         val title = intent.getStringExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_TITLE)
@@ -289,6 +294,7 @@ class NotificationReceiver : BroadcastReceiver() {
         private const val ACTION_CANCEL_SYNC = "$ID.$NAME.CANCEL_SYNC"
 
         private const val ACTION_CANCEL_LIBRARY_UPDATE = "$ID.$NAME.CANCEL_LIBRARY_UPDATE"
+        private const val ACTION_CANCEL_ANIME_LIBRARY_UPDATE = "$ID.$NAME.CANCEL_ANIME_LIBRARY_UPDATE"
 
         private const val ACTION_START_APP_UPDATE = "$ID.$NAME.ACTION_START_APP_UPDATE"
         private const val ACTION_CANCEL_APP_UPDATE_DOWNLOAD = "$ID.$NAME.CANCEL_APP_UPDATE_DOWNLOAD"
@@ -585,6 +591,24 @@ class NotificationReceiver : BroadcastReceiver() {
         internal fun cancelLibraryUpdatePendingBroadcast(context: Context): PendingIntent {
             val intent = Intent(context, NotificationReceiver::class.java).apply {
                 action = ACTION_CANCEL_LIBRARY_UPDATE
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
+         * Returns [PendingIntent] that starts a service which stops the anime library update.
+         *
+         * @param context context of application
+         * @return [PendingIntent]
+         */
+        internal fun cancelAnimeLibraryUpdatePendingBroadcast(context: Context): PendingIntent {
+            val intent = Intent(context, NotificationReceiver::class.java).apply {
+                action = ACTION_CANCEL_ANIME_LIBRARY_UPDATE
             }
             return PendingIntent.getBroadcast(
                 context,

@@ -49,7 +49,7 @@ class AnimeLibraryUpdateNotifier(
     }
 
     private val cancelIntent by lazy {
-        NotificationReceiver.cancelLibraryUpdatePendingBroadcast(context)
+        NotificationReceiver.cancelAnimeLibraryUpdatePendingBroadcast(context)
     }
 
     val progressNotificationBuilder by lazy {
