@@ -1,12 +1,19 @@
 package eu.kanade.tachiyomi.ui.entries.anime
 
 import android.content.Context
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Immutable
+import androidx.palette.graphics.Palette
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
+import coil3.Image
+import coil3.asDrawable
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.addOrRemove
@@ -24,6 +31,7 @@ import eu.kanade.domain.entries.anime.model.seasonUnseenFilter
 import eu.kanade.domain.entries.anime.model.seasonsFiltered
 import eu.kanade.domain.entries.anime.model.toDomainAnime
 import eu.kanade.domain.entries.anime.model.toSAnime
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.episode.interactor.GetAvailableAnimeScanlators
 import eu.kanade.domain.episode.interactor.GetExcludedAnimeScanlators
 import eu.kanade.domain.episode.interactor.SetSeenStatus
@@ -42,6 +50,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
+import eu.kanade.tachiyomi.data.coil.getBestColor
 import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
 import eu.kanade.tachiyomi.data.track.EnhancedAnimeTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -58,6 +67,7 @@ import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.util.AniChartApi
 import eu.kanade.tachiyomi.util.episode.getNextUnseen
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toast
 import exh.util.nullIfEmpty
 import exh.util.trimOrNull
@@ -95,11 +105,13 @@ import tachiyomi.domain.entries.anime.interactor.SetAnimeEpisodeFlags
 import tachiyomi.domain.entries.anime.interactor.SetAnimeSeasonFlags
 import tachiyomi.domain.entries.anime.interactor.SetCustomAnimeInfo
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.entries.anime.model.CustomAnimeInfo
 import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.entries.anime.model.SeasonDisplayMode
 import tachiyomi.domain.entries.anime.model.applyFilter
+import tachiyomi.domain.entries.anime.model.asAnimeCover
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.category.interactor.GetAnimeCategories
 import tachiyomi.domain.category.interactor.SetAnimeCategories
@@ -136,6 +148,7 @@ class AnimeScreenModel(
     private val trackPreferences: TrackPreferences = Injekt.get(),
     internal val playerPreferences: PlayerPreferences = Injekt.get(),
     internal val gesturePreferences: GesturePreferences = Injekt.get(),
+    private val uiPreferences: UiPreferences = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
     private val trackEpisode: TrackEpisode = Injekt.get(),
     private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
@@ -193,6 +206,7 @@ class AnimeScreenModel(
     val showNextEpisodeAirTime = trackPreferences.showNextEpisodeAiringTime().get()
     val alwaysUseExternalPlayer = playerPreferences.alwaysUseExternalPlayer().get()
     val useExternalDownloader = downloadPreferences.useExternalDownloader().get()
+    val themeCoverBased = uiPreferences.themeCoverBased().get()
 
     val isUpdateIntervalEnabled =
         LibraryPreferences.ANIME_OUTSIDE_RELEASE_PERIOD in libraryPreferences.autoUpdateAnimeRestrictions().get()
@@ -320,6 +334,49 @@ class AnimeScreenModel(
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
         }
+    }
+
+    fun setPaletteColor(model: Any) {
+        if (model is ImageRequest && model.defined.sizeResolver != null) return
+
+        val imageRequestBuilder = if (model is ImageRequest) {
+            model.newBuilder()
+        } else {
+            ImageRequest.Builder(context).data(model)
+        }
+            .allowHardware(false)
+
+        val generatePalette: (Image) -> Unit = { image ->
+            val bitmap = image.asDrawable(context.resources).getBitmapOrNull()
+            if (bitmap != null) {
+                Palette.from(bitmap).generate {
+                    screenModelScope.launchIO {
+                        if (it == null) return@launchIO
+                        val animeCover = when (model) {
+                            is Anime -> model.asAnimeCover()
+                            is AnimeCover -> model
+                            else -> return@launchIO
+                        }
+                        if (animeCover.isAnimeFavorite) {
+                            it.dominantSwatch?.let { swatch ->
+                                animeCover.dominantCoverColors = swatch.rgb to swatch.titleTextColor
+                            }
+                        }
+                        val vibrantColor = it.getBestColor() ?: return@launchIO
+                        animeCover.vibrantCoverColor = vibrantColor
+                        updateSuccessState {
+                            it.copy(seedColor = Color(vibrantColor))
+                        }
+                    }
+                }
+            }
+        }
+
+        context.imageLoader.enqueue(
+            imageRequestBuilder
+                .target(onSuccess = generatePalette)
+                .build(),
+        )
     }
 
     fun fetchAllFromSource(manualFetch: Boolean = true) {
@@ -1657,6 +1714,7 @@ class AnimeScreenModel(
                 anime.nextEpisodeAiringAt,
             ),
             val seasons: List<AnimeSeasonItem> = emptyList(),
+            val seedColor: Color? = anime.asAnimeCover().vibrantCoverColor?.let { Color(it) },
         ) : State {
 
             val processedSeasons: List<AnimeSeasonItem> by lazy {

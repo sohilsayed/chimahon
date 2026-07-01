@@ -45,6 +45,7 @@ import eu.kanade.presentation.entries.anime.components.AnimeScanlatorFilterDialo
 import eu.kanade.presentation.entries.components.DeleteItemsDialog
 import eu.kanade.presentation.entries.components.SetIntervalDialog
 import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsGesturesScreen.SkipIntroLengthDialog
+import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.formatEpisodeNumber
@@ -124,101 +125,110 @@ class AnimeScreen(
             }
         }
 
-        AnimeScreen(
-            state = successState,
-            snackbarHostState = screenModel.snackbarHostState,
-            nextUpdate = successState.anime.expectedNextUpdate,
-            isTabletUi = isTabletUi(),
-            episodeSwipeStartAction = screenModel.episodeSwipeStartAction,
-            episodeSwipeEndAction = screenModel.episodeSwipeEndAction,
-            showNextEpisodeAirTime = screenModel.showNextEpisodeAirTime,
-            alwaysUseExternalPlayer = screenModel.alwaysUseExternalPlayer,
-            navigateUp = navigator::pop,
-            onEpisodeClicked = { episode, alt ->
-                scope.launchIO {
-                    val extPlayer = screenModel.alwaysUseExternalPlayer != alt
-                    openEpisode(context, episode, extPlayer)
-                }
-            },
-            onDownloadEpisode = screenModel::runEpisodeDownloadActions.takeIf {
-                !successState.source.isLocalOrStub() && successState.anime.fetchType == FetchType.Episodes
-            },
-            onAddToLibraryClicked = {
-                screenModel.toggleFavorite()
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            },
-            onWebViewClicked = {
-                openAnimeInWebView(
-                    navigator,
-                    screenModel.anime,
-                    screenModel.source,
-                )
-            }.takeIf { isAnimeHttpSource },
-            onWebViewLongClicked = {
-                copyAnimeUrl(
-                    context,
-                    screenModel.anime,
-                    screenModel.source,
-                )
-            }.takeIf { isAnimeHttpSource },
-            onTrackingClicked = {
-                if (!successState.hasLoggedInTrackers) {
-                    navigator.push(SettingsScreen(SettingsScreen.Destination.Tracking))
-                } else {
-                    screenModel.showTrackDialog()
-                }
-            }.takeIf { successState.anime.fetchType == FetchType.Episodes },
-            onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
-            onFilterButtonClicked = screenModel::showSettingsDialog,
-            onRefresh = screenModel::fetchAllFromSource,
-            onContinueWatching = {
-                scope.launchIO {
-                    val extPlayer = screenModel.alwaysUseExternalPlayer
-                    continueWatching(context, screenModel.getNextUnseenEpisode(), extPlayer)
-                }
-            },
-            onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
-            onCoverClicked = screenModel::showImagesDialog,
-            onShareClicked = {
-                shareAnime(
-                    context,
-                    screenModel.anime,
-                    screenModel.source,
-                )
-            }.takeIf { isAnimeHttpSource },
-            onDownloadActionClicked = screenModel::runDownloadAction.takeIf {
-                !successState.source.isLocalOrStub() && successState.anime.fetchType == FetchType.Episodes
-            },
-            onEditCategoryClicked = screenModel::showChangeCategoryDialog.takeIf { successState.anime.favorite },
-            onEditFetchIntervalClicked = screenModel::showSetAnimeFetchIntervalDialog.takeIf {
-                successState.anime.favorite
-            },
-            onMigrateClicked = {
-                navigator.push(GlobalAnimeSearchScreen(successState.anime.title))
-            }.takeIf { successState.anime.favorite },
-            changeAnimeSkipIntro = screenModel::showAnimeSkipIntroDialog
-                .takeIf { successState.anime.favorite && successState.anime.fetchType == FetchType.Episodes },
-            onMultiBookmarkClicked = screenModel::bookmarkEpisodes,
-            onMultiFillermarkClicked = screenModel::fillermarkEpisodes,
-            onMultiMarkAsSeenClicked = screenModel::markEpisodesSeen,
-            onMarkPreviousAsSeenClicked = screenModel::markPreviousEpisodeSeen,
-            onMultiDeleteClicked = screenModel::showDeleteEpisodeDialog,
-            onEpisodeSwipe = screenModel::episodeSwipe,
-            onEpisodeSelected = screenModel::toggleSelection,
-            onAllEpisodeSelected = screenModel::toggleAllSelection,
-            onInvertSelection = screenModel::invertSelection,
-            onSeasonClicked = {
-                navigator.push(AnimeScreen(it.id))
-            },
-            onContinueWatchingClicked = {
-                scope.launchIO {
-                    val episode = screenModel.getNextUnseenEpisode(it.anime)
-                    episode?.let { ep ->
-                        openEpisode(context, ep, screenModel.alwaysUseExternalPlayer)
+        TachiyomiTheme(
+            seedColor = successState.seedColor.takeIf { screenModel.themeCoverBased },
+        ) {
+            AnimeScreen(
+                state = successState,
+                snackbarHostState = screenModel.snackbarHostState,
+                nextUpdate = successState.anime.expectedNextUpdate,
+                isTabletUi = isTabletUi(),
+                episodeSwipeStartAction = screenModel.episodeSwipeStartAction,
+                episodeSwipeEndAction = screenModel.episodeSwipeEndAction,
+                showNextEpisodeAirTime = screenModel.showNextEpisodeAirTime,
+                alwaysUseExternalPlayer = screenModel.alwaysUseExternalPlayer,
+                navigateUp = navigator::pop,
+                onEpisodeClicked = { episode, alt ->
+                    scope.launchIO {
+                        val extPlayer = screenModel.alwaysUseExternalPlayer != alt
+                        openEpisode(context, episode, extPlayer)
                     }
-                }
-            },
-        )
+                },
+                onDownloadEpisode = screenModel::runEpisodeDownloadActions.takeIf {
+                    !successState.source.isLocalOrStub() && successState.anime.fetchType == FetchType.Episodes
+                },
+                onAddToLibraryClicked = {
+                    screenModel.toggleFavorite()
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+                onWebViewClicked = {
+                    openAnimeInWebView(
+                        navigator,
+                        screenModel.anime,
+                        screenModel.source,
+                    )
+                }.takeIf { isAnimeHttpSource },
+                onWebViewLongClicked = {
+                    copyAnimeUrl(
+                        context,
+                        screenModel.anime,
+                        screenModel.source,
+                    )
+                }.takeIf { isAnimeHttpSource },
+                onTrackingClicked = {
+                    if (!successState.hasLoggedInTrackers) {
+                        navigator.push(SettingsScreen(SettingsScreen.Destination.Tracking))
+                    } else {
+                        screenModel.showTrackDialog()
+                    }
+                }.takeIf { successState.anime.fetchType == FetchType.Episodes },
+                onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
+                onFilterButtonClicked = screenModel::showSettingsDialog,
+                onRefresh = screenModel::fetchAllFromSource,
+                onContinueWatching = {
+                    scope.launchIO {
+                        val extPlayer = screenModel.alwaysUseExternalPlayer
+                        continueWatching(context, screenModel.getNextUnseenEpisode(), extPlayer)
+                    }
+                },
+                onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
+                onCoverClicked = screenModel::showImagesDialog,
+                onCoverLoaded = {
+                    if (screenModel.themeCoverBased || successState.anime.favorite) {
+                        screenModel.setPaletteColor(it)
+                    }
+                },
+                onShareClicked = {
+                    shareAnime(
+                        context,
+                        screenModel.anime,
+                        screenModel.source,
+                    )
+                }.takeIf { isAnimeHttpSource },
+                onDownloadActionClicked = screenModel::runDownloadAction.takeIf {
+                    !successState.source.isLocalOrStub() && successState.anime.fetchType == FetchType.Episodes
+                },
+                onEditCategoryClicked = screenModel::showChangeCategoryDialog.takeIf { successState.anime.favorite },
+                onEditFetchIntervalClicked = screenModel::showSetAnimeFetchIntervalDialog.takeIf {
+                    successState.anime.favorite
+                },
+                onMigrateClicked = {
+                    navigator.push(GlobalAnimeSearchScreen(successState.anime.title))
+                }.takeIf { successState.anime.favorite },
+                changeAnimeSkipIntro = screenModel::showAnimeSkipIntroDialog
+                    .takeIf { successState.anime.favorite && successState.anime.fetchType == FetchType.Episodes },
+                onMultiBookmarkClicked = screenModel::bookmarkEpisodes,
+                onMultiFillermarkClicked = screenModel::fillermarkEpisodes,
+                onMultiMarkAsSeenClicked = screenModel::markEpisodesSeen,
+                onMarkPreviousAsSeenClicked = screenModel::markPreviousEpisodeSeen,
+                onMultiDeleteClicked = screenModel::showDeleteEpisodeDialog,
+                onEpisodeSwipe = screenModel::episodeSwipe,
+                onEpisodeSelected = screenModel::toggleSelection,
+                onAllEpisodeSelected = screenModel::toggleAllSelection,
+                onInvertSelection = screenModel::invertSelection,
+                onSeasonClicked = {
+                    navigator.push(AnimeScreen(it.id))
+                },
+                onContinueWatchingClicked = {
+                    scope.launchIO {
+                        val episode = screenModel.getNextUnseenEpisode(it.anime)
+                        episode?.let { ep ->
+                            openEpisode(context, ep, screenModel.alwaysUseExternalPlayer)
+                        }
+                    }
+                },
+            )
+        }
 
         val onDismissRequest = {
             screenModel.dismissDialog()

@@ -119,6 +119,7 @@ fun AnimeInfoBox(
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onCoverLoaded: (DomainAnimeCover) -> Unit = {},
 ) {
     val usePanoramaCover by Injekt.get<UiPreferences>().usePanoramaCoverMangaInfo().collectAsState()
     val topAlignCover by Injekt.get<UiPreferences>().topAlignCover().collectAsState()
@@ -171,6 +172,7 @@ fun AnimeInfoBox(
                     coverRatio = coverRatio,
                     usePanoramaCover = usePanoramaCover,
                     topAlignCover = topAlignCover,
+                    onCoverLoaded = onCoverLoaded,
                 )
             } else {
                 AnimeAndSourceTitlesLarge(
@@ -182,6 +184,7 @@ fun AnimeInfoBox(
                     doSearch = doSearch,
                     coverRatio = coverRatio,
                     usePanoramaCover = usePanoramaCover,
+                    onCoverLoaded = onCoverLoaded,
                 )
             }
         }
@@ -372,6 +375,7 @@ private fun AnimeAndSourceTitlesLarge(
     doSearch: (query: String, global: Boolean) -> Unit,
     coverRatio: MutableFloatState,
     usePanoramaCover: Boolean = false,
+    onCoverLoaded: (DomainAnimeCover) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -381,9 +385,10 @@ private fun AnimeAndSourceTitlesLarge(
     ) {
         val coverModifier = Modifier.fillMaxWidth(0.65f)
         val coverData = anime.asAnimeCover()
-        val onCoverLoaded = { _: DomainAnimeCover, result: AsyncImagePainter.State.Success ->
+        val onCoverLoadedInternal = { _: DomainAnimeCover, result: AsyncImagePainter.State.Success ->
             val image = result.result.image
             coverRatio.floatValue = image.height.toFloat() / image.width
+            onCoverLoaded(coverData)
         }
         if (usePanoramaCover && coverRatio.floatValue <= RatioSwitchToPanorama) {
             AnimeCover.Panorama(
@@ -391,7 +396,7 @@ private fun AnimeAndSourceTitlesLarge(
                 data = coverData,
                 contentDescription = stringResource(MR.strings.manga_cover),
                 onClick = onCoverClick,
-                onCoverLoaded = onCoverLoaded,
+                onCoverLoaded = onCoverLoadedInternal,
             )
         } else {
             AnimeCover.Book(
@@ -399,7 +404,7 @@ private fun AnimeAndSourceTitlesLarge(
                 data = coverData,
                 contentDescription = stringResource(MR.strings.manga_cover),
                 onClick = onCoverClick,
-                onCoverLoaded = onCoverLoaded,
+                onCoverLoaded = onCoverLoadedInternal,
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -427,6 +432,7 @@ private fun AnimeAndSourceTitlesSmall(
     coverRatio: MutableFloatState,
     usePanoramaCover: Boolean = false,
     topAlignCover: Boolean = false,
+    onCoverLoaded: (DomainAnimeCover) -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -436,9 +442,10 @@ private fun AnimeAndSourceTitlesSmall(
         verticalAlignment = if (topAlignCover) Alignment.Top else Alignment.CenterVertically,
     ) {
         val coverData = anime.asAnimeCover()
-        val onCoverLoaded = { _: DomainAnimeCover, result: AsyncImagePainter.State.Success ->
+        val onCoverLoadedInternal = { _: DomainAnimeCover, result: AsyncImagePainter.State.Success ->
             val image = result.result.image
             coverRatio.floatValue = image.height.toFloat() / image.width
+            onCoverLoaded(coverData)
         }
         if (usePanoramaCover && coverRatio.floatValue <= RatioSwitchToPanorama) {
             AnimeCover.Panorama(
@@ -448,7 +455,7 @@ private fun AnimeAndSourceTitlesSmall(
                 data = coverData,
                 contentDescription = stringResource(MR.strings.manga_cover),
                 onClick = onCoverClick,
-                onCoverLoaded = onCoverLoaded,
+                onCoverLoaded = onCoverLoadedInternal,
             )
         } else {
             AnimeCover.Book(
@@ -458,7 +465,7 @@ private fun AnimeAndSourceTitlesSmall(
                 data = coverData,
                 contentDescription = stringResource(MR.strings.manga_cover),
                 onClick = onCoverClick,
-                onCoverLoaded = onCoverLoaded,
+                onCoverLoaded = onCoverLoadedInternal,
             )
         }
         Column(

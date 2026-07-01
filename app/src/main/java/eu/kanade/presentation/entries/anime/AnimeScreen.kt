@@ -91,6 +91,7 @@ import eu.kanade.tachiyomi.ui.entries.anime.EpisodeList
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import kotlinx.coroutines.delay
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.entries.anime.model.SeasonDisplayMode
 import tachiyomi.domain.episode.model.Episode
@@ -138,6 +139,7 @@ fun AnimeScreen(
 
     // For cover dialog
     onCoverClicked: () -> Unit,
+    onCoverLoaded: (AnimeCover) -> Unit,
 
     // For top action menu
     onShareClicked: (() -> Unit)?,
@@ -201,6 +203,7 @@ fun AnimeScreen(
             onContinueWatching = onContinueWatching,
             onSearch = onSearch,
             onCoverClicked = onCoverClicked,
+            onCoverLoaded = onCoverLoaded,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
             onEditCategoryClicked = onEditCategoryClicked,
@@ -243,6 +246,7 @@ fun AnimeScreen(
             onContinueWatching = onContinueWatching,
             onSearch = onSearch,
             onCoverClicked = onCoverClicked,
+            onCoverLoaded = onCoverLoaded,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
             onEditCategoryClicked = onEditCategoryClicked,
@@ -294,6 +298,7 @@ private fun AnimeScreenSmallImpl(
 
     // For cover dialog
     onCoverClicked: () -> Unit,
+    onCoverLoaded: (AnimeCover) -> Unit,
 
     // For top action menu
     onShareClicked: (() -> Unit)?,
@@ -482,6 +487,7 @@ private fun AnimeScreenSmallImpl(
                             onCoverClick = onCoverClicked,
                             doSearch = onSearch,
                             modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                            onCoverLoaded = onCoverLoaded,
                         )
                     }
 
@@ -654,6 +660,7 @@ fun AnimeScreenLargeImpl(
 
     // For cover dialog
     onCoverClicked: () -> Unit,
+    onCoverLoaded: (AnimeCover) -> Unit,
 
     // For top action menu
     onShareClicked: (() -> Unit)?,
@@ -826,6 +833,7 @@ fun AnimeScreenLargeImpl(
                                 isStubSource = remember { state.source is StubAnimeSource },
                                 onCoverClick = onCoverClicked,
                                 doSearch = onSearch,
+                                onCoverLoaded = onCoverLoaded,
                             )
                             AnimeActionRow(
                                 favorite = state.anime.favorite,
