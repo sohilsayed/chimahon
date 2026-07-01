@@ -141,7 +141,7 @@ class WebDavSyncService(
                     val newETag = response.headers["ETag"]?.trim('"') ?: ""
                     val bytes = response.body.byteStream().use { it.readBytes() }
                     try {
-                        val backup = protoBuf.decodeFromByteArray(Backup.serializer(), bytes)
+                        val backup = decodeBackup(bytes, protoBuf)
                         Pair(SyncData(backup = backup), newETag)
                     } catch (e: Exception) {
                         xLogE("Invalid backup format:", e)

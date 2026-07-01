@@ -102,7 +102,7 @@ class SyncYomiSyncService(
             }
 
             return try {
-                val backup = protoBuf.decodeFromByteArray(Backup.serializer(), byteArray)
+                val backup = decodeBackup(byteArray, protoBuf)
                 return Pair(SyncData(backup = backup), newETag)
             } catch (_: SerializationException) {
                 logcat(LogPriority.INFO) {

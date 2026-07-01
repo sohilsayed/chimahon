@@ -183,7 +183,10 @@ class SyncManager(
         }
 
         // Stop the sync early if the remote backup is null or empty
-        if (remoteBackup.backupManga.isEmpty() && remoteBackup.backupNovels.isEmpty()) {
+        if (remoteBackup.backupManga.isEmpty() &&
+            remoteBackup.backupAnime.isEmpty() &&
+            remoteBackup.backupNovels.isEmpty()
+        ) {
             notifier.showSyncError("No data found on remote server.")
             return
         }
@@ -198,6 +201,10 @@ class SyncManager(
             backupPreferences = remoteBackup.backupPreferences,
             backupSourcePreferences = remoteBackup.backupSourcePreferences,
             backupExtensionRepo = remoteBackup.backupExtensionRepo,
+            backupAnime = remoteBackup.backupAnime,
+            backupAnimeCategories = remoteBackup.backupAnimeCategories,
+            backupAnimeSources = remoteBackup.backupAnimeSources,
+            backupAnimeExtensionRepo = remoteBackup.backupAnimeExtensionRepo,
 
             // SY -->
             backupSavedSearches = remoteBackup.backupSavedSearches,
@@ -213,7 +220,10 @@ class SyncManager(
         )
 
         // It's local sync no need to restore data. (just update remote data)
-        if (filteredFavorites.isEmpty() && remoteBackup.backupNovels.isEmpty()) {
+        if (filteredFavorites.isEmpty() &&
+            remoteBackup.backupAnime.isEmpty() &&
+            remoteBackup.backupNovels.isEmpty()
+        ) {
             // update the sync timestamp
             syncPreferences.lastSyncTimestamp().set(Date().time)
             notifier.showSyncSuccess("Sync completed successfully")
@@ -235,6 +245,7 @@ class SyncManager(
                     // Chimahon -->
                     novels = true,
                     // Chimahon <--
+                    animeEntries = true,
                 ),
             )
 
