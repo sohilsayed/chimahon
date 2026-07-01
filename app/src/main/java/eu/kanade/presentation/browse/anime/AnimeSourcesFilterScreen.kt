@@ -16,6 +16,7 @@ import tachiyomi.domain.source.anime.model.AnimeSource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.icons.FlagEmoji
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 
@@ -68,7 +69,12 @@ private fun AnimeSourcesFilterContent(
                 contentType = "source-filter-header",
             ) {
                 SwitchPreferenceWidget(
-                    title = LocaleHelper.getSourceDisplayName(language, LocalContext.current),
+                    title = LocaleHelper.getSourceDisplayName(language, LocalContext.current) +
+                        (
+                            " (${LocaleHelper.getDisplayName(language)} ${FlagEmoji.getEmojiLangFlag(language)})"
+                                .takeIf { language !in listOf("all", "other") }
+                                ?: " (${FlagEmoji.getEmojiLangFlag(language)})"
+                            ),
                     checked = enabled,
                     onCheckedChanged = { onClickLanguage(language) },
                 )
