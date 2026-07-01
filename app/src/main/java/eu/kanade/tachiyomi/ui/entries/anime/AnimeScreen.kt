@@ -323,6 +323,7 @@ class AnimeScreen(
                 NavigatorAdaptiveSheet(
                     screen = AnimeTrackInfoDialogHomeScreen(
                         animeId = successState.anime.id,
+                        animeTitle = successState.anime.title,
                         sourceId = successState.source.id,
                     ),
                     enableSwipeDismiss = { it.lastItem is AnimeTrackInfoDialogHomeScreen },
