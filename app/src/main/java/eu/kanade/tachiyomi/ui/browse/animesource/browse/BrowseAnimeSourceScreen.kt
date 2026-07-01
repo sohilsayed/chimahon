@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.NewReleases
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -21,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,12 +47,14 @@ import eu.kanade.presentation.browse.anime.MissingSourceScreen
 import eu.kanade.presentation.browse.anime.components.ChangeAnimeCategoryDialog
 import eu.kanade.presentation.browse.anime.components.BrowseAnimeSourceToolbar
 import eu.kanade.presentation.components.SearchToolbar
+import eu.kanade.presentation.entries.anime.DuplicateAnimeDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeSourcePreferencesScreen
+import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import mihon.feature.animemigration.dialog.MigrateAnimeDialog
@@ -305,11 +309,32 @@ data class BrowseAnimeSourceScreen(
                     onUpdate = screenModel::setFilters,
                 )
             }
+            is BrowseAnimeSourceScreenModel.Dialog.AddDuplicateAnime -> {
+                DuplicateAnimeDialog(
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = { screenModel.addFavorite(dialog.anime) },
+                    onOpenAnime = { navigator.push(AnimeScreen(dialog.duplicate.id)) },
+                    onMigrate = {
+                        screenModel.setDialog(
+                            BrowseAnimeSourceScreenModel.Dialog.Migrate(dialog.anime, dialog.duplicate),
+                        )
+                    },
+                )
+            }
+            is BrowseAnimeSourceScreenModel.Dialog.RemoveAnime -> {
+                RemoveAnimeDialog(
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = {
+                        screenModel.changeAnimeFavorite(dialog.anime)
+                    },
+                    animeToRemove = dialog.anime,
+                )
+            }
             is BrowseAnimeSourceScreenModel.Dialog.ChangeAnimeCategory -> {
                 ChangeAnimeCategoryDialog(
                     initialSelection = dialog.initialSelection,
                     onDismissRequest = onDismissRequest,
-                    onEditCategories = {},
+                    onEditCategories = { navigator.push(CategoryScreen(CategoryScreen.Tab.ANIME)) },
                     onConfirm = { include, _ ->
                         screenModel.changeAnimeFavorite(dialog.anime)
                         screenModel.moveAnimeToCategories(dialog.anime, include)
@@ -343,4 +368,36 @@ data class BrowseAnimeSourceScreen(
         class Text(txt: String) : SearchType(txt)
         class Genre(txt: String) : SearchType(txt)
     }
+}
+
+@Composable
+private fun RemoveAnimeDialog(
+    onDismissRequest: () -> Unit,
+    onConfirm: () -> Unit,
+    animeToRemove: Anime,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismissRequest()
+                    onConfirm()
+                },
+            ) {
+                Text(text = stringResource(MR.strings.action_remove))
+            }
+        },
+        title = {
+            Text(text = stringResource(MR.strings.are_you_sure))
+        },
+        text = {
+            Text(text = animeToRemove.title)
+        },
+    )
 }

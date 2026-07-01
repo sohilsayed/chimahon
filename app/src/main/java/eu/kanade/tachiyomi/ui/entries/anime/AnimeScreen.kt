@@ -67,6 +67,7 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.feature.animemigration.dialog.MigrateAnimeDialog
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
@@ -273,7 +274,19 @@ class AnimeScreen(
             }
 
             is AnimeScreenModel.Dialog.Migrate -> {
-                UnsupportedAnimeFeatureDialog(onDismissRequest = onDismissRequest)
+                MigrateAnimeDialog(
+                    current = dialog.oldAnime,
+                    target = dialog.newAnime,
+                    onClickTitle = {
+                        onDismissRequest()
+                        navigator.push(AnimeScreen(dialog.newAnime.id))
+                    },
+                    onDismissRequest = onDismissRequest,
+                    onComplete = {
+                        onDismissRequest()
+                        navigator.replace(AnimeScreen(dialog.newAnime.id))
+                    },
+                )
             }
             AnimeScreenModel.Dialog.EpisodeSettingsSheet -> EpisodeSettingsDialog(
                 onDismissRequest = onDismissRequest,
