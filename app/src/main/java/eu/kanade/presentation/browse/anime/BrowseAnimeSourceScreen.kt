@@ -118,6 +118,41 @@ fun BrowseAnimeSourceContent(
         return
     }
 
+    if (animeList.itemCount == 0) {
+        EmptyScreen(
+            modifier = Modifier.padding(contentPadding),
+            message = stringResource(MR.strings.no_results_found),
+            actions = if (source is LocalAnimeSource) {
+                persistentListOf(
+                    EmptyScreenAction(
+                        stringRes = MR.strings.local_source_help_guide,
+                        icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                        onClick = onLocalAnimeSourceHelpClick,
+                    ),
+                )
+            } else {
+                persistentListOf(
+                    EmptyScreenAction(
+                        stringRes = MR.strings.action_retry,
+                        icon = Icons.Outlined.Refresh,
+                        onClick = animeList::refresh,
+                    ),
+                    EmptyScreenAction(
+                        stringRes = MR.strings.action_open_in_web_view,
+                        icon = Icons.Outlined.Public,
+                        onClick = onWebViewClick,
+                    ),
+                    EmptyScreenAction(
+                        stringRes = MR.strings.label_help,
+                        icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                        onClick = onHelpClick,
+                    ),
+                )
+            },
+        )
+        return
+    }
+
     when (displayMode) {
         LibraryDisplayMode.ComfortableGrid -> {
             BrowseAnimeSourceComfortableGrid(
