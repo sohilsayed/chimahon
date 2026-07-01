@@ -106,6 +106,23 @@ internal fun Screen.MigrateAnimeDialog(
                         )
                     }
                 }
+                if (state.migrationFailed) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                        Text(
+                            text = stringResource(MR.strings.internal_error),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -124,8 +141,9 @@ internal fun Screen.MigrateAnimeDialog(
                     TextButton(
                         onClick = {
                             scope.launchIO {
-                                screenModel.migrateAnime(replace = false)
-                                withUIContext { onComplete() }
+                                if (screenModel.migrateAnime(replace = false)) {
+                                    withUIContext { onComplete() }
+                                }
                             }
                         },
                     ) {
@@ -134,8 +152,9 @@ internal fun Screen.MigrateAnimeDialog(
                     TextButton(
                         onClick = {
                             scope.launchIO {
-                                screenModel.migrateAnime(replace = true)
-                                withUIContext { onComplete() }
+                                if (screenModel.migrateAnime(replace = true)) {
+                                    withUIContext { onComplete() }
+                                }
                             }
                         },
                     ) {
@@ -180,6 +199,7 @@ private class MigrateAnimeDialogScreenModel(
                 applicableFlags = applicableFlags,
                 selectedFlags = selectedFlags,
                 isMigrated = false,
+                migrationFailed = false,
             )
         }
     }
@@ -193,18 +213,15 @@ private class MigrateAnimeDialogScreenModel(
         }
     }
 
-    suspend fun migrateAnime(replace: Boolean) {
+    suspend fun migrateAnime(replace: Boolean): Boolean {
         val state = state.value
-        val current = state.current ?: return
-        val target = state.target ?: return
+        val current = state.current ?: return false
+        val target = state.target ?: return false
         migrationFlags.set(AnimeMigrationFlag.toBit(state.selectedFlags))
-        mutableState.update { it.copy(isMigrating = true) }
-        try {
-            migrateAnime(current, target, replace, state.selectedFlags)
-            mutableState.update { it.copy(isMigrating = false, isMigrated = true) }
-        } catch (_: Throwable) {
-            mutableState.update { it.copy(isMigrating = false, isMigrated = false) }
-        }
+        mutableState.update { it.copy(isMigrating = true, migrationFailed = false) }
+        val migrated = migrateAnime(current, target, replace, state.selectedFlags)
+        mutableState.update { it.copy(isMigrating = false, isMigrated = migrated, migrationFailed = !migrated) }
+        return migrated
     }
 
     data class State(
@@ -214,5 +231,6 @@ private class MigrateAnimeDialogScreenModel(
         val selectedFlags: Set<AnimeMigrationFlag> = emptySet(),
         val isMigrating: Boolean = false,
         val isMigrated: Boolean = false,
+        val migrationFailed: Boolean = false,
     )
 }

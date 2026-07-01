@@ -48,8 +48,8 @@ class MigrateAnimeUseCase(
         target: Anime,
         replace: Boolean,
         flags: Set<AnimeMigrationFlag>,
-    ) {
-        val targetSource = sourceManager.get(target.source) ?: return
+    ): Boolean {
+        val targetSource = sourceManager.get(target.source) ?: return false
         val currentSource = sourceManager.get(current.source)
 
         try {
@@ -146,10 +146,12 @@ class MigrateAnimeUseCase(
             )
 
             updateAnime.awaitAll(listOfNotNull(currentAnimeUpdate, targetAnimeUpdate))
+            return true
         } catch (e: Throwable) {
             if (e is CancellationException) {
                 throw e
             }
+            return false
         }
     }
 }
