@@ -121,7 +121,7 @@ data object AnimeTab : Tab {
                 val title = state.getToolbarTitle(
                     defaultTitle = defaultTitle,
                     defaultCategoryTitle = stringResource(MR.strings.label_default),
-                    page = screenModel.activeCategoryIndex,
+                    page = state.coercedActiveCategoryIndex,
                 )
                 val tabVisible = state.showCategoryTabs && state.categories.size > 1
                 LibraryToolbar(
@@ -129,16 +129,16 @@ data object AnimeTab : Tab {
                     selectedCount = state.selection.size,
                     title = title,
                     onClickUnselectAll = screenModel::clearSelection,
-                    onClickSelectAll = { screenModel.selectAll(screenModel.activeCategoryIndex) },
+                    onClickSelectAll = { screenModel.selectAll(state.coercedActiveCategoryIndex) },
                     onClickInvertSelection = {
                         screenModel.invertSelection(
-                            screenModel.activeCategoryIndex,
+                            state.coercedActiveCategoryIndex,
                         )
                     },
                     onClickFilter = screenModel::showSettingsDialog,
                     onClickRefresh = {
                         onClickRefresh(
-                            state.displayCategories.getOrNull(screenModel.activeCategoryIndex),
+                            state.displayCategories.getOrNull(state.coercedActiveCategoryIndex),
                         )
                     },
                     onClickGlobalUpdate = { onClickRefresh(null) },
@@ -203,7 +203,7 @@ data object AnimeTab : Tab {
                         searchQuery = state.searchQuery,
                         selection = state.selection,
                         contentPadding = contentPadding,
-                        currentPage = { screenModel.activeCategoryIndex },
+                        currentPage = { state.coercedActiveCategoryIndex },
                         hasActiveFilters = state.hasActiveFilters,
                         showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
                         onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
@@ -241,7 +241,7 @@ data object AnimeTab : Tab {
         val onDismissRequest = screenModel::closeDialog
         when (val dialog = state.dialog) {
             is AnimeLibraryScreenModel.Dialog.SettingsSheet -> run {
-                val category = state.displayCategories.getOrNull(screenModel.activeCategoryIndex)
+                val category = state.displayCategories.getOrNull(state.coercedActiveCategoryIndex)
                 if (category == null) {
                     onDismissRequest()
                     return@run

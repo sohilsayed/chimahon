@@ -1,6 +1,7 @@
 package eu.kanade.presentation.browse.anime
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -12,7 +13,6 @@ import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
-import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 
 @Composable
@@ -35,7 +35,7 @@ fun MigrateAnimeScreen(
         if (state.isEmpty) {
             EmptyScreen(
                 stringRes = MR.strings.empty_screen,
-                modifier = Modifier,
+                modifier = Modifier.padding(contentPadding),
             )
             return@Scaffold
         }

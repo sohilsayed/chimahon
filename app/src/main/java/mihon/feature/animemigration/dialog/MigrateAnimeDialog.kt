@@ -27,6 +27,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import eu.kanade.domain.entries.anime.model.hasCustomBackground
 import eu.kanade.domain.entries.anime.model.hasCustomCover
+import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
@@ -100,7 +101,13 @@ internal fun Screen.MigrateAnimeDialog(
                             tint = MaterialTheme.colorScheme.error,
                         )
                         Text(
-                            text = "These entries need matching target types before migration.",
+                            text = stringResource(
+                                if (current.fetchType == FetchType.Seasons) {
+                                    MR.strings.label_cant_migrate_anime_season
+                                } else {
+                                    MR.strings.label_cant_migrate_anime_episode
+                                },
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                         )

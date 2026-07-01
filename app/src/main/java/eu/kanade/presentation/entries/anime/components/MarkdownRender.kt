@@ -177,7 +177,7 @@ private val markdownComponents = markdownComponents(
         }
     },
     unorderedList = { ul ->
-        val markers = listOf("•", "◦", "▸", "▹")
+        val markers = listOf("\u2022", "\u25e6", "\u25b8", "\u25b9")
 
         CompositionLocalProvider(
             LocalBulletListHandler provides { _, _, _, _, _ -> "${markers[ul.listDepth % markers.size]} " },

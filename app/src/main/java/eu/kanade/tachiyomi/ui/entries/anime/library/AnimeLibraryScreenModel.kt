@@ -71,14 +71,11 @@ class AnimeLibraryScreenModel(
     private val downloadManager: AnimeDownloadManager = Injekt.get(),
     private val coverCache: AnimeCoverCache = Injekt.get(),
     private val backgroundCache: AnimeBackgroundCache = Injekt.get(),
-) : StateScreenModel<AnimeLibraryScreenModel.State>(State()) {
+) : StateScreenModel<AnimeLibraryScreenModel.State>(
+    State(activeCategoryIndex = preferences.lastUsedCategory().get()),
+) {
 
     private val searchQueryFlow = MutableStateFlow<String?>(null)
-    var activeCategoryIndex: Int = preferences.lastUsedCategory().get()
-        set(value) {
-            field = value
-            preferences.lastUsedCategory().set(value)
-        }
 
     init {
         screenModelScope.launchIO {
@@ -168,7 +165,14 @@ class AnimeLibraryScreenModel(
                 )
             }.collectLatest { newState ->
                 mutableState.update { oldState ->
-                    newState.copy(selection = oldState.selection, dialog = oldState.dialog)
+                    newState.copy(
+                        selection = oldState.selection,
+                        dialog = oldState.dialog,
+                        showCategoryTabs = oldState.showCategoryTabs,
+                        showAnimeCount = oldState.showAnimeCount,
+                        showContinueWatchingButton = oldState.showContinueWatchingButton,
+                        activeCategoryIndex = oldState.coercedActiveCategoryIndex,
+                    )
                 }
             }
         }
@@ -305,8 +309,9 @@ class AnimeLibraryScreenModel(
     fun updateActiveCategoryIndex(index: Int) {
         val maxIndex = (state.value.displayCategories.size - 1).coerceAtLeast(0)
         val coerced = index.coerceIn(0, maxIndex)
-        if (coerced != activeCategoryIndex) {
-            activeCategoryIndex = coerced
+        if (coerced != state.value.coercedActiveCategoryIndex) {
+            mutableState.update { it.copy(activeCategoryIndex = coerced) }
+            preferences.lastUsedCategory().set(coerced)
         }
     }
 
@@ -360,7 +365,7 @@ class AnimeLibraryScreenModel(
 
             if (deleteEpisodes) {
                 animeToDelete.forEach { anime ->
-                    val source = sourceManager.get(anime.source) as? AnimeSource
+                    val source = sourceManager.get(anime.source)
                     if (source != null) {
                         downloadManager.deleteAnime(anime, source)
                     }
@@ -407,7 +412,7 @@ class AnimeLibraryScreenModel(
     }
 
     fun getRandomAnimelibItemForCurrentCategory(): AnimeLibraryItem? {
-        return getRandomAnimelibItemForCurrentCategory(activeCategoryIndex)
+        return getRandomAnimelibItemForCurrentCategory(state.value.coercedActiveCategoryIndex)
     }
 
     fun toggleRangeSelection(anime: LibraryAnime) {
@@ -610,12 +615,18 @@ class AnimeLibraryScreenModel(
         val showAnimeCount: Boolean = false,
         val showContinueWatchingButton: Boolean = false,
         val dialog: Dialog? = null,
+        private val activeCategoryIndex: Int = 0,
     ) {
         val selectionMode = selection.isNotEmpty()
         val showAnimeContinueButton: Boolean
             get() = showContinueWatchingButton
 
         val displayCategories: List<AnimeCategory> = library.keys.toList()
+        val coercedActiveCategoryIndex: Int
+            get() = activeCategoryIndex.coerceIn(
+                minimumValue = 0,
+                maximumValue = displayCategories.lastIndex.coerceAtLeast(0),
+            )
 
     val isLibraryEmpty: Boolean
         get() = library.values.all { it.isEmpty() }
@@ -633,23 +644,13 @@ class AnimeLibraryScreenModel(
         defaultCategoryTitle: String,
         page: Int,
     ): LibraryToolbarTitle {
-        val category = displayCategories.getOrNull(page)
-        val title: String
-        val numberOfAnime: Int?
+        val category = displayCategories.getOrNull(page) ?: return LibraryToolbarTitle(defaultTitle)
         if (searchQuery != null) {
-            title = searchQuery
-            numberOfAnime = null
-        } else if (category != null && category.id != AnimeCategory.UNCATEGORIZED_ID && !category.isSystemCategory) {
-            title = category.name
-            numberOfAnime = if (showAnimeCount) getAnimeCountForCategory(category) else null
-        } else {
-            title = defaultTitle
-            numberOfAnime = if (category != null && showAnimeCount) {
-                getAnimeCountForCategory(category)
-            } else {
-                null
-            }
+            return LibraryToolbarTitle(searchQuery)
         }
+        val categoryName = if (category.isSystemCategory) defaultCategoryTitle else category.name
+        val title = if (showCategoryTabs) defaultTitle else categoryName
+        val numberOfAnime = if (!showCategoryTabs && showAnimeCount) getAnimeCountForCategory(category) else null
         return LibraryToolbarTitle(text = title, numberOfManga = numberOfAnime)
     }
     }
