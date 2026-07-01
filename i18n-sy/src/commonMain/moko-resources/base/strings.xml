@@ -258,6 +258,7 @@
     <string name="pref_sync_options_summ">Can be used to set sync triggers</string>
     <string name="sync_on_chapter_read">Sync on Chapter Read</string>
     <string name="sync_on_chapter_open">Sync on Chapter Open</string>
+    <string name="sync_on_episode_seen">Sync on Episode Seen</string>
     <string name="sync_on_app_start">Sync on App Start</string>
     <string name="sync_on_app_resume">Sync on App Resume</string>
     <string name="sync_library">Sync TTSU</string>

@@ -11,12 +11,14 @@ import android.os.Bundle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.domain.track.anime.model.toDbTrack
 import eu.kanade.domain.track.service.DelayedAnimeTrackingUpdateJob
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.track.store.DelayedAnimeTrackingStore
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.data.track.AnimeTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.animesource.AnimeSource
@@ -447,6 +449,7 @@ class ExternalIntents {
     private val playerPreferences: PlayerPreferences = Injekt.get()
     private val downloadPreferences: DownloadPreferences = Injekt.get()
     private val trackPreferences: TrackPreferences = Injekt.get()
+    private val syncPreferences: SyncPreferences = Injekt.get()
     private val basePreferences: BasePreferences by injectLazy()
 
     /**
@@ -494,12 +497,24 @@ class ExternalIntents {
                     totalSeconds = totalSeconds,
                 ),
             )
-            if (trackPreferences.autoUpdateTrack().get() && currEp.seen) {
+            if (trackPreferences.autoUpdateTrack().get() && seen) {
                 updateTrackEpisodeSeen(currEp.episodeNumber.toDouble(), anime)
             }
             if (seen) {
                 deleteEpisodeIfNeeded(currentEpisode, anime)
+                if (!currEp.seen) {
+                    startSyncOnEpisodeSeen()
+                }
             }
+        }
+    }
+
+    private fun startSyncOnEpisodeSeen() {
+        if (!syncPreferences.isSyncEnabled()) return
+
+        val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
+        if (syncTriggerOpt.syncOnEpisodeSeen) {
+            SyncDataJob.startNow(Injekt.get<Application>())
         }
     }
 

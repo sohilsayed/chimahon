@@ -49,6 +49,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.episode.model.toDbEpisode
 import eu.kanade.domain.track.interactor.TrackEpisode
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.screen.player.custombutton.CustomButtonFetchState
 import eu.kanade.presentation.more.settings.screen.player.custombutton.getButtons
@@ -65,6 +66,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
+import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.anilist.Anilist
 import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
@@ -187,6 +189,7 @@ class PlayerViewModel @JvmOverloads constructor(
     internal val subtitlePreferences: SubtitlePreferences = Injekt.get(),
     private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
     private val basePreferences: BasePreferences = Injekt.get(),
+    private val syncPreferences: SyncPreferences = Injekt.get(),
     private val getCustomButtons: GetCustomButtons = Injekt.get(),
     private val trackSelect: TrackSelect = Injekt.get(),
     private val jimakuApi: JimakuApi = JimakuApi(),
@@ -2759,9 +2762,13 @@ class PlayerViewModel @JvmOverloads constructor(
         val progress = playerPreferences.progressPreference().get()
         val shouldTrack = !incognitoMode || hasTrackers
         if (seconds >= totalSeconds * progress && shouldTrack) {
+            val wasSeen = currentEp.seen
             currentEp.seen = true
             updateTrackEpisodeSeen(currentEp)
             deleteEpisodeIfNeeded(currentEp)
+            if (!wasSeen) {
+                startSyncOnEpisodeSeen()
+            }
         }
 
         saveWatchingProgress(currentEp)
@@ -3102,6 +3109,15 @@ class PlayerViewModel @JvmOverloads constructor(
 
         viewModelScope.launchNonCancellable {
             trackEpisode.await(context, anime.id, episode.episode_number.toDouble())
+        }
+    }
+
+    private fun startSyncOnEpisodeSeen() {
+        if (incognitoMode || !syncPreferences.isSyncEnabled()) return
+
+        val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
+        if (syncTriggerOpt.syncOnEpisodeSeen) {
+            SyncDataJob.startNow(Injekt.get<Application>())
         }
     }
 

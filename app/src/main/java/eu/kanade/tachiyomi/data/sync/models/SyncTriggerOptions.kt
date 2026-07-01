@@ -7,18 +7,21 @@ import tachiyomi.i18n.sy.SYMR
 data class SyncTriggerOptions(
     val syncOnChapterRead: Boolean = false,
     val syncOnChapterOpen: Boolean = false,
+    val syncOnEpisodeSeen: Boolean = false,
     val syncOnAppStart: Boolean = false,
     val syncOnAppResume: Boolean = false,
 ) {
     fun asBooleanArray() = booleanArrayOf(
         syncOnChapterRead,
         syncOnChapterOpen,
+        syncOnEpisodeSeen,
         syncOnAppStart,
         syncOnAppResume,
     )
 
     fun anyEnabled() = syncOnChapterRead ||
         syncOnChapterOpen ||
+        syncOnEpisodeSeen ||
         syncOnAppStart ||
         syncOnAppResume
 
@@ -35,6 +38,11 @@ data class SyncTriggerOptions(
                 setter = { options, enabled -> options.copy(syncOnChapterOpen = enabled) },
             ),
             Entry(
+                label = SYMR.strings.sync_on_episode_seen,
+                getter = SyncTriggerOptions::syncOnEpisodeSeen,
+                setter = { options, enabled -> options.copy(syncOnEpisodeSeen = enabled) },
+            ),
+            Entry(
                 label = SYMR.strings.sync_on_app_start,
                 getter = SyncTriggerOptions::syncOnAppStart,
                 setter = { options, enabled -> options.copy(syncOnAppStart = enabled) },
@@ -49,8 +57,9 @@ data class SyncTriggerOptions(
         fun fromBooleanArray(array: BooleanArray) = SyncTriggerOptions(
             syncOnChapterRead = array[0],
             syncOnChapterOpen = array[1],
-            syncOnAppStart = array[2],
-            syncOnAppResume = array[3],
+            syncOnEpisodeSeen = if (array.size > 4) array[2] else false,
+            syncOnAppStart = if (array.size > 4) array[3] else array.getOrElse(2) { false },
+            syncOnAppResume = if (array.size > 4) array[4] else array.getOrElse(3) { false },
         )
     }
 
