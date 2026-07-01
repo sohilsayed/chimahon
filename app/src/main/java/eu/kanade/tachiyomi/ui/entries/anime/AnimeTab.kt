@@ -104,7 +104,11 @@ data object AnimeTab : Tab {
         val onClickRefresh: (AnimeCategory?) -> Boolean = { category ->
             val started = AnimeLibraryUpdateJob.startNow(context, category)
             scope.launch {
-                val msgRes = if (started) MR.strings.updating_category else MR.strings.update_already_running
+                val msgRes = when {
+                    !started -> MR.strings.update_already_running
+                    category != null -> MR.strings.updating_category
+                    else -> MR.strings.updating_library
+                }
                 snackbarHostState.showSnackbar(context.stringResource(msgRes))
             }
             started

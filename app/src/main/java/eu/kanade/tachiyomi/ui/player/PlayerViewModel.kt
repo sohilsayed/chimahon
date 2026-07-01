@@ -159,6 +159,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 
 private const val MAX_SUBTITLE_HISTORY = 120
+private const val VIDEO_SELECTION_DELIMITER = "\u001e"
 class PlayerViewModelProviderFactory(
     private val activity: PlayerActivity,
 ) : ViewModelProvider.Factory {
@@ -2076,6 +2077,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
         preferredHosterKey = hoster.selectionKey()
         preferredVideoKey = video.selectionKey()
+        persistPreferredVideoSelectionForCurrentEpisode()
     }
 
     private fun findRememberedVideoIndex(hoster: Hoster, videoList: List<Video>): Int {
@@ -2101,6 +2103,34 @@ class PlayerViewModel @JvmOverloads constructor(
         }
 
         return findRememberedVideoIndex(hoster, videoList)
+    }
+
+    private fun restorePreferredVideoSelectionForEpisode(episodeId: Long) {
+        playerPreferences.preferredVideoSelectionForEpisode(episodeId)
+            .get()
+            .decodePreferredVideoSelection()
+            ?.let { (hosterKey, videoKey) ->
+                preferredHosterKey = hosterKey
+                preferredVideoKey = videoKey
+            }
+    }
+
+    private fun persistPreferredVideoSelectionForCurrentEpisode() {
+        val episodeId = currentEpisode.value?.id ?: return
+        val hosterKey = preferredHosterKey ?: return
+        val videoKey = preferredVideoKey ?: return
+        playerPreferences.preferredVideoSelectionForEpisode(episodeId)
+            .set(encodePreferredVideoSelection(hosterKey, videoKey))
+    }
+
+    private fun encodePreferredVideoSelection(hosterKey: String, videoKey: String): String {
+        return listOf(hosterKey, videoKey).joinToString(VIDEO_SELECTION_DELIMITER)
+    }
+
+    private fun String.decodePreferredVideoSelection(): Pair<String, String>? {
+        if (isBlank()) return null
+        val parts = split(VIDEO_SELECTION_DELIMITER, limit = 2)
+        return if (parts.size == 2) Pair(parts[0], parts[1]) else null
     }
 
     private fun subtitleSelectionKey(title: String?, path: String?, language: String? = null): String {
@@ -2354,6 +2384,10 @@ class PlayerViewModel @JvmOverloads constructor(
 
                 val currentEp = currentEpisode.value
                     ?: throw ExceptionWithStringResource("No episode loaded", MR.strings.no_episode_loaded)
+                val hasExplicitVideoRequest = hostList.isNotBlank() || hostIndex != -1 || vidIndex != -1
+                if (!hasExplicitVideoRequest && qualityIndex == Pair(-1, -1)) {
+                    currentEp.id?.let(::restorePreferredVideoSelectionForEpisode)
+                }
                 if (hostList.isNotBlank()) {
                     currentHosterList = hostList.toHosterList().ifEmpty {
                         currentHosterList = null
@@ -2717,6 +2751,7 @@ class PlayerViewModel @JvmOverloads constructor(
             _currentEpisode.update { _ -> chosenEpisode }
             updateEpisode(chosenEpisode)
             applySubtitleDelayForAnime(anime.id)
+            chosenEpisode.id?.let(::restorePreferredVideoSelectionForEpisode)
 
             this@PlayerViewModel.episodeId = chosenEpisode.id!!
             updateHasPreviousEpisode(getCurrentEpisodeIndex() != 0)

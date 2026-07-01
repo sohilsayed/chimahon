@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.player.settings
 
 import eu.kanade.tachiyomi.ui.player.PlayerOrientation
 import eu.kanade.tachiyomi.ui.player.VideoAspect
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 
@@ -32,6 +33,10 @@ class PlayerPreferences(
 
     fun showFailedHosters() = preferenceStore.getBoolean("pref_show_failed_hosters", false)
     fun showEmptyHosters() = preferenceStore.getBoolean("pref_show_empty_hosters", false)
+    fun preferredVideoSelectionForEpisode(episodeId: Long) = preferenceStore.getString(
+        Preference.appStateKey("player_preferred_video_selection_$episodeId"),
+        "",
+    )
 
     // Display
 
