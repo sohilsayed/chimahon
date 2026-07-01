@@ -123,6 +123,24 @@ class AnimeDomainModule : InjektModule {
         addFactory { AddAnimeTracks(get(), get(), get(), get()) }
         addFactory { RefreshAnimeTracks(get(), get(), get(), get()) }
         addFactory { TrackEpisode(get(), get(), get(), get()) }
-        addFactory { MigrateAnimeUseCase(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+        addFactory {
+            MigrateAnimeUseCase(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+            )
+        }
     }
 }

@@ -21,6 +21,9 @@ import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.toEpisodeUpdate
+import tachiyomi.domain.history.interactor.GetAnimeHistory
+import tachiyomi.domain.history.interactor.UpsertAnimeHistory
+import tachiyomi.domain.history.model.AnimeHistoryUpdate
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.domain.track.anime.interactor.InsertAnimeTrack
@@ -34,6 +37,8 @@ class MigrateAnimeUseCase(
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId,
     private val syncEpisodesWithSource: SyncEpisodesWithSource,
     private val updateEpisode: UpdateEpisode,
+    private val getAnimeHistory: GetAnimeHistory,
+    private val upsertAnimeHistory: UpsertAnimeHistory,
     private val getCategories: GetAnimeCategories,
     private val setAnimeCategories: SetAnimeCategories,
     private val getTracks: GetAnimeTracks,
@@ -64,6 +69,9 @@ class MigrateAnimeUseCase(
             if (AnimeMigrationFlag.EPISODE in flags) {
                 val previousEpisodes = getEpisodesByAnimeId.await(current.id)
                 val targetEpisodes = getEpisodesByAnimeId.await(target.id)
+                val historyUpdates = mutableListOf<AnimeHistoryUpdate>()
+                val previousHistory = getAnimeHistory.await(current.id)
+                    .associateBy { it.episodeId }
 
                 val maxEpisodeSeen = previousEpisodes
                     .filter { it.seen }
@@ -82,6 +90,13 @@ class MigrateAnimeUseCase(
                                 bookmark = previousEpisode.bookmark,
                                 lastSecondSeen = previousEpisode.lastSecondSeen,
                             )
+                            previousHistory[previousEpisode.id]?.let { history ->
+                                historyUpdates += AnimeHistoryUpdate(
+                                    episodeId = updatedEpisode.id,
+                                    watchedAt = history.watchedAt ?: return@let,
+                                    sessionWatchDuration = history.watchDuration,
+                                )
+                            }
                         } else if (maxEpisodeSeen != null && updatedEpisode.episodeNumber <= maxEpisodeSeen) {
                             updatedEpisode = updatedEpisode.copy(seen = true)
                         }
@@ -91,6 +106,7 @@ class MigrateAnimeUseCase(
                 }
 
                 updateEpisode.awaitAll(updatedEpisodes.map { it.toEpisodeUpdate() })
+                historyUpdates.forEach { upsertAnimeHistory.await(it) }
             }
 
             if (AnimeMigrationFlag.CATEGORY in flags) {
