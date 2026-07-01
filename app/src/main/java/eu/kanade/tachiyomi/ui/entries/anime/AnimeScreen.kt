@@ -127,7 +127,7 @@ class AnimeScreen(
         }
 
         TachiyomiTheme(
-            seedColor = successState.seedColor.takeIf { screenModel.themeCoverBased },
+            seedColor = successState.seedColor,
         ) {
             AnimeScreen(
                 state = successState,
@@ -185,9 +185,7 @@ class AnimeScreen(
                 onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
                 onCoverClicked = screenModel::showImagesDialog,
                 onCoverLoaded = {
-                    if (screenModel.themeCoverBased || successState.anime.favorite) {
-                        screenModel.setPaletteColor(it)
-                    }
+                    screenModel.setPaletteColor(it)
                 },
                 onShareClicked = {
                     shareAnime(

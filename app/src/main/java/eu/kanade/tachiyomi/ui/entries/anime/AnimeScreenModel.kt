@@ -31,7 +31,6 @@ import eu.kanade.domain.entries.anime.model.seasonUnseenFilter
 import eu.kanade.domain.entries.anime.model.seasonsFiltered
 import eu.kanade.domain.entries.anime.model.toDomainAnime
 import eu.kanade.domain.entries.anime.model.toSAnime
-import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.episode.interactor.GetAvailableAnimeScanlators
 import eu.kanade.domain.episode.interactor.GetExcludedAnimeScanlators
 import eu.kanade.domain.episode.interactor.SetSeenStatus
@@ -148,7 +147,6 @@ class AnimeScreenModel(
     private val trackPreferences: TrackPreferences = Injekt.get(),
     internal val playerPreferences: PlayerPreferences = Injekt.get(),
     internal val gesturePreferences: GesturePreferences = Injekt.get(),
-    private val uiPreferences: UiPreferences = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
     private val trackEpisode: TrackEpisode = Injekt.get(),
     private val animeDownloadManager: AnimeDownloadManager = Injekt.get(),
@@ -206,7 +204,6 @@ class AnimeScreenModel(
     val showNextEpisodeAirTime = trackPreferences.showNextEpisodeAiringTime().get()
     val alwaysUseExternalPlayer = playerPreferences.alwaysUseExternalPlayer().get()
     val useExternalDownloader = downloadPreferences.useExternalDownloader().get()
-    val themeCoverBased = uiPreferences.themeCoverBased().get()
 
     val isUpdateIntervalEnabled =
         LibraryPreferences.ANIME_OUTSIDE_RELEASE_PERIOD in libraryPreferences.autoUpdateAnimeRestrictions().get()
