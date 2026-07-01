@@ -350,7 +350,7 @@ class AnimeRestorer(
                 watchedAt = max(item.watchedAt?.time ?: 0L, dbHistory.last_seen?.time ?: 0L)
                     .takeIf { it > 0L }
                     ?.let { Date(it) },
-                watchDuration = item.watchDuration,
+                watchDuration = max(item.watchDuration, dbHistory.watch_duration) - dbHistory.watch_duration,
             )
         }
 
