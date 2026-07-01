@@ -119,13 +119,23 @@ fun BrowseAnimeSourceContent(
     }
 
     when (displayMode) {
-        LibraryDisplayMode.ComfortableGrid, LibraryDisplayMode.ComfortableGridPanorama -> {
+        LibraryDisplayMode.ComfortableGrid -> {
             BrowseAnimeSourceComfortableGrid(
                 animeList = animeList,
                 columns = columns,
                 contentPadding = contentPadding,
                 onAnimeClick = onAnimeClick,
                 onAnimeLongClick = onAnimeLongClick,
+            )
+        }
+        LibraryDisplayMode.ComfortableGridPanorama -> {
+            BrowseAnimeSourceComfortableGrid(
+                animeList = animeList,
+                columns = columns,
+                contentPadding = contentPadding,
+                onAnimeClick = onAnimeClick,
+                onAnimeLongClick = onAnimeLongClick,
+                usePanoramaCover = true,
             )
         }
         LibraryDisplayMode.List -> {

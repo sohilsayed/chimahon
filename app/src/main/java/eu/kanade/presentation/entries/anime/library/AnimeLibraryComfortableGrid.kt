@@ -33,6 +33,7 @@ internal fun AnimeLibraryComfortableGrid(
     onClickContinueWatching: ((LibraryAnime) -> Unit)?,
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
+    usePanoramaCover: Boolean = false,
 ) {
     val badgePrefs = remember { Injekt.get<AnimeLibraryPreferences>() }
     val showDownloadBadge by remember { badgePrefs.downloadBadge().changes() }.collectAsState(badgePrefs.downloadBadge().get())
@@ -82,6 +83,7 @@ internal fun AnimeLibraryComfortableGrid(
                 } else {
                     null
                 },
+                usePanoramaCover = usePanoramaCover,
             )
         }
     }
