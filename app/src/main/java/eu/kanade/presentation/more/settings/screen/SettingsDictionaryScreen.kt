@@ -294,6 +294,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        var errorDialogText by remember { mutableStateOf<String?>(null) }
 
         // Trigger recomposition when profile state changes
         val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
@@ -308,15 +309,59 @@ object SettingsDictionaryScreen : SearchableSettings {
         ) { uris ->
             Log.d(TAG, "importLauncher: uris=${uris.size}")
             if (uris.isEmpty()) return@rememberLauncherForActivityResult
+            val successNames = mutableListOf<String>()
+            val failedImports = mutableListOf<Pair<String, String>>()
+            
+            val pending = uris.map { uri ->
+                val name = getFileNameFromUri(context, uri)
+                try {
+                    val stream = openStreamWithFallback(context, uri)
+                    if (stream != null) {
+                        Triple(name, stream, null)
+                    } else {
+                        Triple(name, null, "Could not open file stream")
+                    }
+                } catch (e: Exception) {
+                    Triple(name, null, e.message ?: "Failed to open file")
+                }
+            }
+            
             scope.launch {
                 _isImporting.value = true
-                uris.forEach { uri ->
-                    val activeProfile = dictionaryPreferences.profileStore.getActiveProfile()
-                    val result = importDictionaryFromUri(context, uri, activeProfile)
-                    context.toast(result.first)
+                pending.forEach { (name, stream, err) ->
+                    if (err != null) {
+                        failedImports.add(name to err)
+                        return@forEach
+                    }
+                    if (stream != null) {
+                        val activeProfile = dictionaryPreferences.profileStore.getActiveProfile()
+                        val result = importDictionaryFromStream(context, stream, activeProfile)
+                        if (result.second) {
+                            successNames.add(name)
+                        } else {
+                            failedImports.add(name to result.first)
+                        }
+                    }
                 }
+                
                 loadDictionaryList(context)
                 _isImporting.value = false
+                
+                // Construct and display the result report dialog
+                val report = StringBuilder()
+                if (successNames.isNotEmpty()) {
+                    report.append("Imported successfully:\n")
+                    successNames.forEach { report.append("✓ $it\n") }
+                    report.append("\n")
+                }
+                if (failedImports.isNotEmpty()) {
+                    report.append("Failed to import:\n")
+                    failedImports.forEach { (name, errorMsg) ->
+                        val indentedErr = errorMsg.replace("\n", "\n  ")
+                        report.append("✗ $name\n  Reason: $indentedErr\n\n")
+                    }
+                }
+                errorDialogText = report.toString().trim()
             }
         }
 
@@ -365,6 +410,44 @@ object SettingsDictionaryScreen : SearchableSettings {
                     _isImportingDb.value = false
                 }
             }
+        }
+
+        if (errorDialogText != null) {
+            val showPermissionButton = errorDialogText!!.contains("Storage permission is not granted")
+            AlertDialog(
+                onDismissRequest = { errorDialogText = null },
+                title = { Text("Import Diagnostics") },
+                text = { Text(errorDialogText!!) },
+                confirmButton = {
+                    TextButton(onClick = { errorDialogText = null }) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = if (showPermissionButton) {
+                    {
+                        TextButton(
+                            onClick = {
+                                errorDialogText = null
+                                try {
+                                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    try {
+                                        val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                        context.startActivity(intent)
+                                    } catch (ex: Exception) {
+                                        context.toast("Could not open settings")
+                                    }
+                                }
+                            }
+                        ) {
+                            Text("Grant Permission")
+                        }
+                    }
+                } else null
+            )
         }
 
         return listOf(
@@ -2695,57 +2778,54 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 }
 
-private suspend fun importDictionaryFromUri(
+private suspend fun importDictionaryFromStream(
     context: Context,
-    uri: Uri,
+    inputStream: java.io.InputStream,
     activeProfile: chimahon.anki.AnkiProfile,
 ): Pair<String, Boolean> {
     return withContext(Dispatchers.IO) {
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-        Log.d(TAG, "importDictionaryFromUri: dictionariesDir=${dictionariesDir.absolutePath}")
+        Log.d(TAG, "importDictionaryFromStream: dictionariesDir=${dictionariesDir.absolutePath}")
 
         val tempZip = File(context.cacheDir, "chimahon_import_${System.currentTimeMillis()}.zip")
         val tempImportDir = File(context.cacheDir, "dict_import_tmp_${System.currentTimeMillis()}")
 
         try {
             if (!dictionariesDir.exists() && !dictionariesDir.mkdirs()) {
-                Log.e(TAG, "importDictionaryFromUri: failed to create dictionariesDir")
+                Log.e(TAG, "importDictionaryFromStream: failed to create dictionariesDir")
                 return@withContext Pair(
                     context.stringResource(MR.strings.storage_failed_to_create_directory, dictionariesDir.absolutePath),
                     false,
                 )
             }
 
-            val source = UniFile.fromUri(context, uri)
-                ?: return@withContext Pair(context.stringResource(MR.strings.file_null_uri_error), false)
-
-            source.openInputStream().use { input ->
+            inputStream.use { input ->
                 tempZip.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
 
-            Log.d(TAG, "importDictionaryFromUri: calling HoshiDicts.importDictionary...")
+            Log.d(TAG, "importDictionaryFromStream: calling HoshiDicts.importDictionary...")
             tempImportDir.mkdirs()
             val result = HoshiDicts.importDictionary(
                 zipPath = tempZip.absolutePath,
                 outputDir = tempImportDir.absolutePath,
             )
-            Log.d(TAG, "importDictionaryFromUri: HoshiDicts result: success=${result.success} terms=${result.termCount} freq=${result.freqCount} pitch=${result.pitchCount} media=${result.mediaCount}")
+            Log.d(TAG, "importDictionaryFromStream: HoshiDicts result: success=${result.success} terms=${result.termCount} freq=${result.freqCount} pitch=${result.pitchCount} media=${result.mediaCount}")
 
             if (!result.success) {
-                Log.e(TAG, "importDictionaryFromUri: import failed")
-                return@withContext Pair(context.stringResource(MR.strings.pref_import_dictionary_failed), false)
+                Log.e(TAG, "importDictionaryFromStream: import failed")
+                return@withContext Pair(result.title.takeIf { it.isNotBlank() } ?: context.stringResource(MR.strings.pref_import_dictionary_failed), false)
             }
 
             val importedDir = tempImportDir.listFiles()?.firstOrNull { it.isDirectory }
             if (importedDir == null) {
-                Log.e(TAG, "importDictionaryFromUri: no imported dir found")
+                Log.e(TAG, "importDictionaryFromStream: no imported dir found")
                 return@withContext Pair("Import succeeded but no dictionary directory found", false)
             }
 
             val title = if (result.title.isNotBlank()) result.title else importedDir.name
-            Log.d(TAG, "importDictionaryFromUri: imported dict title=$title")
+            Log.d(TAG, "importDictionaryFromStream: imported dict title=$title")
 
             data class CopyTarget(val type: String, val count: Long)
             val targets = buildList {
@@ -2755,7 +2835,7 @@ private suspend fun importDictionaryFromUri(
             }
 
             if (targets.isEmpty()) {
-                Log.e(TAG, "importDictionaryFromUri: no term/freq/pitch entries found")
+                Log.e(TAG, "importDictionaryFromStream: no term/freq/pitch entries found")
                 return@withContext Pair("Dictionary has no recognizable entries", false)
             }
 
@@ -2765,7 +2845,7 @@ private suspend fun importDictionaryFromUri(
                 val destDir = File(typeDir, title)
                 if (destDir.exists()) destDir.deleteRecursively()
                 importedDir.copyRecursively(destDir, overwrite = true)
-                Log.d(TAG, "importDictionaryFromUri: copied to ${target.type}/$title")
+                Log.d(TAG, "importDictionaryFromStream: copied to ${target.type}/$title")
             }
 
             // Add to profile order once (dict name, no type prefix)
@@ -2797,14 +2877,105 @@ private suspend fun importDictionaryFromUri(
                 true,
             )
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "importDictionaryFromUri: UnsatisfiedLinkError", e)
+            Log.e(TAG, "importDictionaryFromStream: UnsatisfiedLinkError", e)
             Pair("Native library not loaded. Check build configuration.", false)
         } catch (e: Throwable) {
-            Log.e(TAG, "importDictionaryFromUri: exception", e)
+            Log.e(TAG, "importDictionaryFromStream: exception", e)
             Pair(e.message ?: context.stringResource(MR.strings.unknown_error), false)
         } finally {
             if (tempZip.exists()) tempZip.delete()
             if (tempImportDir.exists()) tempImportDir.deleteRecursively()
         }
     }
+}
+
+private fun openStreamWithFallback(context: Context, uri: Uri): java.io.InputStream? {
+    try {
+        val stream = context.contentResolver.openInputStream(uri)
+        if (stream != null) return stream
+    } catch (e: Exception) {
+        Log.w("DictionaryImport", "Standard openInputStream failed for $uri, trying fallback", e)
+    }
+
+    val isManager = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        android.os.Environment.isExternalStorageManager()
+    } else {
+        true
+    }
+
+    if (!isManager) {
+        throw java.io.FileNotFoundException("Storage permission is not granted. Please allow 'All files access' in settings.")
+    }
+
+    try {
+        val path = getPathFromUri(context, uri)
+        if (path != null) {
+            val file = java.io.File(path)
+            if (file.exists() && file.canRead()) {
+                Log.d("DictionaryImport", "Fallback succeeded using file path: $path")
+                return java.io.FileInputStream(file)
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("DictionaryImport", "Fallback file path open failed for $uri", e)
+    }
+
+    throw java.io.FileNotFoundException("File is inaccessible or corrupted.")
+}
+
+private fun getPathFromUri(context: Context, uri: Uri): String? {
+    val scheme = uri.scheme
+    if ("file".equals(scheme, ignoreCase = true)) {
+        return uri.path
+    }
+    if ("content".equals(scheme, ignoreCase = true)) {
+        val authority = uri.authority
+        if ("com.android.externalstorage.documents" == authority) {
+            val docId = android.provider.DocumentsContract.getDocumentId(uri)
+            val split = docId.split(":")
+            if (split.size >= 2) {
+                val type = split[0]
+                if ("primary".equals(type, ignoreCase = true)) {
+                    return android.os.Environment.getExternalStorageDirectory().toString() + "/" + split[1]
+                }
+            }
+        } else if ("com.android.providers.downloads.documents" == authority) {
+            val id = android.provider.DocumentsContract.getDocumentId(uri)
+            if (id.startsWith("raw:")) {
+                return id.substring(4)
+            }
+        }
+        
+        try {
+            context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex("_data")
+                    if (idx != -1) {
+                        return cursor.getString(idx)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+    return null
+}
+
+private fun getFileNameFromUri(context: Context, uri: Uri): String {
+    if ("content".equals(uri.scheme, ignoreCase = true)) {
+        try {
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) {
+                        return cursor.getString(idx)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+    return uri.lastPathSegment ?: "Unknown File"
 }

@@ -316,7 +316,11 @@ Java_chimahon_HoshiDicts_importDictionary(JNIEnv *env, jobject, jstring zip_path
         args.result = dictionary_importer::import(args.zip_path, args.output_dir, true);
     }
 
-    return new_import_result(env, args.result.success, args.result.title,
+    std::string title_or_error = args.result.title;
+    if (!args.result.success && !args.result.errors.empty()) {
+        title_or_error = args.result.errors[0];
+    }
+    return new_import_result(env, args.result.success, title_or_error,
                              static_cast<jlong>(args.result.term_count),
                              static_cast<jlong>(args.result.meta_count),
                              static_cast<jlong>(args.result.freq_count),
