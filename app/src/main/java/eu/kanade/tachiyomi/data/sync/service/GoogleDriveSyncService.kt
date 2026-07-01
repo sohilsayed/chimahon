@@ -122,7 +122,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
             drive.files().get(gdriveFileId).executeMediaAsInputStream().use { inputStream ->
                 GZIPInputStream(inputStream).use { gzipInputStream ->
                     val byteArray = gzipInputStream.readBytes()
-                    val backup = decodeBackup(byteArray, protoBuf)
+                    val backup = protoBuf.decodeFromByteArray(Backup.serializer(), byteArray)
                     val deviceId = fileList[0].appProperties["deviceId"] ?: ""
                     return SyncData(deviceId = deviceId, backup = backup)
                 }

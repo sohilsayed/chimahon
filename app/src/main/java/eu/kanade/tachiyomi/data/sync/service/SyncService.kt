@@ -4,7 +4,6 @@ import android.content.Context
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.md5Hex
 import eu.kanade.domain.sync.SyncPreferences
-import eu.kanade.tachiyomi.data.backup.BackupDetector
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupAnime
 import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
@@ -19,10 +18,8 @@ import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
-import eu.kanade.tachiyomi.data.backup.models.LegacyBackup
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import logcat.logcat
 
@@ -139,14 +136,6 @@ abstract class SyncService(
             deviceId = syncPreferences.uniqueDeviceID(),
             backup = mergedBackup,
         )
-    }
-
-    protected fun decodeBackup(bytes: ByteArray, protoBuf: ProtoBuf): Backup {
-        return if (BackupDetector.isLegacyBackup(bytes)) {
-            protoBuf.decodeFromByteArray(LegacyBackup.serializer(), bytes).toBackup()
-        } else {
-            protoBuf.decodeFromByteArray(Backup.serializer(), bytes)
-        }
     }
 
     /**

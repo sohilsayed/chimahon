@@ -8,13 +8,11 @@ import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupEpisode
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
-import eu.kanade.tachiyomi.data.backup.models.LegacyBackup
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.protobuf.ProtoBuf
 import org.junit.jupiter.api.Test
 
 class SyncServiceTest {
@@ -110,22 +108,6 @@ class SyncServiceTest {
             .shouldContainExactlyInAnyOrder("Episode 1", "Episode 2")
     }
 
-    @Test
-    fun `decode accepts Anikku legacy anime backup bytes`() {
-        val service = TestSyncService()
-        val bytes = ProtoBuf.encodeToByteArray(
-            LegacyBackup.serializer(),
-            LegacyBackup(
-                backupAnimeSources = listOf(BackupAnimeSource("Legacy anime source", 99L)),
-            ),
-        )
-
-        val backup = service.decode(bytes)
-
-        backup.backupAnimeSources.single().name shouldBe "Legacy anime source"
-        backup.backupAnimeSources.single().sourceId shouldBe 99L
-    }
-
     private fun extensionRepo(baseUrl: String) = BackupExtensionRepos(
         baseUrl = baseUrl,
         name = baseUrl,
@@ -145,10 +127,6 @@ class SyncServiceTest {
 
         fun merge(local: SyncData, remote: SyncData): SyncData {
             return mergeSyncData(local, remote)
-        }
-
-        fun decode(bytes: ByteArray): Backup {
-            return decodeBackup(bytes, ProtoBuf)
         }
     }
 }
