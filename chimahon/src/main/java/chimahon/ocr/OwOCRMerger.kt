@@ -21,8 +21,12 @@ object OwOCRMerger {
     fun merge(engineLines: List<EngineLine>, config: MergeConfig): List<OcrResult> {
         if (!config.enabled || engineLines.isEmpty()) return emptyList()
 
-        val lines = createLineDictionaries(engineLines, config)
+        var lines = createLineDictionaries(engineLines, config)
         if (lines.isEmpty()) return emptyList()
+        
+        if (config.furiganaFilter && config.language.isJapanese) {
+            lines = globalFuriganaFilter(lines)
+        }
 
         val paragraphs = createParagraphsFromLines(lines, config)
         val merged = if (config.mergeCloseParagraphs) {
@@ -169,11 +173,7 @@ object OwOCRMerger {
         }
 
         val mergedFragments = mergeOverlappingLines(sorted, isVertical)
-        val filtered = if (lines.none { it.paragraphId != null } && config.furiganaFilter) {
-            furiganaFilter(mergedFragments, isVertical)
-        } else {
-            mergedFragments
-        }
+        val filtered = mergedFragments
 
         if (filtered.isEmpty()) {
             return createParagraphFromLines(sorted.take(1), isVertical, isRtl, config)
@@ -336,89 +336,107 @@ object OwOCRMerger {
 
             val coord1 = if (line1.isRtl) line2.bbox.right else line1.bbox.left
             val coord2 = if (line1.isRtl) line1.bbox.right else line2.bbox.left
-            if (coord1 - coord2 < 2 * characterSize) return true
+            if (abs(coord1 - coord2) < 2 * characterSize) return true
 
             if (config.supportCenterAlignedText && horizontalOverlap(line1.bbox, line2.bbox) > 0.9) return true
         }
 
-        // Furigana fallback
-        val filtered = furiganaFilter(listOf(line1, line2), isVertical)
-        if (filtered.size == 1) {
-            line1.isFurigana = true
-            return true
-        }
+        // Furigana already filtered out globally
 
         return false
     }
 
     // ================================================================
-    // STAGE 2d: furiganaFilter
+    // STAGE 2d: globalFuriganaFilter (Hybrid Filter)
     // ================================================================
 
-    private fun furiganaFilter(lines: List<LineDict>, isVertical: Boolean): List<LineDict> {
-        val filtered = mutableListOf<LineDict>()
-        for (i in lines.indices) {
-            if (lines[i].isFurigana) continue
-            if (i >= lines.size - 1) {
-                filtered.add(lines[i])
-                continue
-            }
-            val next = lines[i + 1]
+    private val KATAKANA_REGEX = Regex("[\u30A0-\u30FF]")
+    private val KANJI_REGEX = Regex("[\u4E00-\u9FFF\u3400-\u4DBF]")
 
-            // Content check
-            if (!(lines[i].hasJpText && next.hasJpText)) {
-                filtered.add(lines[i])
-                continue
+    private fun globalFuriganaFilter(lines: List<LineDict>): List<LineDict> {
+        val n = lines.size
+        val keep = BooleanArray(n) { true }
+        
+        val alphaRegex = Regex("[A-Za-z]")
+        val digitRegex = Regex("[0-9]")
+        
+        for (j in 0 until n) {
+            if (!keep[j]) continue
+            
+            val sub = lines[j]
+            val subText = sub.text
+            
+            if (KANJI_REGEX.containsMatchIn(subText)) continue
+            
+            val hasAlpha = alphaRegex.containsMatchIn(subText)
+            val hasKatakana = KATAKANA_REGEX.containsMatchIn(subText)
+            if (hasAlpha && !hasKatakana) continue
+            
+            val hasDigit = digitRegex.containsMatchIn(subText)
+            if (hasDigit && !hasKatakana && !hasAlpha) continue
+            
+            val subBbox = sub.bbox
+            val subThickness = minOf(subBbox.width, subBbox.height)
+            
+            for (i in 0 until n) {
+                if (i == j || !keep[i]) continue
+                
+                val main = lines[i]
+                if (!KANJI_REGEX.containsMatchIn(main.text)) continue
+                
+                val mainBbox = main.bbox
+                val mainThickness = minOf(mainBbox.width, mainBbox.height)
+                
+                if (subThickness > mainThickness * 0.75) continue
+                
+                val proximityLimit = mainThickness * 0.30
+                val overlapRatio = 0.05
+                
+                // Vertical check
+                val xOverlap = maxOf(0.0, minOf(subBbox.right, mainBbox.right) - maxOf(subBbox.left, mainBbox.left))
+                val xGapV = if (xOverlap > 0.0) 0.0 else minOf(
+                    abs(subBbox.left - mainBbox.right),
+                    abs(subBbox.right - mainBbox.left)
+                )
+                
+                val oy = maxOf(0.0, minOf(subBbox.bottom, mainBbox.bottom) - maxOf(subBbox.top, mainBbox.top))
+                val h1 = maxOf(0.001, subBbox.height)
+                val h2 = maxOf(0.001, mainBbox.height)
+                val yOverlapV = oy / minOf(h1, h2)
+                
+                val isVerticalFurigana = xGapV < proximityLimit && yOverlapV > overlapRatio
+                
+                // Horizontal check
+                val yOverlap = maxOf(0.0, minOf(subBbox.bottom, mainBbox.bottom) - maxOf(subBbox.top, mainBbox.top))
+                val yGapH = if (yOverlap > 0.0) 0.0 else minOf(
+                    abs(subBbox.top - mainBbox.bottom),
+                    abs(subBbox.bottom - mainBbox.top)
+                )
+                
+                val ox = maxOf(0.0, minOf(subBbox.right, mainBbox.right) - maxOf(subBbox.left, mainBbox.left))
+                val w1 = maxOf(0.001, subBbox.width)
+                val w2 = maxOf(0.001, mainBbox.width)
+                val xOverlapH = ox / minOf(w1, w2)
+                
+                val isHorizontalFurigana = yGapH < proximityLimit && xOverlapH > overlapRatio
+                
+                var isFuri = false
+                if (mainBbox.height > mainBbox.width * 1.2) {
+                    if (isVerticalFurigana) isFuri = true
+                } else if (mainBbox.width > mainBbox.height * 1.2) {
+                    if (isHorizontalFurigana) isFuri = true
+                } else {
+                    if (isVerticalFurigana || isHorizontalFurigana) isFuri = true
+                }
+                
+                if (isFuri) {
+                    keep[j] = false
+                    break
+                }
             }
-            if (lines[i].hasKanji) {
-                filtered.add(lines[i])
-                continue
-            }
-            if (!next.hasKanji) {
-                filtered.add(lines[i])
-                continue
-            }
-            if (next.isFurigana) {
-                filtered.add(lines[i])
-                continue
-            }
-
-            val curBbox = lines[i].bbox
-            val nextBbox = next.bbox
-
-            val passedPosition = if (isVertical) {
-                val minHDist = abs(nextBbox.width - curBbox.width) / 2
-                val maxHDist = nextBbox.width + curBbox.width / 2
-                val hDist = curBbox.centerX - nextBbox.centerX
-                val vOverlap = verticalOverlap(curBbox, nextBbox)
-                hDist > minHDist && hDist < maxHDist && vOverlap > 0.4
-            } else {
-                val minVDist = abs(nextBbox.height - curBbox.height) / 2
-                val maxVDist = nextBbox.height + curBbox.height / 2
-                val vDist = nextBbox.centerY - curBbox.centerY
-                val hOverlap = horizontalOverlap(curBbox, nextBbox)
-                vDist > minVDist && vDist < maxVDist && hOverlap > 0.4
-            }
-
-            if (!passedPosition) {
-                filtered.add(lines[i])
-                continue
-            }
-
-            // Size check (< 85%)
-            val passedSize = if (isVertical) {
-                lines[i].characterSize < next.characterSize * 0.85
-            } else {
-                curBbox.height < nextBbox.height * 0.85
-            }
-
-            if (!passedSize) {
-                filtered.add(lines[i])
-                continue
-            }
-            // else: furigana detected, skip
         }
-        return filtered
+        
+        return lines.filterIndexed { i, _ -> keep[i] }
     }
 
     // ================================================================
@@ -579,30 +597,54 @@ object OwOCRMerger {
     private fun reorderMixedOrientationBlocks(paragraphs: List<OcrResult>, isVerticalOrRtl: Boolean): List<OcrResult> {
         if (paragraphs.size < 2) return paragraphs
 
-        val result = mutableListOf<OcrResult>()
-        val currentBlock = mutableListOf(paragraphs[0])
-        var currentOrientation = paragraphs[0].forcedOrientation == "vertical"
+        var result = paragraphs
+        var madeProgress = true
 
-        for (para in paragraphs.drop(1)) {
-            val paraOrientation = para.forcedOrientation == "vertical"
+        while (madeProgress) {
+            madeProgress = false
+            for (i in 0 until result.size - 1) {
+                val p1 = result[i]
+                val p2 = result[i + 1]
 
-            if (paraOrientation == currentOrientation) {
-                currentBlock.add(para)
-            } else {
-                if (currentOrientation != isVerticalOrRtl) {
-                    currentBlock.reverse()
+                val p1Center = if (p1.forcedOrientation == "vertical") p1.tightBoundingBox.y else p1.tightBoundingBox.x
+                val p2Center = if (p2.forcedOrientation == "vertical") p2.tightBoundingBox.y else p2.tightBoundingBox.x
+                val p1End = if (p1.forcedOrientation ==
+                    "vertical"
+                ) {
+                    p1.tightBoundingBox.y + p1.tightBoundingBox.height
+                } else {
+                    p1.tightBoundingBox.x +
+                        p1.tightBoundingBox.width
                 }
-                result.addAll(currentBlock)
-                currentBlock.clear()
-                currentBlock.add(para)
-                currentOrientation = paraOrientation
+                val p2End = if (p2.forcedOrientation ==
+                    "vertical"
+                ) {
+                    p2.tightBoundingBox.y + p2.tightBoundingBox.height
+                } else {
+                    p2.tightBoundingBox.x +
+                        p2.tightBoundingBox.width
+                }
+
+                val p1IsVertical = p1.forcedOrientation == "vertical"
+                val p2IsVertical = p2.forcedOrientation == "vertical"
+
+                if (p1IsVertical != p2IsVertical) {
+                    if (p2IsVertical && p2Center < p1Center + (p1End - p1Center) / 2) {
+                        result = result.toMutableList().apply {
+                            removeAt(i + 1)
+                            add(i, p2)
+                        }
+                        madeProgress = true
+                    } else if (!p2IsVertical && p1Center > p2Center + (p2End - p2Center) / 2) {
+                        result = result.toMutableList().apply {
+                            removeAt(i + 1)
+                            add(i, p2)
+                        }
+                        madeProgress = true
+                    }
+                }
             }
         }
-
-        if (currentOrientation != isVerticalOrRtl) {
-            currentBlock.reverse()
-        }
-        result.addAll(currentBlock)
 
         return result
     }
