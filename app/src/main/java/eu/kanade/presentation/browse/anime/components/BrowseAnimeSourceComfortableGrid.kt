@@ -27,6 +27,7 @@ fun BrowseAnimeSourceComfortableGrid(
     contentPadding: PaddingValues,
     onAnimeClick: (Anime) -> Unit,
     onAnimeLongClick: (Anime) -> Unit,
+    usePanoramaCover: Boolean = false,
 ) {
     LazyVerticalGrid(
         columns = columns,
@@ -46,6 +47,7 @@ fun BrowseAnimeSourceComfortableGrid(
                 anime = anime,
                 onClick = { onAnimeClick(anime) },
                 onLongClick = { onAnimeLongClick(anime) },
+                usePanoramaCover = usePanoramaCover,
             )
         }
 
@@ -62,6 +64,7 @@ private fun BrowseAnimeSourceComfortableGridItem(
     anime: Anime,
     onClick: () -> Unit = {},
     onLongClick: () -> Unit = onClick,
+    usePanoramaCover: Boolean = false,
 ) {
     AnimeComfortableGridItem(
         title = anime.title,
@@ -76,6 +79,8 @@ private fun BrowseAnimeSourceComfortableGridItem(
         coverBadgeStart = {
             InLibraryBadge(enabled = anime.favorite)
         },
+        usePanoramaCover = usePanoramaCover,
+        fitToPanoramaCover = true,
         onLongClick = onLongClick,
         onClick = onClick,
     )

@@ -12,9 +12,15 @@ import tachiyomi.domain.entries.anime.model.Anime as DomainAnime
 
 class AnimeKeyer : Keyer<DomainAnime> {
     override fun key(data: DomainAnime, options: Options): String {
+        val hasBackground = data.backgroundUrl != null || data.hasCustomBackground()
+
         return when {
-            options.useBackground && data.hasCustomBackground() -> "anime;${data.id};${data.backgroundLastModified}"
-            options.useBackground -> "anime;${data.backgroundUrl};${data.backgroundLastModified}"
+            options.useBackground && data.hasCustomBackground() -> {
+                "anime-background;${data.id};${data.backgroundLastModified}"
+            }
+            options.useBackground && hasBackground -> {
+                "anime-background;${data.backgroundUrl};${data.backgroundLastModified}"
+            }
             data.hasCustomCover() -> "anime;${data.id};${data.coverLastModified}"
             else -> "anime;${data.thumbnailUrl};${data.coverLastModified}"
         }

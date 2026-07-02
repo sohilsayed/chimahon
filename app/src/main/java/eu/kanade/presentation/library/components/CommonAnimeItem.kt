@@ -25,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -33,12 +36,14 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.entries.anime.components.AnimeCover
+import eu.kanade.presentation.entries.anime.components.RatioSwitchToPanorama
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.i18n.stringResource
@@ -175,7 +180,11 @@ fun AnimeComfortableGridItem(
     coverBadgeStart: (@Composable RowScope.() -> Unit)? = null,
     coverBadgeEnd: (@Composable RowScope.() -> Unit)? = null,
     onClickContinueWatching: (() -> Unit)? = null,
+    coverRatio: MutableFloatState = remember { mutableFloatStateOf(1f) },
+    usePanoramaCover: Boolean = false,
+    fitToPanoramaCover: Boolean = false,
 ) {
+    val coverIsWide = coverRatio.floatValue <= RatioSwitchToPanorama
     GridItemSelectable(
         isSelected = isSelected,
         onClick = onClick,
@@ -184,12 +193,37 @@ fun AnimeComfortableGridItem(
         Column {
             AnimeGridCover(
                 cover = {
-                    AnimeCover.Book(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(if (isSelected) ANIME_GRID_SELECTED_COVER_ALPHA else coverAlpha),
-                        data = coverData,
-                    )
+                    if (fitToPanoramaCover && usePanoramaCover && coverIsWide) {
+                        AnimeCover.Panorama(
+                            modifier = Modifier.fillMaxWidth(),
+                            data = coverData,
+                            alpha = if (isSelected) ANIME_GRID_SELECTED_COVER_ALPHA else coverAlpha,
+                            onCoverLoaded = { _, result ->
+                                val image = result.result.image
+                                coverRatio.floatValue = image.height.toFloat() / image.width
+                            },
+                        )
+                    } else {
+                        AnimeCover.Book(
+                            modifier = Modifier.fillMaxWidth(),
+                            data = coverData,
+                            alpha = if (isSelected) ANIME_GRID_SELECTED_COVER_ALPHA else coverAlpha,
+                            onCoverLoaded = { _, result ->
+                                val image = result.result.image
+                                coverRatio.floatValue = image.height.toFloat() / image.width
+                            },
+                            scale = if (usePanoramaCover && coverIsWide) {
+                                ContentScale.Fit
+                            } else {
+                                ContentScale.Crop
+                            },
+                        )
+                    }
+                },
+                ratio = if (fitToPanoramaCover && usePanoramaCover && coverIsWide) {
+                    AnimeCover.Panorama.ratio
+                } else {
+                    AnimeCover.Book.ratio
                 },
                 badgesStart = coverBadgeStart,
                 badgesEnd = coverBadgeEnd,
@@ -220,6 +254,7 @@ fun AnimeComfortableGridItem(
 @Composable
 private fun AnimeGridCover(
     modifier: Modifier = Modifier,
+    ratio: Float = AnimeCover.Book.ratio,
     cover: @Composable BoxScope.() -> Unit = {},
     badgesStart: (@Composable RowScope.() -> Unit)? = null,
     badgesEnd: (@Composable RowScope.() -> Unit)? = null,
@@ -228,7 +263,7 @@ private fun AnimeGridCover(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(AnimeCover.Book.ratio),
+            .aspectRatio(ratio),
     ) {
         cover()
         content?.invoke(this)

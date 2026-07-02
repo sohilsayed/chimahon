@@ -5,6 +5,7 @@ import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.library.model.LibraryAnime
+import tachiyomi.domain.source.anime.model.DeletableAnime
 
 interface AnimeRepository {
 
@@ -47,6 +48,10 @@ interface AnimeRepository {
     suspend fun removeParentIdByIds(animeIds: List<Long>)
 
     suspend fun getChildrenByParentId(parentId: Long): List<Anime>
+
+    fun getDeletableParentAnime(): Flow<List<DeletableAnime>>
+
+    suspend fun deleteAnimesNotInLibraryByAnimeIds(animeIds: List<Long>, keepSeenAnime: Boolean)
 
     // SY -->
     suspend fun getAnimeBySourceId(sourceId: Long): List<Anime>

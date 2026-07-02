@@ -95,14 +95,26 @@
         <item quantity="one">For %d entry</item>
         <item quantity="other">For %d entries</item>
     </plurals>
+    <plurals name="notification_new_episodes_summary">
+        <item quantity="one">For %d entry</item>
+        <item quantity="other">For %d entries</item>
+    </plurals>
     <plurals name="notification_chapters_generic">
         <item quantity="one">%1$d new chapter</item>
         <item quantity="other">%1$d new chapters</item>
+    </plurals>
+    <plurals name="notification_episodes_generic">
+        <item quantity="one">%1$d new episode</item>
+        <item quantity="other">%1$d new episodes</item>
     </plurals>
 
     <plurals name="notification_chapters_multiple_and_more">
         <item quantity="one">Chapters %1$s and 1 more</item>
         <item quantity="other">Chapters %1$s and %2$d more</item>
+    </plurals>
+    <plurals name="notification_episodes_multiple_and_more">
+        <item quantity="one">Episodes %1$s and 1 more</item>
+        <item quantity="other">Episodes %1$s and %2$d more</item>
     </plurals>
 
     <!--Extension Updates Notifications-->

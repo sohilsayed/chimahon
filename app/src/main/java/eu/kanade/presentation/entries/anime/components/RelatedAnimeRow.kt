@@ -24,12 +24,12 @@ import tachiyomi.presentation.core.components.material.padding
 
 @Composable
 fun RelatedAnimeRow(
-    relatedAnime: List<RelatedAnime>,
+    relatedAnime: List<RelatedAnime>?,
     onAnimeClick: (Anime) -> Unit,
     onAnimeLongClick: (Anime) -> Unit,
 ) {
-    val animes = relatedAnime.filterIsInstance<RelatedAnime.Success>().flatMap { it.animeList }
-    val loading = relatedAnime.filterIsInstance<RelatedAnime.Loading>().firstOrNull()
+    val animes = relatedAnime?.filterIsInstance<RelatedAnime.Success>()?.flatMap { it.animeList }.orEmpty()
+    val loading = relatedAnime == null || relatedAnime.filterIsInstance<RelatedAnime.Loading>().isNotEmpty()
 
     LazyRow(
         contentPadding = PaddingValues(MaterialTheme.padding.small),
@@ -47,7 +47,7 @@ fun RelatedAnimeRow(
                 )
             }
         }
-        if (loading != null) {
+        if (loading) {
             item {
                 RelatedAnimeLoadingItem()
             }

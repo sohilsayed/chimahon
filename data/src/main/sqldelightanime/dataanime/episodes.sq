@@ -58,9 +58,16 @@ FROM episodes
 WHERE _id = :id;
 
 getEpisodesByAnimeId:
-SELECT *
+SELECT episodes.*
 FROM episodes
-WHERE anime_id = :animeId;
+LEFT JOIN excluded_anime_scanlators ES
+ON episodes.anime_id = ES.anime_id
+AND episodes.scanlator = ES.scanlator
+WHERE episodes.anime_id = :animeId
+AND (
+    :applyFilter = 0
+    OR ES.scanlator IS NULL
+);
 
 getScanlatorsByAnimeId:
 SELECT DISTINCT scanlator

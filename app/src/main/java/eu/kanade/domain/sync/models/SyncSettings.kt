@@ -19,4 +19,5 @@ data class SyncSettings(
     // Chimahon -->
     val novels: Boolean = true,
     // Chimahon <--
+    val animeEntries: Boolean = true,
 )

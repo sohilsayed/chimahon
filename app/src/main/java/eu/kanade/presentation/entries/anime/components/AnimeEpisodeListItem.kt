@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.outlined.LabelOff
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.BookmarkRemove
 import androidx.compose.material.icons.outlined.Delete
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -58,7 +62,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.SECONDARY_ALPHA
 import tachiyomi.presentation.core.i18n.stringResource
-import tachiyomi.presentation.core.util.secondaryItemAlpha
 import tachiyomi.presentation.core.util.selectedBackground
 
 @Composable
@@ -152,19 +155,17 @@ fun AnimeEpisodeListItem(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             val titleLines = if (previewUrl == null) 1 else 2
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 14.sp),
+                            EpisodeTitle(
+                                title = title,
+                                seen = seen,
+                                bookmark = bookmark,
                                 modifier = Modifier.weight(1f),
                                 maxLines = titleLines,
                                 minLines = titleLines,
-                                overflow = TextOverflow.Ellipsis,
-                                color = LocalContentColor.current.copy(alpha = if (seen) DISABLED_ALPHA else 1f),
                             )
 
                             if (previewUrl == null) {
-                                BookmarkDownloadIcons(
-                                    bookmark = bookmark,
+                                DownloadIcon(
                                     downloadIndicatorEnabled = downloadIndicatorEnabled,
                                     downloadStateProvider = downloadStateProvider,
                                     downloadProgressProvider = downloadProgressProvider,
@@ -195,8 +196,7 @@ fun AnimeEpisodeListItem(
                     )
 
                     if (previewUrl != null) {
-                        BookmarkDownloadIcons(
-                            bookmark = bookmark,
+                        DownloadIcon(
                             downloadIndicatorEnabled = downloadIndicatorEnabled,
                             downloadStateProvider = downloadStateProvider,
                             downloadProgressProvider = downloadProgressProvider,
@@ -228,12 +228,11 @@ private fun RowScope.SimpleEpisodeListItemImpl(
         modifier = modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(if (fillermark) 0.dp else 6.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
+        EpisodeTitle(
+            title = title,
+            seen = seen,
+            bookmark = bookmark,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = LocalContentColor.current.copy(alpha = if (seen) DISABLED_ALPHA else 1f),
         )
 
         EpisodeInformation(
@@ -245,8 +244,7 @@ private fun RowScope.SimpleEpisodeListItemImpl(
         )
     }
 
-    BookmarkDownloadIcons(
-        bookmark = bookmark,
+    DownloadIcon(
         downloadIndicatorEnabled = downloadIndicatorEnabled,
         downloadStateProvider = downloadStateProvider,
         downloadProgressProvider = downloadProgressProvider,
@@ -460,25 +458,59 @@ private fun EpisodeInformation(
 }
 
 @Composable
-private fun BookmarkDownloadIcons(
+private fun EpisodeTitle(
+    title: String,
+    seen: Boolean,
     bookmark: Boolean,
+    modifier: Modifier = Modifier,
+    maxLines: Int,
+    minLines: Int = 1,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        var textHeight by remember { mutableIntStateOf(0) }
+        if (!seen) {
+            Icon(
+                imageVector = Icons.Filled.Circle,
+                contentDescription = stringResource(MR.strings.unseen),
+                modifier = Modifier
+                    .height(8.dp)
+                    .padding(end = 4.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        if (bookmark) {
+            Icon(
+                imageVector = Icons.Filled.Bookmark,
+                contentDescription = stringResource(MR.strings.action_filter_bookmarked),
+                modifier = Modifier
+                    .sizeIn(maxHeight = with(LocalDensity.current) { textHeight.toDp() - 2.dp }),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 14.sp),
+            maxLines = maxLines,
+            minLines = minLines,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { textHeight = it.size.height },
+            color = LocalContentColor.current.copy(alpha = if (seen) DISABLED_ALPHA else 1f),
+        )
+    }
+}
+
+@Composable
+private fun DownloadIcon(
     downloadIndicatorEnabled: Boolean,
     downloadStateProvider: () -> AnimeDownload.State,
     downloadProgressProvider: () -> Int,
     onDownloadClick: ((EpisodeDownloadAction) -> Unit)?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (bookmark) {
-            Icon(
-                imageVector = Icons.Filled.Bookmark,
-                contentDescription = stringResource(MR.strings.action_filter_bookmarked),
-                modifier = Modifier
-                    .secondaryItemAlpha()
-                    .padding(start = 4.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
-
         EpisodeDownloadIndicator(
             enabled = downloadIndicatorEnabled,
             modifier = Modifier

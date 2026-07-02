@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.kitsu.Kitsu
 import eu.kanade.tachiyomi.data.track.kitsu.KitsuApi
 import eu.kanade.tachiyomi.data.track.kitsu.KitsuDateHelper
+import eu.kanade.tachiyomi.data.track.model.AnimeTrackSearch
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import kotlinx.serialization.Serializable
 
@@ -46,6 +47,41 @@ data class KitsuListSearchResult(
             private = userDataAttrs.private
         }
     }
+
+    fun firstToAnimeTrack(): AnimeTrackSearch {
+        require(data.isNotEmpty()) { "Missing User data from Kitsu" }
+        require(included.isNotEmpty()) { "Missing Anime data from Kitsu" }
+
+        val userData = data[0]
+        val userDataAttrs = userData.attributes
+        val anime = included[0].attributes
+
+        return AnimeTrackSearch.create(TrackerManager.KITSU).apply {
+            remote_id = included[0].id
+            library_id = userData.id
+            title = anime.canonicalTitle
+            total_episodes = anime.episodeCount ?: 0
+            cover_url = anime.posterImage?.original ?: ""
+            summary = anime.synopsis ?: ""
+            tracking_url = KitsuApi.animeUrl(remote_id)
+            publishing_status = anime.status
+            publishing_type = anime.showType ?: ""
+            start_date = userDataAttrs.startedAt ?: ""
+            started_watching_date = KitsuDateHelper.parse(userDataAttrs.startedAt)
+            finished_watching_date = KitsuDateHelper.parse(userDataAttrs.finishedAt)
+            status = when (userDataAttrs.status) {
+                "current" -> Kitsu.WATCHING
+                "completed" -> Kitsu.COMPLETED
+                "on_hold" -> Kitsu.ON_HOLD
+                "dropped" -> Kitsu.DROPPED
+                "planned" -> Kitsu.PLAN_TO_WATCH
+                else -> throw Exception("Unknown status")
+            }
+            score = userDataAttrs.ratingTwenty?.let { it / 2.0 } ?: 0.0
+            last_episode_seen = userDataAttrs.progress.toDouble()
+            private = userDataAttrs.private
+        }
+    }
 }
 
 @Serializable
@@ -74,7 +110,9 @@ data class KitsuListSearchItemIncluded(
 data class KitsuListSearchItemIncludedAttributes(
     val canonicalTitle: String,
     val chapterCount: Long?,
+    val episodeCount: Long? = null,
     val mangaType: String?,
+    val showType: String? = null,
     val posterImage: KitsuSearchItemCover?,
     val synopsis: String?,
     val startDate: String?,

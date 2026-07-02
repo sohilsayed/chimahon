@@ -1,0 +1,354 @@
+package eu.kanade.presentation.more.settings.screen.advanced
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastMap
+import cafe.adriel.voyager.core.model.StateScreenModel
+import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.screenModelScope
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.browse.anime.components.AnimeSourceIcon
+import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.AppBarActions
+import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.animesource.model.FetchType
+import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
+import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.launchUI
+import tachiyomi.core.common.util.lang.withNonCancellableContext
+import tachiyomi.data.source.anime.mapSourceToDomainSource
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
+import tachiyomi.domain.history.repository.AnimeHistoryRepository
+import tachiyomi.domain.source.anime.interactor.GetAnimeSourcesWithNonLibraryAnime
+import tachiyomi.domain.source.anime.model.AnimeSource
+import tachiyomi.domain.source.anime.model.AnimeSourceWithIds
+import tachiyomi.domain.source.anime.model.StubAnimeSource
+import tachiyomi.domain.source.anime.service.AnimeSourceManager
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.LazyColumnWithAction
+import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.screens.EmptyScreen
+import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.presentation.core.util.selectedBackground
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+
+class ClearAnimeDatabaseScreen : Screen() {
+
+    @Composable
+    override fun Content() {
+        val context = LocalContext.current
+        val navigator = LocalNavigator.currentOrThrow
+        val model = rememberScreenModel { ClearAnimeDatabaseScreenModel() }
+        val state by model.state.collectAsState()
+        val scope = rememberCoroutineScope()
+
+        when (val s = state) {
+            is ClearAnimeDatabaseScreenModel.State.Loading -> LoadingScreen()
+            is ClearAnimeDatabaseScreenModel.State.Ready -> {
+                if (s.showConfirmation) {
+                    var keepSeenAnime by remember { mutableStateOf(true) }
+                    AlertDialog(
+                        title = { Text(text = stringResource(MR.strings.are_you_sure)) },
+                        text = {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                            ) {
+                                Text(text = stringResource(MR.strings.clear_anime_database_confirmation))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.strings.clear_db_exclude_seen),
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Switch(
+                                        checked = keepSeenAnime,
+                                        onCheckedChange = { keepSeenAnime = it },
+                                    )
+                                }
+                                if (!keepSeenAnime) {
+                                    Text(
+                                        text = stringResource(MR.strings.clear_database_seen_history_warning),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        },
+                        onDismissRequest = model::hideConfirmation,
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    scope.launchUI {
+                                        model.removeAnimeBySourceId(keepSeenAnime)
+                                        model.clearSelection()
+                                        model.hideConfirmation()
+                                        context.toast(MR.strings.clear_database_completed)
+                                    }
+                                },
+                            ) {
+                                Text(text = stringResource(MR.strings.action_ok))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = model::hideConfirmation) {
+                                Text(text = stringResource(MR.strings.action_cancel))
+                            }
+                        },
+                    )
+                }
+
+                Scaffold(
+                    topBar = { scrollBehavior ->
+                        AppBar(
+                            title = stringResource(MR.strings.pref_clear_anime_database),
+                            navigateUp = navigator::pop,
+                            actions = {
+                                if (s.items.isNotEmpty()) {
+                                    AppBarActions(
+                                        actions = persistentListOf(
+                                            AppBar.Action(
+                                                title = stringResource(MR.strings.action_select_all),
+                                                icon = Icons.Outlined.SelectAll,
+                                                onClick = model::selectAll,
+                                            ),
+                                            AppBar.Action(
+                                                title = stringResource(MR.strings.action_select_inverse),
+                                                icon = Icons.Outlined.FlipToBack,
+                                                onClick = model::invertSelection,
+                                            ),
+                                        ),
+                                    )
+                                }
+                            },
+                            scrollBehavior = scrollBehavior,
+                        )
+                    },
+                ) { contentPadding ->
+                    if (s.items.isEmpty()) {
+                        EmptyScreen(
+                            message = stringResource(MR.strings.database_clean),
+                            modifier = Modifier.padding(contentPadding),
+                        )
+                    } else {
+                        LazyColumnWithAction(
+                            contentPadding = contentPadding,
+                            actionLabel = stringResource(MR.strings.action_delete),
+                            actionEnabled = s.selection.isNotEmpty(),
+                            onClickAction = model::showConfirmation,
+                        ) {
+                            items(s.items) { sourceWithCount ->
+                                ClearAnimeDatabaseItem(
+                                    source = sourceWithCount.source,
+                                    count = sourceWithCount.ids.size.toLong(),
+                                    isSelected = s.selection.contains(sourceWithCount.id),
+                                    onClickSelect = { model.toggleSelection(sourceWithCount.source) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun ClearAnimeDatabaseItem(
+        source: AnimeSource,
+        count: Long,
+        isSelected: Boolean,
+        onClickSelect: () -> Unit,
+    ) {
+        Row(
+            modifier = Modifier
+                .selectedBackground(isSelected)
+                .clickable(onClick = onClickSelect)
+                .padding(horizontal = 8.dp)
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AnimeSourceIcon(source = source)
+            Column(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .weight(1f),
+            ) {
+                Text(
+                    text = source.visualName,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(text = stringResource(MR.strings.clear_database_source_item_count, count))
+            }
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onClickSelect() },
+            )
+        }
+    }
+}
+
+private class ClearAnimeDatabaseScreenModel : StateScreenModel<ClearAnimeDatabaseScreenModel.State>(
+    State.Loading,
+) {
+    private val getSourcesWithNonLibraryAnime: GetAnimeSourcesWithNonLibraryAnime = Injekt.get()
+    private val animeRepository: AnimeRepository = Injekt.get()
+    private val historyRepository: AnimeHistoryRepository = Injekt.get()
+    private val sourceManager: AnimeSourceManager = Injekt.get()
+
+    init {
+        screenModelScope.launchIO {
+            getSourcesWithNonLibraryAnime.subscribe()
+                .collectLatest { list ->
+                    val items = list.groupBy { it.sourceId }
+                        .map { (sourceId, deletableAnime) ->
+                            val source = sourceManager.getOrStub(sourceId)
+                            val domainSource = mapSourceToDomainSource(source).copy(
+                                isStub = source is StubAnimeSource,
+                            )
+
+                            val ids = mutableListOf<Long>()
+                            val orphaned = mutableListOf<Long>()
+
+                            deletableAnime.forEach {
+                                ids.add(it.animeId)
+                                if (it.fetchType == FetchType.Seasons) {
+                                    val (childrenIds, orphanedIds) = getDeletableChildren(it.animeId)
+                                    ids.addAll(childrenIds)
+                                    orphaned.addAll(orphanedIds)
+                                }
+                            }
+
+                            AnimeSourceWithIds(domainSource, ids, orphaned)
+                        }
+
+                    mutableState.update { old ->
+                        val items = items.sortedBy { it.name }
+                        when (old) {
+                            State.Loading -> State.Ready(items)
+                            is State.Ready -> old.copy(items = items)
+                        }
+                    }
+                }
+        }
+    }
+
+    private suspend fun getDeletableChildren(animeId: Long): Pair<List<Long>, List<Long>> {
+        val ids = mutableListOf<Long>()
+        val orphaned = mutableListOf<Long>()
+        val children = getSourcesWithNonLibraryAnime.getDeletableChildren(animeId)
+        children.forEach { child ->
+            if (child.favorite) {
+                orphaned.add(child.id)
+            } else {
+                ids.add(child.id)
+                if (child.fetchType == FetchType.Seasons) {
+                    val (childrenIds, orphanedIds) = getDeletableChildren(child.id)
+                    ids.addAll(childrenIds)
+                    orphaned.addAll(orphanedIds)
+                }
+            }
+        }
+        return ids to orphaned
+    }
+
+    suspend fun removeAnimeBySourceId(keepSeenAnime: Boolean) = withNonCancellableContext {
+        val state = state.value as? State.Ready ?: return@withNonCancellableContext
+        val selected = state.items.filter { it.id in state.selection }
+
+        val animeIds = selected.flatMap { it.ids }
+        val orphaned = selected.flatMap { it.orphaned }
+            .filterNot { it in animeIds }
+
+        animeRepository.deleteAnimesNotInLibraryByAnimeIds(animeIds, keepSeenAnime)
+        animeRepository.removeParentIdByIds(orphaned)
+        historyRepository.deleteResetHistory()
+    }
+
+    fun toggleSelection(source: AnimeSource) = mutableState.update { state ->
+        if (state !is State.Ready) return@update state
+        val mutableList = state.selection.toMutableList()
+        if (mutableList.contains(source.id)) {
+            mutableList.remove(source.id)
+        } else {
+            mutableList.add(source.id)
+        }
+        state.copy(selection = mutableList)
+    }
+
+    fun clearSelection() = mutableState.update { state ->
+        if (state !is State.Ready) return@update state
+        state.copy(selection = emptyList())
+    }
+
+    fun selectAll() = mutableState.update { state ->
+        if (state !is State.Ready) return@update state
+        state.copy(selection = state.items.fastMap { it.id })
+    }
+
+    fun invertSelection() = mutableState.update { state ->
+        if (state !is State.Ready) return@update state
+        state.copy(
+            selection = state.items
+                .fastMap { it.id }
+                .filterNot { it in state.selection },
+        )
+    }
+
+    fun showConfirmation() = mutableState.update { state ->
+        if (state !is State.Ready) return@update state
+        state.copy(showConfirmation = true)
+    }
+
+    fun hideConfirmation() = mutableState.update { state ->
+        if (state !is State.Ready) return@update state
+        state.copy(showConfirmation = false)
+    }
+
+    sealed interface State {
+        @Immutable
+        data object Loading : State
+
+        @Immutable
+        data class Ready(
+            val items: List<AnimeSourceWithIds>,
+            val selection: List<Long> = emptyList(),
+            val showConfirmation: Boolean = false,
+        ) : State
+    }
+}

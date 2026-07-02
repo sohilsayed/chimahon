@@ -40,6 +40,7 @@
     <string name="label_dictionary">Dictionary</string>
     <string name="label_novels">Novels</string>
     <string name="label_anime">Anime</string>
+    <string name="label_anime_updates">Anime updates</string>
     <string name="anime_empty_message">No anime yet — tap + to open a video</string>
     <string name="action_open_video">Open video</string>
     <string name="action_pick_local_file">Pick local file</string>
@@ -48,6 +49,7 @@
     <string name="anime_continue_watching">Continue watching</string>
     <string name="anime_no_episodes">No episodes yet</string>
     <string name="anime_episode_count">%d episodes</string>
+    <string name="related_anime">Related anime</string>
     <string name="anime_delete_confirm">Delete this anime and all its episodes?</string>
     <string name="action_mark_as_seen">Mark as seen</string>
     <string name="action_mark_as_unseen">Mark as unseen</string>
@@ -499,10 +501,14 @@
 
     <string name="pref_library_update_smart_update">Smart update</string>
     <string name="pref_update_only_completely_read">Skip entries with unread chapter(s)</string>
+    <string name="pref_update_only_completely_seen">Skip anime with unseen episodes</string>
     <string name="pref_update_only_non_completed">Skip entries with \"Completed\" status</string>
     <string name="pref_update_only_started">Skip unstarted entries</string>
     <string name="pref_update_only_in_release_period">Predict next release time</string>
+    <string name="pref_anime_library_update_smart_update">Anime smart update</string>
     <string name="pref_library_update_show_tab_badge">Show unread count on Updates icon</string>
+    <string name="pref_library_season">Seasons</string>
+    <string name="pref_update_seasons_update">Update seasons during library update</string>
 
     <string name="pref_library_update_refresh_metadata">Automatically refresh metadata</string>
     <string name="pref_library_update_refresh_metadata_summary">Check for new cover and details when updating library</string>
@@ -511,6 +517,10 @@
     <string name="default_category_summary">Always ask</string>
     <string name="categorized_display_settings">Per-category settings for sort</string>
     <string name="pref_library_update_categories_details">Entries in excluded categories will not be updated even if they are also in included categories.</string>
+    <string name="pref_manga_library_update_categories_details">Manga in excluded categories will not be updated even if they are also in included categories.</string>
+    <string name="pref_anime_library_update_categories_details">Anime in excluded categories will not be updated even if they are also in included categories.</string>
+    <string name="anime_categories">Anime categories</string>
+    <string name="manga_categories">Manga categories</string>
     <string name="all">All</string>
     <string name="none">None</string>
     <string name="include">Include: %s</string>
@@ -738,6 +748,7 @@
     <!-- Tracking section -->
     <string name="tracking_guide">Tracking guide</string>
     <string name="pref_auto_update_manga_sync">Update progress after reading</string>
+    <string name="pref_show_next_episode_airing_time">Show next episode airing time</string>
     <string name="pref_auto_update_manga_on_mark_read">Update progress when marked as read</string>
     <string name="services">Trackers</string>
     <string name="tracking_info">One-way sync to update the chapter progress in external tracker services. Set up tracking for individual entries from their tracking button.</string>
@@ -869,10 +880,15 @@
     <string name="download_cache_invalidated">Recreating download index</string>
     <string name="pref_clear_database">Clear database</string>
     <string name="pref_clear_database_summary">Delete history for entries that are not saved in your library</string>
+    <string name="pref_clear_anime_database">Clear anime database</string>
+    <string name="pref_clear_anime_database_summary">Delete anime entries that are not saved in your library</string>
+    <string name="clear_anime_database_confirmation">You’re about to remove non-library anime entries from the database</string>
     <string name="clear_database_source_item_count">%1$d non-library entries in database</string>
     <string name="clear_database_text">You’re about to remove entries from the database</string>
     <string name="clear_database_history_warning">Read chapters and progress of non-library entries will be lost</string>
+    <string name="clear_database_seen_history_warning">Seen episodes and progress of non-library entries will be lost</string>
     <string name="clear_db_exclude_read">Keep entries with read chapters</string>
+    <string name="clear_db_exclude_seen">Keep entries with seen episodes</string>
     <string name="clear_database_completed">Entries deleted</string>
     <string name="database_clean">Nothing to clear</string>
     <string name="pref_clear_webview_data">Clear WebView data</string>
@@ -1045,13 +1061,17 @@
     <string name="action_track">Track</string>
     <string name="unread">Unread</string>
     <string name="reading">Reading</string>
+    <string name="watching">Watching</string>
     <string name="completed">Completed</string>
     <string name="dropped">Dropped</string>
     <string name="on_hold">On hold</string>
     <string name="paused">Paused</string>
     <string name="plan_to_read">Plan to read</string>
+    <string name="plan_to_watch">Plan to watch</string>
+    <string name="not_interesting">Not interesting</string>
     <string name="considering">Considering</string>
     <string name="repeating">Rereading</string>
+    <string name="rewatching">Rewatching</string>
     <string name="reading_list">Reading List</string>
     <string name="wish_list">Wish List</string>
     <string name="complete_list">Complete List</string>
@@ -1130,6 +1150,7 @@
 
     <!-- History -->
     <string name="recent_manga_time">Ch. %1$s - %2$s</string>
+    <string name="recent_anime_time">Ep. %1$s - %2$s</string>
     <string name="pref_clear_history">Clear history</string>
     <string name="clear_history_completed">History deleted</string>
     <string name="clear_history_confirmation">Are you sure? All history will be lost.</string>
@@ -1143,6 +1164,8 @@
     <!-- Source migration screen -->
     <string name="migration_help_guide">Source migration guide</string>
     <string name="migration_dialog_what_to_include">Select data to include</string>
+    <string name="label_cant_migrate_anime_episode">Unable to migrate episode entry to season entry</string>
+    <string name="label_cant_migrate_anime_season">Unable to migrate season entry to episode entry</string>
     <string name="migration_selection_prompt">Select a source to migrate from</string>
     <string name="migrate">Migrate</string>
     <!-- Make a copy (noun) when migrating. Don't use for copying to clipboard. -->
@@ -1182,9 +1205,14 @@
     <string name="notification_updating_progress">Updating library… (%s)</string>
     <string name="notification_size_warning">Large updates harm sources and may lead to slower updates and also increased battery usage. Tap to learn more.</string>
     <string name="notification_new_chapters">New chapters found</string>
+    <string name="notification_new_episodes">New episodes found</string>
     <string name="notification_chapters_single">Chapter %1$s</string>
     <string name="notification_chapters_single_and_more">Chapter %1$s and %2$d more</string>
     <string name="notification_chapters_multiple">Chapters %1$s</string>
+    <string name="notification_episodes_single">Episode %1$s</string>
+    <string name="notification_episodes_single_and_more">Episode %1$s and %2$d more</string>
+    <string name="notification_episodes_multiple">Episodes %1$s</string>
+    <string name="action_view_episodes">View episodes</string>
     <string name="notification_update_error">%1$d update(s) failed</string>
     <string name="learn_more">Tap to learn more</string>
     <string name="notification_cover_update_failed">Failed to update cover</string>
@@ -1222,6 +1250,7 @@
     <string name="information_no_downloads">No downloads</string>
     <string name="information_no_recent">No recent updates</string>
     <string name="information_no_recent_manga">Nothing read recently</string>
+    <string name="information_no_recent_anime">Nothing watched recently</string>
     <string name="information_empty_library">Your library is empty</string>
     <string name="information_no_manga_category">Category is empty</string>
     <string name="information_no_entries_found">No entries found in this category</string>
@@ -1254,6 +1283,7 @@
     <string name="channel_complete">Complete</string>
     <string name="channel_errors">Errors</string>
     <string name="channel_new_chapters">Chapter updates</string>
+    <string name="channel_new_episodes">Episode updates</string>
     <string name="channel_app_updates">App updates</string>
     <string name="channel_ext_updates">Extension updates</string>
     <string name="channel_anime_ext_updates">Anime extension updates</string>

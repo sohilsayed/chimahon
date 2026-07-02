@@ -1,6 +1,8 @@
 package eu.kanade.domain.entries.anime.interactor
 
+import eu.kanade.domain.entries.anime.model.hasCustomBackground
 import eu.kanade.domain.entries.anime.model.hasCustomCover
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.toUpdateStrategy
@@ -32,6 +34,7 @@ class UpdateAnime(
         remoteAnime: SAnime,
         manualFetch: Boolean,
         coverCache: CoverCache = Injekt.get(),
+        backgroundCache: AnimeBackgroundCache = Injekt.get(),
     ): Boolean {
         val remoteTitle = try {
             remoteAnime.title
@@ -64,18 +67,37 @@ class UpdateAnime(
                 }
             }
 
+        val backgroundLastModified =
+            when {
+                // Never refresh backgrounds if the url is empty to avoid "losing" existing backgrounds
+                remoteAnime.background_url.isNullOrEmpty() -> null
+                !manualFetch && localAnime.backgroundUrl == remoteAnime.background_url -> null
+                localAnime.isLocal() -> Instant.now().toEpochMilli()
+                localAnime.hasCustomBackground(backgroundCache) -> {
+                    backgroundCache.deleteFromCache(localAnime, false)
+                    null
+                }
+                else -> {
+                    backgroundCache.deleteFromCache(localAnime, false)
+                    Instant.now().toEpochMilli()
+                }
+            }
+
         val thumbnailUrl = remoteAnime.thumbnail_url?.takeIf { it.isNotEmpty() }
+        val backgroundUrl = remoteAnime.background_url?.takeIf { it.isNotEmpty() }
 
         return animeRepository.update(
             AnimeUpdate(
                 id = localAnime.id,
                 title = title,
                 coverLastModified = coverLastModified,
+                backgroundLastModified = backgroundLastModified,
                 author = remoteAnime.author,
                 artist = remoteAnime.artist,
                 description = remoteAnime.description,
                 genre = remoteAnime.getGenres(),
                 thumbnailUrl = thumbnailUrl,
+                backgroundUrl = backgroundUrl,
                 status = remoteAnime.status.toLong(),
                 updateStrategy = remoteAnime.update_strategy.toUpdateStrategy(),
                 initialized = true,

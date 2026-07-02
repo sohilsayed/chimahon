@@ -35,6 +35,16 @@ class AnimeHistoryRepositoryImpl(
         }
     }
 
+    override suspend fun resetHistory(historyIds: List<Long>) {
+        try {
+            handler.await(inTransaction = true) {
+                historyIds.forEach(animehistoryQueries::resetAnimeHistoryById)
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, throwable = e)
+        }
+    }
+
     override suspend fun resetHistoryByAnimeIds(animeIds: List<Long>) {
         try {
             handler.await { animehistoryQueries.resetHistoryByAnimeIds(animeIds) }
@@ -50,6 +60,14 @@ class AnimeHistoryRepositoryImpl(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
             false
+        }
+    }
+
+    override suspend fun deleteResetHistory() {
+        try {
+            handler.await { animehistoryQueries.removeResettedHistory() }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, throwable = e)
         }
     }
 

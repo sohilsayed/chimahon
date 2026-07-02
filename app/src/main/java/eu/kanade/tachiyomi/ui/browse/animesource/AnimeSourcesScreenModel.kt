@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.animeextension.AnimeExtensionManager
 import eu.kanade.tachiyomi.animeextension.model.AnimeExtension
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import tachiyomi.core.common.preference.getAndSet
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
@@ -28,9 +29,10 @@ class AnimeSourcesScreenModel(
             combine(
                 animeSourceManager.catalogueSources,
                 preferences.enabledLanguages().changes(),
-                preferences.pinnedSources().changes(),
+                preferences.pinnedAnimeSources().changes(),
+                preferences.disabledAnimeSources().changes(),
                 animeExtensionManager.installedExtensionsFlow,
-            ) { sources, enabledLanguages, pinnedSources, extensions ->
+            ) { sources, enabledLanguages, pinnedSources, disabledSources, extensions ->
                 val extensionBySourceId = extensions
                     .flatMap { extension -> extension.sources.map { source -> source.id to extension } }
                     .toMap()
@@ -42,9 +44,16 @@ class AnimeSourcesScreenModel(
                             it.lang in enabledLanguages ||
                             enabledLanguages.isEmpty()
                     }
-                    .map { source -> AnimeSourceUiModel(source, extensionBySourceId[source.id]) }
+                    .filter { it.id.toString() !in disabledSources }
+                    .map { source ->
+                        AnimeSourceUiModel(
+                            source = source,
+                            extension = extensionBySourceId[source.id],
+                            isPinned = source.id.toString() in pinnedSources,
+                        )
+                    }
                     .sortedWith(
-                        compareBy<AnimeSourceUiModel> { it.source.id.toString() !in pinnedSources }
+                        compareBy<AnimeSourceUiModel> { !it.isPinned }
                             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.source.name },
                     )
                     .groupBy { it.source.lang }
@@ -61,8 +70,33 @@ class AnimeSourcesScreenModel(
         }
     }
 
+    fun togglePin(source: AnimeCatalogueSource) {
+        val sourceId = source.id.toString()
+        preferences.pinnedAnimeSources().getAndSet { pinned ->
+            if (sourceId in pinned) pinned - sourceId else pinned + sourceId
+        }
+    }
+
+    fun toggleSource(source: AnimeCatalogueSource) {
+        val sourceId = source.id.toString()
+        preferences.disabledAnimeSources().getAndSet { disabled ->
+            if (sourceId in disabled) disabled - sourceId else disabled + sourceId
+        }
+    }
+
+    fun showSourceDialog(source: AnimeCatalogueSource) {
+        mutableState.update { it.copy(dialog = Dialog(source)) }
+    }
+
+    fun closeDialog() {
+        mutableState.update { it.copy(dialog = null) }
+    }
+
+    data class Dialog(val source: AnimeCatalogueSource)
+
     @Immutable
     data class State(
+        val dialog: Dialog? = null,
         val isLoading: Boolean = true,
         val items: Map<String, List<AnimeSourceUiModel>> = emptyMap(),
     ) {
@@ -73,5 +107,6 @@ class AnimeSourcesScreenModel(
     data class AnimeSourceUiModel(
         val source: AnimeCatalogueSource,
         val extension: AnimeExtension.Installed?,
+        val isPinned: Boolean,
     )
 }

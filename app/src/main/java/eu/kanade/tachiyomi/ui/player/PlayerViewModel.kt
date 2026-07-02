@@ -49,6 +49,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.episode.model.toDbEpisode
 import eu.kanade.domain.track.interactor.TrackEpisode
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.screen.player.custombutton.CustomButtonFetchState
 import eu.kanade.presentation.more.settings.screen.player.custombutton.getButtons
@@ -65,6 +66,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
+import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.anilist.Anilist
 import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
@@ -144,7 +146,7 @@ import tachiyomi.domain.history.interactor.GetNextEpisodes
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
-import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.i18n.MR
 import tachiyomi.source.local.entries.anime.isLocal
 import uy.kohesive.injekt.Injekt
@@ -157,6 +159,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 
 private const val MAX_SUBTITLE_HISTORY = 120
+private const val VIDEO_SELECTION_DELIMITER = "\u001e"
 class PlayerViewModelProviderFactory(
     private val activity: PlayerActivity,
 ) : ViewModelProvider.Factory {
@@ -178,7 +181,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val getNextEpisodes: GetNextEpisodes = Injekt.get(),
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
     private val getAnimeCategories: GetCategories = Injekt.get(),
-    private val getTracks: GetTracks = Injekt.get(),
+    private val getTracks: GetAnimeTracks = Injekt.get(),
     private val upsertHistory: UpsertHistory = Injekt.get(),
     private val updateEpisode: UpdateEpisode = Injekt.get(),
     private val setAnimeViewerFlags: SetAnimeViewerFlags = Injekt.get(),
@@ -187,6 +190,7 @@ class PlayerViewModel @JvmOverloads constructor(
     internal val subtitlePreferences: SubtitlePreferences = Injekt.get(),
     private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
     private val basePreferences: BasePreferences = Injekt.get(),
+    private val syncPreferences: SyncPreferences = Injekt.get(),
     private val getCustomButtons: GetCustomButtons = Injekt.get(),
     private val trackSelect: TrackSelect = Injekt.get(),
     private val jimakuApi: JimakuApi = JimakuApi(),
@@ -2073,6 +2077,7 @@ class PlayerViewModel @JvmOverloads constructor(
 
         preferredHosterKey = hoster.selectionKey()
         preferredVideoKey = video.selectionKey()
+        persistPreferredVideoSelectionForCurrentEpisode()
     }
 
     private fun findRememberedVideoIndex(hoster: Hoster, videoList: List<Video>): Int {
@@ -2098,6 +2103,34 @@ class PlayerViewModel @JvmOverloads constructor(
         }
 
         return findRememberedVideoIndex(hoster, videoList)
+    }
+
+    private fun restorePreferredVideoSelectionForEpisode(episodeId: Long) {
+        playerPreferences.preferredVideoSelectionForEpisode(episodeId)
+            .get()
+            .decodePreferredVideoSelection()
+            ?.let { (hosterKey, videoKey) ->
+                preferredHosterKey = hosterKey
+                preferredVideoKey = videoKey
+            }
+    }
+
+    private fun persistPreferredVideoSelectionForCurrentEpisode() {
+        val episodeId = currentEpisode.value?.id ?: return
+        val hosterKey = preferredHosterKey ?: return
+        val videoKey = preferredVideoKey ?: return
+        playerPreferences.preferredVideoSelectionForEpisode(episodeId)
+            .set(encodePreferredVideoSelection(hosterKey, videoKey))
+    }
+
+    private fun encodePreferredVideoSelection(hosterKey: String, videoKey: String): String {
+        return listOf(hosterKey, videoKey).joinToString(VIDEO_SELECTION_DELIMITER)
+    }
+
+    private fun String.decodePreferredVideoSelection(): Pair<String, String>? {
+        if (isBlank()) return null
+        val parts = split(VIDEO_SELECTION_DELIMITER, limit = 2)
+        return if (parts.size == 2) Pair(parts[0], parts[1]) else null
     }
 
     private fun subtitleSelectionKey(title: String?, path: String?, language: String? = null): String {
@@ -2351,6 +2384,10 @@ class PlayerViewModel @JvmOverloads constructor(
 
                 val currentEp = currentEpisode.value
                     ?: throw ExceptionWithStringResource("No episode loaded", MR.strings.no_episode_loaded)
+                val hasExplicitVideoRequest = hostList.isNotBlank() || hostIndex != -1 || vidIndex != -1
+                if (!hasExplicitVideoRequest && qualityIndex == Pair(-1, -1)) {
+                    currentEp.id?.let(::restorePreferredVideoSelectionForEpisode)
+                }
                 if (hostList.isNotBlank()) {
                     currentHosterList = hostList.toHosterList().ifEmpty {
                         currentHosterList = null
@@ -2714,6 +2751,7 @@ class PlayerViewModel @JvmOverloads constructor(
             _currentEpisode.update { _ -> chosenEpisode }
             updateEpisode(chosenEpisode)
             applySubtitleDelayForAnime(anime.id)
+            chosenEpisode.id?.let(::restorePreferredVideoSelectionForEpisode)
 
             this@PlayerViewModel.episodeId = chosenEpisode.id!!
             updateHasPreviousEpisode(getCurrentEpisodeIndex() != 0)
@@ -2759,9 +2797,13 @@ class PlayerViewModel @JvmOverloads constructor(
         val progress = playerPreferences.progressPreference().get()
         val shouldTrack = !incognitoMode || hasTrackers
         if (seconds >= totalSeconds * progress && shouldTrack) {
+            val wasSeen = currentEp.seen
             currentEp.seen = true
             updateTrackEpisodeSeen(currentEp)
             deleteEpisodeIfNeeded(currentEp)
+            if (!wasSeen) {
+                startSyncOnEpisodeSeen()
+            }
         }
 
         saveWatchingProgress(currentEp)
@@ -3102,6 +3144,15 @@ class PlayerViewModel @JvmOverloads constructor(
 
         viewModelScope.launchNonCancellable {
             trackEpisode.await(context, anime.id, episode.episode_number.toDouble())
+        }
+    }
+
+    private fun startSyncOnEpisodeSeen() {
+        if (incognitoMode || !syncPreferences.isSyncEnabled()) return
+
+        val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
+        if (syncTriggerOpt.syncOnEpisodeSeen) {
+            SyncDataJob.startNow(Injekt.get<Application>())
         }
     }
 

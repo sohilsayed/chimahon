@@ -42,4 +42,17 @@ data class ALUserListItem(
             private = private,
         )
     }
+
+    fun toALUserAnime(): ALUserAnime {
+        return ALUserAnime(
+            libraryId = this@ALUserListItem.id,
+            listStatus = status,
+            scoreRaw = scoreRaw,
+            episodesSeen = progress,
+            startDateFuzzy = startedAt.toEpochMilli(),
+            completedDateFuzzy = completedAt.toEpochMilli(),
+            anime = media.toALAnime(),
+            private = private,
+        )
+    }
 }

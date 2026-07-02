@@ -115,6 +115,7 @@ fun AnimeLibraryPager(
                         onClickContinueWatching = onClickContinueWatching,
                         searchQuery = searchQuery,
                         onGlobalSearchClicked = onGlobalSearchClicked,
+                        usePanoramaCover = displayMode == LibraryDisplayMode.ComfortableGridPanorama,
                     )
                 }
             }

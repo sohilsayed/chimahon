@@ -1,10 +1,15 @@
 package eu.kanade.domain
 
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
+import eu.kanade.domain.track.anime.interactor.RefreshAnimeTracks
 import eu.kanade.domain.entries.anime.interactor.UpdateAnime as AppUpdateAnime
 import eu.kanade.domain.episode.interactor.SetSeenStatus as AppSetSeenStatus
 import eu.kanade.domain.track.interactor.SyncEpisodeProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackEpisode
+import eu.kanade.domain.episode.interactor.GetAvailableAnimeScanlators
+import eu.kanade.domain.episode.interactor.GetExcludedAnimeScanlators
+import eu.kanade.domain.episode.interactor.SetExcludedAnimeScanlators
+import mihon.domain.animemigration.usecases.MigrateAnimeUseCase
 import tachiyomi.data.entries.anime.CustomAnimeRepositoryImpl
 import tachiyomi.data.entries.anime.AnimeRepositoryImpl
 import tachiyomi.data.category.AnimeCategoryRepositoryImpl
@@ -25,6 +30,7 @@ import tachiyomi.domain.entries.anime.interactor.SetAnimeSeasonFlags
 import tachiyomi.domain.entries.anime.interactor.UpdateAnime as DomainUpdateAnime
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.entries.anime.repository.CustomAnimeRepository
+import tachiyomi.domain.source.anime.interactor.GetAnimeSourcesWithNonLibraryAnime
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.category.interactor.CreateAnimeCategory
 import tachiyomi.domain.category.interactor.DeleteAnimeCategory
@@ -50,6 +56,9 @@ import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.AnimeLibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.track.anime.interactor.InsertAnimeTrack
+import tachiyomi.domain.track.anime.interactor.DeleteAnimeTrack
+import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
+import tachiyomi.domain.track.anime.interactor.GetTracksPerAnime
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addFactory
@@ -76,10 +85,14 @@ class AnimeDomainModule : InjektModule {
         addFactory { SetAnimeEpisodeFlags(get()) }
         addFactory { SetAnimeSeasonFlags(get()) }
         addFactory { GetDuplicateLibraryAnime(get()) }
+        addFactory { GetAnimeSourcesWithNonLibraryAnime(get()) }
 
         addSingletonFactory<EpisodeRepository> { EpisodeRepositoryImpl(get()) }
         addFactory { GetEpisode(get()) }
         addFactory { GetEpisodesByAnimeId(get()) }
+        addFactory { GetAvailableAnimeScanlators(get()) }
+        addFactory { GetExcludedAnimeScanlators(get()) }
+        addFactory { SetExcludedAnimeScanlators(get()) }
         addFactory { UpdateEpisode(get()) }
         addFactory { SetAnimeDefaultEpisodeFlags(get(), get(), get()) }
         addFactory { SetAnimeDefaultSeasonFlags(get(), get(), get()) }
@@ -103,8 +116,31 @@ class AnimeDomainModule : InjektModule {
         addSingletonFactory { AnimeLibraryPreferences(get()) }
 
         addFactory { InsertAnimeTrack(get()) }
+        addFactory { DeleteAnimeTrack(get()) }
+        addFactory { GetAnimeTracks(get()) }
+        addFactory { GetTracksPerAnime(get()) }
         addFactory { SyncEpisodeProgressWithTrack(get(), get(), get()) }
         addFactory { AddAnimeTracks(get(), get(), get(), get()) }
-        addFactory { TrackEpisode() }
+        addFactory { RefreshAnimeTracks(get(), get(), get(), get()) }
+        addFactory { TrackEpisode(get(), get(), get(), get()) }
+        addFactory {
+            MigrateAnimeUseCase(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+            )
+        }
     }
 }

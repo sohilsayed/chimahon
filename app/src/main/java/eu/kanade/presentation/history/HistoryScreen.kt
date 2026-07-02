@@ -149,7 +149,7 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryScreenContent(
+internal fun HistoryScreenContent(
     // KMK -->
     state: HistoryScreenModel.State,
 
@@ -248,7 +248,7 @@ sealed interface HistoryUiModel {
 
 // KMK -->
 @Composable
-private fun HistorySelectionToolbar(
+internal fun HistorySelectionToolbar(
     selectedCount: Int,
     onCancelActionMode: () -> Unit,
     onClickSelectAll: () -> Unit,

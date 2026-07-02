@@ -79,7 +79,7 @@ class AddAnimeTracks(
 
     suspend fun bindEnhancedTrackers(anime: Anime, source: AnimeSource) = withNonCancellableContext {
         withIOContext {
-            trackerManager.loggedInTrackers()
+            trackerManager.loggedInAnimeTrackers()
                 .filterIsInstance<EnhancedAnimeTracker>()
                 .filter { it.accept(source) }
                 .forEach { service ->

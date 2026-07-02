@@ -56,7 +56,7 @@ fun Anime.toAnimeUpdate(): AnimeUpdate {
         artist = ogArtist,
         author = ogAuthor,
         thumbnailUrl = ogThumbnailUrl,
-        backgroundUrl = null,
+        backgroundUrl = backgroundUrl,
         description = ogDescription,
         genre = ogGenre,
         status = ogStatus,

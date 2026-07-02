@@ -51,7 +51,9 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -75,16 +77,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.entries.components.DotSeparatorText
-import eu.kanade.presentation.entries.components.ItemCover
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.coil.useBackground
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.asAnimeCover
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.TextButton
@@ -92,12 +96,18 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.clickableNoIndication
+import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.presentation.core.util.secondaryItemAlpha
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
+import tachiyomi.domain.entries.anime.model.AnimeCover as DomainAnimeCover
 
 private val whitespaceLineRegex = Regex("[\\r\\n]{2,}", setOf(RegexOption.MULTILINE))
+private val markdownImageRegex = Regex("""!\[[^\]]*]\([^)]*\)""")
+private val htmlImageRegex = Regex("""<img\b[^>]*>""", setOf(RegexOption.IGNORE_CASE))
 
 @Composable
 fun AnimeInfoBox(
@@ -109,7 +119,12 @@ fun AnimeInfoBox(
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onCoverLoaded: (DomainAnimeCover) -> Unit = {},
 ) {
+    val usePanoramaCover by Injekt.get<UiPreferences>().usePanoramaCoverMangaInfo().collectAsState()
+    val topAlignCover by Injekt.get<UiPreferences>().topAlignCover().collectAsState()
+    val coverRatio = remember { mutableFloatStateOf(1f) }
+
     Box(modifier = modifier) {
         // Backdrop
         val backdropGradientColors = listOf(
@@ -124,16 +139,24 @@ fun AnimeInfoBox(
                 .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            onSuccess = { result ->
+                val image = result.result.image
+                coverRatio.floatValue = image.height.toFloat() / image.width
+            },
             modifier = Modifier
                 .matchParentSize()
                 .drawWithContent {
                     drawContent()
                     drawRect(
-                        brush = Brush.verticalGradient(colors = backdropGradientColors),
+                        brush = Brush.verticalGradient(
+                            colors = backdropGradientColors,
+                            startY = size.height / 2,
+                        ),
                     )
                 }
-                .blur(4.dp)
-                .alpha(0.2f),
+                .background(MaterialTheme.colorScheme.surfaceTint.copy(alpha = 0.4f))
+                .blur(7.dp)
+                .alpha(0.24f),
         )
 
         // Anime & source info
@@ -146,6 +169,10 @@ fun AnimeInfoBox(
                     isStubSource = isStubSource,
                     onCoverClick = onCoverClick,
                     doSearch = doSearch,
+                    coverRatio = coverRatio,
+                    usePanoramaCover = usePanoramaCover,
+                    topAlignCover = topAlignCover,
+                    onCoverLoaded = onCoverLoaded,
                 )
             } else {
                 AnimeAndSourceTitlesLarge(
@@ -155,6 +182,9 @@ fun AnimeInfoBox(
                     isStubSource = isStubSource,
                     onCoverClick = onCoverClick,
                     doSearch = doSearch,
+                    coverRatio = coverRatio,
+                    usePanoramaCover = usePanoramaCover,
+                    onCoverLoaded = onCoverLoaded,
                 )
             }
         }
@@ -256,9 +286,7 @@ fun ExpandableAnimeDescription(
                 MR.strings.description_placeholder,
             )
         val trimmedDescription = remember(desc) {
-            desc
-                .replace(whitespaceLineRegex, "\n")
-                .trimEnd()
+            desc.toCollapsedMarkdown()
         }
         AnimeSummary(
             expandedDescription = desc,
@@ -345,6 +373,9 @@ private fun AnimeAndSourceTitlesLarge(
     isStubSource: Boolean,
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
+    coverRatio: MutableFloatState,
+    usePanoramaCover: Boolean = false,
+    onCoverLoaded: (DomainAnimeCover) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -352,15 +383,30 @@ private fun AnimeAndSourceTitlesLarge(
             .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ItemCover.Book(
-            modifier = Modifier.fillMaxWidth(0.65f),
-            data = ImageRequest.Builder(LocalContext.current)
-                .data(anime)
-                .crossfade(true)
-                .build(),
-            contentDescription = stringResource(MR.strings.manga_cover),
-            onClick = onCoverClick,
-        )
+        val coverModifier = Modifier.fillMaxWidth(0.65f)
+        val coverData = anime.asAnimeCover()
+        val onCoverLoadedInternal = { _: DomainAnimeCover, result: AsyncImagePainter.State.Success ->
+            val image = result.result.image
+            coverRatio.floatValue = image.height.toFloat() / image.width
+            onCoverLoaded(coverData)
+        }
+        if (usePanoramaCover && coverRatio.floatValue <= RatioSwitchToPanorama) {
+            AnimeCover.Panorama(
+                modifier = coverModifier,
+                data = coverData,
+                contentDescription = stringResource(MR.strings.manga_cover),
+                onClick = onCoverClick,
+                onCoverLoaded = onCoverLoadedInternal,
+            )
+        } else {
+            AnimeCover.Book(
+                modifier = coverModifier,
+                data = coverData,
+                contentDescription = stringResource(MR.strings.manga_cover),
+                onClick = onCoverClick,
+                onCoverLoaded = onCoverLoadedInternal,
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
         AnimeContentInfo(
             title = anime.title,
@@ -383,25 +429,45 @@ private fun AnimeAndSourceTitlesSmall(
     isStubSource: Boolean,
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
+    coverRatio: MutableFloatState,
+    usePanoramaCover: Boolean = false,
+    topAlignCover: Boolean = false,
+    onCoverLoaded: (DomainAnimeCover) -> Unit = {},
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = if (topAlignCover) Alignment.Top else Alignment.CenterVertically,
     ) {
-        ItemCover.Book(
-            modifier = Modifier
-                .sizeIn(maxWidth = 100.dp)
-                .align(Alignment.Top),
-            data = ImageRequest.Builder(LocalContext.current)
-                .data(anime)
-                .crossfade(true)
-                .build(),
-            contentDescription = stringResource(MR.strings.manga_cover),
-            onClick = onCoverClick,
-        )
+        val coverData = anime.asAnimeCover()
+        val onCoverLoadedInternal = { _: DomainAnimeCover, result: AsyncImagePainter.State.Success ->
+            val image = result.result.image
+            coverRatio.floatValue = image.height.toFloat() / image.width
+            onCoverLoaded(coverData)
+        }
+        if (usePanoramaCover && coverRatio.floatValue <= RatioSwitchToPanorama) {
+            AnimeCover.Panorama(
+                modifier = Modifier
+                    .sizeIn(maxHeight = 100.dp)
+                    .align(if (topAlignCover) Alignment.Top else Alignment.CenterVertically),
+                data = coverData,
+                contentDescription = stringResource(MR.strings.manga_cover),
+                onClick = onCoverClick,
+                onCoverLoaded = onCoverLoadedInternal,
+            )
+        } else {
+            AnimeCover.Book(
+                modifier = Modifier
+                    .sizeIn(maxWidth = 100.dp)
+                    .align(if (topAlignCover) Alignment.Top else Alignment.CenterVertically),
+                data = coverData,
+                contentDescription = stringResource(MR.strings.manga_cover),
+                onClick = onCoverClick,
+                onCoverLoaded = onCoverLoadedInternal,
+            )
+        }
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -588,6 +654,7 @@ private fun AnimeSummary(
                 SelectionContainer {
                     MarkdownRender(
                         content = if (expanded) expandedDescription else shrunkDescription,
+                        loadImages = expanded,
                         modifier = Modifier.secondaryItemAlpha(),
                     )
                 }
@@ -633,6 +700,17 @@ private fun AnimeSummary(
             scrimPlaceable.place(0, scrimY)
         }
     }
+}
+
+private fun String.toCollapsedMarkdown(): String {
+    return replace("\r\n", "\n")
+        .replace('\r', '\n')
+        .replace(markdownImageRegex, "")
+        .replace(htmlImageRegex, "")
+        .replace(whitespaceLineRegex, "\n")
+        .lines()
+        .joinToString("  \n") { it.trimEnd() }
+        .trim()
 }
 
 private val DefaultTagChipModifier = Modifier.padding(vertical = 4.dp)

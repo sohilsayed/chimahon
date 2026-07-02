@@ -12,8 +12,10 @@ data class ALSearchItem(
     val status: String?,
     val startDate: ALFuzzyDate,
     val chapters: Long?,
+    val episodes: Long? = null,
     val averageScore: Int?,
-    val staff: ALStaff,
+    val staff: ALStaff? = null,
+    val studios: ALStudios? = null,
 ) {
     fun toALManga(): ALManga = ALManga(
         remoteId = id,
@@ -25,7 +27,20 @@ data class ALSearchItem(
         startDateFuzzy = startDate.toEpochMilli(),
         totalChapters = chapters ?: 0,
         averageScore = averageScore ?: -1,
-        staff = staff,
+        staff = staff!!,
+    )
+
+    fun toALAnime(): ALAnime = ALAnime(
+        remoteId = id,
+        title = title.userPreferred,
+        imageUrl = coverImage.large,
+        description = description,
+        format = format?.replace("_", "-") ?: "",
+        publishingStatus = status ?: "",
+        startDateFuzzy = startDate.toEpochMilli(),
+        totalEpisodes = episodes ?: 0,
+        averageScore = averageScore ?: -1,
+        studios = studios ?: ALStudios(emptyList()),
     )
 }
 
@@ -65,3 +80,19 @@ data class ALStaffName(
         return userPreferred ?: full ?: native
     }
 }
+
+@Serializable
+data class ALStudios(
+    val edges: List<ALStudiosEdge>,
+)
+
+@Serializable
+data class ALStudiosEdge(
+    val isMain: Boolean,
+    val node: ALStudiosNode,
+)
+
+@Serializable
+data class ALStudiosNode(
+    val name: String,
+)

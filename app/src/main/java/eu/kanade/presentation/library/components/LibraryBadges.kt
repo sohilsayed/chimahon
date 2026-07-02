@@ -42,6 +42,13 @@ internal fun UnreadBadge(count: Long) {
 }
 
 @Composable
+internal fun UnviewedBadge(count: Long) {
+    if (count > 0) {
+        Badge(text = "$count")
+    }
+}
+
+@Composable
 internal fun LanguageBadge(
     isLocal: Boolean,
     sourceLanguage: String,
@@ -121,6 +128,7 @@ private fun BadgePreview() {
         BadgeGroup {
             DownloadsBadge(count = 10)
             UnreadBadge(count = 10)
+            UnviewedBadge(count = 10)
             LanguageBadge(isLocal = true, sourceLanguage = "en")
             LanguageBadge(isLocal = false, sourceLanguage = "en", useLangIcon = false)
             LanguageBadge(isLocal = false, sourceLanguage = "vi")

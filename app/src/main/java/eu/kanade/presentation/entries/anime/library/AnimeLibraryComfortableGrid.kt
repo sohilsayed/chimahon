@@ -13,7 +13,7 @@ import eu.kanade.presentation.library.components.AnimeComfortableGridItem
 import eu.kanade.presentation.library.components.DownloadsBadge
 import eu.kanade.presentation.library.components.LanguageBadge
 import eu.kanade.presentation.library.components.LazyLibraryGrid
-import eu.kanade.presentation.library.components.UnreadBadge
+import eu.kanade.presentation.library.components.UnviewedBadge
 import eu.kanade.presentation.library.components.globalSearchItem
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryItem
 import tachiyomi.domain.entries.anime.model.AnimeCover
@@ -33,6 +33,7 @@ internal fun AnimeLibraryComfortableGrid(
     onClickContinueWatching: ((LibraryAnime) -> Unit)?,
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
+    usePanoramaCover: Boolean = false,
 ) {
     val badgePrefs = remember { Injekt.get<AnimeLibraryPreferences>() }
     val showDownloadBadge by remember { badgePrefs.downloadBadge().changes() }.collectAsState(badgePrefs.downloadBadge().get())
@@ -64,7 +65,7 @@ internal fun AnimeLibraryComfortableGrid(
                 ),
                 coverBadgeStart = {
                     if (showDownloadBadge) DownloadsBadge(count = libraryItem.downloadCount)
-                    if (showUnseenBadge) UnreadBadge(count = libraryItem.unseenCount)
+                    if (showUnseenBadge) UnviewedBadge(count = libraryItem.unseenCount)
                 },
                 coverBadgeEnd = {
                     if (showLocalBadge) AnimeSourceIconBadge(source = libraryItem.source)
@@ -82,6 +83,7 @@ internal fun AnimeLibraryComfortableGrid(
                 } else {
                     null
                 },
+                usePanoramaCover = usePanoramaCover,
             )
         }
     }

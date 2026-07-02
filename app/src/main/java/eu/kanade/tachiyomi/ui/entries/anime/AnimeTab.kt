@@ -104,7 +104,11 @@ data object AnimeTab : Tab {
         val onClickRefresh: (AnimeCategory?) -> Boolean = { category ->
             val started = AnimeLibraryUpdateJob.startNow(context, category)
             scope.launch {
-                val msgRes = if (started) MR.strings.updating_category else MR.strings.update_already_running
+                val msgRes = when {
+                    !started -> MR.strings.update_already_running
+                    category != null -> MR.strings.updating_category
+                    else -> MR.strings.updating_library
+                }
                 snackbarHostState.showSnackbar(context.stringResource(msgRes))
             }
             started
@@ -114,14 +118,14 @@ data object AnimeTab : Tab {
             context.startActivity(PlayerActivity.newIntent(context, episode.animeId, episode.id))
         }
 
-        val defaultTitle = stringResource(MR.strings.label_anime_library)
+        val defaultTitle = stringResource(MR.strings.label_anime)
 
         Scaffold(
             topBar = { scrollBehavior ->
                 val title = state.getToolbarTitle(
                     defaultTitle = defaultTitle,
                     defaultCategoryTitle = stringResource(MR.strings.label_default),
-                    page = screenModel.activeCategoryIndex,
+                    page = state.coercedActiveCategoryIndex,
                 )
                 val tabVisible = state.showCategoryTabs && state.categories.size > 1
                 LibraryToolbar(
@@ -129,16 +133,16 @@ data object AnimeTab : Tab {
                     selectedCount = state.selection.size,
                     title = title,
                     onClickUnselectAll = screenModel::clearSelection,
-                    onClickSelectAll = { screenModel.selectAll(screenModel.activeCategoryIndex) },
+                    onClickSelectAll = { screenModel.selectAll(state.coercedActiveCategoryIndex) },
                     onClickInvertSelection = {
                         screenModel.invertSelection(
-                            screenModel.activeCategoryIndex,
+                            state.coercedActiveCategoryIndex,
                         )
                     },
                     onClickFilter = screenModel::showSettingsDialog,
                     onClickRefresh = {
                         onClickRefresh(
-                            state.displayCategories.getOrNull(screenModel.activeCategoryIndex),
+                            state.displayCategories.getOrNull(state.coercedActiveCategoryIndex),
                         )
                     },
                     onClickGlobalUpdate = { onClickRefresh(null) },
@@ -203,7 +207,7 @@ data object AnimeTab : Tab {
                         searchQuery = state.searchQuery,
                         selection = state.selection,
                         contentPadding = contentPadding,
-                        currentPage = { screenModel.activeCategoryIndex },
+                        currentPage = { state.coercedActiveCategoryIndex },
                         hasActiveFilters = state.hasActiveFilters,
                         showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
                         onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
@@ -241,7 +245,7 @@ data object AnimeTab : Tab {
         val onDismissRequest = screenModel::closeDialog
         when (val dialog = state.dialog) {
             is AnimeLibraryScreenModel.Dialog.SettingsSheet -> run {
-                val category = state.displayCategories.getOrNull(screenModel.activeCategoryIndex)
+                val category = state.displayCategories.getOrNull(state.coercedActiveCategoryIndex)
                 if (category == null) {
                     onDismissRequest()
                     return@run

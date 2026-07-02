@@ -1,17 +1,13 @@
 package eu.kanade.presentation.browse.anime
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
-import eu.kanade.presentation.browse.components.BaseBrowseItem
+import eu.kanade.presentation.browse.anime.components.BaseAnimeSourceItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesFilterScreenModel
@@ -20,7 +16,7 @@ import tachiyomi.domain.source.anime.model.AnimeSource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
-import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.icons.FlagEmoji
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 
@@ -73,7 +69,12 @@ private fun AnimeSourcesFilterContent(
                 contentType = "source-filter-header",
             ) {
                 SwitchPreferenceWidget(
-                    title = LocaleHelper.getSourceDisplayName(language, LocalContext.current),
+                    title = LocaleHelper.getSourceDisplayName(language, LocalContext.current) +
+                        (
+                            " (${LocaleHelper.getDisplayName(language)} ${FlagEmoji.getEmojiLangFlag(language)})"
+                                .takeIf { language !in listOf("all", "other") }
+                                ?: " (${FlagEmoji.getEmojiLangFlag(language)})"
+                            ),
                     checked = enabled,
                     onCheckedChanged = { onClickLanguage(language) },
                 )
@@ -101,22 +102,10 @@ private fun AnimeSourcesFilterItem(
     isEnabled: Boolean,
     onClickItem: (AnimeSource) -> Unit,
 ) {
-    BaseBrowseItem(
+    BaseAnimeSourceItem(
+        source = source,
+        showLanguageInContent = false,
         onClickItem = { onClickItem(source) },
-        content = {
-            Column(
-                modifier = Modifier
-                    .padding(horizontal = MaterialTheme.padding.medium)
-                    .weight(1f),
-            ) {
-                Text(
-                    text = source.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        },
         action = {
             Checkbox(checked = isEnabled, onCheckedChange = null)
         },
