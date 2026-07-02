@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.data.sync.service
 
 import android.content.Context
+import com.canopus.chimareader.data.AnkiStats
+import com.canopus.chimareader.data.MangaStats
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.md5Hex
 import eu.kanade.domain.sync.SyncPreferences
@@ -18,6 +20,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
+import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
 data class SyncData(
@@ -79,6 +82,14 @@ abstract class SyncService(
             remoteSyncData.backup?.backupNovelCategories ?: emptyList(),
             mergedNovelCategoriesList,
         )
+        val mergedMangaStatsList = mergeMangaStatsLists(
+            localSyncData.backup?.backupMangaStats,
+            remoteSyncData.backup?.backupMangaStats,
+        )
+        val mergedAnkiStatsList = mergeAnkiStatsLists(
+            localSyncData.backup?.backupAnkiStats,
+            remoteSyncData.backup?.backupAnkiStats,
+        )
         // Chimahon <--
 
         // Create the merged Backup object
@@ -96,6 +107,8 @@ abstract class SyncService(
             // Chimahon -->
             backupNovels = mergedNovelsList,
             backupNovelCategories = mergedNovelCategoriesList,
+            backupMangaStats = mergedMangaStatsList,
+            backupAnkiStats = mergedAnkiStatsList,
             // Chimahon <--
         )
 
@@ -132,7 +145,7 @@ abstract class SyncService(
         }
 
         fun mangaCompositeKey(manga: BackupManga): String {
-            return "${manga.source}|${manga.url}|${manga.title.lowercase().trim()}|${manga.author?.lowercase()?.trim()}"
+            return "${manga.source}|${manga.url}"
         }
 
         // Create maps using composite keys
@@ -157,14 +170,31 @@ abstract class SyncService(
             "Starting merge. Local list size: ${localMangaListSafe.size}, Remote list size: ${remoteMangaListSafe.size}"
         }
 
+        val lastSyncTime = syncPreferences.lastSyncTimestamp().get().milliseconds.inWholeSeconds
+        val syncOptions = syncPreferences.getSyncSettings()
+
         val mergedList = (localMangaMap.keys + remoteMangaMap.keys).distinct().mapNotNull { compositeKey ->
             val local = localMangaMap[compositeKey]
             val remote = remoteMangaMap[compositeKey]
 
             // New version comparison logic
             when {
-                local != null && remote == null -> updateCategories(local, localCategoriesMapByOrder)
-                local == null && remote != null -> updateCategories(remote, remoteCategoriesMapByOrder)
+                local != null && remote == null -> {
+                    if (lastSyncTime == 0L || local.lastModifiedAt > lastSyncTime) {
+                        updateCategories(local, localCategoriesMapByOrder)
+                    } else {
+                        logcat(LogPriority.DEBUG, logTag) { "Dropping local manga deleted on remote: ${local.title}." }
+                        null
+                    }
+                }
+                local == null && remote != null -> {
+                    if (lastSyncTime == 0L || remote.lastModifiedAt > lastSyncTime) {
+                        updateCategories(remote, remoteCategoriesMapByOrder)
+                    } else {
+                        logcat(LogPriority.DEBUG, logTag) { "Dropping deleted remote manga: ${remote.title}." }
+                        null
+                    }
+                }
                 local != null && remote != null -> {
                     // Compare versions to decide which manga to keep
                     if (local.version >= remote.version) {
@@ -172,7 +202,7 @@ abstract class SyncService(
                             "Keeping local version of ${local.title} with merged chapters."
                         }
                         updateCategories(
-                            local.copy(chapters = mergeChapters(local.chapters, remote.chapters)),
+                            local.copy(chapters = mergeChapters(local.chapters, remote.chapters, lastSyncTime, syncOptions.chapters)),
                             localCategoriesMapByOrder,
                         )
                     } else {
@@ -180,7 +210,7 @@ abstract class SyncService(
                             "Keeping remote version of ${remote.title} with merged chapters."
                         }
                         updateCategories(
-                            remote.copy(chapters = mergeChapters(local.chapters, remote.chapters)),
+                            remote.copy(chapters = mergeChapters(local.chapters, remote.chapters, lastSyncTime, syncOptions.chapters)),
                             remoteCategoriesMapByOrder,
                         )
                     }
@@ -220,11 +250,17 @@ abstract class SyncService(
     private fun mergeChapters(
         localChapters: List<BackupChapter>,
         remoteChapters: List<BackupChapter>,
+        lastSyncTime: Long,
+        syncingChapters: Boolean,
     ): List<BackupChapter> {
         val logTag = "MergeChapters"
 
+        if (!syncingChapters) {
+            return remoteChapters // If not syncing chapters, keep remote untouched
+        }
+
         fun chapterCompositeKey(chapter: BackupChapter): String {
-            return "${chapter.url}|${chapter.name}|${chapter.chapterNumber}"
+            return chapter.url
         }
 
         val localChapterMap = localChapters.associateBy { chapterCompositeKey(it) }
@@ -246,12 +282,22 @@ abstract class SyncService(
 
             when {
                 localChapter != null && remoteChapter == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Keeping local chapter: ${localChapter.name}." }
-                    localChapter
+                    if (lastSyncTime == 0L || localChapter.lastModifiedAt > lastSyncTime) {
+                        logcat(LogPriority.DEBUG, logTag) { "Keeping local chapter: ${localChapter.name}." }
+                        localChapter
+                    } else {
+                        logcat(LogPriority.DEBUG, logTag) { "Dropping local chapter deleted on remote: ${localChapter.name}." }
+                        null
+                    }
                 }
                 localChapter == null && remoteChapter != null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Taking remote chapter: ${remoteChapter.name}." }
-                    remoteChapter
+                    if (lastSyncTime == 0L || remoteChapter.lastModifiedAt > lastSyncTime) {
+                        logcat(LogPriority.DEBUG, logTag) { "Taking remote chapter: ${remoteChapter.name}." }
+                        remoteChapter
+                    } else {
+                        logcat(LogPriority.DEBUG, logTag) { "Dropping deleted remote chapter: ${remoteChapter.name}." }
+                        null
+                    }
                 }
                 localChapter != null && remoteChapter != null -> {
                     // Use version number to decide which chapter to keep
@@ -598,13 +644,27 @@ abstract class SyncService(
         val localNovelMap = canonicalNovelMap(localNovelsSafe, localCategoriesById)
         val remoteNovelMap = canonicalNovelMap(remoteNovelsSafe, remoteCategoriesById)
 
+        val lastSyncTime = syncPreferences.lastSyncTimestamp().get().milliseconds.inWholeSeconds
+
         val mergedList = (localNovelMap.keys + remoteNovelMap.keys).distinct().mapNotNull { id ->
             val local = localNovelMap[id]
             val remote = remoteNovelMap[id]
 
             when {
-                local != null && remote == null -> local
-                local == null && remote != null -> remote
+                local != null && remote == null -> {
+                    if (lastSyncTime == 0L || local.lastModified.milliseconds.inWholeSeconds > lastSyncTime) {
+                        local
+                    } else {
+                        null
+                    }
+                }
+                local == null && remote != null -> {
+                    if (lastSyncTime == 0L || remote.lastModified.milliseconds.inWholeSeconds > lastSyncTime) {
+                        remote
+                    } else {
+                        null
+                    }
+                }
                 local != null && remote != null -> mergeNovelData(local, remote)
                 else -> null
             }
@@ -685,6 +745,58 @@ abstract class SyncService(
 
     private fun categoryKey(name: String): String {
         return name.trim().lowercase()
+    }
+
+    private fun mergeMangaStatsLists(
+        localStats: List<MangaStats>?,
+        remoteStats: List<MangaStats>?,
+    ): List<MangaStats> {
+        if (localStats == null) return remoteStats ?: emptyList()
+        if (remoteStats == null) return localStats
+
+        fun statsKey(stat: MangaStats): String = "${stat.dateKey}|${stat.mangaId}"
+
+        val localMap = localStats.associateBy { statsKey(it) }
+        val remoteMap = remoteStats.associateBy { statsKey(it) }
+
+        return (localMap.keys + remoteMap.keys).distinct().mapNotNull { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local != null && remote == null -> local
+                local == null && remote != null -> remote
+                local != null && remote != null -> {
+                    if (local.readingTime >= remote.readingTime) local else remote
+                }
+                else -> null
+            }
+        }
+    }
+
+    private fun mergeAnkiStatsLists(
+        localStats: List<AnkiStats>?,
+        remoteStats: List<AnkiStats>?,
+    ): List<AnkiStats> {
+        if (localStats == null) return remoteStats ?: emptyList()
+        if (remoteStats == null) return localStats
+
+        fun statsKey(stat: AnkiStats): String = "${stat.dateKey}|${stat.profileId}|${stat.titleId.orEmpty()}"
+
+        val localMap = localStats.associateBy { statsKey(it) }
+        val remoteMap = remoteStats.associateBy { statsKey(it) }
+
+        return (localMap.keys + remoteMap.keys).distinct().mapNotNull { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local != null && remote == null -> local
+                local == null && remote != null -> remote
+                local != null && remote != null -> {
+                    if ((local.mangaCards + local.novelCards) >= (remote.mangaCards + remote.novelCards)) local else remote
+                }
+                else -> null
+            }
+        }
     }
     // Chimahon <--
 }
