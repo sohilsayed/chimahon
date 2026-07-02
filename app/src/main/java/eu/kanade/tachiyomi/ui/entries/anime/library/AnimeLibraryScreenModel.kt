@@ -686,31 +686,41 @@ class AnimeLibraryScreenModel(
                 maximumValue = displayCategories.lastIndex.coerceAtLeast(0),
             )
 
-    val isLibraryEmpty: Boolean
-        get() = library.values.all { it.isEmpty() }
+        private val libraryCount: Int
+            get() = library.values
+                .flatten()
+                .distinctBy { it.libraryAnime.id }
+                .size
 
-    fun getAnimelibItemsByPage(page: Int): List<AnimeLibraryItem> {
-        return library.values.toList().getOrElse(page) { emptyList() }
-    }
+        val isLibraryEmpty: Boolean
+            get() = libraryCount == 0
 
-    fun getAnimeCountForCategory(category: AnimeCategory): Int {
-        return library[category]?.size ?: 0
-    }
-
-    fun getToolbarTitle(
-        defaultTitle: String,
-        defaultCategoryTitle: String,
-        page: Int,
-    ): LibraryToolbarTitle {
-        val category = displayCategories.getOrNull(page) ?: return LibraryToolbarTitle(defaultTitle)
-        if (searchQuery != null) {
-            return LibraryToolbarTitle(searchQuery)
+        fun getAnimelibItemsByPage(page: Int): List<AnimeLibraryItem> {
+            return library.values.toList().getOrElse(page) { emptyList() }
         }
-        val categoryName = if (category.isSystemCategory) defaultCategoryTitle else category.name
-        val title = if (showCategoryTabs) defaultTitle else categoryName
-        val numberOfAnime = if (!showCategoryTabs && showAnimeCount) getAnimeCountForCategory(category) else null
-        return LibraryToolbarTitle(text = title, numberOfManga = numberOfAnime)
-    }
+
+        fun getAnimeCountForCategory(category: AnimeCategory): Int {
+            return library[category]?.size ?: 0
+        }
+
+        fun getToolbarTitle(
+            defaultTitle: String,
+            defaultCategoryTitle: String,
+            page: Int,
+        ): LibraryToolbarTitle {
+            val category = displayCategories.getOrNull(page) ?: return LibraryToolbarTitle(defaultTitle)
+            if (searchQuery != null) {
+                return LibraryToolbarTitle(searchQuery)
+            }
+            val categoryName = if (category.isSystemCategory) defaultCategoryTitle else category.name
+            val title = if (showCategoryTabs) defaultTitle else categoryName
+            val numberOfAnime = when {
+                !showAnimeCount -> null
+                showCategoryTabs -> libraryCount
+                else -> getAnimeCountForCategory(category)
+            }
+            return LibraryToolbarTitle(text = title, numberOfManga = numberOfAnime)
+        }
     }
 
     companion object {

@@ -118,7 +118,7 @@ data object AnimeTab : Tab {
             context.startActivity(PlayerActivity.newIntent(context, episode.animeId, episode.id))
         }
 
-        val defaultTitle = stringResource(MR.strings.label_anime_library)
+        val defaultTitle = stringResource(MR.strings.label_anime)
 
         Scaffold(
             topBar = { scrollBehavior ->
