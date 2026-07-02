@@ -9,6 +9,8 @@ import chimahon.dictionary.suffixInflection
 
 object EnglishDeinflector : Deinflector {
 
+    override fun preProcess(text: String): List<String> = EnglishTextPreprocessors.decapitalize(text)
+
     override fun deinflect(
         text: String,
         languageCode: String,

@@ -250,6 +250,17 @@ private class ExactRuleIndex<T : Rule> {
     }
 }
 
+/** Condition subsumption: maps each condition to its related conditions (both parent and children).
+ *  E.g., "n" → ["np", "ns"] means when current conditions include "n", also match rules for "np"/"ns".
+ *  "np" → ["n"] means when current conditions include "np", also match rules for "n". */
+private val conditionHierarchy = mapOf(
+    "n" to setOf("np", "ns"),
+    "np" to setOf("n"),
+    "ns" to setOf("n"),
+    "v" to setOf("v_phr"),
+    "v_phr" to setOf("v"),
+)
+
 private class ConditionRuleIndex<T : Rule>(private val rules: List<OrderedRule<T>>) {
     private val rulesByCondition: Map<String, List<OrderedRule<T>>> = buildMap {
         val mutable = mutableMapOf<String, MutableList<OrderedRule<T>>>()
@@ -264,7 +275,8 @@ private class ConditionRuleIndex<T : Rule>(private val rules: List<OrderedRule<T
 
     fun forConditions(conditions: Set<String>): Sequence<OrderedRule<T>> {
         if (conditions.isEmpty()) return rules.asSequence()
-        return conditions
+        val expanded = conditions + conditions.flatMap { conditionHierarchy[it].orEmpty() }
+        return expanded
             .asSequence()
             .flatMap { rulesByCondition[it].orEmpty().asSequence() }
             .distinctBy { it.index }
