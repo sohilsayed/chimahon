@@ -1269,6 +1269,7 @@ private class ReaderAndroidWebView(
 
         evaluateJavascript(script) { result ->
             if (result?.trim('"') == "limit") {
+                onProgressChanged(if (forward) 1.0 else 0.0)
                 val changed = if (forward) onNextChapter() else onPreviousChapter()
                 if (changed) visibility = View.INVISIBLE
             }
@@ -1302,6 +1303,7 @@ private class ReaderAndroidWebView(
                         }
                 }
             } else {
+                onProgressChanged(if (direction == "forward") 1.0 else 0.0)
                 val chapterChanged = fallback()
                 if (chapterChanged) {
                     visibility = View.INVISIBLE
