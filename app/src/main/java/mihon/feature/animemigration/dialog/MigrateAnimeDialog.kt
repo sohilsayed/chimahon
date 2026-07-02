@@ -137,7 +137,10 @@ internal fun Screen.MigrateAnimeDialog(
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
             ) {
                 TextButton(
-                    onClick = onClickTitle,
+                    onClick = {
+                        onDismissRequest()
+                        onClickTitle()
+                    },
                 ) {
                     Text(text = stringResource(MR.strings.action_show_anime))
                 }
