@@ -3,6 +3,7 @@
 package chimahon.ocr
 
 import android.graphics.Bitmap
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -381,7 +382,7 @@ class LensClient(
             top = (box.y + chunk.globalY.toDouble()) / chunk.fullHeight.toDouble(),
             right = (box.x + box.width) / chunk.fullWidth.toDouble(),
             bottom = (box.y + box.height + chunk.globalY.toDouble()) / chunk.fullHeight.toDouble(),
-            rotation = box.rotation ?: 0.0,
+            rotation = Math.toRadians(box.rotation ?: 0.0),
         )
         val direction = when (forcedOrientation) {
             "vertical" -> WritingDirection.TTB
