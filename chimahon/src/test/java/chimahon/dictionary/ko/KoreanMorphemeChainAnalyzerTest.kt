@@ -273,6 +273,35 @@ class KoreanMorphemeChainAnalyzerTest {
     }
 
     @Test
+    fun `recovers mined KoParadigm connective endings`() {
+        val cases = listOf(
+            Triple("찾거나", "찾다", listOf("찾", "-거나")),
+            Triple("찾거든", "찾다", listOf("찾", "-거든")),
+            Triple("찾기에", "찾다", listOf("찾", "-기에")),
+            Triple("찾다가", "찾다", listOf("찾", "-다가")),
+            Triple("찾도록", "찾다", listOf("찾", "-도록")),
+            Triple("찾게", "찾다", listOf("찾", "-게")),
+            Triple("읽으면", "읽다", listOf("읽", "-으면")),
+            Triple("가면", "가다", listOf("가", "-면")),
+            Triple("읽으니까", "읽다", listOf("읽", "-으니까")),
+            Triple("가니까", "가다", listOf("가", "-니까")),
+            Triple("아니까", "알다", listOf("알다", "-니까")),
+            Triple("읽으려고", "읽다", listOf("읽", "-으려고")),
+            Triple("가려고", "가다", listOf("가", "-려고")),
+            Triple("먹는데", "먹다", listOf("먹", "-는데")),
+            Triple("좋은데", "좋다", listOf("좋", "-은데")),
+        )
+
+        for ((surface, lemma, parts) in cases) {
+            val parses = KoreanMorphemeChainAnalyzer.analyze(surface, lexicon = lexiconOf(lemma))
+            assertTrue(
+                parses.any { it.lemmaCandidates == listOf(lemma) && it.displayParts() == parts },
+                "$surface expected $parts in ${parses.map { it.lemmaCandidates to it.displayParts() }}",
+            )
+        }
+    }
+
+    @Test
     fun `recovers common contracted vowel past lemmas`() {
         val cases = mapOf(
             "갔다" to "가다",
