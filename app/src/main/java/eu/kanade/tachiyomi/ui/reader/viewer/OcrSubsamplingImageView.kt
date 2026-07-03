@@ -743,7 +743,7 @@ class OcrSubsamplingImageView(
     /**
      * Hit test in source pixel space (view coordinate → source coordinate → normalized coordinate).
      *
-     * Returns the first block that contains the point, or null if no block is hit.
+     * Returns the best matching block for the point, or null if no block is hit.
      */
     private fun hitTestSource(viewX: Float, viewY: Float): OcrTextBlock? {
         val host = ocrHost?.takeIf { it.ocrEnabled } ?: return null
@@ -762,18 +762,15 @@ class OcrSubsamplingImageView(
         val nxPadding = sourcePaddingPx / sWidth
         val nyPadding = sourcePaddingPx / sHeight
 
-        // Apply the same scale to hit area as used in drawing
-        // Prioritize currently active block so overlapping OCR boxes don't steal taps.
-        host.activeOcrBlock?.let { active ->
-            if (blockContainsPoint(active, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)) {
-                return active
+        return host.ocrBlocks
+            .filter { block ->
+                blockContainsPoint(block, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)
             }
-        }
-
-        // Otherwise resolve first matching block.
-        return host.ocrBlocks.firstOrNull { block ->
-            blockContainsPoint(block, nx, ny, nxPadding, nyPadding, host.ocrBoxScaleX, host.ocrBoxScaleY)
-        }
+            .minByOrNull { block ->
+                val dx = nx - (block.xmin + block.xmax) / 2f
+                val dy = ny - (block.ymin + block.ymax) / 2f
+                dx * dx + dy * dy
+            }
     }
 
     private fun blockContainsPoint(
