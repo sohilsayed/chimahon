@@ -2,6 +2,3 @@
 	path = chimahon/src/main/cpp/hoshidicts
 	url = https://github.com/Manhhao/hoshidicts
 	branch = main
-[submodule "chimahon-local-ocr"]
-	path = chimahon-local-ocr
-	url = https://github.com/sohilsayed19/chimahon-local-ocr
