@@ -392,6 +392,7 @@
     <string name="pref_dict_recursive_mode">Recursive lookup navigation style</string>
     <string name="pref_dict_recursive_mode_tabs">Tabs</string>
     <string name="pref_dict_recursive_mode_back">Stacked</string>
+    <string name="pref_dict_recursive_mode_popup">Popup</string>
     <string name="pref_category_ocr">OCR</string>
     <string name="pref_ocr_summary">Auto-OCR, cache management</string>
     <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>

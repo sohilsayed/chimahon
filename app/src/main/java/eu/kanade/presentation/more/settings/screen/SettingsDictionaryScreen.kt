@@ -848,6 +848,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     entries = persistentListOf(
                         "tabs" to stringResource(MR.strings.pref_dict_recursive_mode_tabs),
                         "stack" to stringResource(MR.strings.pref_dict_recursive_mode_back),
+                        "popup" to stringResource(MR.strings.pref_dict_recursive_mode_popup),
                     ).associate { it.first to it.second }.toPersistentMap(),
                     title = stringResource(MR.strings.pref_dict_recursive_mode),
                 ),

@@ -708,22 +708,79 @@
     return !!(el && el.closest('rt, rp'));
   }
 
+  function caretRangeAtPoint(x, y) {
+    if (document.caretRangeFromPoint) {
+      return document.caretRangeFromPoint(x, y);
+    }
+    if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) {
+        const range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        return range;
+      }
+    }
+    return null;
+  }
+
+  const sentenceDelimiters = '\u3002\uff01\uff1f.!?\n\r';
+
+  function getSentenceContextAtPoint(x, y) {
+    const range = caretRangeAtPoint(x, y);
+    if (!range) return null;
+
+    const node = range.startContainer;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+
+    const container = node.parentElement?.closest?.('.definition-item, .entry-body-section, .entry-body, article') || document.body;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => {
+        const parent = n.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (isFurigana(n) || parent.closest('button, .lookup-tabs, .entry-icon-group')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    let fullText = '';
+    let targetOffset = -1;
+    let current = walker.nextNode();
+    while (current) {
+      const text = current.textContent || '';
+      if (current === node) {
+        targetOffset = fullText.length + Math.min(range.startOffset, text.length);
+      }
+      fullText += text;
+      current = walker.nextNode();
+    }
+
+    if (targetOffset < 0 || fullText.trim().length === 0) return null;
+
+    let start = targetOffset;
+    while (start > 0 && sentenceDelimiters.indexOf(fullText[start - 1]) === -1) start--;
+
+    let end = targetOffset;
+    while (end < fullText.length && sentenceDelimiters.indexOf(fullText[end]) === -1) end++;
+    if (end < fullText.length && sentenceDelimiters.indexOf(fullText[end]) !== -1) end++;
+
+    const rawSentence = fullText.slice(start, end);
+    const leadingTrim = rawSentence.length - rawSentence.trimStart().length;
+    const sentence = rawSentence.trim();
+    if (!sentence) return null;
+
+    return {
+      sentence,
+      offset: Math.max(0, Math.min(sentence.length, targetOffset - start - leadingTrim))
+    };
+  }
+
   /**
    * Returns up to MAX_SCAN_CHARS of text starting at the tapped position.
    * For CJK the full forward slice is useful (backend handles deinflection).
    * For space-separated scripts we expand left+right to word boundaries.
    */
   function extractTextAtPoint(x, y) {
-    let range = null;
-    if (document.caretRangeFromPoint) {
-      range = document.caretRangeFromPoint(x, y);
-    } else if (document.caretPositionFromPoint) {
-      const pos = document.caretPositionFromPoint(x, y);
-      if (pos) {
-        range = document.createRange();
-        range.setStart(pos.offsetNode, pos.offset);
-      }
-    }
+    let range = caretRangeAtPoint(x, y);
     if (!range) return null;
 
     const node = range.startContainer;
@@ -842,14 +899,19 @@
     if (!el.parentElement) {
       container.insertBefore(el, container.firstChild);
     }
-    container.style.paddingTop = (el.offsetHeight || 40) + 'px';
+    const tabsHeight = el.offsetHeight || 40;
+    document.documentElement.style.setProperty('--lookup-tabs-height', tabsHeight + 'px');
 
     if (activeIndex >= 0) {
       requestAnimationFrame(() => {
         const activeBtn = el.querySelector(`[data-tab-index="${activeIndex}"]`);
         if (activeBtn) {
           const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
-          activeBtn.scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'nearest', inline: 'center' });
+          const targetLeft = activeBtn.offsetLeft - (el.clientWidth - activeBtn.clientWidth) / 2;
+          el.scrollTo({
+            left: Math.max(0, targetLeft),
+            behavior: isEink ? 'instant' : 'smooth',
+          });
         }
       });
     }
@@ -913,7 +975,15 @@
       const word = extractTextAtPoint(e.clientX, e.clientY);
       if (!word) return;
 
-      navigateTo(CHIMA_SCHEME + '//lookup?q=' + encodeURIComponent(word));
+      const sentenceContext = getSentenceContextAtPoint(e.clientX, e.clientY);
+      let url = CHIMA_SCHEME + '//lookup?q=' + encodeURIComponent(word);
+      if (sentenceContext && sentenceContext.sentence) {
+        url += '&sentence=' + encodeURIComponent(sentenceContext.sentence);
+        url += '&offset=' + encodeURIComponent(String(sentenceContext.offset || 0));
+      }
+      url += '&x=' + Math.round(e.clientX);
+      url += '&y=' + Math.round(e.clientY);
+      navigateTo(url);
     }, {passive: false});
 
     document.addEventListener('selectionchange', () => {
@@ -2535,9 +2605,7 @@
       _tabsEl.remove();
     }
     _tabsEl = null;
-    if (container) {
-      container.style.paddingTop = '';
-    }
+    document.documentElement.style.setProperty('--lookup-tabs-height', '0px');
   }
 
   function render(payload) {
@@ -2622,8 +2690,9 @@
       // Determine whether to show the tab bar:
       // - tabs mode: need at least 2 tabs
       // - stack mode: need active tab to NOT be the first one (activeIndex > 0 means there's a back target)
-      const showTabBar = (navMode === 'stack') ? activeIndex > 0 : tabs.length > 1;
-
+      const renderRecursiveChrome = payload.renderRecursiveChrome !== false;
+      const hasRecursiveChrome = (navMode === 'stack') ? activeIndex > 0 : tabs.length > 1;
+      const showTabBar = renderRecursiveChrome && hasRecursiveChrome;
       if (showTabBar) {
         renderTabBar(tabs, navMode);
         // Note: tabs-container is a separate div now, so no need to insertBefore entries
@@ -2719,7 +2788,6 @@
     const container = document.getElementById('entries');
     if (container) {
       container.textContent = '';
-      container.style.paddingTop = '';
     }
     resetTabBarLayout(container);
     _tabs = [];
@@ -2798,9 +2866,6 @@
         const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
         groups[nextIndex].scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'start' });
         
-        // Hide tab bar when using navigation buttons/volume keys as requested
-        if (_tabsEl) _hideTabs();
-
         // Reset after the smooth scroll finishes
         setTimeout(() => { 
           _isJumping = false; 
@@ -2856,35 +2921,8 @@
     onAudioResults: (id, results) => { /* overriden by UI */ }
   };
 
-  // ── Show/hide top bar on scroll ───────────────────────────────────────────
+  // Scroll state guards for programmatic jumps.
   let _isJumping = false;
-  let _lastScrollY = 0;
-
-  const _hideTabs = () => {
-    if (_tabsEl) {
-      _tabsEl.style.transform = 'translateY(-100%)';
-      const entries = document.getElementById('entries');
-      if (entries) entries.style.paddingTop = '4px';
-    }
-  };
-  const _showTabs = () => {
-    if (_tabsEl) {
-      _tabsEl.style.transform = 'translateY(0)';
-      const entries = document.getElementById('entries');
-      if (entries) entries.style.paddingTop = (_tabsEl.offsetHeight || 40) + 'px';
-    }
-  };
-
-  window.addEventListener('scroll', () => {
-    const y = window.scrollY || window.pageYOffset || 0;
-    const dy = y - _lastScrollY;
-
-    if (y <= 0) { _showTabs(); _lastScrollY = y; return; }
-    if (Math.abs(dy) < 4) return;
-
-    if (dy > 0 && !_isJumping) _hideTabs(); else _showTabs();
-    _lastScrollY = y;
-  }, { passive: true });
 
   // ── Reduced motion scrolling (paginated scrolling) ──────────────────────
   const _isPaginatedScrolling = () => document.documentElement.dataset.chimaPaginatedScrolling === 'true';
