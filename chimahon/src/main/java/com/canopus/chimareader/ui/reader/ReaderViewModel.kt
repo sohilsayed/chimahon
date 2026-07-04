@@ -558,6 +558,14 @@ class ReaderViewModel(
         scheduleSyncExport()
     }
 
+    fun flushReaderState() {
+        persistBookmark(currentProgress, force = true)
+        if (!trackingLocked && !appBackgrounded) {
+            statisticsTracker.update(totalExploredCharCount)
+        }
+        persistToDisk()
+    }
+
     fun syncOnOpen() {
         // Handled synchronously in ReaderScreen if enabled
     }
@@ -741,6 +749,7 @@ class ReaderViewModel(
     }
 
     fun onAppBackgrounded() {
+        flushReaderState()
         appBackgrounded = true
     }
 

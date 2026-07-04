@@ -201,7 +201,7 @@ fun ReaderScreen(
 
                     DisposableEffect(Unit) {
                         onDispose {
-                            viewModel.saveBookmark(viewModel.currentProgress)
+                            viewModel.flushReaderState()
                             viewModel.flushSyncExport()
                         }
                     }
