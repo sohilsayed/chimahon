@@ -72,8 +72,6 @@
     if (!cssText || typeof cssText !== 'string') return '';
     let processed = cssText;
 
-    processed = processed.replace(/font-family\s*:\s*[^;\}]+;?/gi, '');
-
     // Fix potential body tag leaks — remap to the content root class.
     processed = processed.replace(/^\s*body\s*\{/gm, '.dict-content-root {');
 
