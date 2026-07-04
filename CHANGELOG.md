@@ -4,6 +4,33 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v2.1.2]
+
+### Added
+- Persistent recursive top bar
+- Popup recursive mode
+- Improved furigana filter
+
+### Changed
+- Anime UI alignment (tracking, migration, backup, library, history)
+- Prefer original YouTube audio streams
+- Reindex downloaded OCR status
+- Count novel chapter transition progress
+
+### Fixed
+- Preserve dictionary CSS font-family declarations
+- URI permission revocation and file picker crash on custom ROMs
+- Anime player two-finger OCR tap
+- Opening existing OCR cards in crop mode
+- Lens OCR text merging
+- Manga OCR tap hit testing
+- Local manga cover generation
+- Korean contraction deinflection
+- English dictionary deinflection (capitalization, multi-step chains)
+- Novel reader page drift
+- Old mokuro files with empty lines_coords
+- YouTube playback handoff
+
 ## [v2.1.1]
 
 ### Added
