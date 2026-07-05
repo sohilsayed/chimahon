@@ -16,9 +16,9 @@ import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -214,7 +214,7 @@ private fun getTabIcon(key: String): ImageVector {
         NavTabLayout.KEY_BROWSE -> Icons.Outlined.Public
         NavTabLayout.KEY_DICTIONARY -> Icons.Outlined.Search
         NavTabLayout.KEY_NOVELS -> Icons.Outlined.Book
-        NavTabLayout.KEY_ANIME -> Icons.Outlined.PlayCircle
+        NavTabLayout.KEY_ANIME -> Icons.Outlined.VideoLibrary
         else -> Icons.Outlined.Public
     }
 }

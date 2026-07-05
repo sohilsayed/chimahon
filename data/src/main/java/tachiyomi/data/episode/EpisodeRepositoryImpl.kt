@@ -2,6 +2,7 @@ package tachiyomi.data.episode
 
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
+import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.handlers.anime.AnimeDatabaseHandler
 import tachiyomi.domain.episode.model.Episode
@@ -89,7 +90,7 @@ class EpisodeRepositoryImpl(
 
     override suspend fun getEpisodeByAnimeId(animeId: Long, applyScanlatorFilter: Boolean): List<Episode> {
         return handler.awaitList {
-            episodesQueries.getEpisodesByAnimeId(animeId, EpisodeMapper::mapEpisode)
+            episodesQueries.getEpisodesByAnimeId(animeId, applyScanlatorFilter.toLong(), EpisodeMapper::mapEpisode)
         }
     }
 
@@ -124,7 +125,7 @@ class EpisodeRepositoryImpl(
 
     override suspend fun getEpisodeByAnimeIdAsFlow(animeId: Long, applyScanlatorFilter: Boolean): Flow<List<Episode>> {
         return handler.subscribeToList {
-            episodesQueries.getEpisodesByAnimeId(animeId, EpisodeMapper::mapEpisode)
+            episodesQueries.getEpisodesByAnimeId(animeId, applyScanlatorFilter.toLong(), EpisodeMapper::mapEpisode)
         }
     }
 

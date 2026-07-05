@@ -17,6 +17,7 @@ import com.canopus.chimareader.ui.reader.NovelReaderActivity
 import com.canopus.chimareader.ttusync.SyncSettingsRepository
 import com.canopus.chimareader.ttusync.TtuOAuthManager
 import com.canopus.chimareader.ttusync.TtuSyncManager
+import eu.kanade.domain.track.store.DelayedAnimeTrackingStore
 import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.animeextension.AnimeExtensionManager
 import eu.kanade.tachiyomi.animesource.AndroidAnimeSourceManager
@@ -246,6 +247,7 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { TrackerManager() }
         addSingletonFactory { DelayedTrackingStore(app) }
+        addSingletonFactory { DelayedAnimeTrackingStore(app) }
 
         addSingletonFactory { ImageSaver(app) }
 

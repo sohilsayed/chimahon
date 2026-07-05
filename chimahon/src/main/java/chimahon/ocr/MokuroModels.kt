@@ -26,5 +26,5 @@ data class MokuroBlock(
     val box: List<Float>,
     val vertical: Boolean,
     val lines: List<String>,
-    @SerialName("lines_coords") val linesCoords: List<List<List<Float>>>,
+    @SerialName("lines_coords") val linesCoords: List<List<List<Float>>> = emptyList(),
 )

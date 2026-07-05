@@ -37,6 +37,8 @@ data class MergeConfig(
     val furiganaFilter: Boolean = true,
     val mergeCloseParagraphs: Boolean = true,
     val supportCenterAlignedText: Boolean = true,
+    val imageWidth: Double? = null,
+    val imageHeight: Double? = null,
     // Legacy field kept for backward compat with old LensMerger
     @Deprecated("Use characterSize-relative thresholds instead")
     val fontSizeRatio: Double = 3.0,

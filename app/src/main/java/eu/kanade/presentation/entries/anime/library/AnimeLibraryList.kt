@@ -15,7 +15,7 @@ import eu.kanade.presentation.library.components.AnimeListItem
 import eu.kanade.presentation.library.components.DownloadsBadge
 import eu.kanade.presentation.library.components.GlobalSearchItem
 import eu.kanade.presentation.library.components.LanguageBadge
-import eu.kanade.presentation.library.components.UnreadBadge
+import eu.kanade.presentation.library.components.UnviewedBadge
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryItem
 import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.library.model.LibraryAnime
@@ -75,7 +75,7 @@ internal fun AnimeLibraryList(
                 ),
                 badge = {
                     if (showDownloadBadge) DownloadsBadge(count = libraryItem.downloadCount)
-                    if (showUnseenBadge) UnreadBadge(count = libraryItem.unseenCount)
+                    if (showUnseenBadge) UnviewedBadge(count = libraryItem.unseenCount)
                     if (showLocalBadge) AnimeSourceIconBadge(source = libraryItem.source)
                     if (showLanguageBadge) {
                         LanguageBadge(

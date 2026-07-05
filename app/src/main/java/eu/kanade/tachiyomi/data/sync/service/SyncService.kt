@@ -5,8 +5,12 @@ import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.md5Hex
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAnime
+import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
+import eu.kanade.tachiyomi.data.backup.models.BackupEpisode
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory
@@ -42,6 +46,10 @@ abstract class SyncService(
     protected fun mergeSyncData(localSyncData: SyncData, remoteSyncData: SyncData): SyncData {
         val mergedCategoriesList =
             mergeCategoriesLists(localSyncData.backup?.backupCategories, remoteSyncData.backup?.backupCategories)
+        val mergedAnimeCategoriesList = mergeCategoriesLists(
+            localSyncData.backup?.backupAnimeCategories,
+            remoteSyncData.backup?.backupAnimeCategories,
+        )
 
         val mergedMangaList = mergeMangaLists(
             localSyncData.backup?.backupManga,
@@ -50,9 +58,28 @@ abstract class SyncService(
             remoteSyncData.backup?.backupCategories ?: emptyList(),
             mergedCategoriesList,
         )
+        val mergedAnimeList = mergeAnimeLists(
+            localSyncData.backup?.backupAnime,
+            remoteSyncData.backup?.backupAnime,
+            localSyncData.backup?.backupAnimeCategories ?: emptyList(),
+            remoteSyncData.backup?.backupAnimeCategories ?: emptyList(),
+            mergedAnimeCategoriesList,
+        )
 
         val mergedSourcesList =
             mergeSourcesLists(localSyncData.backup?.backupSources, remoteSyncData.backup?.backupSources)
+        val mergedAnimeSourcesList = mergeAnimeSourcesLists(
+            localSyncData.backup?.backupAnimeSources,
+            remoteSyncData.backup?.backupAnimeSources,
+        )
+        val mergedExtensionRepoList = mergeExtensionRepoLists(
+            localSyncData.backup?.backupExtensionRepo,
+            remoteSyncData.backup?.backupExtensionRepo,
+        )
+        val mergedAnimeExtensionRepoList = mergeExtensionRepoLists(
+            localSyncData.backup?.backupAnimeExtensionRepo,
+            remoteSyncData.backup?.backupAnimeExtensionRepo,
+        )
         val mergedPreferencesList =
             mergePreferencesLists(localSyncData.backup?.backupPreferences, remoteSyncData.backup?.backupPreferences)
         val mergedSourcePreferencesList = mergeSourcePreferencesLists(
@@ -86,6 +113,11 @@ abstract class SyncService(
             backupManga = mergedMangaList,
             backupCategories = mergedCategoriesList,
             backupSources = mergedSourcesList,
+            backupExtensionRepo = mergedExtensionRepoList,
+            backupAnime = mergedAnimeList,
+            backupAnimeCategories = mergedAnimeCategoriesList,
+            backupAnimeSources = mergedAnimeSourcesList,
+            backupAnimeExtensionRepo = mergedAnimeExtensionRepoList,
             backupPreferences = mergedPreferencesList,
             backupSourcePreferences = mergedSourcePreferencesList,
 
@@ -286,6 +318,94 @@ abstract class SyncService(
         return mergedChapters
     }
 
+    private fun mergeAnimeLists(
+        localAnimeList: List<BackupAnime>?,
+        remoteAnimeList: List<BackupAnime>?,
+        localCategories: List<BackupCategory>,
+        remoteCategories: List<BackupCategory>,
+        mergedCategories: List<BackupCategory>,
+    ): List<BackupAnime> {
+        val localAnimeListSafe = localAnimeList.orEmpty()
+        val remoteAnimeListSafe = remoteAnimeList.orEmpty()
+
+        val localCategoriesMapByOrder = localCategories.associateBy { it.order }
+        val remoteCategoriesMapByOrder = remoteCategories.associateBy { it.order }
+        val mergedCategoriesMapByName = mergedCategories.associateBy { it.name }
+
+        fun animeCompositeKey(anime: BackupAnime): String {
+            return "${anime.source}|${anime.url}|${anime.title.lowercase().trim()}|${anime.author?.lowercase()?.trim()}"
+        }
+
+        fun updateCategories(anime: BackupAnime, sourceCategories: Map<Long, BackupCategory>): BackupAnime {
+            return anime.copy(
+                categories = anime.categories.mapNotNull {
+                    sourceCategories[it]?.let { category ->
+                        mergedCategoriesMapByName[category.name]?.order
+                    }
+                },
+            )
+        }
+
+        val localAnimeMap = localAnimeListSafe.associateBy { animeCompositeKey(it) }
+        val remoteAnimeMap = remoteAnimeListSafe.associateBy { animeCompositeKey(it) }
+
+        return (localAnimeMap.keys + remoteAnimeMap.keys).distinct().mapNotNull { compositeKey ->
+            val local = localAnimeMap[compositeKey]
+            val remote = remoteAnimeMap[compositeKey]
+
+            when {
+                local != null && remote == null -> updateCategories(local, localCategoriesMapByOrder)
+                local == null && remote != null -> updateCategories(remote, remoteCategoriesMapByOrder)
+                local != null && remote != null -> {
+                    val mergedEpisodes = mergeEpisodes(local.episodes, remote.episodes)
+                    val latest = if (local.version >= remote.version) local else remote
+                    val sourceCategories = if (local.version >= remote.version) {
+                        localCategoriesMapByOrder
+                    } else {
+                        remoteCategoriesMapByOrder
+                    }
+
+                    updateCategories(latest.copy(episodes = mergedEpisodes), sourceCategories)
+                }
+                else -> null
+            }
+        }
+    }
+
+    private fun mergeEpisodes(
+        localEpisodes: List<BackupEpisode>,
+        remoteEpisodes: List<BackupEpisode>,
+    ): List<BackupEpisode> {
+        fun episodeCompositeKey(episode: BackupEpisode): String {
+            return "${episode.url}|${episode.name}|${episode.episodeNumber}"
+        }
+
+        val localEpisodeMap = localEpisodes.associateBy { episodeCompositeKey(it) }
+        val remoteEpisodeMap = remoteEpisodes.associateBy { episodeCompositeKey(it) }
+
+        return (localEpisodeMap.keys + remoteEpisodeMap.keys).distinct().mapNotNull { compositeKey ->
+            val localEpisode = localEpisodeMap[compositeKey]
+            val remoteEpisode = remoteEpisodeMap[compositeKey]
+
+            when {
+                localEpisode != null && remoteEpisode == null -> localEpisode
+                localEpisode == null && remoteEpisode != null -> remoteEpisode
+                localEpisode != null && remoteEpisode != null -> {
+                    if (localEpisode.version >= remoteEpisode.version) {
+                        if (localEpisodes.size < remoteEpisodes.size) {
+                            localEpisode.copy(sourceOrder = remoteEpisode.sourceOrder)
+                        } else {
+                            localEpisode
+                        }
+                    } else {
+                        remoteEpisode
+                    }
+                }
+                else -> null
+            }
+        }
+    }
+
     /**
      * Merges two lists of SyncCategory objects, prioritizing the category with the most recent order value.
      *
@@ -373,6 +493,34 @@ abstract class SyncService(
         logcat(LogPriority.DEBUG, logTag) { "Source merge completed. Total merged sources: ${mergedSources.size}" }
 
         return mergedSources
+    }
+
+    private fun mergeAnimeSourcesLists(
+        localSources: List<BackupAnimeSource>?,
+        remoteSources: List<BackupAnimeSource>?,
+    ): List<BackupAnimeSource> {
+        val localSourceMap = localSources?.associateBy { it.sourceId } ?: emptyMap()
+        val remoteSourceMap = remoteSources?.associateBy { it.sourceId } ?: emptyMap()
+
+        return (localSourceMap.keys + remoteSourceMap.keys).distinct().mapNotNull { sourceId ->
+            val localSource = localSourceMap[sourceId]
+            val remoteSource = remoteSourceMap[sourceId]
+
+            when {
+                localSource != null && remoteSource == null -> localSource
+                localSource == null && remoteSource != null -> remoteSource
+                localSource != null && remoteSource != null -> localSource
+                else -> null
+            }
+        }
+    }
+
+    private fun mergeExtensionRepoLists(
+        localRepos: List<BackupExtensionRepos>?,
+        remoteRepos: List<BackupExtensionRepos>?,
+    ): List<BackupExtensionRepos> {
+        return (localRepos.orEmpty() + remoteRepos.orEmpty())
+            .distinctBy { it.baseUrl }
     }
 
     private fun mergePreferencesLists(

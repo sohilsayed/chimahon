@@ -1,6 +1,7 @@
 [versions]
 aboutlib_version = "13.2.1"
 newpipe-extractor = "v0.26.3"
+protobuf-javalite = "4.35.1"
 leakcanary = "2.14"
 moko = "0.26.0"
 okhttp_version = "5.3.2"
@@ -45,6 +46,7 @@ quickjs-android = { group = "com.github.zhanghai.quickjs-java", name = "quickjs-
 jsoup = "org.jsoup:jsoup:1.22.1"
 
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe-extractor" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf-javalite" }
 
 disklrucache = "com.jakewharton:disklrucache:2.0.2"
 unifile = "com.github.komikku-app:UniFile:084a54140a"
@@ -160,4 +162,3 @@ voyager = ["voyager-navigator", "voyager-screenmodel", "voyager-tab-navigator", 
 test = ["junit-jupiter", "kotest-assertions", "mockk"]
 markdown = ["markdown-core", "markdown-coil"]
 media3 = ["media3-exoplayer", "media3-common"]
-

@@ -1,12 +1,19 @@
 package eu.kanade.tachiyomi.ui.entries.anime
 
 import android.content.Context
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Immutable
+import androidx.palette.graphics.Palette
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
+import coil3.Image
+import coil3.asDrawable
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.addOrRemove
@@ -24,7 +31,10 @@ import eu.kanade.domain.entries.anime.model.seasonUnseenFilter
 import eu.kanade.domain.entries.anime.model.seasonsFiltered
 import eu.kanade.domain.entries.anime.model.toDomainAnime
 import eu.kanade.domain.entries.anime.model.toSAnime
+import eu.kanade.domain.episode.interactor.GetAvailableAnimeScanlators
+import eu.kanade.domain.episode.interactor.GetExcludedAnimeScanlators
 import eu.kanade.domain.episode.interactor.SetSeenStatus
+import eu.kanade.domain.episode.interactor.SetExcludedAnimeScanlators
 import eu.kanade.domain.episode.interactor.SyncEpisodesWithSource
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
 import eu.kanade.domain.track.interactor.TrackEpisode
@@ -39,6 +49,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
+import eu.kanade.tachiyomi.data.coil.getBestColor
 import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
 import eu.kanade.tachiyomi.data.track.EnhancedAnimeTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -55,11 +66,15 @@ import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.util.AniChartApi
 import eu.kanade.tachiyomi.util.episode.getNextUnseen
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toast
 import exh.util.nullIfEmpty
 import exh.util.trimOrNull
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableSet
+import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.catch
@@ -89,11 +104,13 @@ import tachiyomi.domain.entries.anime.interactor.SetAnimeEpisodeFlags
 import tachiyomi.domain.entries.anime.interactor.SetAnimeSeasonFlags
 import tachiyomi.domain.entries.anime.interactor.SetCustomAnimeInfo
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.entries.anime.model.AnimeUpdate
 import tachiyomi.domain.entries.anime.model.CustomAnimeInfo
 import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.entries.anime.model.SeasonDisplayMode
 import tachiyomi.domain.entries.anime.model.applyFilter
+import tachiyomi.domain.entries.anime.model.asAnimeCover
 import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.category.interactor.GetAnimeCategories
 import tachiyomi.domain.category.interactor.SetAnimeCategories
@@ -144,6 +161,9 @@ class AnimeScreenModel(
     private val setAnimeDefaultEpisodeFlags: SetAnimeDefaultEpisodeFlags = Injekt.get(),
     private val setAnimeDefaultSeasonFlags: SetAnimeDefaultSeasonFlags = Injekt.get(),
     private val setSeenStatus: SetSeenStatus = Injekt.get(),
+    private val getAvailableAnimeScanlators: GetAvailableAnimeScanlators = Injekt.get(),
+    private val getExcludedAnimeScanlators: GetExcludedAnimeScanlators = Injekt.get(),
+    private val setExcludedAnimeScanlators: SetExcludedAnimeScanlators = Injekt.get(),
     private val updateEpisode: UpdateEpisode = Injekt.get(),
     private val updateAnime: UpdateAnime = Injekt.get(),
     private val syncEpisodesWithSource: SyncEpisodesWithSource = Injekt.get(),
@@ -215,7 +235,7 @@ class AnimeScreenModel(
     init {
         screenModelScope.launchIO {
             combine(
-                getAnimeAndEpisodes.subscribe(animeId).distinctUntilChanged(),
+                getAnimeAndEpisodes.subscribe(animeId, applyScanlatorFilter = true).distinctUntilChanged(),
                 animeDownloadCache.changes,
                 animeDownloadManager.queueState,
                 animeRepository.getAnimeSeasonsByIdAsFlow(animeId),
@@ -233,11 +253,33 @@ class AnimeScreenModel(
                 }
         }
 
+        screenModelScope.launchIO {
+            getExcludedAnimeScanlators.subscribe(animeId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { excludedScanlators ->
+                    updateSuccessState {
+                        it.copy(excludedScanlators = excludedScanlators.toImmutableSet())
+                    }
+                }
+        }
+
+        screenModelScope.launchIO {
+            getAvailableAnimeScanlators.subscribe(animeId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { availableScanlators ->
+                    updateSuccessState {
+                        it.copy(availableScanlators = availableScanlators.toImmutableSet())
+                    }
+                }
+        }
+
         observeDownloads()
 
         screenModelScope.launchIO {
             val anime = getAnimeAndEpisodes.awaitManga(animeId)
-            val episodes = getAnimeAndEpisodes.awaitChapters(animeId)
+            val episodes = getAnimeAndEpisodes.awaitChapters(animeId, applyScanlatorFilter = true)
                 .toEpisodeListItems(anime)
 
             if (!anime.favorite) {
@@ -267,6 +309,8 @@ class AnimeScreenModel(
                     isFromSource = isFromSource,
                     episodes = episodes,
                     seasons = seasons,
+                    availableScanlators = getAvailableAnimeScanlators.await(animeId).toImmutableSet(),
+                    excludedScanlators = getExcludedAnimeScanlators.await(animeId).toImmutableSet(),
                     isRefreshingData = needRefreshInfo || needRefreshEpisode,
                     dialog = null,
                 )
@@ -287,6 +331,49 @@ class AnimeScreenModel(
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
         }
+    }
+
+    fun setPaletteColor(model: Any) {
+        if (model is ImageRequest && model.defined.sizeResolver != null) return
+
+        val imageRequestBuilder = if (model is ImageRequest) {
+            model.newBuilder()
+        } else {
+            ImageRequest.Builder(context).data(model)
+        }
+            .allowHardware(false)
+
+        val generatePalette: (Image) -> Unit = { image ->
+            val bitmap = image.asDrawable(context.resources).getBitmapOrNull()
+            if (bitmap != null) {
+                Palette.from(bitmap).generate {
+                    screenModelScope.launchIO {
+                        if (it == null) return@launchIO
+                        val animeCover = when (model) {
+                            is Anime -> model.asAnimeCover()
+                            is AnimeCover -> model
+                            else -> return@launchIO
+                        }
+                        if (animeCover.isAnimeFavorite) {
+                            it.dominantSwatch?.let { swatch ->
+                                animeCover.dominantCoverColors = swatch.rgb to swatch.titleTextColor
+                            }
+                        }
+                        val vibrantColor = it.getBestColor() ?: return@launchIO
+                        animeCover.vibrantCoverColor = vibrantColor
+                        updateSuccessState {
+                            it.copy(seedColor = Color(vibrantColor))
+                        }
+                    }
+                }
+            }
+        }
+
+        context.imageLoader.enqueue(
+            imageRequestBuilder
+                .target(onSuccess = generatePalette)
+                .build(),
+        )
     }
 
     fun fetchAllFromSource(manualFetch: Boolean = true) {
@@ -732,10 +819,18 @@ class AnimeScreenModel(
             }
             AnimeSeasonItem(
                 seasonAnime = seasonAnime,
-                downloadCount = downloadedCount.toLong() + downloadingCount.toLong(),
-                unseenCount = seasonAnime.unseenCount,
+                downloadCount = if (anime.seasonDownloadedOverlay) {
+                    downloadedCount.toLong() + downloadingCount.toLong()
+                } else {
+                    -1L
+                },
+                unseenCount = if (anime.seasonUnseenOverlay) seasonAnime.unseenCount else -1L,
                 isLocal = seasonAnime.anime.isLocal(),
-                sourceLanguage = "",
+                sourceLanguage = if (anime.seasonLangOverlay) {
+                    animeSourceManager.getOrStub(seasonAnime.anime.source).lang
+                } else {
+                    ""
+                },
                 showContinueOverlay = anime.seasonContinueOverlay &&
                     seasonAnime.unseenCount > 0 &&
                     seasonAnime.seenCount > 0,
@@ -838,7 +933,7 @@ class AnimeScreenModel(
     }
 
     suspend fun getNextUnseenEpisode(anime: Anime): Episode? {
-        val episodes = getAnimeAndEpisodes.awaitChapters(anime.id)
+        val episodes = getAnimeAndEpisodes.awaitChapters(anime.id, applyScanlatorFilter = true)
         return episodes.firstOrNull { !it.seen }
     }
 
@@ -1273,7 +1368,7 @@ class AnimeScreenModel(
         screenModelScope.launchIO {
             combine(
                 animeTrackRepository.getTracksByAnimeIdAsFlow(anime.id).catch { logcat(LogPriority.ERROR, it) },
-                trackerManager.loggedInTrackersFlow(),
+                trackerManager.loggedInAnimeTrackersFlow(),
             ) { animeTracks, loggedInTrackers ->
                 // Show only if the service supports this anime's source
                 val supportedTrackers = loggedInTrackers.filter {
@@ -1298,7 +1393,7 @@ class AnimeScreenModel(
         screenModelScope.launchIO {
             combine(
                 animeTrackRepository.getTracksByAnimeIdAsFlow(anime.id).catch { logcat(LogPriority.ERROR, it) },
-                trackerManager.loggedInTrackersFlow(),
+                trackerManager.loggedInAnimeTrackersFlow(),
             ) { animeTracks, loggedInTrackers ->
                 loggedInTrackers
                     .map { service ->
@@ -1409,6 +1504,12 @@ class AnimeScreenModel(
                 FetchType.Seasons -> it.copy(dialog = Dialog.SeasonSettingsSheet)
                 FetchType.Episodes -> it.copy(dialog = Dialog.EpisodeSettingsSheet)
             }
+        }
+    }
+
+    fun setExcludedScanlators(excludedScanlators: Set<String>) {
+        screenModelScope.launchIO {
+            setExcludedAnimeScanlators.await(animeId, excludedScanlators)
         }
     }
 
@@ -1599,6 +1700,8 @@ class AnimeScreenModel(
             val hasLoggedInTrackers: Boolean = false,
             val isRefreshingData: Boolean = false,
             val dialog: Dialog? = null,
+            val availableScanlators: ImmutableSet<String> = persistentSetOf(),
+            val excludedScanlators: ImmutableSet<String> = persistentSetOf(),
             val hasPromptedToAddBefore: Boolean = false,
             val trackItems: List<TrackItem> = emptyList(),
             val isRelatedAnimeFetched: Boolean? = null,
@@ -1608,6 +1711,7 @@ class AnimeScreenModel(
                 anime.nextEpisodeAiringAt,
             ),
             val seasons: List<AnimeSeasonItem> = emptyList(),
+            val seedColor: Color? = anime.asAnimeCover().vibrantCoverColor?.let { Color(it) },
         ) : State {
 
             val processedSeasons: List<AnimeSeasonItem> by lazy {
@@ -1665,8 +1769,12 @@ class AnimeScreenModel(
             val filterActive: Boolean
                 get() = when (anime.fetchType) {
                     eu.kanade.tachiyomi.animesource.model.FetchType.Seasons -> anime.seasonsFiltered()
-                    eu.kanade.tachiyomi.animesource.model.FetchType.Episodes -> anime.episodesFiltered()
+                    eu.kanade.tachiyomi.animesource.model.FetchType.Episodes -> scanlatorFilterActive ||
+                        anime.episodesFiltered()
                 }
+
+            val scanlatorFilterActive: Boolean
+                get() = excludedScanlators.intersect(availableScanlators).isNotEmpty()
 
             val nextUnseenEpisode: Episode?
                 get() = processedEpisodes.firstOrNull { !it.episode.seen }?.episode

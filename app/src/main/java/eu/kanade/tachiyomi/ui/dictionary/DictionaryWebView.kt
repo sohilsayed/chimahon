@@ -83,7 +83,11 @@ internal fun prepareDictionaryWebViewShell(
                     when (url.host) {
                         CHIMA_HOST_LOOKUP -> {
                             val q = url.getQueryParameter("q") ?: return true
-                            if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q)
+                            val sentence = url.getQueryParameter("sentence")
+                            val sentenceOffset = url.getQueryParameter("offset")?.toIntOrNull()
+                            val x = url.getQueryParameter("x")?.toFloatOrNull()
+                            val y = url.getQueryParameter("y")?.toFloatOrNull()
+                            if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q, sentence, sentenceOffset, x, y)
                             return true
                         }
                         CHIMA_HOST_TAB -> {
@@ -141,7 +145,7 @@ internal class DictionaryWebViewState(
     @Volatile var contentReadyGeneration: Long = 0
     @Volatile var nextContentReadyRequestId: Long = 0
     var onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null
-    var onRecursiveLookup: ((String) -> Unit)? = null
+    var onRecursiveLookup: ((String, String?, Int?, Float?, Float?) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
     var onContentInvalidated: (() -> Unit)? = null

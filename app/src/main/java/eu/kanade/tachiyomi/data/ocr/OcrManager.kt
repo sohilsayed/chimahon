@@ -199,6 +199,38 @@ class OcrManager(
         // corrected when chapters are re-fetched or when OCR is run again
     }
 
+    suspend fun reindexDownloadedOcrStatus(
+        manga: Manga,
+        source: Source,
+        chapters: List<Chapter>,
+    ): Set<Long> {
+        val readyChapterIds = mutableSetOf<Long>()
+        chapters
+            .filterNot { it.isOcrReady }
+            .forEach { chapter ->
+                val isDownloaded = downloadManager.isChapterDownloaded(
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.url,
+                    manga.ogTitle,
+                    source.id,
+                )
+                if (isDownloaded && ocrCacheManager.hasOcrData(manga, chapter, source)) {
+                    readyChapterIds += chapter.id
+                }
+            }
+
+        if (readyChapterIds.isNotEmpty()) {
+            chapterRepository.updateAll(
+                readyChapterIds.map { chapterId ->
+                    ChapterUpdate(id = chapterId, isOcrReady = true)
+                },
+            )
+        }
+
+        return readyChapterIds
+    }
+
     suspend fun getStorageSize(): String = ocrCacheManager.getReadableSize()
 
     suspend fun clearCache() {
@@ -260,7 +292,7 @@ class OcrManager(
                     chapter.name,
                     chapter.scanlator,
                     chapter.url,
-                    manga.title,
+                    manga.ogTitle,
                     manga.source,
                 )
 
@@ -373,7 +405,7 @@ class OcrManager(
                 chapter.name,
                 chapter.scanlator,
                 chapter.url,
-                manga.title,
+                manga.ogTitle,
                 manga.source,
             )
 
@@ -594,7 +626,7 @@ class OcrManager(
             chapter.name,
             chapter.scanlator,
             chapter.url,
-            manga.title,
+            manga.ogTitle,
             source,
         )
 

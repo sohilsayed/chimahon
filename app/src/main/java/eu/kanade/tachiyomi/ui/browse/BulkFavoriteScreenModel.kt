@@ -17,6 +17,7 @@ import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.updateLocalCoverFromSourceFetch
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.mutate
@@ -266,6 +267,7 @@ class BulkFavoriteScreenModel(
                     if (fetchChaptersOnAdd) {
                         val chapters = source.getChapterList(sManga)
                         syncChaptersWithSource.await(chapters, manga, source, false)
+                        manga.updateLocalCoverFromSourceFetch(source, sManga, updateManga, coverCache)
                     }
                 }
             } catch (e: Exception) {
@@ -368,6 +370,7 @@ class BulkFavoriteScreenModel(
                         if (fetchChaptersOnAdd) {
                             val chapters = source.getChapterList(sManga)
                             syncChaptersWithSource.await(chapters, manga, source, false)
+                            manga.updateLocalCoverFromSourceFetch(source, sManga, updateManga, coverCache)
                         }
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR, e)

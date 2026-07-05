@@ -160,6 +160,7 @@ class PlayerActivity : BaseActivity() {
 
     private val twoFingerTapSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
     private var twoFingerTapTracking = false
+    private var twoFingerTapConsuming = false
     private var twoFingerTapStartTime = 0L
     private var twoFingerTapStartX = 0f
     private var twoFingerTapStartY = 0f
@@ -378,30 +379,39 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        observeTwoFingerOcrTap(ev)
-        return super.dispatchTouchEvent(ev)
+        return if (observeTwoFingerOcrTap(ev)) {
+            true
+        } else {
+            super.dispatchTouchEvent(ev)
+        }
     }
 
-    private fun observeTwoFingerOcrTap(event: MotionEvent) {
-        when (event.actionMasked) {
+    private fun observeTwoFingerOcrTap(event: MotionEvent): Boolean {
+        return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 twoFingerTapTracking = false
+                twoFingerTapConsuming = false
+                false
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.pointerCount == 2) {
                     twoFingerTapTracking = true
+                    twoFingerTapConsuming = true
                     twoFingerTapStartTime = event.eventTime
                     twoFingerTapStartX = event.twoFingerFocusX()
                     twoFingerTapStartY = event.twoFingerFocusY()
                     twoFingerTapStartSpan = event.twoFingerSpan()
+                    cancelChildTouchStream(event)
                 } else {
                     twoFingerTapTracking = false
                 }
+                twoFingerTapConsuming
             }
             MotionEvent.ACTION_MOVE -> {
                 if (twoFingerTapTracking && !event.isTwoFingerTapCandidate()) {
                     twoFingerTapTracking = false
                 }
+                twoFingerTapConsuming
             }
             MotionEvent.ACTION_POINTER_UP -> {
                 if (
@@ -413,13 +423,26 @@ class PlayerActivity : BaseActivity() {
                     viewModel.requestOcr()
                 }
                 twoFingerTapTracking = false
+                twoFingerTapConsuming
             }
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_CANCEL,
             -> {
+                val wasConsuming = twoFingerTapConsuming
                 twoFingerTapTracking = false
+                twoFingerTapConsuming = false
+                wasConsuming
             }
+            else -> twoFingerTapConsuming
         }
+    }
+
+    private fun cancelChildTouchStream(event: MotionEvent) {
+        val cancelEvent = MotionEvent.obtain(event).apply {
+            action = MotionEvent.ACTION_CANCEL
+        }
+        super.dispatchTouchEvent(cancelEvent)
+        cancelEvent.recycle()
     }
 
     private fun MotionEvent.isTwoFingerTapCandidate(): Boolean {

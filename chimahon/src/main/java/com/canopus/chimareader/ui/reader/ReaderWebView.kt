@@ -562,6 +562,7 @@ private class ReaderAndroidWebView(
         }
 
         appendLine("html, body { margin: 0 !important; padding: 0 !important; }")
+        appendLine("html { -webkit-line-box-contain: block glyphs replaced; }")
         appendLine("::highlight(hoshi-selection) { background-color: rgba(130, 150, 200, 0.4); color: inherit; }")
         appendLine("p { margin-block-start: 0 !important; margin-block-end: ${readerSettings.paragraphSpacing}em !important; }")
         appendLine("body * { font-family: inherit !important; }")
@@ -898,11 +899,17 @@ private class ReaderAndroidWebView(
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 200);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 200);
                 var bottomOverlap = $bottomOverlapPx;
+                var pageHeight = ih + bottomOverlap;
 
-                var contentW = Math.max(1, Math.round(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var contentW = Math.max(1, Math.round(iw * (100 - ${readerSettings.horizontalPadding}) / 100)${if (vw) " - 1" else ""});
                 var contentH = Math.max(1, Math.round(ih * (100 - ${readerSettings.verticalPadding}) / 100) - bottomOverlap - 2);
                 document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
+                document.documentElement.style.setProperty('--page-height', pageHeight + 'px');
+                document.documentElement.style.setProperty('--hoshi-reader-visible-height', ih + 'px');
+                document.documentElement.style.setProperty('--page-width', iw + 'px');
+                document.documentElement.style.setProperty('--hoshi-vertical-padding-block', vPad + 'px');
+                document.documentElement.style.setProperty('--hoshi-vertical-padding-gap', (2 * vPad) + 'px');
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -1003,24 +1010,28 @@ private class ReaderAndroidWebView(
                     '[class*="pt"] { margin-top: 0 !important; }',
                     '[class*="pb"] { margin-bottom: 0 !important; }',
                     'span.img.fpage, span.img.fblk { padding-bottom: 0 !important; }',
+                    'body * { column-count: auto !important; -webkit-column-count: auto !important; }',
+                    'body, body * { orphans: 1 !important; widows: 1 !important; }',
                     '@page { margin: 0 !important; }'
                 ].join(' ');
 
-                document.documentElement.style.setProperty('height', ih + 'px', 'important');
+                document.documentElement.style.setProperty('height', pageHeight + 'px', 'important');
+                document.documentElement.style.setProperty('width', iw + 'px', 'important');
                 var vw = ${if (vw) "true" else "false"};
                 if (vw) {
-                    b.style.setProperty('column-width', ih + 'px', 'important');
-                    b.style.setProperty('min-height', ih + 'px', 'important');
+                    b.style.setProperty('column-width', pageHeight + 'px', 'important');
+                    b.style.setProperty('height', pageHeight + 'px', 'important');
                     b.style.setProperty('column-gap', (2 * vPad + bottomOverlap) + 'px', 'important');
                 } else {
                     b.style.setProperty('column-width', iw + 'px', 'important');
-                    b.style.setProperty('height', ih + 'px', 'important');
+                    b.style.setProperty('height', pageHeight + 'px', 'important');
                     b.style.setProperty('column-gap', (2 * hPad) + 'px', 'important');
                 }
                 b.style.setProperty('box-sizing', 'border-box', 'important');
                 b.style.setProperty('width', iw + 'px', 'important');
                 b.style.setProperty('column-fill', 'auto', 'important');
                 b.style.setProperty('touch-action', 'none', 'important');
+                b.style.setProperty('-webkit-text-size-adjust', 'none', 'important');
                 document.documentElement.style.setProperty('overflow', 'hidden', 'important');
                 b.style.setProperty('overflow', 'hidden', 'important');
 
@@ -1104,10 +1115,16 @@ private class ReaderAndroidWebView(
                 var hPad = Math.round(iw * ${settings.horizontalPadding} / 200);
                 var vPad = Math.round(ih * ${settings.verticalPadding} / 200);
                 var bottomOverlap = ${if (settings.verticalWriting && !continuousMode) settings.fontSize else 0};
-                var contentW = Math.max(1, Math.round(iw * (100 - ${settings.horizontalPadding}) / 100));
+                var pageHeight = ih + bottomOverlap;
+                var contentW = Math.max(1, Math.round(iw * (100 - ${settings.horizontalPadding}) / 100)${if (settings.verticalWriting) " - 1" else ""});
                 var contentH = Math.max(1, Math.round(ih * (100 - ${settings.verticalPadding}) / 100) - bottomOverlap - 2);
                 document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
+                document.documentElement.style.setProperty('--page-height', pageHeight + 'px');
+                document.documentElement.style.setProperty('--hoshi-reader-visible-height', ih + 'px');
+                document.documentElement.style.setProperty('--page-width', iw + 'px');
+                document.documentElement.style.setProperty('--hoshi-vertical-padding-block', vPad + 'px');
+                document.documentElement.style.setProperty('--hoshi-vertical-padding-gap', (2 * vPad) + 'px');
                 b.style.setProperty(
                     'padding',
                     vPad + 'px ' + hPad + 'px ' + (vPad + bottomOverlap) + 'px ' + hPad + 'px',
@@ -1124,14 +1141,17 @@ private class ReaderAndroidWebView(
                     b.style.setProperty('width', iw + 'px', 'important');
                     b.style.setProperty('column-fill', 'auto', 'important');
                     b.style.setProperty('touch-action', 'none', 'important');
+                    b.style.setProperty('-webkit-text-size-adjust', 'none', 'important');
+                    document.documentElement.style.setProperty('height', pageHeight + 'px', 'important');
+                    document.documentElement.style.setProperty('width', iw + 'px', 'important');
                     document.documentElement.style.setProperty('overflow', 'hidden', 'important');
                     b.style.setProperty('overflow', 'hidden', 'important');
                     ${if (settings.verticalWriting) """
-                    b.style.setProperty('column-width', ih + 'px', 'important');
-                    b.style.setProperty('min-height', ih + 'px', 'important');
+                    b.style.setProperty('column-width', pageHeight + 'px', 'important');
+                    b.style.setProperty('height', pageHeight + 'px', 'important');
                     """ else """
                     b.style.setProperty('column-width', iw + 'px', 'important');
-                    b.style.setProperty('height', ih + 'px', 'important');
+                    b.style.setProperty('height', pageHeight + 'px', 'important');
                     """}
                 }
 
@@ -1249,6 +1269,7 @@ private class ReaderAndroidWebView(
 
         evaluateJavascript(script) { result ->
             if (result?.trim('"') == "limit") {
+                onProgressChanged(if (forward) 1.0 else 0.0)
                 val changed = if (forward) onNextChapter() else onPreviousChapter()
                 if (changed) visibility = View.INVISIBLE
             }
@@ -1282,6 +1303,7 @@ private class ReaderAndroidWebView(
                         }
                 }
             } else {
+                onProgressChanged(if (direction == "forward") 1.0 else 0.0)
                 val chapterChanged = fallback()
                 if (chapterChanged) {
                     visibility = View.INVISIBLE
@@ -1364,9 +1386,7 @@ private fun fontJS(settings: ReaderSettings, targetVar: String): String = buildS
             var fontFace = document.createElement('style');
             fontFace.textContent = "@font-face { font-family: 'HoshiCustomFont'; src: url('${jsEscape(fontUrl)}'); }";
             document.head.appendChild(fontFace);
-            document.fonts.ready.then(function() {
-                $targetVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
-            });
+            $targetVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
             """.trimIndent(),
         )
     } else {

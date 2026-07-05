@@ -129,6 +129,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
     internal var ocrLayoutCache: Pair<OcrTextBlock, StaticLayout>? = null
     internal var ocrPopupLookupString: String? = null
 
+    private data class OcrLineHit(
+        val offset: Int,
+        val distance: Float,
+    )
+
     var onOcrLookup: ((String) -> Unit)? = null
     var onDismissOcrPopup: (() -> Unit)? = null
 
@@ -820,13 +825,23 @@ open class ReaderPageImageView @JvmOverloads constructor(
     ): Int? {
         val geometries = block.lineGeometries
         if (geometries != null && geometries.size == block.lines.size) {
-            // Per-line hit testing
+            var bestHit: OcrLineHit? = null
+            var lineStart = 0
+
             for (i in geometries.indices) {
                 val geo = geometries[i]
-                val offset = getCharOffsetInLine(block.lines[i], geo, viewX, viewY, ssiv, block.vertical)
-                if (offset != null) {
-                    return block.lines.take(i).sumOf { it.length } + offset
+                val hit = getCharOffsetInLine(block.lines[i], geo, viewX, viewY, ssiv, isOcrLineVertical(block.vertical, geo))
+                if (hit != null) {
+                    val absoluteHit = OcrLineHit(lineStart + hit.offset, hit.distance)
+                    if (bestHit == null || absoluteHit.distance < bestHit.distance) {
+                        bestHit = absoluteHit
+                    }
                 }
+                lineStart += block.lines[i].length
+            }
+
+            if (bestHit != null) {
+                return bestHit.offset
             }
         }
 
@@ -869,7 +884,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
         viewY: Float,
         ssiv: SubsamplingScaleImageView,
         isVertical: Boolean,
-    ): Int? {
+    ): OcrLineHit? {
+        if (text.isEmpty()) return null
+
         val centerX = (geo.xmin + geo.xmax) / 2f
         val centerY = (geo.ymin + geo.ymax) / 2f
         val width = geo.xmax - geo.xmin
@@ -900,17 +917,27 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val lx = rx + sW / 2f
         val ly = ry + sH / 2f
 
-        // Hit test
+        // Hit test. Multiple scaled vertical columns can overlap, so the caller
+        // chooses the candidate nearest to the touched column/row center.
         if (lx < 0 || lx > sW || ly < 0 || ly > sH) return null
 
-        // Calculate index based on orientation
         return if (isVertical) {
-            (ly / (sH / text.length.coerceAtLeast(1)))
+            val charIndex = (ly / (sH / text.length.coerceAtLeast(1)))
                 .toInt().coerceIn(0, text.length - 1)
+            val distance = kotlin.math.abs(lx - sW / 2f)
+            OcrLineHit(charIndex, distance)
         } else {
-            (lx / (sW / text.length.coerceAtLeast(1)))
+            val charIndex = (lx / (sW / text.length.coerceAtLeast(1)))
                 .toInt().coerceIn(0, text.length - 1)
+            val distance = kotlin.math.abs(ly - sH / 2f)
+            OcrLineHit(charIndex, distance)
         }
+    }
+
+    private fun isOcrLineVertical(blockVertical: Boolean, geo: OcrLineGeometry): Boolean {
+        val width = geo.xmax - geo.xmin
+        if (width <= 0f) return blockVertical
+        return blockVertical || (geo.ymax - geo.ymin) / width > 1.2f
     }
 
     /**

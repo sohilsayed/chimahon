@@ -384,7 +384,7 @@ actual class LocalSource(
             }
 
         // Copy the cover from the first chapter found if not available
-        if (manga.thumbnail_url.isNullOrBlank()) {
+        if (coverManager.find(manga.url) == null) {
             chapters.lastOrNull()?.let { chapter ->
                 updateCover(chapter, manga)
             }

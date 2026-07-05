@@ -216,13 +216,17 @@ open class NovelReaderActivity : ComponentActivity() {
         super.onPause()
         readerViewModel?.let { vm ->
             vm.inactiveSinceMillis = System.currentTimeMillis()
+            vm.flushReaderState()
             vm.flushSyncExport()
         }
     }
 
     override fun onStop() {
         super.onStop()
-        readerViewModel?.flushSyncExport()
+        readerViewModel?.let { vm ->
+            vm.flushReaderState()
+            vm.flushSyncExport()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

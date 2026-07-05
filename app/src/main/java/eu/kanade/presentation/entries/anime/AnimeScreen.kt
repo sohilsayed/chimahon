@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -29,7 +30,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -69,6 +72,7 @@ import eu.kanade.presentation.entries.anime.components.AnimeSeasonListItem
 import eu.kanade.presentation.entries.anime.components.EpisodeDownloadAction
 import eu.kanade.presentation.entries.anime.components.ExpandableAnimeDescription
 import eu.kanade.presentation.entries.anime.components.NextEpisodeAiringListItem
+import eu.kanade.presentation.entries.anime.components.RelatedAnimeRow
 import eu.kanade.presentation.entries.components.EntryBottomActionMenu
 import eu.kanade.presentation.entries.components.EntryToolbar
 import eu.kanade.presentation.entries.components.ItemHeader
@@ -78,13 +82,16 @@ import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
+import eu.kanade.tachiyomi.source.getNameForAnimeInfo
 import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeSourcePreferencesScreen
+import eu.kanade.tachiyomi.ui.entries.anime.RelatedAnime
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreenModel
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeSeasonItem
 import eu.kanade.tachiyomi.ui.entries.anime.EpisodeList
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import kotlinx.coroutines.delay
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.entries.anime.model.SeasonAnime
 import tachiyomi.domain.entries.anime.model.SeasonDisplayMode
 import tachiyomi.domain.episode.model.Episode
@@ -92,11 +99,13 @@ import tachiyomi.domain.episode.service.missingEpisodesCount
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
 import tachiyomi.presentation.core.components.TwoPanelBox
 import tachiyomi.presentation.core.components.material.ExtendedFloatingActionButton
 import tachiyomi.presentation.core.components.material.PullRefresh
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.shouldExpandFAB
 import tachiyomi.source.local.entries.anime.isLocal
@@ -131,6 +140,7 @@ fun AnimeScreen(
 
     // For cover dialog
     onCoverClicked: () -> Unit,
+    onCoverLoaded: (AnimeCover) -> Unit,
 
     // For top action menu
     onShareClicked: (() -> Unit)?,
@@ -194,6 +204,7 @@ fun AnimeScreen(
             onContinueWatching = onContinueWatching,
             onSearch = onSearch,
             onCoverClicked = onCoverClicked,
+            onCoverLoaded = onCoverLoaded,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
             onEditCategoryClicked = onEditCategoryClicked,
@@ -236,6 +247,7 @@ fun AnimeScreen(
             onContinueWatching = onContinueWatching,
             onSearch = onSearch,
             onCoverClicked = onCoverClicked,
+            onCoverLoaded = onCoverLoaded,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
             onEditCategoryClicked = onEditCategoryClicked,
@@ -287,6 +299,7 @@ private fun AnimeScreenSmallImpl(
 
     // For cover dialog
     onCoverClicked: () -> Unit,
+    onCoverLoaded: (AnimeCover) -> Unit,
 
     // For top action menu
     onShareClicked: (() -> Unit)?,
@@ -470,11 +483,12 @@ private fun AnimeScreenSmallImpl(
                             isTabletUi = false,
                             appBarPadding = topPadding,
                             anime = state.anime,
-                            sourceName = remember { state.source.toString() },
+                            sourceName = remember { state.source.getNameForAnimeInfo() },
                             isStubSource = remember { state.source is StubAnimeSource },
                             onCoverClick = onCoverClicked,
                             doSearch = onSearch,
                             modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                            onCoverLoaded = onCoverLoaded,
                         )
                     }
 
@@ -509,8 +523,24 @@ private fun AnimeScreenSmallImpl(
                             tagsProvider = { state.anime.genre },
                             onTagSearch = onTagSearch,
                             onCopyTagToClipboard = onCopyTagToClipboard,
+                            onSearch = onSearch,
                             modifier = Modifier.ignorePadding(offsetGridPaddingPx),
                         )
+                    }
+
+                    if (state.relatedAnimeSorted?.isNotEmpty() != false) {
+                        item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                        item(
+                            key = EntryScreenItem.RELATED_ANIME,
+                            contentType = EntryScreenItem.RELATED_ANIME,
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            RelatedAnimeSection(
+                                relatedAnime = state.relatedAnimeSorted,
+                                modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                            )
+                        }
+                        item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
                     }
 
                     item(
@@ -632,6 +662,7 @@ fun AnimeScreenLargeImpl(
 
     // For cover dialog
     onCoverClicked: () -> Unit,
+    onCoverLoaded: (AnimeCover) -> Unit,
 
     // For top action menu
     onShareClicked: (() -> Unit)?,
@@ -800,10 +831,11 @@ fun AnimeScreenLargeImpl(
                                 isTabletUi = true,
                                 appBarPadding = contentPadding.calculateTopPadding(),
                                 anime = state.anime,
-                                sourceName = remember { state.source.toString() },
+                                sourceName = remember { state.source.getNameForAnimeInfo() },
                                 isStubSource = remember { state.source is StubAnimeSource },
                                 onCoverClick = onCoverClicked,
                                 doSearch = onSearch,
+                                onCoverLoaded = onCoverLoaded,
                             )
                             AnimeActionRow(
                                 favorite = state.anime.favorite,
@@ -823,6 +855,7 @@ fun AnimeScreenLargeImpl(
                                 tagsProvider = { state.anime.genre },
                                 onTagSearch = onTagSearch,
                                 onCopyTagToClipboard = onCopyTagToClipboard,
+                                onSearch = onSearch,
                             )
                         }
                     },
@@ -838,6 +871,21 @@ fun AnimeScreenLargeImpl(
                                 bottom = contentPadding.calculateBottomPadding(),
                             ),
                         ) {
+                            if (state.relatedAnimeSorted?.isNotEmpty() != false) {
+                                item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                                item(
+                                    key = EntryScreenItem.RELATED_ANIME,
+                                    contentType = EntryScreenItem.RELATED_ANIME,
+                                    span = { GridItemSpan(maxLineSpan) },
+                                ) {
+                                    RelatedAnimeSection(
+                                        relatedAnime = state.relatedAnimeSorted,
+                                        modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                                    )
+                                }
+                                item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
+                            }
+
                             item(
                                 key = EntryScreenItem.ITEM_HEADER,
                                 contentType = EntryScreenItem.ITEM_HEADER,
@@ -1150,6 +1198,41 @@ private fun formatTime(milliseconds: Long, useDayFormat: Boolean = false): Strin
 }
 
 private val GRID_PADDING = 14.dp
+@Composable
+private fun RelatedAnimeSection(
+    relatedAnime: List<RelatedAnime>?,
+    modifier: Modifier = Modifier,
+) {
+    val navigator = LocalNavigator.currentOrThrow
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f))
+            .padding(vertical = MaterialTheme.padding.extraSmall),
+    ) {
+        Text(
+            text = stringResource(KMR.strings.pref_source_related_mangas),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(
+                start = MaterialTheme.padding.medium,
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.medium,
+                bottom = MaterialTheme.padding.extraSmall,
+            ),
+        )
+        RelatedAnimeRow(
+            relatedAnime = relatedAnime,
+            onAnimeClick = {
+                navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen(it.id))
+            },
+            onAnimeLongClick = {
+                navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen(it.id))
+            },
+        )
+    }
+}
+
 private fun Modifier.ignorePadding(gridPadding: Int) = layout { measurable, constraints ->
     val looseConstraints = constraints.offset(gridPadding * 2, 0)
     val placeable = measurable.measure(looseConstraints)

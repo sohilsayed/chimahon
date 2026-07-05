@@ -264,7 +264,12 @@ private suspend fun processChunks(
     addSpaceOnMerge: Boolean?,
     chunkProcessor: suspend (ImageChunk) -> List<EngineLine>,
 ): List<OcrResult> {
-    val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
+    val config = MergeConfig(
+        language = language,
+        addSpaceOnMerge = addSpaceOnMerge,
+        imageWidth = chunks.firstOrNull()?.fullWidth?.toDouble(),
+        imageHeight = chunks.firstOrNull()?.fullHeight?.toDouble(),
+    )
 
     val allEngineLines = chunks.flatMap { chunk ->
         val lines = chunkProcessor(chunk)

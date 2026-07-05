@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.track.kitsu
 
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.data.database.models.Track
+import eu.kanade.tachiyomi.data.database.models.anime.AnimeTrack
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuAddMangaResult
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuAlgoliaSearchResult
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuCurrentUserResult
@@ -9,6 +10,7 @@ import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuListSearchResult
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuMangaMetadata
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuOAuth
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuSearchResult
+import eu.kanade.tachiyomi.data.track.model.AnimeTrackSearch
 import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.network.DELETE
@@ -33,6 +35,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.injectLazy
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import tachiyomi.domain.track.anime.model.AnimeTrack as DomainAnimeTrack
 import tachiyomi.domain.track.model.Track as DomainTrack
 
 class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) {
@@ -62,6 +65,51 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
                             putJsonObject("data") {
                                 put("id", track.remote_id)
                                 put("type", "manga")
+                            }
+                        }
+                    }
+                }
+            }
+
+            with(json) {
+                authClient.newCall(
+                    POST(
+                        "${BASE_URL}library-entries",
+                        headers = headersOf("Content-Type", VND_API_JSON),
+                        body = data.toString().toRequestBody(VND_JSON_MEDIA_TYPE),
+                    ),
+                )
+                    .awaitSuccess()
+                    .parseAs<KitsuAddMangaResult>()
+                    .let {
+                        track.library_id = it.data.id
+                        track
+                    }
+            }
+        }
+    }
+
+    suspend fun addLibAnime(track: AnimeTrack, userId: String): AnimeTrack {
+        return withIOContext {
+            val data = buildJsonObject {
+                putJsonObject("data") {
+                    put("type", "libraryEntries")
+                    putJsonObject("attributes") {
+                        put("status", track.toApiStatus())
+                        put("progress", track.last_episode_seen.toInt())
+                        put("private", track.private)
+                    }
+                    putJsonObject("relationships") {
+                        putJsonObject("user") {
+                            putJsonObject("data") {
+                                put("id", userId)
+                                put("type", "users")
+                            }
+                        }
+                        putJsonObject("media") {
+                            putJsonObject("data") {
+                                put("id", track.remote_id)
+                                put("type", "anime")
                             }
                         }
                     }
@@ -118,7 +166,51 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
         }
     }
 
+    suspend fun updateLibAnime(track: AnimeTrack): AnimeTrack {
+        return withIOContext {
+            val data = buildJsonObject {
+                putJsonObject("data") {
+                    put("type", "libraryEntries")
+                    put("id", track.library_id)
+                    putJsonObject("attributes") {
+                        put("status", track.toApiStatus())
+                        put("progress", track.last_episode_seen.toInt())
+                        put("ratingTwenty", track.toApiScore())
+                        put("startedAt", KitsuDateHelper.convert(track.started_watching_date))
+                        put("finishedAt", KitsuDateHelper.convert(track.finished_watching_date))
+                        put("private", track.private)
+                    }
+                }
+            }
+
+            authClient.newCall(
+                Request.Builder()
+                    .url("${BASE_URL}library-entries/${track.library_id}")
+                    .headers(
+                        headersOf("Content-Type", VND_API_JSON),
+                    )
+                    .patch(data.toString().toRequestBody(VND_JSON_MEDIA_TYPE))
+                    .build(),
+            )
+                .awaitSuccess()
+
+            track
+        }
+    }
+
     suspend fun removeLibManga(track: DomainTrack) {
+        withIOContext {
+            authClient.newCall(
+                DELETE(
+                    "${BASE_URL}library-entries/${track.libraryId}",
+                    headers = headersOf("Content-Type", VND_API_JSON),
+                ),
+            )
+                .awaitSuccess()
+        }
+    }
+
+    suspend fun removeLibAnime(track: DomainAnimeTrack) {
         withIOContext {
             authClient.newCall(
                 DELETE(
@@ -138,6 +230,19 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
                     .parseAs<KitsuSearchResult>()
                     .let {
                         algoliaSearch(it.media.key, query)
+                    }
+            }
+        }
+    }
+
+    suspend fun searchAnime(query: String): List<AnimeTrackSearch> {
+        return withIOContext {
+            with(json) {
+                authClient.newCall(GET(ALGOLIA_KEY_URL))
+                    .awaitSuccess()
+                    .parseAs<KitsuSearchResult>()
+                    .let {
+                        algoliaSearchAnime(it.media.key, query)
                     }
             }
         }
@@ -171,6 +276,34 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
         }
     }
 
+    private suspend fun algoliaSearchAnime(key: String, query: String): List<AnimeTrackSearch> {
+        return withIOContext {
+            val jsonObject = buildJsonObject {
+                put("params", "query=${URLEncoder.encode(query, StandardCharsets.UTF_8.name())}$ALGOLIA_FILTER_ANIME")
+            }
+
+            with(json) {
+                client.newCall(
+                    POST(
+                        ALGOLIA_URL,
+                        headers = headersOf(
+                            "X-Algolia-Application-Id",
+                            ALGOLIA_APP_ID,
+                            "X-Algolia-API-Key",
+                            key,
+                        ),
+                        body = jsonObject.toString().toRequestBody(jsonMime),
+                    ),
+                )
+                    .awaitSuccess()
+                    .parseAs<KitsuAlgoliaSearchResult>()
+                    .hits
+                    .filter { it.subtype != "novel" }
+                    .map { it.toAnimeTrack() }
+            }
+        }
+    }
+
     suspend fun findLibManga(track: Track, userId: String): Track? {
         return withIOContext {
             val url = "${BASE_URL}library-entries".toUri().buildUpon()
@@ -184,6 +317,27 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
                     .let {
                         if (it.data.isNotEmpty() && it.included.isNotEmpty()) {
                             it.firstToTrack()
+                        } else {
+                            null
+                        }
+                    }
+            }
+        }
+    }
+
+    suspend fun findLibAnime(track: AnimeTrack, userId: String): AnimeTrack? {
+        return withIOContext {
+            val url = "${BASE_URL}library-entries".toUri().buildUpon()
+                .encodedQuery("filter[anime_id]=${track.remote_id}&filter[user_id]=$userId")
+                .appendQueryParameter("include", "anime")
+                .build()
+            with(json) {
+                authClient.newCall(GET(url.toString()))
+                    .awaitSuccess()
+                    .parseAs<KitsuListSearchResult>()
+                    .let {
+                        if (it.data.isNotEmpty() && it.included.isNotEmpty()) {
+                            it.firstToAnimeTrack()
                         } else {
                             null
                         }
@@ -207,6 +361,27 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
                             it.firstToTrack()
                         } else {
                             throw Exception("Could not find manga")
+                        }
+                    }
+            }
+        }
+    }
+
+    suspend fun getLibAnime(track: AnimeTrack): AnimeTrack {
+        return withIOContext {
+            val url = "${BASE_URL}library-entries".toUri().buildUpon()
+                .encodedQuery("filter[id]=${track.library_id}")
+                .appendQueryParameter("include", "anime")
+                .build()
+            with(json) {
+                authClient.newCall(GET(url.toString()))
+                    .awaitSuccess()
+                    .parseAs<KitsuListSearchResult>()
+                    .let {
+                        if (it.data.isNotEmpty() && it.included.isNotEmpty()) {
+                            it.firstToAnimeTrack()
+                        } else {
+                            throw Exception("Could not find anime")
                         }
                     }
             }
@@ -319,6 +494,7 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
         private const val GRAPHQL_URL = "https://kitsu.app/api/graphql"
         private const val LOGIN_URL = "https://kitsu.app/api/oauth/token"
         private const val BASE_MANGA_URL = "https://kitsu.app/manga/"
+        private const val BASE_ANIME_URL = "https://kitsu.app/anime/"
         private const val ALGOLIA_KEY_URL = "https://kitsu.app/api/edge/algolia-keys/media/"
 
         private const val ALGOLIA_APP_ID = "AWQO5J657S"
@@ -326,12 +502,19 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
         private const val ALGOLIA_FILTER = "&facetFilters=%5B%22kind%3Amanga%22%5D&attributesToRetrieve=" +
             "%5B%22synopsis%22%2C%22averageRating%22%2C%22canonicalTitle%22%2C%22chapterCount%22%2C%22" +
             "posterImage%22%2C%22startDate%22%2C%22subtype%22%2C%22endDate%22%2C%20%22id%22%5D"
+        private const val ALGOLIA_FILTER_ANIME = "&facetFilters=%5B%22kind%3Aanime%22%5D&attributesToRetrieve=" +
+            "%5B%22synopsis%22%2C%22averageRating%22%2C%22canonicalTitle%22%2C%22episodeCount%22%2C%22" +
+            "posterImage%22%2C%22startDate%22%2C%22subtype%22%2C%22endDate%22%2C%20%22id%22%5D"
 
         private const val VND_API_JSON = "application/vnd.api+json"
         private val VND_JSON_MEDIA_TYPE = VND_API_JSON.toMediaType()
 
         fun mangaUrl(remoteId: Long): String {
             return BASE_MANGA_URL + remoteId
+        }
+
+        fun animeUrl(remoteId: Long): String {
+            return BASE_ANIME_URL + remoteId
         }
 
         fun refreshTokenRequest(token: String) = POST(

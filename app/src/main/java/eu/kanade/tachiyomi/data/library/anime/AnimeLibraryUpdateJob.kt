@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.data.library.anime
 
 import android.content.Context
 import android.content.pm.ServiceInfo
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -22,12 +24,16 @@ import eu.kanade.domain.episode.interactor.SyncEpisodesWithSource
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import eu.kanade.tachiyomi.util.storage.getUriCompat
+import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.workManager
+import exh.util.WorkerUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -63,6 +69,7 @@ import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.util.concurrent.CopyOnWriteArrayList
@@ -77,6 +84,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
     private val libraryPreferences: LibraryPreferences = Injekt.get()
     private val downloadManager: AnimeDownloadManager = Injekt.get()
     private val coverCache: CoverCache = Injekt.get()
+    private val backgroundCache: AnimeBackgroundCache = Injekt.get()
     private val getLibraryAnime: GetLibraryAnime = Injekt.get()
     private val getAnime: GetAnime = Injekt.get()
     private val updateAnime: UpdateAnime = Injekt.get()
@@ -261,7 +269,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                                 val anime = libraryAnime.anime
                                 ensureActive()
 
-                                if (getAnime.await(anime.id)?.favorite != true) {
+                                if (anime.parentId == null && getAnime.await(anime.id)?.favorite != true) {
                                     return@forEach
                                 }
 
@@ -278,6 +286,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                                             val episodesToDownload = filterEpisodesForDownload.await(anime, newEpisodes)
 
                                             if (episodesToDownload.isNotEmpty()) {
+                                                downloadEpisodes(anime, episodesToDownload)
                                                 hasDownloads.set(true)
                                             }
 
@@ -316,7 +325,11 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         }
 
         if (failedUpdates.isNotEmpty()) {
-            notifier.showUpdateErrorNotification(failedUpdates.size)
+            val errorFile = writeErrorFile(failedUpdates)
+            notifier.showUpdateErrorNotification(
+                failedUpdates.size,
+                errorFile.getUriCompat(context),
+            )
         }
     }
 
@@ -325,14 +338,19 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
 
         if (libraryPreferences.autoUpdateMetadata().get()) {
             val networkAnime = source.getAnimeDetails(anime.toSAnime())
-            updateAnime.awaitUpdateFromSource(anime, networkAnime, manualFetch = false, coverCache)
+            updateAnime.awaitUpdateFromSource(anime, networkAnime, manualFetch = false, coverCache, backgroundCache)
         }
 
         val episodes = source.getEpisodeList(anime.toSAnime())
 
-        val dbAnime = getAnime.await(anime.id)?.takeIf { it.favorite } ?: return emptyList()
+        val dbAnime = getAnime.await(anime.id)?.takeIf { it.parentId != null || it.favorite } ?: return emptyList()
 
         return syncEpisodesWithSource.await(episodes, dbAnime, source, false, fetchWindow)
+    }
+
+    private fun downloadEpisodes(anime: Anime, episodes: List<Episode>) {
+        // Avoid starting downloads while the library update still has active source requests.
+        downloadManager.downloadEpisodes(anime, episodes, autoStart = false)
     }
 
     private suspend fun withUpdateNotification(
@@ -363,10 +381,38 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         )
     }
 
+    private fun writeErrorFile(errors: List<Pair<Anime, String?>>): File {
+        try {
+            if (errors.isNotEmpty()) {
+                val file = context.createFileInCacheDir("chimahon_anime_update_errors.txt")
+                file.bufferedWriter().use { out ->
+                    out.write(
+                        context.stringResource(MR.strings.library_errors_help, ERROR_LOG_HELP_URL) + "\n\n",
+                    )
+                    errors.groupBy({ it.second }, { it.first }).forEach { (error, anime) ->
+                        out.write("\n! ${error ?: "Unknown error"}\n")
+                        anime.groupBy { it.source }.forEach { (sourceId, sourceAnime) ->
+                            val source = sourceManager.getOrStub(sourceId)
+                            out.write("  # $source\n")
+                            sourceAnime.forEach {
+                                out.write("    - ${it.title}\n")
+                            }
+                        }
+                    }
+                }
+                return file
+            }
+        } catch (_: Exception) {
+        }
+        return File("")
+    }
+
     companion object {
         private const val TAG = "AnimeLibraryUpdate"
         private const val WORK_NAME_AUTO = "AnimeLibraryUpdate-auto"
         private const val WORK_NAME_MANUAL = "AnimeLibraryUpdate-manual"
+
+        private const val ERROR_LOG_HELP_URL = "https://aniyomi.org/docs/guides/troubleshooting/"
 
         private const val KEY_CATEGORY = "animeCategory"
 
@@ -387,8 +433,15 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                 } else {
                     NetworkType.CONNECTED
                 }
+                val networkRequestBuilder = NetworkRequest.Builder()
+                if (DEVICE_ONLY_ON_WIFI in restrictions) {
+                    networkRequestBuilder.addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                }
+                if (DEVICE_NETWORK_NOT_METERED in restrictions) {
+                    networkRequestBuilder.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                }
                 val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(networkType)
+                    .setRequiredNetworkRequest(networkRequestBuilder.build(), networkType)
                     .setRequiresCharging(DEVICE_CHARGING in restrictions)
                     .setRequiresBatteryNotLow(true)
                     .build()
@@ -449,6 +502,10 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                         setupTask(context)
                     }
                 }
+        }
+
+        suspend fun isPeriodicUpdateScheduled(context: Context): Boolean {
+            return WorkerUtil.isPeriodicJobScheduled(context, WORK_NAME_AUTO)
         }
     }
 }

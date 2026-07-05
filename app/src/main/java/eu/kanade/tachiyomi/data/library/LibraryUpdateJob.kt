@@ -35,6 +35,7 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.source.online.all.MergedSource
+import eu.kanade.tachiyomi.util.updateLocalCoverFromSourceFetch
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
@@ -546,13 +547,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             return source.fetchChaptersAndSync(manga, false)
         }
 
-        val chapters = source.getChapterList(manga.toSManga())
+        val sManga = manga.toSManga()
+        val chapters = source.getChapterList(sManga)
 
         // Get manga from database to account for if it was removed during the update and
         // to get latest data so it doesn't get overwritten later on
         val dbManga = getManga.await(manga.id)?.takeIf { it.favorite } ?: return emptyList()
 
-        return syncChaptersWithSource.await(chapters, dbManga, source, false, fetchWindow)
+        return syncChaptersWithSource.await(chapters, dbManga, source, false, fetchWindow).also {
+            dbManga.updateLocalCoverFromSourceFetch(source, sManga, updateManga, coverCache)
+        }
     }
 
     // SY -->

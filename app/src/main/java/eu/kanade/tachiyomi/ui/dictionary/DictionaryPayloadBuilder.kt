@@ -34,6 +34,7 @@ internal data class DictionaryRenderSignature(
     val activeProfile: AnkiProfile,
     val tabs: List<TabInfo>,
     val recursiveNavMode: String,
+    val renderRecursiveChrome: Boolean,
     val wordAudioEnabled: Boolean,
     val wordAudioAutoplay: Boolean,
     val showNavigationButtons: Boolean,
@@ -170,6 +171,7 @@ internal fun buildConfigPayload(
     existingExpressions: Set<String> = emptySet(),
     tabs: List<TabInfo> = emptyList(),
     recursiveNavMode: String = "tabs",
+    renderRecursiveChrome: Boolean = true,
     wordAudioEnabled: Boolean = true,
     showNavigationButtons: Boolean = true,
     groupPitches: Boolean = false,
@@ -195,6 +197,7 @@ internal fun buildConfigPayload(
     put("wordAudioAutoplay", wordAudioAutoplay)
     put("wordAudioEnabled", wordAudioEnabled)
     put("recursiveNavMode", recursiveNavMode)
+    put("renderRecursiveChrome", renderRecursiveChrome)
     put("showNavigationButtons", showNavigationButtons)
     putJsonArray("tabs") {
         for (tab in tabs) add(buildJsonObject { put("label", tab.label); put("active", tab.active) })

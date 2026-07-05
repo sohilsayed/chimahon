@@ -53,6 +53,7 @@ import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
 import eu.kanade.tachiyomi.data.connections.discord.DiscordScreen
 import eu.kanade.tachiyomi.ui.browse.animeextension.AnimeExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.animeextension.animeExtensionsTab
+import eu.kanade.tachiyomi.ui.browse.animemigration.sources.migrateAnimeSourceTab
 import eu.kanade.tachiyomi.ui.browse.animesource.animeSourcesTab
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.ui.browse.extension.extensionsTab
@@ -151,6 +152,7 @@ data object BrowseTab : Tab {
         val animeTabs: ImmutableList<TabContent> = persistentListOf(
             animeSourcesTab(),
             animeExtensionsTab(animeExtensionsScreenModel),
+            migrateAnimeSourceTab(),
         )
 
         val currentTabs = if (isAnimeMode) animeTabs else mangaTabs

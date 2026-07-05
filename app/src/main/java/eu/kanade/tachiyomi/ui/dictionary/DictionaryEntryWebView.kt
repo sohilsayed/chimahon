@@ -48,6 +48,7 @@ fun DictionaryEntryWebView(
     showPitchNumber: Boolean = true,
     showPitchText: Boolean = true,
     recursiveNavMode: String = "tabs",
+    renderRecursiveChrome: Boolean = true,
     wordAudioEnabled: Boolean = true,
     wordAudioAutoplayOverride: Boolean? = null,
     customCss: String = "",
@@ -55,7 +56,7 @@ fun DictionaryEntryWebView(
     modifier: Modifier = Modifier,
     webViewProvider: ((android.content.Context) -> WebView)? = null,
     onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null,
-    onRecursiveLookup: ((String) -> Unit)? = null,
+    onRecursiveLookup: ((String, String?, Int?, Float?, Float?) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     onContentReadyChange: ((Boolean) -> Unit)? = null,
@@ -101,6 +102,7 @@ fun DictionaryEntryWebView(
         showPitchDiagram, showPitchNumber, showPitchText,
         activeProfile, tabs, recursiveNavMode, wordAudioEnabled,
         effectiveWordAudioAutoplay, showNavigationButtons, groupPitches,
+        renderRecursiveChrome,
     ) {
         DictionaryRenderSignature(
             results = results, styles = styles, placeholder = placeholder, isDark = isDark,
@@ -109,7 +111,8 @@ fun DictionaryEntryWebView(
             groupTerms = groupTerms,
             showPitchDiagram = showPitchDiagram, showPitchNumber = showPitchNumber,
             showPitchText = showPitchText, activeProfile = activeProfile, tabs = tabs,
-            recursiveNavMode = recursiveNavMode, wordAudioEnabled = wordAudioEnabled,
+            recursiveNavMode = recursiveNavMode, renderRecursiveChrome = renderRecursiveChrome,
+            wordAudioEnabled = wordAudioEnabled,
             wordAudioAutoplay = effectiveWordAudioAutoplay,
             showNavigationButtons = showNavigationButtons, groupPitches = groupPitches,
         )
@@ -127,6 +130,7 @@ fun DictionaryEntryWebView(
                 showFrequencyHarmonic, showFrequencyAverage, groupTerms,
                 showPitchDiagram, showPitchNumber, showPitchText,
                 effectiveWordAudioAutoplay, activeProfile, emptySet(), tabs, recursiveNavMode,
+                renderRecursiveChrome = renderRecursiveChrome,
                 wordAudioEnabled = wordAudioEnabled,
                 showNavigationButtons = showNavigationButtons,
                 groupPitches = groupPitches,
@@ -182,7 +186,6 @@ fun DictionaryEntryWebView(
                     webView.requestFocus()
                 }
                 webView.setOnLongClickListener { false }
-
                 webView.setOnKeyListener { v, keyCode, event ->
                     if (event.action == android.view.KeyEvent.ACTION_DOWN) {
                         when (keyCode) {

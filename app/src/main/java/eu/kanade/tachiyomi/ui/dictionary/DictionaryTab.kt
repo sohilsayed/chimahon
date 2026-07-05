@@ -580,7 +580,7 @@ data object DictionaryTab : Tab {
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },
                     onAnkiLookup = onAnkiLookup,
-                    onRecursiveLookup = { word -> stackLookup(word) },
+                    onRecursiveLookup = { word, _, _, _, _ -> stackLookup(word) },
                     onTabSelect = { idx ->
                         if (idx in lookupStack.indices) activeTabIndex = idx
                     },

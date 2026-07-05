@@ -10,6 +10,7 @@
   --font-size-no-units: 14;
   --font-size: calc(1px * var(--font-size-no-units));
   --line-height: 1.4;
+  --lookup-tabs-height: 0px;
 
   --headword-font-size: 1.6em;
   --tag-font-size: 0.75em;
@@ -48,6 +49,8 @@ html {
   background: var(--bg);
   width: 100%;
   overflow-x: hidden;
+  overflow-anchor: none;
+  scroll-padding-top: var(--lookup-tabs-height);
   position: relative;
 }
 
@@ -60,6 +63,7 @@ body {
   line-height: var(--line-height);
   font-size: calc(1px * var(--font-size-no-units));
   overflow-x: hidden;
+  overflow-anchor: none;
   width: 100%;
   position: relative;
 }
@@ -87,7 +91,8 @@ body {
 }
 
 .entries {
-  padding: 4px 12px 4px 4px; /* top padding adjusted dynamically for fixed tab bar */
+  padding: 4px 12px 4px 4px;
+  overflow-anchor: none;
 }
 
 .definition-list *,
@@ -668,6 +673,7 @@ table {
   -webkit-overflow-scrolling: touch;
   width: 100%;
   box-sizing: border-box;
+  overflow-anchor: none;
 }
 
 .lookup-tabs::-webkit-scrollbar {

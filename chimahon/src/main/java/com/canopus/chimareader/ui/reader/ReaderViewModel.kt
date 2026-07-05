@@ -558,6 +558,14 @@ class ReaderViewModel(
         scheduleSyncExport()
     }
 
+    fun flushReaderState() {
+        persistBookmark(currentProgress, force = true)
+        if (!trackingLocked && !appBackgrounded) {
+            statisticsTracker.update(totalExploredCharCount)
+        }
+        persistToDisk()
+    }
+
     fun syncOnOpen() {
         // Handled synchronously in ReaderScreen if enabled
     }
@@ -614,17 +622,22 @@ class ReaderViewModel(
 
     fun nextChapter(): Boolean {
         if (index >= chapterCount - 1) return false
+        saveBookmark(1.0)
         loadChapter(index + 1, 0.0)
         return true
     }
 
     fun previousChapter(): Boolean {
         if (index <= 0) return false
+        saveBookmark(1.0)
         loadChapter(index - 1, 1.0)
         return true
     }
 
     fun jumpToChapter(spineIndex: Int, fragment: String? = null) {
+        if (spineIndex != index) {
+            saveBookmark(1.0)
+        }
         loadChapter(spineIndex, 0.0)
         if (!fragment.isNullOrEmpty()) {
             bridge.send(WebViewCommand.JumpToFragment(fragment))
@@ -736,6 +749,7 @@ class ReaderViewModel(
     }
 
     fun onAppBackgrounded() {
+        flushReaderState()
         appBackgrounded = true
     }
 

@@ -393,6 +393,8 @@ dependencies {
 
     // NewPipe Extractor for YouTube stream resolution
     implementation(libs.newpipe.extractor)
+    // Match NewPipe dev's protobuf patch while staying on the stable extractor release.
+    implementation(libs.protobuf.javalite)
 }
 
 androidComponents {

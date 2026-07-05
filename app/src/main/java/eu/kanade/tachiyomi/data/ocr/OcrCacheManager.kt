@@ -129,7 +129,7 @@ class OcrCacheManager(
                     chapterLocation.dir.findFile(OCR_CACHE_FILE)?.exists() == true
                 }
                 is ChapterLocation.Cbz -> {
-                    getSidecarFile(chapterLocation.file)?.exists() == true
+                    findSidecarFile(chapterLocation.file)?.exists() == true
                 }
             }
         } else {
@@ -176,7 +176,7 @@ class OcrCacheManager(
         source: Source,
     ) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val mangaDir = downloadProvider.findMangaDir(manga.title, source)
+            val mangaDir = downloadProvider.findMangaDir(manga.ogTitle, source)
             mangaDir?.listFiles()?.forEach { chapterEntry ->
                 when {
                     chapterEntry.isDirectory -> {
@@ -226,7 +226,7 @@ class OcrCacheManager(
             chapterName = chapter.name,
             chapterScanlator = chapter.scanlator,
             chapterUrl = chapter.url,
-            mangaTitle = manga.title,
+            mangaTitle = manga.ogTitle,
             sourceId = source.id,
         )
     }
@@ -241,7 +241,7 @@ class OcrCacheManager(
             chapter.name,
             chapter.scanlator,
             chapter.url,
-            manga.title,
+            manga.ogTitle,
             source,
         ) ?: return null
 
@@ -319,6 +319,11 @@ class OcrCacheManager(
         return parent.findFile(sidecarName) ?: parent.createFile(sidecarName)
     }
 
+    private fun findSidecarFile(cbzFile: UniFile): UniFile? {
+        val parent = cbzFile.parentFile ?: return null
+        return parent.findFile("${cbzFile.name}$OCR_SIDECAR_SUFFIX")
+    }
+
     /**
      * Save OCR data to a CBZ sidecar file.
      */
@@ -357,7 +362,7 @@ class OcrCacheManager(
      * Load OCR data from a CBZ sidecar file.
      */
     private fun loadFromCbz(cbzFile: UniFile, pageIndex: Int): List<OcrTextBlock>? {
-        val sidecarFile = cbzFile.parentFile?.findFile("${cbzFile.name}$OCR_SIDECAR_SUFFIX") ?: return null
+        val sidecarFile = findSidecarFile(cbzFile) ?: return null
 
         return try {
             val content = sidecarFile.openInputStream().bufferedReader().use { it.readText() }

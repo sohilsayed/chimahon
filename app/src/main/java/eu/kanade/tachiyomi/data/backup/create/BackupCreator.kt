@@ -5,6 +5,10 @@ import android.net.Uri
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.backup.BackupFileValidator
+import eu.kanade.tachiyomi.data.backup.create.creators.AnimeBackupCreator
+import eu.kanade.tachiyomi.data.backup.create.creators.AnimeCategoriesBackupCreator
+import eu.kanade.tachiyomi.data.backup.create.creators.AnimeExtensionRepoBackupCreator
+import eu.kanade.tachiyomi.data.backup.create.creators.AnimeSourcesBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.CategoriesBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.ExtensionRepoBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.FeedBackupCreator
@@ -13,6 +17,8 @@ import eu.kanade.tachiyomi.data.backup.create.creators.PreferenceBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SavedSearchBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SourcesBackupCreator
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAnime
+import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
@@ -29,6 +35,10 @@ import okio.sink
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.backup.service.BackupPreferences
+import tachiyomi.domain.entries.anime.interactor.GetAnimeSeasonsByParentId
+import tachiyomi.domain.entries.anime.interactor.GetFavoriteAnime
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetMergedManga
 import tachiyomi.domain.manga.model.Manga
@@ -48,14 +58,21 @@ class BackupCreator(
 
     private val parser: ProtoBuf = Injekt.get(),
     private val getFavorites: GetFavorites = Injekt.get(),
+    private val getFavoriteAnime: GetFavoriteAnime = Injekt.get(),
     private val backupPreferences: BackupPreferences = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
+    private val animeRepository: AnimeRepository = Injekt.get(),
+    private val getAnimeSeasonsByParentId: GetAnimeSeasonsByParentId = Injekt.get(),
 
     private val categoriesBackupCreator: CategoriesBackupCreator = CategoriesBackupCreator(),
+    private val animeCategoriesBackupCreator: AnimeCategoriesBackupCreator = AnimeCategoriesBackupCreator(),
     private val mangaBackupCreator: MangaBackupCreator = MangaBackupCreator(),
+    private val animeBackupCreator: AnimeBackupCreator = AnimeBackupCreator(),
     private val preferenceBackupCreator: PreferenceBackupCreator = PreferenceBackupCreator(),
     private val extensionRepoBackupCreator: ExtensionRepoBackupCreator = ExtensionRepoBackupCreator(),
+    private val animeExtensionRepoBackupCreator: AnimeExtensionRepoBackupCreator = AnimeExtensionRepoBackupCreator(),
     private val sourcesBackupCreator: SourcesBackupCreator = SourcesBackupCreator(),
+    private val animeSourcesBackupCreator: AnimeSourcesBackupCreator = AnimeSourcesBackupCreator(),
     // KMK -->
     private val feedBackupCreator: FeedBackupCreator = FeedBackupCreator(),
     // KMK <--
@@ -98,13 +115,18 @@ class BackupCreator(
             // SY <--
             val backupManga =
                 backupMangas(getFavorites.await() + nonFavoriteManga /* SY --> */ + mergedManga /* SY <-- */, options)
+            val backupAnime = backupAnimes(options)
 
             val backup = Backup(
                 backupManga = backupManga,
                 backupCategories = backupCategories(options),
                 backupSources = backupSources(backupManga),
+                backupAnime = backupAnime,
+                backupAnimeCategories = backupAnimeCategories(options),
+                backupAnimeSources = backupAnimeSources(backupAnime),
                 backupPreferences = backupAppPreferences(options),
                 backupExtensionRepo = backupExtensionRepos(options),
+                backupAnimeExtensionRepo = backupAnimeExtensionRepos(options),
                 backupSourcePreferences = backupSourcePreferences(options),
 
                 // SY -->
@@ -169,6 +191,26 @@ class BackupCreator(
         return sourcesBackupCreator(mangas)
     }
 
+    suspend fun backupAnimeCategories(options: BackupOptions): List<BackupCategory> {
+        if (!options.categories) return emptyList()
+
+        return animeCategoriesBackupCreator()
+    }
+
+    suspend fun backupAnimes(options: BackupOptions): List<BackupAnime> {
+        if (!options.animeEntries) return emptyList()
+
+        val favoriteAnime = getFavoriteAnime.await()
+        val seenAnime = if (options.readEntries) animeRepository.getSeenAnimeNotInLibrary() else emptyList()
+        val seasons = favoriteAnime
+            .flatMap { getAnimeSeasonsByParentId.await(it.id).map { season -> season.anime } }
+        return animeBackupCreator((favoriteAnime + seenAnime + seasons).distinctBy { it.id }, options)
+    }
+
+    fun backupAnimeSources(animes: List<BackupAnime>): List<BackupAnimeSource> {
+        return animeSourcesBackupCreator(animes)
+    }
+
     /* KMK --> */ suspend /* KMK <-- */ fun backupAppPreferences(options: BackupOptions): List<BackupPreference> {
         if (!options.appSettings) return emptyList()
 
@@ -179,6 +221,12 @@ class BackupCreator(
         if (!options.extensionRepoSettings) return emptyList()
 
         return extensionRepoBackupCreator()
+    }
+
+    suspend fun backupAnimeExtensionRepos(options: BackupOptions): List<BackupExtensionRepos> {
+        if (!options.extensionRepoSettings) return emptyList()
+
+        return animeExtensionRepoBackupCreator()
     }
 
     fun backupSourcePreferences(options: BackupOptions): List<BackupSourcePreferences> {

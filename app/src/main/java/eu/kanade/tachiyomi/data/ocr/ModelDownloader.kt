@@ -1,7 +1,10 @@
 package eu.kanade.tachiyomi.data.ocr
 
 import android.content.Context
+import android.net.Uri
+import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.CoroutineScope
@@ -11,8 +14,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import android.net.Uri
-import com.hippo.unifile.UniFile
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -24,13 +25,34 @@ class ModelDownloader(
 ) {
     companion object {
         private const val RELEASE_BASE =
-            "https://github.com/sohilsayed/chimahon-local-models/releases/latest/download"
+            "https://github.com/sohilsayed/chimahon-local-models/releases/download/v2.0"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val isDownloaded: Boolean
-        get() = File(context.filesDir, "screenai_models/lots_multiscript_v8_runner.binarypb").isFile
+        get() = lensSupportedAbi()?.let { abi ->
+            requiredLensFiles(abi).all { it.isFile && it.length() > 0L }
+        } ?: false
+
+    private fun lensSupportedAbi(): String? = when {
+        "arm64-v8a" in Build.SUPPORTED_ABIS -> "arm64-v8a"
+        "armeabi-v7a" in Build.SUPPORTED_ABIS -> "armeabi-v7a"
+        else -> null
+    }
+
+    private fun requiredLensFiles(abi: String): List<File> {
+        val root = File(context.filesDir, "screenai_models")
+        return listOf(
+            File(root, "lots_multiscript_v8_runner.binarypb"),
+            File(root, "lots_multiscript_v8_engine_patched.binarypb"),
+            File(root, "third_party/lens/line_detector/v688492737/gocr_group_rpn_text_detection_config_2024_q4.binarypb"),
+            File(root, "third_party/lens/line_recognition/v678672708/recognizer_jpan.tflite"),
+            File(root, "third_party/lens/line_recognition/v678672708/recognizer_jpan_lm.compact_fst.gz"),
+            File(root, "lib/$abi/liblens_ondevice_engine_base.so"),
+            File(root, "lib/$abi/liblens_ondevice_engine_play_ml.so"),
+        )
+    }
 
     fun triggerDownload() {
         if (isDownloaded) return
@@ -101,28 +123,29 @@ class ModelDownloader(
             val source = UniFile.fromUri(context, uri)
                 ?: return@withContext Result.failure(RuntimeException("Could not open file"))
             source.openInputStream().use { extractZip(it) }
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private fun extractZip(input: InputStream): Result<Unit> {
-        try {
-            ZipInputStream(input).use { zip ->
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    val target = File(context.filesDir, entry.name)
-                    if (entry.isDirectory) target.mkdirs()
-                    else {
-                        target.parentFile?.mkdirs()
-                        FileOutputStream(target).use { out -> zip.copyTo(out) }
-                    }
-                    zip.closeEntry()
+    private fun extractZip(input: InputStream) {
+        val root = context.filesDir.canonicalFile
+        ZipInputStream(input).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val target = File(root, entry.name).canonicalFile
+                check(target.path == root.path || target.path.startsWith(root.path + File.separator)) {
+                    "Unsafe zip entry: ${entry.name}"
                 }
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                } else {
+                    target.parentFile?.mkdirs()
+                    FileOutputStream(target).use { out -> zip.copyTo(out) }
+                }
+                zip.closeEntry()
             }
-            return Result.success(Unit)
-        } catch (e: Exception) {
-            return Result.failure(e)
         }
     }
 }

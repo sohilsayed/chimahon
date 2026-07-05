@@ -4,6 +4,7 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.source.local.image.LocalCoverManager
@@ -38,6 +39,18 @@ fun Manga.prepUpdateCover(coverCache: CoverCache, remoteManga: SManga, refreshSa
             this.copy(coverLastModified = Instant.now().toEpochMilli())
         }
     }
+}
+
+suspend fun Manga.updateLocalCoverFromSourceFetch(
+    source: Source,
+    sourceManga: SManga,
+    updateManga: UpdateManga = Injekt.get(),
+    coverCache: CoverCache = Injekt.get(),
+) {
+    val generatedCover = sourceManga.thumbnail_url?.takeIf { it.isNotBlank() } ?: return
+    if (!source.isLocal() || generatedCover == thumbnailUrl) return
+
+    updateManga.awaitUpdateFromSource(this, sourceManga, manualFetch = false, coverCache)
 }
 
 fun Manga.removeCovers(coverCache: CoverCache = Injekt.get()): Manga {

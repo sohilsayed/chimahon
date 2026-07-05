@@ -53,11 +53,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout private submodules
+      - name: Checkout submodules
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          # Convert SSH submodule URLs to HTTPS (e.g. utf8proc uses git@github.com:)
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           if [ -n "$GH_PAT" ]; then
             git config --global url."https://$GH_PAT@github.com/".insteadOf "https://github.com/"

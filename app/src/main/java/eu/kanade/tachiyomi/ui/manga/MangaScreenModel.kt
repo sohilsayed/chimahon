@@ -73,6 +73,7 @@ import eu.kanade.tachiyomi.ui.manga.RelatedManga.Companion.sorted
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.updateLocalCoverFromSourceFetch
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toast
 import exh.debug.DebugToggles
@@ -91,6 +92,7 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -243,6 +245,8 @@ class MangaScreenModel(
     private val successState: State.Success?
         get() = state.value as? State.Success
 
+    private val ocrReindexCheckedChapterIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
+
     // KMK -->
     val useNewSourceNavigation by uiPreferences.useNewSourceNavigation().asState(screenModelScope)
     val themeCoverBased = uiPreferences.themeCoverBased().get()
@@ -394,6 +398,7 @@ class MangaScreenModel(
                             // SY <--
                         )
                     }
+                    reindexDownloadedOcrStatus(manga, chapters, mergedData)
                 }
         }
 
@@ -1145,6 +1150,55 @@ class MangaScreenModel(
         }
     }
 
+    private suspend fun reindexDownloadedOcrStatus(
+        manga: Manga,
+        chapters: List<Chapter>,
+        mergedData: MergedMangaData?,
+    ) {
+        val pendingChapters = chapters
+            .filterNot { it.isOcrReady }
+            .filter { ocrReindexCheckedChapterIds.add(it.id) }
+        if (pendingChapters.isEmpty()) return
+
+        try {
+            val readyChapterIds = mutableSetOf<Long>()
+            val chaptersByManga = if (mergedData == null) {
+                mapOf(manga.id to pendingChapters)
+            } else {
+                pendingChapters.groupBy { it.mangaId }
+            }
+
+            chaptersByManga.forEach { (chapterMangaId, mangaChapters) ->
+                val chapterManga = mergedData?.manga?.get(chapterMangaId) ?: manga.takeIf { it.id == chapterMangaId } ?: return@forEach
+                val source = mergedData?.sources?.find { it.id == chapterManga.source } ?: sourceManager.getOrStub(chapterManga.source)
+                readyChapterIds += ocrManager.reindexDownloadedOcrStatus(chapterManga, source, mangaChapters)
+            }
+
+            if (readyChapterIds.isNotEmpty()) {
+                updateSuccessState { state ->
+                    state.copy(
+                        chapters = state.chapters.map { item ->
+                            if (item.chapter.id in readyChapterIds) {
+                                item.copy(
+                                    chapter = item.chapter.copy(isOcrReady = true),
+                                    isOcrReady = true,
+                                )
+                            } else {
+                                item
+                            }
+                        },
+                    )
+                }
+            }
+        } catch (e: CancellationException) {
+            ocrReindexCheckedChapterIds.removeAll(pendingChapters.map { it.id }.toSet())
+            throw e
+        } catch (e: Exception) {
+            ocrReindexCheckedChapterIds.removeAll(pendingChapters.map { it.id }.toSet())
+            logcat(LogPriority.WARN, e) { "Failed to reindex downloaded OCR status for manga ${manga.id}" }
+        }
+    }
+
     // SY -->
     private fun getPagePreviews(manga: Manga, source: Source) {
         screenModelScope.launchIO {
@@ -1173,7 +1227,8 @@ class MangaScreenModel(
                 // SY -->
                 if (state.source !is MergedSource) {
                     // SY <--
-                    val chapters = state.source.getChapterList(state.manga.toSManga())
+                    val sManga = state.manga.toSManga()
+                    val chapters = state.source.getChapterList(sManga)
 
                     val newChapters = syncChaptersWithSource.await(
                         chapters,
@@ -1181,6 +1236,7 @@ class MangaScreenModel(
                         state.source,
                         manualFetch,
                     )
+                    state.manga.updateLocalCoverFromSourceFetch(state.source, sManga, updateManga)
 
                     if (manualFetch) {
                         downloadNewChapters(newChapters)

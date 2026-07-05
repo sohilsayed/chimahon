@@ -7,7 +7,7 @@ import eu.kanade.presentation.library.components.AnimeCompactGridItem
 import eu.kanade.presentation.library.components.AnimeListItem
 import eu.kanade.presentation.library.components.DownloadsBadge
 import eu.kanade.presentation.library.components.LanguageBadge
-import eu.kanade.presentation.library.components.UnreadBadge
+import eu.kanade.presentation.library.components.UnviewedBadge
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeSeasonItem
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.AnimeCover
@@ -48,7 +48,7 @@ fun AnimeSeasonListItem(
                 ),
                 coverBadgeStart = {
                     DownloadsBadge(count = item.downloadCount)
-                    UnreadBadge(count = item.unseenCount)
+                    UnviewedBadge(count = item.unseenCount)
                 },
                 coverBadgeEnd = {
                     LanguageBadge(
@@ -77,7 +77,7 @@ fun AnimeSeasonListItem(
                 ),
                 coverBadgeStart = {
                     DownloadsBadge(count = item.downloadCount)
-                    UnreadBadge(count = item.unseenCount)
+                    UnviewedBadge(count = item.unseenCount)
                 },
                 coverBadgeEnd = {
                     LanguageBadge(
@@ -106,7 +106,7 @@ fun AnimeSeasonListItem(
                 ),
                 coverBadgeStart = {
                     DownloadsBadge(count = item.downloadCount)
-                    UnreadBadge(count = item.unseenCount)
+                    UnviewedBadge(count = item.unseenCount)
                 },
                 coverBadgeEnd = {
                     LanguageBadge(
@@ -135,7 +135,7 @@ fun AnimeSeasonListItem(
                 ),
                 badge = {
                     DownloadsBadge(count = item.downloadCount)
-                    UnreadBadge(count = item.unseenCount)
+                    UnviewedBadge(count = item.unseenCount)
                     LanguageBadge(
                         isLocal = item.isLocal,
                         sourceLanguage = item.sourceLanguage,

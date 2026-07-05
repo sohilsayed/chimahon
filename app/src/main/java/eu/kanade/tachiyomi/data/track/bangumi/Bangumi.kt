@@ -3,8 +3,11 @@ package eu.kanade.tachiyomi.data.track.bangumi
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Track
+import eu.kanade.tachiyomi.data.database.models.anime.AnimeTrack
+import eu.kanade.tachiyomi.data.track.AnimeTracker
 import eu.kanade.tachiyomi.data.track.BaseTracker
 import eu.kanade.tachiyomi.data.track.bangumi.dto.BGMOAuth
+import eu.kanade.tachiyomi.data.track.model.AnimeTrackSearch
 import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import kotlinx.collections.immutable.ImmutableList
@@ -12,9 +15,10 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.anime.model.AnimeTrack as DomainAnimeTrack
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
+class Bangumi(id: Long) : BaseTracker(id, "Bangumi"), AnimeTracker {
 
     private val json: Json by injectLazy()
 
@@ -26,12 +30,24 @@ class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
 
     override fun getScoreList(): ImmutableList<String> = SCORE_LIST
 
+    override fun indexToScore(index: Int): Double {
+        return index.toDouble()
+    }
+
     override fun displayScore(track: DomainTrack): String {
+        return track.score.toInt().toString()
+    }
+
+    override fun displayScore(track: DomainAnimeTrack): String {
         return track.score.toInt().toString()
     }
 
     private suspend fun add(track: Track): Track {
         return api.addLibManga(track)
+    }
+
+    private suspend fun add(track: AnimeTrack): AnimeTrack {
+        return api.addLibAnime(track)
     }
 
     override suspend fun update(track: Track, didReadChapter: Boolean): Track {
@@ -46,6 +62,20 @@ class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
         }
 
         return api.updateLibManga(track)
+    }
+
+    override suspend fun update(track: AnimeTrack, didWatchEpisode: Boolean): AnimeTrack {
+        if (track.status != COMPLETED) {
+            if (didWatchEpisode) {
+                if (track.last_episode_seen.toLong() == track.total_episodes && track.total_episodes > 0) {
+                    track.status = COMPLETED
+                } else {
+                    track.status = READING
+                }
+            }
+        }
+
+        return api.updateLibAnime(track)
     }
 
     override suspend fun bind(track: Track, hasReadChapters: Boolean): Track {
@@ -69,8 +99,33 @@ class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
         }
     }
 
+    override suspend fun bind(track: AnimeTrack, hasSeenEpisodes: Boolean): AnimeTrack {
+        val statusTrack = api.statusLibAnime(track, getUsername())
+        return if (statusTrack != null) {
+            track.copyPersonalFrom(statusTrack, copyRemotePrivate = false)
+            track.library_id = statusTrack.library_id
+            track.score = statusTrack.score
+            track.last_episode_seen = statusTrack.last_episode_seen
+            track.total_episodes = statusTrack.total_episodes
+            if (track.status != COMPLETED) {
+                track.status = if (hasSeenEpisodes) READING else statusTrack.status
+            }
+
+            update(track)
+        } else {
+            // Set default fields if it's not found in the list
+            track.status = if (hasSeenEpisodes) READING else PLAN_TO_READ
+            track.score = 0.0
+            add(track)
+        }
+    }
+
     override suspend fun search(query: String): List<TrackSearch> {
         return api.search(query)
+    }
+
+    override suspend fun searchAnime(query: String): List<AnimeTrackSearch> {
+        return api.searchAnime(query)
     }
 
     override suspend fun getMangaMetadata(track: DomainTrack): TrackMangaMetadata {
@@ -83,9 +138,19 @@ class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
         return track
     }
 
+    override suspend fun refresh(track: AnimeTrack): AnimeTrack {
+        val remoteStatusTrack = api.statusLibAnime(track, getUsername()) ?: throw Exception("Could not find anime")
+        track.copyPersonalFrom(remoteStatusTrack)
+        return track
+    }
+
     override fun getLogo() = R.drawable.brand_bangumi
 
     override fun getStatusList(): List<Long> {
+        return listOf(READING, COMPLETED, ON_HOLD, DROPPED, PLAN_TO_READ)
+    }
+
+    override fun getStatusListAnime(): List<Long> {
         return listOf(READING, COMPLETED, ON_HOLD, DROPPED, PLAN_TO_READ)
     }
 
@@ -98,9 +163,22 @@ class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
         else -> null
     }
 
+    override fun getStatusForAnime(status: Long): StringResource? = when (status) {
+        READING -> MR.strings.watching
+        PLAN_TO_READ -> MR.strings.plan_to_watch
+        COMPLETED -> MR.strings.completed
+        ON_HOLD -> MR.strings.on_hold
+        DROPPED -> MR.strings.dropped
+        else -> null
+    }
+
     override fun getReadingStatus(): Long = READING
 
+    override fun getWatchingStatus(): Long = READING
+
     override fun getRereadingStatus(): Long = -1
+
+    override fun getRewatchingStatus(): Long = -1
 
     override fun getCompletionStatus(): Long = COMPLETED
 

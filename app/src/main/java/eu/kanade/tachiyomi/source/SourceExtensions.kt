@@ -85,6 +85,20 @@ private fun getMergedSourcesString(
 
 fun Source.isLocalOrStub(): Boolean = isLocal() || this is StubSource
 
+fun AnimeSource.getNameForAnimeInfo(): String {
+    val preferences = Injekt.get<SourcePreferences>()
+    val enabledLanguages = preferences.enabledLanguages().get()
+        .filterNot { it in listOf("all", "other") }
+    val hasOneActiveLanguages = enabledLanguages.size == 1
+    val isInEnabledLanguages = lang in enabledLanguages
+    return when {
+        this is StubAnimeSource -> toString()
+        hasOneActiveLanguages && !isInEnabledLanguages -> "$name (${FlagEmoji.getEmojiLangFlag(lang)})"
+        hasOneActiveLanguages && isInEnabledLanguages -> name
+        else -> "$name (${FlagEmoji.getEmojiLangFlag(lang)})"
+    }
+}
+
 // KMK -->
 fun Source.isIncognitoModeEnabled(incognitoExtensions: Set<String>? = null): Boolean {
     val extensionPackage = when {

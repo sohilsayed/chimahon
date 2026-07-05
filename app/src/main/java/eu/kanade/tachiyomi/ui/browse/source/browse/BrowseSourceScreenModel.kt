@@ -33,6 +33,7 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.updateLocalCoverFromSourceFetch
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.source.EH_PACKAGE
 import exh.source.ExhPreferences
@@ -436,6 +437,7 @@ open class BrowseSourceScreenModel(
                         if (fetchChaptersOnAdd) {
                             val chapters = source.getChapterList(sManga)
                             syncChaptersWithSource.await(chapters, manga, source, false)
+                            manga.updateLocalCoverFromSourceFetch(source, sManga, updateManga, coverCache)
                         }
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR, e)

@@ -82,6 +82,15 @@ object KoreanDeinflector : Deinflector {
         suffixInflection("ㅒ", "ㅒㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅔ", "ㅔㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅖ", "ㅖㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅘ", "ㅗㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅝ", "ㅜㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅙ", "ㅚㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅘㅇㅛ", "ㅗㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅝㅇㅛ", "ㅜㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅙㅇㅛ", "ㅚㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅘㄹㅏ", "ㅗㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅝㄹㅏ", "ㅜㄷㅏ", emptySet(), setOf("v", "adj")),
+        suffixInflection("ㅙㄹㅏ", "ㅚㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅗ", "ㅗㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅓ", "ㅓㄷㅏ", emptySet(), setOf("v", "adj")),
         suffixInflection("ㅏ", "ㅏㄷㅏ", emptySet(), setOf("v", "adj")),
@@ -1976,6 +1985,9 @@ object KoreanDeinflector : Deinflector {
         suffixInflection("ㅇㅕㅆ", "ㅇㅣㄷㅏ", setOf("p"), setOf("v", "adj", "ida")),
         suffixInflection("ㅎㅐㅆ", "ㅎㅏㄷㅏ", setOf("p"), setOf("v", "adj")),
         suffixInflection("ㅎㅏㅇㅕㅆ", "ㅎㅏㄷㅏ", setOf("p"), setOf("v", "adj")),
+        suffixInflection("ㅘㅆ", "ㅗㄷㅏ", setOf("p"), setOf("v", "adj")),
+        suffixInflection("ㅝㅆ", "ㅜㄷㅏ", setOf("p"), setOf("v", "adj")),
+        suffixInflection("ㅙㅆ", "ㅚㄷㅏ", setOf("p"), setOf("v", "adj")),
         suffixInflection("ㅇㅘㅆ", "ㅂㄷㅏ", setOf("p"), setOf("v", "adj")),
         suffixInflection("ㅇㅝㅆ", "ㅂㄷㅏ", setOf("p"), setOf("v", "adj")),
         suffixInflection("ㅇㅏㅆ", "ㅅㄷㅏ", setOf("p"), setOf("v", "adj")),
@@ -2745,4 +2757,3 @@ object KoreanDeinflector : Deinflector {
         suffixInflection("ㅈㅣㅇㅛ", "", emptySet(), setOf("p", "f", "eusi"))
     )
 }
-

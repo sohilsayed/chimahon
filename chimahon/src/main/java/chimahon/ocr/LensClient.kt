@@ -108,7 +108,12 @@ class LensClient(
     ): OcrDebugResult = withContext(Dispatchers.IO) {
         retryOcr {
             val rawChunks = getRawOcrDataInternal(bytes, language)
-            val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
+            val config = MergeConfig(
+                language = language,
+                addSpaceOnMerge = addSpaceOnMerge,
+                imageWidth = rawChunks.firstOrNull()?.fullWidth?.toDouble(),
+                imageHeight = rawChunks.firstOrNull()?.fullHeight?.toDouble(),
+            )
             val mergedResults = when (merger) {
                 MergerType.LEGACY -> rawChunks.flatMap { chunk ->
                     LensMerger.autoMerge(chunk.lines, chunk.width, chunk.height, config).map { result ->
@@ -143,7 +148,12 @@ class LensClient(
     ): OcrDebugResult = withContext(Dispatchers.IO) {
         retryOcr {
             val rawChunks = getRawOcrDataInternal(bitmap, language)
-            val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
+            val config = MergeConfig(
+                language = language,
+                addSpaceOnMerge = addSpaceOnMerge,
+                imageWidth = rawChunks.firstOrNull()?.fullWidth?.toDouble(),
+                imageHeight = rawChunks.firstOrNull()?.fullHeight?.toDouble(),
+            )
             val mergedResults = when (merger) {
                 MergerType.LEGACY -> rawChunks.flatMap { chunk ->
                     LensMerger.autoMerge(chunk.lines, chunk.width, chunk.height, config).map { result ->
@@ -381,7 +391,7 @@ class LensClient(
             top = (box.y + chunk.globalY.toDouble()) / chunk.fullHeight.toDouble(),
             right = (box.x + box.width) / chunk.fullWidth.toDouble(),
             bottom = (box.y + box.height + chunk.globalY.toDouble()) / chunk.fullHeight.toDouble(),
-            rotation = box.rotation ?: 0.0,
+            rotation = Math.toRadians(box.rotation ?: 0.0),
         )
         val direction = when (forcedOrientation) {
             "vertical" -> WritingDirection.TTB

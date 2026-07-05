@@ -4,13 +4,19 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.util.Log
 import android.webkit.WebView
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -30,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -40,7 +47,10 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.text.style.TextOverflow
 import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.theme.colorscheme.CustomColorScheme
@@ -64,6 +74,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,10 +96,22 @@ private val miningScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 private data class LookupFrame(
     val id: String = UUID.randomUUID().toString(),
     val query: String,
+    val sentence: String,
+    val sentenceOffset: Int,
     val results: List<LookupResult>,
     val styles: List<chimahon.DictionaryStyle>,
     val mediaDataUris: Map<String, String>,
     val existingExpressions: Set<String>,
+)
+
+private data class RecursivePopupRequest(
+    val id: String = UUID.randomUUID().toString(),
+    val query: String,
+    val sentence: String,
+    val sentenceOffset: Int,
+    val tapX: Float? = null,
+    val tapY: Float? = null,
+    val deferredResult: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>,
 )
 
 
@@ -117,13 +140,14 @@ fun OcrLookupPopup(
     usePopup: Boolean = true,
     onTermMatched: ((Int, Int) -> Unit)? = null,
     onContentReadyChange: ((Boolean) -> Unit)? = null,
+    dismissOnOutsideTap: Boolean = false,
     modifier: Modifier = Modifier,
     titleId: String? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isLoading by remember {
-        mutableStateOf(initialLookupDeferred != null && !initialLookupDeferred.isCompleted)
+        mutableStateOf(initialLookupDeferred?.isCompleted != true)
     }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -143,12 +167,18 @@ fun OcrLookupPopup(
     val styles = currentFrame?.styles ?: emptyList()
     val mediaDataUris = currentFrame?.mediaDataUris ?: emptyMap()
     val existingExpressions = currentFrame?.existingExpressions ?: emptySet()
+    var childPopupRequest by remember { mutableStateOf<RecursivePopupRequest?>(null) }
+    val childPopupWebView = remember(context) { WebView(context) }
     var contentReady by remember(visible) { mutableStateOf(false) }
     // Tracks the lookupGeneration value at the time content was last painted.
     // Used to distinguish a fresh lookup (hide stale content) from a same-lookup
     // invalidation like an Anki-status patch (keep content visible).
     var lastRenderedLookupGeneration by remember { mutableIntStateOf(-1) }
     var lookupGeneration by remember { mutableIntStateOf(0) }
+
+    androidx.compose.runtime.DisposableEffect(childPopupWebView) {
+        onDispose { childPopupWebView.destroy() }
+    }
 
 
     val density = LocalDensity.current
@@ -204,7 +234,13 @@ fun OcrLookupPopup(
     }
 
     /** Perform a dictionary lookup and push a new frame onto the stack. */
-    fun pushLookup(query: String, isRecursive: Boolean = false, deferredResult: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null) {
+    fun pushLookup(
+        query: String,
+        isRecursive: Boolean = false,
+        sentenceContext: String = fullText,
+        sentenceOffsetContext: Int = charOffset,
+        deferredResult: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
+    ) {
         val cleanQuery = if (isRecursive) {
             query.replace(Regex("[\\s\\p{Punct}「」『』【】（）〔〕［］｛｝〈〉《》…、。！？!?]+"), "").trim()
         } else {
@@ -233,6 +269,8 @@ fun OcrLookupPopup(
             val frame = LookupFrame(
                 id = UUID.randomUUID().toString(),
                 query = finalQuery,
+                sentence = sentenceContext,
+                sentenceOffset = sentenceOffsetContext,
                 results = orderedResults,
                 styles = result.styles,
                 mediaDataUris = result.mediaDataUris,
@@ -244,7 +282,6 @@ fun OcrLookupPopup(
             lookupStackState = LookupStackState(stack = truncated, activeIndex = truncated.size - 1)
             errorMessage = result.error
 
-            // Hide loading spinner — popup is visible
             isLoading = false
 
             if (!isRecursive && orderedResults.isNotEmpty()) {
@@ -423,6 +460,13 @@ fun OcrLookupPopup(
         forceOpen: Boolean = false,
     ) {
         val result = results.getOrNull(index) ?: return
+        val miningFrame = currentFrame
+        val miningSentence = miningFrame?.sentence ?: fullText
+        val miningOffset = result.matched
+            .takeIf { it.isNotBlank() }
+            ?.let { miningSentence.indexOf(it) }
+            ?.takeIf { it >= 0 }
+            ?: (miningFrame?.sentenceOffset ?: charOffset)
 
         // Local helper to update the state, which triggers the optimized JS call via DictionaryEntryWebView
         fun updateStatus(expression: String) {
@@ -455,8 +499,8 @@ fun OcrLookupPopup(
                     dupCheck = ankiDupCheck,
                     dupScope = ankiDupScope,
                     dupAction = ankiDupAction,
-                    sentence = fullText,
-                    offset = fullText.indexOf(result.matched).let { if (it >= 0) it else charOffset },
+                    sentence = miningSentence,
+                    offset = miningOffset,
                     media = mediaInfo,
                     sentenceAudioBytes = sentenceAudioBytes,
                     glossaryIndex = glossaryIndex,
@@ -472,10 +516,21 @@ fun OcrLookupPopup(
                 )
                 if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        updateStatus(result.term.expression)
-                        onDismiss()
-                        if (ankiResult is AnkiResult.Success) {
-                            onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
+                        when (ankiResult) {
+                            is AnkiResult.Success -> {
+                                updateStatus(result.term.expression)
+                                onDismiss()
+                                onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
+                            }
+                            is AnkiResult.CardExists -> {
+                                updateStatus(result.term.expression)
+                                context.toast(MR.strings.anki_card_exists)
+                            }
+                            is AnkiResult.OpenCard -> {
+                                updateStatus(result.term.expression)
+                                chimahon.anki.AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
+                            }
+                            else -> {}
                         }
                     }
                 } else {
@@ -513,8 +568,8 @@ fun OcrLookupPopup(
                     dupCheck = ankiDupCheck,
                     dupScope = ankiDupScope,
                     dupAction = ankiDupAction,
-                    sentence = fullText,
-                    offset = fullText.indexOf(result.matched).let { if (it >= 0) it else charOffset },
+                    sentence = miningSentence,
+                    offset = miningOffset,
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
                     screenshotBytes = encoding?.bytes,
@@ -689,16 +744,238 @@ fun OcrLookupPopup(
         pushLookup(lookupString, deferredResult = initialLookupDeferred)
     }
 
+    fun recursiveSentence(sentence: String?): String {
+        return sentence?.takeIf { it.isNotBlank() } ?: currentFrame?.sentence ?: fullText
+    }
+
+    fun recursiveOffset(sentence: String?, offset: Int?): Int {
+        val targetSentence = recursiveSentence(sentence)
+        return offset?.coerceIn(0, targetSentence.length)
+            ?: currentFrame?.sentenceOffset?.coerceIn(0, targetSentence.length)
+            ?: charOffset.coerceIn(0, targetSentence.length)
+    }
+
     // Callbacks forwarded from the WebView bridge
-    val onRecursiveLookup: (String) -> Unit = { word -> pushLookup(word, isRecursive = true) }
+    val onRecursiveLookup: (String, String?, Int?, Float?, Float?) -> Unit = { word, sentence, offset, x, y ->
+        val targetSentence = recursiveSentence(sentence)
+        val targetOffset = recursiveOffset(sentence, offset)
+        if (recursiveNavMode == "popup") {
+            // Sync lookup (same warm path as pushLookup's recursive branch),
+            // then create a child popup with the results — no parent WebView update.
+            val cleanQuery = word.replace(Regex("[\\s\\p{Punct}「」『』【】（）〔〕［］｛｝〈〉《》…、。！？!?]+"), "").trim()
+            if (cleanQuery.isNotBlank() && cleanQuery.any { it.code > 127 }) {
+                val termPaths = getDictionaryPaths(context, activeProfile)
+                val result = runCatching {
+                    repository.lookup(cleanQuery, termPaths, activeProfile.languageCode)
+                }.getOrElse {
+                    chimahon.DictionaryRepository.LookupResult2(
+                        results = emptyList(),
+                        styles = emptyList(),
+                        mediaDataUris = emptyMap(),
+                        error = it.message,
+                    )
+                }
+                val orderedResults = orderLookupResultsForDisplay(result.results, activeProfile, context)
+                childPopupRequest = RecursivePopupRequest(
+                    query = word,
+                    sentence = targetSentence,
+                    sentenceOffset = targetOffset,
+                    tapX = x,
+                    tapY = y,
+                    deferredResult = CompletableDeferred(
+                        chimahon.DictionaryRepository.LookupResult2(
+                            results = orderedResults,
+                            styles = result.styles,
+                            mediaDataUris = result.mediaDataUris,
+                            error = result.error,
+                        ),
+                    ),
+                )
+            }
+        } else {
+            pushLookup(
+                query = word,
+                isRecursive = true,
+                sentenceContext = targetSentence,
+                sentenceOffsetContext = targetOffset,
+            )
+        }
+    }
     val onTabSelect: (Int) -> Unit = { idx ->
-        if (idx in lookupStackState.stack.indices) lookupStackState = lookupStackState.copy(activeIndex = idx)
+        if (idx in lookupStackState.stack.indices) {
+            lookupStackState = lookupStackState.copy(activeIndex = idx)
+        }
     }
     val onBack: () -> Unit = {
         if (lookupStackState.activeIndex > 0) lookupStackState = lookupStackState.copy(activeIndex = lookupStackState.activeIndex - 1)
     }
 
     val outsideTapInteraction = remember { MutableInteractionSource() }
+    val recursiveTabs = lookupStackState.buildTabs()
+    val showRecursiveChrome = when (recursiveNavMode) {
+        "stack" -> lookupStackState.activeIndex > 0
+        "popup" -> false
+        else -> recursiveTabs.size > 1
+    }
+
+    @Composable
+    fun RecursiveLookupChrome() {
+        if (!showRecursiveChrome) return
+        val scrollState = rememberScrollState()
+        val chromeBackground = if (eInkMode) {
+            if (isDark) Color.Black else Color.White
+        } else {
+            BgColor
+        }
+        val chromeText = if (eInkMode) {
+            if (isDark) Color.White else Color.Black
+        } else {
+            colorScheme.onSurface
+        }
+        val chromeBorder = if (eInkMode) chromeText else colorScheme.outlineVariant
+        val chromeAccent = if (eInkMode) chromeText else colorScheme.primary
+        val chromeOnAccent = if (eInkMode) chromeBackground else colorScheme.onPrimary
+        val tabShape = RoundedCornerShape(if (eInkMode) 0.dp else 20.dp)
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val stroke = 1.dp.toPx()
+                    drawLine(
+                        color = chromeBorder,
+                        start = androidx.compose.ui.geometry.Offset(0f, size.height - stroke / 2f),
+                        end = androidx.compose.ui.geometry.Offset(size.width, size.height - stroke / 2f),
+                        strokeWidth = stroke,
+                    )
+                },
+            color = chromeBackground,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(scrollState)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                if (recursiveNavMode == "stack") {
+                    Surface(
+                        modifier = Modifier
+                            .height(30.dp)
+                            .clickable {
+                                onBack()
+                            },
+                        shape = tabShape,
+                        color = chromeBackground,
+                        contentColor = chromeText,
+                        border = BorderStroke(1.dp, chromeBorder),
+                    ) {
+                        Text(
+                            text = "\u2190 Back",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        )
+                    }
+                } else {
+                    recursiveTabs.forEachIndexed { index, tab ->
+                        val active = tab.active
+                        Surface(
+                            modifier = Modifier
+                                .height(30.dp)
+                                .padding(end = 6.dp)
+                                .clickable(enabled = !active) {
+                                    onTabSelect(index)
+                                },
+                            shape = tabShape,
+                            color = if (active) chromeAccent else Color.Transparent,
+                            contentColor = if (active) chromeOnAccent else chromeText,
+                            border = BorderStroke(
+                                1.dp,
+                                if (active) chromeAccent else chromeBorder,
+                            ),
+                            shadowElevation = if (active && !eInkMode) 2.dp else 0.dp,
+                        ) {
+                            Text(
+                                text = tab.label.take(20) + if (tab.label.length > 20) "\u2026" else "",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun PopupCloseChrome() {
+        val chromeBackground = if (eInkMode) {
+            if (isDark) Color.Black else Color.White
+        } else {
+            BgColor
+        }
+        val chromeText = if (eInkMode) {
+            if (isDark) Color.White else Color.Black
+        } else {
+            colorScheme.onSurface
+        }
+        val chromeBorder = if (eInkMode) chromeText else colorScheme.outlineVariant
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val stroke = 1.dp.toPx()
+                    drawLine(
+                        color = chromeBorder,
+                        start = Offset(0f, size.height - stroke / 2f),
+                        end = Offset(size.width, size.height - stroke / 2f),
+                        strokeWidth = stroke,
+                    )
+                },
+            color = chromeBackground,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = chromeText,
+                    modifier = Modifier.weight(1f),
+                )
+                Surface(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                        ) { onDismiss() },
+                    shape = RoundedCornerShape(if (eInkMode) 0.dp else 14.dp),
+                    color = Color.Transparent,
+                    contentColor = chromeText,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "\u2715",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     @Composable
     fun PopupContent() {
@@ -707,7 +984,7 @@ fun OcrLookupPopup(
             modifier = modifier
                 .width(actualWidthDp)
                 .height(actualHeightDp)
-                .alpha(if (contentReady || errorMessage != null) 1f else 0f)
+                .alpha(if (contentReady || isLoading || errorMessage != null) 1f else 0f)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -747,8 +1024,17 @@ fun OcrLookupPopup(
             tonalElevation = 0.dp,
             shadowElevation = if (eInkMode) 0.dp else 6.dp,
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                DictionaryEntryWebView(
+            Column(modifier = Modifier.fillMaxSize()) {
+                RecursiveLookupChrome()
+                if (recursiveNavMode == "popup" && dismissOnOutsideTap) {
+                    PopupCloseChrome()
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    DictionaryEntryWebView(
                     results = results,
                     styles = styles,
                     mediaDataUris = mediaDataUris,
@@ -765,6 +1051,7 @@ fun OcrLookupPopup(
                     existingExpressions = existingExpressions,
                     tabs = lookupStackState.buildTabs(),
                     recursiveNavMode = recursiveNavMode,
+                    renderRecursiveChrome = false,
                     customCss = customCss,
                     wordAudioEnabled = wordAudioEnabled,
                     // Suppress autoplay when the popup is hidden (warm shell still in
@@ -778,24 +1065,24 @@ fun OcrLookupPopup(
                     onRecursiveLookup = onRecursiveLookup,
                     onTabSelect = onTabSelect,
                     onBack = onBack,
-                        hideOnContentInvalidated = true,
-                        isLoading = isLoading,
-                        onContentReadyChange = { ready ->
-                            if (ready) {
-                                contentReady = true
-                                lastRenderedLookupGeneration = lookupGeneration
-                            } else {
-                                // Hide stale content only when a new top-level lookup
-                                // has started. Same-generation invalidations (e.g. Anki
-                                // status patches) keep the current content visible.
-                                if (lookupGeneration != lastRenderedLookupGeneration) {
-                                    contentReady = false
-                                }
+                    hideOnContentInvalidated = true,
+                    isLoading = isLoading,
+                    onContentReadyChange = { ready ->
+                        if (ready) {
+                            contentReady = true
+                            lastRenderedLookupGeneration = lookupGeneration
+                        } else {
+                            // Hide stale content only when a new top-level lookup
+                            // has started. Same-generation invalidations (e.g. Anki
+                            // status patches) keep the current content visible.
+                            if (lookupGeneration != lastRenderedLookupGeneration) {
+                                contentReady = false
                             }
-                            onContentReadyChange?.invoke(ready)
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                        }
+                        onContentReadyChange?.invoke(ready)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
 
                 if (errorMessage != null) {
                     Text(
@@ -803,6 +1090,7 @@ fun OcrLookupPopup(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(16.dp).align(Alignment.Center)
                     )
+                }
                 }
             }
         }
@@ -818,8 +1106,8 @@ fun OcrLookupPopup(
                 offset = IntOffset(layoutResult.x.roundToInt(), layoutResult.y.roundToInt()),
                 onDismissRequest = { onDismiss() },
                 properties = PopupProperties(
-                    focusable = false,
-                    dismissOnClickOutside = false,
+                    focusable = dismissOnOutsideTap,
+                    dismissOnClickOutside = dismissOnOutsideTap,
                 ),
             ) {
                 PopupContent()
@@ -834,13 +1122,58 @@ fun OcrLookupPopup(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .alpha(if (visible && (contentReady || errorMessage != null)) 1f else 0f)
+                .alpha(if (visible && (contentReady || isLoading || errorMessage != null)) 1f else 0f)
                 .offset(
                     x = with(LocalDensity.current) { if (visible) layoutResult.x.toDp() else hideOffset },
                     y = with(LocalDensity.current) { if (visible) layoutResult.y.toDp() else hideOffset },
                 )
         ) {
+            if (dismissOnOutsideTap) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                        ) {
+                            onDismiss()
+                        }
+                )
+            }
             PopupContent()
         }
+    }
+
+    childPopupRequest?.let { request ->
+        val closeChromePx = with(density) { 32.dp.toPx() }
+        val tapScreenX = layoutResult.x + (request.tapX ?: layoutResult.widthPx / 2f)
+        val tapScreenY = layoutResult.y + closeChromePx + (request.tapY ?: layoutResult.heightPx / 2f)
+        OcrLookupPopup(
+            visible = visible,
+            lookupString = request.query,
+            fullText = request.sentence,
+            charOffset = request.sentenceOffset,
+            onDismiss = { childPopupRequest = null },
+            dismissOnOutsideTap = true,
+            webView = childPopupWebView,
+            repository = repository,
+            anchorX = tapScreenX,
+            anchorY = tapScreenY,
+            anchorWidth = 0f,
+            anchorHeight = 0f,
+            isVertical = isVertical,
+            activeProfile = activeProfile,
+            type = type,
+            mediaInfo = mediaInfo,
+            screenshot = screenshot,
+            onRequestScreenshot = onRequestScreenshot,
+            onRequestSentenceAudio = onRequestSentenceAudio,
+            onCropTriggered = onCropTriggered,
+            usePopup = usePopup,
+            onTermMatched = null,
+            onContentReadyChange = null,
+            initialLookupDeferred = request.deferredResult,
+            titleId = titleId,
+        )
     }
 }

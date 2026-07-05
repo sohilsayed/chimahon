@@ -126,6 +126,7 @@ private class SyncSettingsSelectorModel(
                 // Chimahon -->
                 novels = syncSettings.novels,
                 // Chimahon <--
+                animeEntries = syncSettings.animeEntries,
             )
         }
 
@@ -149,6 +150,7 @@ private class SyncSettingsSelectorModel(
                 // Chimahon -->
                 novels = backupOptions.novels,
                 // Chimahon <--
+                animeEntries = backupOptions.animeEntries,
             )
         }
     }
