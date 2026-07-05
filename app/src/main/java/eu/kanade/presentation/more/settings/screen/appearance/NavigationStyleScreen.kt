@@ -77,8 +77,6 @@ class NavigationStyleScreen : Screen() {
             NavTabLayout.KEY_HISTORY to stringResource(MR.strings.label_recent_manga),
             NavTabLayout.KEY_BROWSE to stringResource(MR.strings.browse),
             NavTabLayout.KEY_DICTIONARY to stringResource(MR.strings.label_dictionary),
-            NavTabLayout.KEY_NOVELS to stringResource(MR.strings.label_novels),
-            NavTabLayout.KEY_ANIME to stringResource(MR.strings.label_anime),
         )
 
         // Section titles
@@ -213,8 +211,6 @@ private fun getTabIcon(key: String): ImageVector {
         NavTabLayout.KEY_HISTORY -> Icons.Outlined.History
         NavTabLayout.KEY_BROWSE -> Icons.Outlined.Public
         NavTabLayout.KEY_DICTIONARY -> Icons.Outlined.Search
-        NavTabLayout.KEY_NOVELS -> Icons.Outlined.Book
-        NavTabLayout.KEY_ANIME -> Icons.Outlined.VideoLibrary
         else -> Icons.Outlined.Public
     }
 }

@@ -49,6 +49,7 @@ fun LibraryToolbar(
     onSearchQueryChange: (String?) -> Unit,
     scrollBehavior: TopAppBarScrollBehavior?,
     onInvalidateDownloadCache: ((Context) -> Unit)?,
+    titleContent: (@Composable () -> Unit)? = null,
     onClickEditCategories: (() -> Unit)? = null,
     editCategoriesTitle: String? = null,
     updateCategoryTitle: String? = null,
@@ -78,6 +79,7 @@ fun LibraryToolbar(
         // SY <--
         scrollBehavior = scrollBehavior,
         onInvalidateDownloadCache = onInvalidateDownloadCache,
+        titleContent = titleContent,
         onClickEditCategories = onClickEditCategories,
         editCategoriesTitle = editCategoriesTitle,
         updateCategoryTitle = updateCategoryTitle,
@@ -102,6 +104,7 @@ private fun LibraryRegularToolbar(
     // SY <--
     scrollBehavior: TopAppBarScrollBehavior?,
     onInvalidateDownloadCache: ((Context) -> Unit)?,
+    titleContent: (@Composable () -> Unit)? = null,
     onClickEditCategories: (() -> Unit)? = null,
     editCategoriesTitle: String? = null,
     updateCategoryTitle: String? = null,
@@ -112,7 +115,7 @@ private fun LibraryRegularToolbar(
     val context = LocalContext.current
     val pillAlpha = if (isSystemInDarkTheme()) 0.12f else 0.08f
     SearchToolbar(
-        titleContent = {
+        titleContent = titleContent ?: {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title.text,

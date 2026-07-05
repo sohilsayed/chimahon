@@ -669,7 +669,7 @@ class MainActivity : BaseActivity() {
             }
             Constants.SHORTCUT_ANIME -> {
                 navigator.popUntilRoot()
-                HomeScreen.Tab.Anime
+                HomeScreen.Tab.Library()
             }
             // KMK -->
             Constants.SHORTCUT_LIBRARY_UPDATE_ERRORS -> {

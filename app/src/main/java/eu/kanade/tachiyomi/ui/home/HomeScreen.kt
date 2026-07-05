@@ -49,8 +49,6 @@ import eu.kanade.tachiyomi.ui.history.HistoryTab
 import eu.kanade.tachiyomi.ui.library.LibraryTab
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
-import eu.kanade.tachiyomi.ui.entries.anime.AnimeTab
-import eu.kanade.tachiyomi.ui.library.novels.NovelsTab
 import eu.kanade.tachiyomi.ui.more.MoreTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import kotlinx.coroutines.channels.Channel
@@ -86,8 +84,6 @@ object HomeScreen : Screen() {
         NavTabLayout.KEY_HISTORY to HistoryTab,
         NavTabLayout.KEY_BROWSE to BrowseTab,
         NavTabLayout.KEY_DICTIONARY to DictionaryTab,
-        NavTabLayout.KEY_NOVELS to NovelsTab,
-        NavTabLayout.KEY_ANIME to AnimeTab,
     )
 
     @Composable
@@ -204,8 +200,6 @@ object HomeScreen : Screen() {
                                 BrowseTab
                             }
                             Tab.Dictionary -> DictionaryTab
-                            Tab.Novels -> NovelsTab
-                            Tab.Anime -> AnimeTab
                             is Tab.More -> MoreTab
                         }
 
@@ -370,8 +364,6 @@ object HomeScreen : Screen() {
         data object History : Tab
         data class Browse(val toExtensions: Boolean = false) : Tab
         data object Dictionary : Tab
-        data object Novels : Tab
-        data object Anime : Tab
         data class More(
             val toDownloads: Boolean,
             // KMK -->

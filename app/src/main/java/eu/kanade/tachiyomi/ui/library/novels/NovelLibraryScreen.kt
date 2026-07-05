@@ -126,6 +126,7 @@ import uy.kohesive.injekt.api.get
 @Composable
 fun Screen.NovelLibraryScreen(
     requestSortEvent: Channel<Unit>? = null,
+    titleContent: @Composable () -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
     val screenModel = rememberScreenModel { NovelLibraryScreenModel() }
@@ -227,6 +228,7 @@ fun Screen.NovelLibraryScreen(
             LibraryToolbar(
                 hasActiveFilters = state.hasActiveFilters,
                 selectedCount = state.selection.size,
+                titleContent = titleContent,
                 title = state.getToolbarTitle(
                     defaultTitle = stringResource(MR.strings.label_novels),
                     defaultCategoryTitle = stringResource(MR.strings.label_default),

@@ -342,8 +342,6 @@ object SettingsAppearanceScreen : SearchableSettings {
                         eu.kanade.domain.ui.model.NavTabLayout.KEY_HISTORY -> "History"
                         eu.kanade.domain.ui.model.NavTabLayout.KEY_BROWSE -> "Browse"
                         eu.kanade.domain.ui.model.NavTabLayout.KEY_DICTIONARY -> "Dictionary"
-                        eu.kanade.domain.ui.model.NavTabLayout.KEY_NOVELS -> "Novels"
-                        eu.kanade.domain.ui.model.NavTabLayout.KEY_ANIME -> "Anime"
                         else -> key
                     }
                 }

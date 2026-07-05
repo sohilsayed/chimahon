@@ -38,7 +38,7 @@ data class NavTabLayout(
         const val KEY_ANIME = "Anime"
 
         val ALL_KEYS = listOf(
-            KEY_LIBRARY, KEY_NOVELS, KEY_ANIME, KEY_UPDATES, KEY_HISTORY,
+            KEY_LIBRARY, KEY_UPDATES, KEY_HISTORY,
             KEY_BROWSE, KEY_DICTIONARY,
         )
 

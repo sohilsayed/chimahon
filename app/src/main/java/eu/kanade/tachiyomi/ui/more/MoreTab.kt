@@ -36,7 +36,6 @@ import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupService
 import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupServiceState
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
-import eu.kanade.tachiyomi.ui.library.novels.NovelLibraryScreenModel
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsScreen
@@ -111,8 +110,8 @@ data object MoreTab : Tab {
             onClickLibrary = { navigator.push(eu.kanade.tachiyomi.ui.library.LibraryTab) },
             onClickBrowse = { navigator.push(eu.kanade.tachiyomi.ui.browse.BrowseTab) },
             onClickDictionary = { navigator.push(eu.kanade.tachiyomi.ui.dictionary.DictionaryTab) },
-            onClickNovels = { navigator.push(eu.kanade.tachiyomi.ui.library.novels.NovelsTab) },
-            onClickAnime = { navigator.push(eu.kanade.tachiyomi.ui.entries.anime.AnimeTab) },
+            onClickNovels = { navigator.push(eu.kanade.tachiyomi.ui.library.LibraryTab) },
+            onClickAnime = { navigator.push(eu.kanade.tachiyomi.ui.library.LibraryTab) },
             // SY <--
             // KMK -->
             onClickLibraryUpdateErrors = { navigator.push(LibraryUpdateErrorScreen()) },
