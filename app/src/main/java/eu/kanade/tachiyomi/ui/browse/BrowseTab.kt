@@ -3,19 +3,25 @@ package eu.kanade.tachiyomi.ui.browse
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab as M3Tab
@@ -27,14 +33,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import dev.icerock.moko.resources.StringResource
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -77,6 +85,11 @@ import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
+enum class BrowseViewMode(val labelRes: StringResource) {
+    Sources(MR.strings.manga_singular),
+    Anime(MR.strings.label_anime),
+}
+
 data object BrowseTab : Tab {
     private fun readResolve(): Any = BrowseTab
 
@@ -96,10 +109,10 @@ data object BrowseTab : Tab {
         navigator.push(GlobalSearchScreen())
     }
 
-    private val switchToExtensionTabChannel = Channel<Unit>(1, BufferOverflow.DROP_OLDEST)
+    private val switchToExtensionTabChannel = Channel<BrowseViewMode>(1, BufferOverflow.DROP_OLDEST)
 
     fun showExtension() {
-        switchToExtensionTabChannel.trySend(Unit)
+        switchToExtensionTabChannel.trySend(BrowseViewMode.Sources)
     }
 
     @Composable
@@ -124,41 +137,46 @@ data object BrowseTab : Tab {
 
         val snackbarHostState = remember { SnackbarHostState() }
 
-        var isAnimeMode by rememberSaveable { mutableStateOf(false) }
-
-        val mangaTabs = when {
-            hideFeedTab ->
-                persistentListOf(
-                    sourcesTab(),
-                    extensionsTab(extensionsScreenModel),
-                    migrateSourceTab(),
-                )
-            feedTabInFront ->
-                persistentListOf(
-                    feedTab(feedScreenModel, bulkFavoriteScreenModel),
-                    sourcesTab(),
-                    extensionsTab(extensionsScreenModel),
-                    migrateSourceTab(),
-                )
-            else ->
-                persistentListOf(
-                    sourcesTab(),
-                    feedTab(feedScreenModel, bulkFavoriteScreenModel),
-                    extensionsTab(extensionsScreenModel),
-                    migrateSourceTab(),
-                )
+        val uiPreferences = remember { Injekt.get<UiPreferences>() }
+        var browseMode by remember {
+            mutableStateOf(BrowseViewMode.entries.getOrElse(uiPreferences.lastUsedBrowseMode().get()) { BrowseViewMode.Sources })
         }
+        var showModeDropdown by remember { mutableStateOf(false) }
 
-        val animeTabs: ImmutableList<TabContent> = persistentListOf(
-            animeSourcesTab(),
-            animeExtensionsTab(animeExtensionsScreenModel),
-            migrateAnimeSourceTab(),
-        )
-
-        val currentTabs = if (isAnimeMode) animeTabs else mangaTabs
+        val currentTabs: ImmutableList<TabContent> = when (browseMode) {
+            BrowseViewMode.Sources -> {
+                when {
+                    hideFeedTab ->
+                        persistentListOf(
+                            sourcesTab(),
+                            extensionsTab(extensionsScreenModel),
+                            migrateSourceTab(),
+                        )
+                    feedTabInFront ->
+                        persistentListOf(
+                            feedTab(feedScreenModel, bulkFavoriteScreenModel),
+                            sourcesTab(),
+                            extensionsTab(extensionsScreenModel),
+                            migrateSourceTab(),
+                        )
+                    else ->
+                        persistentListOf(
+                            sourcesTab(),
+                            feedTab(feedScreenModel, bulkFavoriteScreenModel),
+                            extensionsTab(extensionsScreenModel),
+                            migrateSourceTab(),
+                        )
+                }
+            }
+            BrowseViewMode.Anime -> persistentListOf(
+                animeSourcesTab(),
+                animeExtensionsTab(animeExtensionsScreenModel),
+                migrateAnimeSourceTab(),
+            )
+        }
         val pagerState = rememberPagerState { currentTabs.size }
 
-        LaunchedEffect(isAnimeMode) {
+        LaunchedEffect(browseMode) {
             pagerState.scrollToPage(0)
         }
 
@@ -167,13 +185,13 @@ data object BrowseTab : Tab {
         val searchEnabled = currentTab?.searchEnabled ?: false
 
         val searchQuery: String? = when {
-            isAnimeMode && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsState.searchQuery
-            !isAnimeMode && currentTab?.titleRes == MR.strings.label_extensions -> extensionsState.searchQuery
+            browseMode == BrowseViewMode.Anime && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsState.searchQuery
+            browseMode == BrowseViewMode.Sources && currentTab?.titleRes == MR.strings.label_extensions -> extensionsState.searchQuery
             else -> null
         }
         val onChangeSearchQuery: (String?) -> Unit = when {
-            isAnimeMode && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
-            !isAnimeMode && currentTab?.titleRes == MR.strings.label_extensions -> extensionsScreenModel::search
+            browseMode == BrowseViewMode.Anime && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
+            browseMode == BrowseViewMode.Sources && currentTab?.titleRes == MR.strings.label_extensions -> extensionsScreenModel::search
             else -> { _ -> }
         }
 
@@ -203,20 +221,40 @@ data object BrowseTab : Tab {
                 } else {
                     SearchToolbar(
                         titleContent = {
-                            SingleChoiceSegmentedButtonRow {
-                                SegmentedButton(
-                                    selected = !isAnimeMode,
-                                    onClick = { isAnimeMode = false },
-                                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                            Row(
+                                modifier = Modifier.clickable { showModeDropdown = true },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(browseMode.labelRes),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                )
+                                DropdownMenu(
+                                    expanded = showModeDropdown,
+                                    onDismissRequest = { showModeDropdown = false },
                                 ) {
-                                    Text(stringResource(MR.strings.label_library))
-                                }
-                                SegmentedButton(
-                                    selected = isAnimeMode,
-                                    onClick = { isAnimeMode = true },
-                                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                                ) {
-                                    Text(stringResource(MR.strings.label_anime))
+                                    BrowseViewMode.entries.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = stringResource(mode.labelRes),
+                                                    fontWeight = if (mode == browseMode) FontWeight.Bold else FontWeight.Normal,
+                                                )
+                                            },
+                                            onClick = {
+                                                showModeDropdown = false
+                                                browseMode = mode
+                                                uiPreferences.lastUsedBrowseMode().set(mode.ordinal)
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         },
@@ -268,7 +306,8 @@ data object BrowseTab : Tab {
 
         LaunchedEffect(Unit) {
             switchToExtensionTabChannel.receiveAsFlow()
-                .collectLatest {
+                .collectLatest { mode ->
+                    browseMode = mode
                     val extensionsIndex = currentTabs.indexOfFirst { tab ->
                         tab.titleRes == MR.strings.label_extensions
                     }
