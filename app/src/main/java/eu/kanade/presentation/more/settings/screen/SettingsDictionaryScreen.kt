@@ -367,13 +367,16 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val pickDb = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                try {
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to take persistable URI permission on UI thread", e)
+                }
                 scope.launch {
                     _isImportingDb.value = true
                     withContext(Dispatchers.IO) {
                         try {
-                            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            context.contentResolver.takePersistableUriPermission(uri, flags)
-
                             val db = chimahon.audio.WordAudioDatabase(context)
                             val ok = db.updateUri(uri) && db.testConnection()
 
@@ -396,14 +399,24 @@ object SettingsDictionaryScreen : SearchableSettings {
                             } else {
                                 context.contentResolver.releasePersistableUriPermission(uri, flags)
                                 withContext(Dispatchers.Main) {
-                                    context.toast(db.lastError ?: "Selected file is not a valid audio database")
+                                    val err = db.lastError ?: "Selected file is not a valid audio database"
+                                    if (err.contains("EACCES") || err.contains("Permission denied") || err.contains("SecurityException")) {
+                                        errorDialogText = "Failed to load audio database.\n\nReason: Storage permission is not granted. Please grant All Files Access to Chimahon."
+                                    } else {
+                                        context.toast(err)
+                                    }
                                 }
                             }
                             db.close()
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to load audio DB", e)
                             withContext(Dispatchers.Main) {
-                                context.toast("Failed: ${e.message}")
+                                val msg = e.message ?: ""
+                                if (msg.contains("EACCES") || msg.contains("Permission denied") || msg.contains("SecurityException")) {
+                                    errorDialogText = "Failed to load audio database.\n\nReason: Storage permission is not granted. Please grant All Files Access to Chimahon."
+                                } else {
+                                    context.toast("Failed: ${e.message}")
+                                }
                             }
                         }
                     }
@@ -2015,255 +2028,251 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 )
                             }
 
-                            if (!enabled) return@CustomPreference
-
-                            if (ankiInstalled == false) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_no_ankidroid),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                                return@CustomPreference
-                            }
-
-                            if (isLoading) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_loading),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                return@CustomPreference
-                            }
-
-                            // Deck selector
-                            AnkiDropdownPreference(
-                                label = stringResource(MR.strings.pref_anki_deck),
-                                value = selectedDeck,
-                                options = decks,
-                                onValueChange = { updateProfile { copy(ankiDeck = it) } },
-                            )
-
-                            // Model selector
-                            AnkiDropdownPreference(
-                                label = stringResource(MR.strings.pref_anki_model),
-                                value = selectedModel,
-                                options = models,
-                                onValueChange = {
-                                    if (it == selectedModel) {
-                                        return@AnkiDropdownPreference
-                                    }
-                                    updateProfile { copy(ankiModel = it, ankiFieldMap = "{}") }
-                                },
-                            )
-
-                            // Field mapping
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { fieldMappingExpanded = !fieldMappingExpanded }
-                                    .padding(top = 4.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
+                            if (enabled) {
+                                if (ankiInstalled == false) {
                                     Text(
-                                        text = stringResource(MR.strings.pref_anki_field_mapping),
-                                        style = MaterialTheme.typography.titleSmall,
+                                        text = stringResource(MR.strings.pref_anki_no_ankidroid),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error,
                                     )
-                                    Icon(
-                                        imageVector = if (fieldMappingExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                        contentDescription = if (fieldMappingExpanded) "Collapse" else "Expand",
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                            }
-
-                            if (fieldMappingExpanded) {
-                                if (selectedModel.isNotBlank() && modelFields.isEmpty() && ankiInstalled == true) {
+                                } else if (isLoading) {
                                     Text(
-                                        text = "Loading model fields...",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        text = stringResource(MR.strings.pref_anki_loading),
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                }
-
-                                modelFields.forEach { fieldName ->
-                                    val storageValue = fieldMap[fieldName] ?: ""
-                                    val displayValue = storageValue
-                                        .ifBlank { "{}" }
-                                    AnkiFieldMappingRow(
-                                        fieldName = fieldName,
-                                        fieldValue = displayValue,
-                                        onValueChange = { newDisplayValue ->
-                                            setFieldValue(fieldName, newDisplayValue, false)
-                                        },
-                                        dictionaryNames = dictionaries,
+                                } else {
+                                    // Deck selector
+                                    AnkiDropdownPreference(
+                                        label = stringResource(MR.strings.pref_anki_deck),
+                                        value = selectedDeck,
+                                        options = decks,
+                                        onValueChange = { updateProfile { copy(ankiDeck = it) } },
                                     )
-                                }
 
-                                if (customFieldNames.isNotEmpty()) {
-                                    Text(
-                                        text = "Custom fields",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 8.dp),
-                                    )
-                                }
-
-                                customFieldNames.forEach { fieldName ->
-                                    val storageValue = fieldMap[fieldName] ?: ""
-                                    val displayValue = storageValue
-                                        .ifBlank { "{}" }
-                                    AnkiFieldMappingRow(
-                                        fieldName = fieldName,
-                                        fieldValue = displayValue,
-                                        onValueChange = { newDisplayValue ->
-                                            setFieldValue(fieldName, newDisplayValue, true)
+                                    // Model selector
+                                    AnkiDropdownPreference(
+                                        label = stringResource(MR.strings.pref_anki_model),
+                                        value = selectedModel,
+                                        options = models,
+                                        onValueChange = {
+                                            if (it == selectedModel) {
+                                                return@AnkiDropdownPreference
+                                            }
+                                            updateProfile { copy(ankiModel = it, ankiFieldMap = "{}") }
                                         },
-                                        onDeleteField = {
-                                            removeCustomField(fieldName)
-                                        },
-                                        dictionaryNames = dictionaries,
                                     )
-                                }
 
-                                OutlinedTextField(
-                                    value = newCustomFieldName,
-                                    onValueChange = { newCustomFieldName = it },
-                                    label = { Text("Add custom field") },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp),
-                                )
-
-                                TextButton(
-                                    onClick = {
-                                        val candidate = newCustomFieldName.trim()
-                                        val alreadyExists = (modelFields + customFieldNames)
-                                            .any { it.equals(candidate, ignoreCase = true) }
-                                        if (candidate.isBlank() || alreadyExists) {
-                                            return@TextButton
+                                    // Field mapping
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { fieldMappingExpanded = !fieldMappingExpanded }
+                                            .padding(top = 4.dp),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = stringResource(MR.strings.pref_anki_field_mapping),
+                                                style = MaterialTheme.typography.titleSmall,
+                                            )
+                                            Icon(
+                                                imageVector = if (fieldMappingExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                                contentDescription = if (fieldMappingExpanded) "Collapse" else "Expand",
+                                                modifier = Modifier.size(20.dp),
+                                            )
                                         }
-                                        setFieldValue(candidate, "", true)
-                                        newCustomFieldName = ""
-                                    },
-                                    modifier = Modifier.align(Alignment.End),
-                                ) {
-                                    Text("Add field")
-                                }
-                            }
+                                    }
 
-                            // Duplicate handling
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_check_duplicates),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Switch(
-                                    checked = dupCheck,
-                                    onCheckedChange = { updateProfile { copy(ankiDupCheck = it) } },
-                                )
-                            }
+                                    if (fieldMappingExpanded) {
+                                        if (selectedModel.isNotBlank() && modelFields.isEmpty() && ankiInstalled == true) {
+                                            Text(
+                                                text = "Loading model fields...",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
 
-                            if (dupCheck) {
-                                AnkiDropdownPreference(
-                                    label = stringResource(MR.strings.pref_anki_duplicate_scope),
-                                    value = if (dupScope == "all") "Everywhere" else "Deck only",
-                                    options = listOf("deck", "all"),
-                                    displayOptions = listOf("Deck only", "Everywhere"),
-                                    onValueChange = { updateProfile { copy(ankiDupScope = it) } },
-                                )
-                                AnkiDropdownPreference(
-                                    label = stringResource(MR.strings.pref_anki_duplicate_action),
-                                    value = when (dupAction) {
-                                        "add" -> stringResource(MR.strings.pref_anki_duplicate_add)
-                                        "overwrite" -> stringResource(MR.strings.pref_anki_duplicate_overwrite)
-                                        else -> stringResource(MR.strings.pref_anki_duplicate_prevent)
-                                    },
-                                    options = listOf("prevent", "add", "overwrite"),
-                                    displayOptions = listOf(
-                                        stringResource(MR.strings.pref_anki_duplicate_prevent),
-                                        stringResource(MR.strings.pref_anki_duplicate_add),
-                                        stringResource(MR.strings.pref_anki_duplicate_overwrite),
-                                    ),
-                                    onValueChange = { updateProfile { copy(ankiDupAction = it) } },
-                                )
-                            }
+                                        modelFields.forEach { fieldName ->
+                                            val storageValue = fieldMap[fieldName] ?: ""
+                                            val displayValue = storageValue
+                                                .ifBlank { "{}" }
+                                            AnkiFieldMappingRow(
+                                                fieldName = fieldName,
+                                                fieldValue = displayValue,
+                                                onValueChange = { newDisplayValue ->
+                                                    setFieldValue(fieldName, newDisplayValue, false)
+                                                },
+                                                dictionaryNames = dictionaries,
+                                            )
+                                        }
 
-                            // Default tags
-                            OutlinedTextField(
-                                value = tags,
-                                onValueChange = { updateProfile { copy(ankiTags = it) } },
-                                label = { Text(stringResource(MR.strings.pref_anki_default_tags)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                supportingText = { Text("Comma-separated tags") },
-                            )
+                                        if (customFieldNames.isNotEmpty()) {
+                                            Text(
+                                                text = "Custom fields",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(top = 8.dp),
+                                            )
+                                        }
 
-                            // Crop mode
-                            var cropModeExpanded by remember { mutableStateOf(false) }
-                            val cropModeOptions = listOf("full" to "Full Image", "crop" to "Crop Selection")
-                            val cropModeDisplay = cropModeOptions.find { it.first == cropMode }?.second ?: "Full Image"
+                                        customFieldNames.forEach { fieldName ->
+                                            val storageValue = fieldMap[fieldName] ?: ""
+                                            val displayValue = storageValue
+                                                .ifBlank { "{}" }
+                                            AnkiFieldMappingRow(
+                                                fieldName = fieldName,
+                                                fieldValue = displayValue,
+                                                onValueChange = { newDisplayValue ->
+                                                    setFieldValue(fieldName, newDisplayValue, true)
+                                                },
+                                                onDeleteField = {
+                                                    removeCustomField(fieldName)
+                                                },
+                                                dictionaryNames = dictionaries,
+                                            )
+                                        }
 
-                            ExposedDropdownMenuBox(
-                                expanded = cropModeExpanded,
-                                onExpandedChange = { cropModeExpanded = it },
-                            ) {
-                                OutlinedTextField(
-                                    value = cropModeDisplay,
-                                    onValueChange = {},
-                                    label = { Text("Screenshot Mode") },
-                                    readOnly = true,
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor(),
-                                    enabled = false,
-                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cropModeExpanded) },
-                                )
+                                        OutlinedTextField(
+                                            value = newCustomFieldName,
+                                            onValueChange = { newCustomFieldName = it },
+                                            label = { Text("Add custom field") },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 8.dp),
+                                        )
 
-                                ExposedDropdownMenu(
-                                    expanded = cropModeExpanded,
-                                    onDismissRequest = { cropModeExpanded = false },
-                                ) {
-                                    cropModeOptions.forEach { (value, label) ->
-                                        DropdownMenuItem(
-                                            text = { Text(label) },
+                                        TextButton(
                                             onClick = {
-                                                updateProfile { copy(ankiCropMode = value) }
-                                                cropModeExpanded = false
+                                                val candidate = newCustomFieldName.trim()
+                                                val alreadyExists = (modelFields + customFieldNames)
+                                                    .any { it.equals(candidate, ignoreCase = true) }
+                                                if (candidate.isBlank() || alreadyExists) {
+                                                    return@TextButton
+                                                }
+                                                setFieldValue(candidate, "", true)
+                                                newCustomFieldName = ""
                                             },
+                                            modifier = Modifier.align(Alignment.End),
+                                        ) {
+                                            Text("Add field")
+                                        }
+                                    }
+
+                                    // Duplicate handling
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = stringResource(MR.strings.pref_anki_check_duplicates),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                        Switch(
+                                            checked = dupCheck,
+                                            onCheckedChange = { updateProfile { copy(ankiDupCheck = it) } },
+                                        )
+                                    }
+
+                                    if (dupCheck) {
+                                        AnkiDropdownPreference(
+                                            label = stringResource(MR.strings.pref_anki_duplicate_scope),
+                                            value = if (dupScope == "all") "Everywhere" else "Deck only",
+                                            options = listOf("deck", "all"),
+                                            displayOptions = listOf("Deck only", "Everywhere"),
+                                            onValueChange = { updateProfile { copy(ankiDupScope = it) } },
+                                        )
+                                        AnkiDropdownPreference(
+                                            label = stringResource(MR.strings.pref_anki_duplicate_action),
+                                            value = when (dupAction) {
+                                                "add" -> stringResource(MR.strings.pref_anki_duplicate_add)
+                                                "overwrite" -> stringResource(MR.strings.pref_anki_duplicate_overwrite)
+                                                else -> stringResource(MR.strings.pref_anki_duplicate_prevent)
+                                            },
+                                            options = listOf("prevent", "add", "overwrite"),
+                                            displayOptions = listOf(
+                                                stringResource(MR.strings.pref_anki_duplicate_prevent),
+                                                stringResource(MR.strings.pref_anki_duplicate_add),
+                                                stringResource(MR.strings.pref_anki_duplicate_overwrite),
+                                            ),
+                                            onValueChange = { updateProfile { copy(ankiDupAction = it) } },
+                                        )
+                                    }
+
+                                    // Default tags
+                                    OutlinedTextField(
+                                        value = tags,
+                                        onValueChange = { updateProfile { copy(ankiTags = it) } },
+                                        label = { Text(stringResource(MR.strings.pref_anki_default_tags)) },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        supportingText = { Text("Comma-separated tags") },
+                                    )
+
+                                    // Crop mode
+                                    var cropModeExpanded by remember { mutableStateOf(false) }
+                                    val cropModeOptions = listOf("full" to "Full Image", "crop" to "Crop Selection")
+                                    val cropModeDisplay = cropModeOptions.find { it.first == cropMode }?.second ?: "Full Image"
+
+                                    ExposedDropdownMenuBox(
+                                        expanded = cropModeExpanded,
+                                        onExpandedChange = { cropModeExpanded = it },
+                                    ) {
+                                        OutlinedTextField(
+                                            value = cropModeDisplay,
+                                            onValueChange = {},
+                                            label = { Text("Screenshot Mode") },
+                                            readOnly = true,
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .menuAnchor(),
+                                            enabled = false,
+                                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            ),
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cropModeExpanded) },
+                                        )
+
+                                        ExposedDropdownMenu(
+                                            expanded = cropModeExpanded,
+                                            onDismissRequest = { cropModeExpanded = false },
+                                        ) {
+                                            cropModeOptions.forEach { (value, label) ->
+                                                DropdownMenuItem(
+                                                    text = { Text(label) },
+                                                    onClick = {
+                                                        updateProfile { copy(ankiCropMode = value) }
+                                                        cropModeExpanded = false
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Sync on create
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = "Sync on card create",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                        Switch(
+                                            checked = activeProfile.ankiSyncOnCreate,
+                                            onCheckedChange = { updateProfile { copy(ankiSyncOnCreate = it) } },
                                         )
                                     }
                                 }
-                            }
-
-                            // Sync on create
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = "Sync on card create",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Switch(
-                                    checked = activeProfile.ankiSyncOnCreate,
-                                    onCheckedChange = { updateProfile { copy(ankiSyncOnCreate = it) } },
-                                )
                             }
                         }
                     },
@@ -2927,7 +2936,7 @@ private fun openStreamWithFallback(context: Context, uri: Uri): java.io.InputStr
 private fun getPathFromUri(context: Context, uri: Uri): String? {
     val scheme = uri.scheme
     if ("file".equals(scheme, ignoreCase = true)) {
-        return uri.path
+        return validatePath(context, uri.path)
     }
     if ("content".equals(scheme, ignoreCase = true)) {
         val authority = uri.authority
@@ -2936,14 +2945,18 @@ private fun getPathFromUri(context: Context, uri: Uri): String? {
             val split = docId.split(":")
             if (split.size >= 2) {
                 val type = split[0]
-                if ("primary".equals(type, ignoreCase = true)) {
-                    return android.os.Environment.getExternalStorageDirectory().toString() + "/" + split[1]
+                val relativePath = split[1]
+                val rawPath = if ("primary".equals(type, ignoreCase = true)) {
+                    android.os.Environment.getExternalStorageDirectory().toString() + "/" + relativePath
+                } else {
+                    "/storage/" + type + "/" + relativePath
                 }
+                return validatePath(context, rawPath)
             }
         } else if ("com.android.providers.downloads.documents" == authority) {
             val id = android.provider.DocumentsContract.getDocumentId(uri)
             if (id.startsWith("raw:")) {
-                return id.substring(4)
+                return validatePath(context, id.substring(4))
             }
         }
         
@@ -2952,15 +2965,34 @@ private fun getPathFromUri(context: Context, uri: Uri): String? {
                 if (cursor.moveToFirst()) {
                     val idx = cursor.getColumnIndex("_data")
                     if (idx != -1) {
-                        return cursor.getString(idx)
+                        return validatePath(context, cursor.getString(idx))
                     }
                 }
             }
         } catch (e: Exception) {
-            // Ignore
+            Log.w("UriHelper", "Failed to query _data column for $uri", e)
         }
     }
     return null
+}
+
+private fun validatePath(context: Context, path: String?): String? {
+    if (path.isNullOrBlank()) return null
+    try {
+        val file = java.io.File(path)
+        val canonicalPath = file.canonicalPath
+        
+        // Path Traversal Mitigation: Ensure the path is not pointing to the app's internal sandbox
+        val internalDir = context.filesDir.parentFile?.canonicalPath
+        if (internalDir != null && canonicalPath.startsWith(internalDir)) {
+            Log.e("UriHelper", "Security Exception: Blocked access to internal app sandbox directory: $canonicalPath")
+            return null
+        }
+        return canonicalPath
+    } catch (e: Exception) {
+        Log.e("UriHelper", "Failed to validate path: $path", e)
+        return null
+    }
 }
 
 private fun getFileNameFromUri(context: Context, uri: Uri): String {
@@ -2975,7 +3007,7 @@ private fun getFileNameFromUri(context: Context, uri: Uri): String {
                 }
             }
         } catch (e: Exception) {
-            // Ignore
+            Log.w("UriHelper", "Failed to query display name for $uri", e)
         }
     }
     return uri.lastPathSegment ?: "Unknown File"

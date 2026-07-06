@@ -38,8 +38,6 @@ class WordAudioDatabase(private val context: Context) {
         lastError = null
         fallbackUsed = false
         val file = File(path)
-        if (!file.exists()) { lastError = "File not found at $path"; return false }
-        if (!file.canRead()) { lastError = "Cannot read file at $path"; return false }
         val pfd = try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         } catch (e: Exception) {
@@ -140,6 +138,19 @@ class WordAudioDatabase(private val context: Context) {
             Log.e(TAG, "Attempt 3 failed", e)
             targetFile.delete()
             if (lastError == null) lastError = "Could not read file: ${e.message}"
+        }
+
+        // ── Attempt 4 (FALLBACK FOR CUSTOM ROMS): resolve real path ────────
+        try {
+            val path = getPathFromUri(context, uri)
+            if (path != null) {
+                if (updatePath(path)) {
+                    Log.i(TAG, "Opened audio database via fallback path: $path")
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Attempt 4 failed", e)
         }
 
         return false
@@ -294,4 +305,66 @@ class WordAudioDatabase(private val context: Context) {
     private external fun nativeGetAudioData(
         handle: Long, filePath: String, sourceId: String,
     ): ByteArray?
+
+    private fun getPathFromUri(context: Context, uri: Uri): String? {
+        val scheme = uri.scheme
+        if ("file".equals(scheme, ignoreCase = true)) {
+            return validatePath(context, uri.path)
+        }
+        if ("content".equals(scheme, ignoreCase = true)) {
+            val authority = uri.authority
+            if ("com.android.externalstorage.documents" == authority) {
+                val docId = android.provider.DocumentsContract.getDocumentId(uri)
+                val split = docId.split(":")
+                if (split.size >= 2) {
+                    val type = split[0]
+                    val relativePath = split[1]
+                    val rawPath = if ("primary".equals(type, ignoreCase = true)) {
+                        android.os.Environment.getExternalStorageDirectory().toString() + "/" + relativePath
+                    } else {
+                        "/storage/" + type + "/" + relativePath
+                    }
+                    return validatePath(context, rawPath)
+                }
+            } else if ("com.android.providers.downloads.documents" == authority) {
+                val id = android.provider.DocumentsContract.getDocumentId(uri)
+                if (id.startsWith("raw:")) {
+                    return validatePath(context, id.substring(4))
+                }
+            }
+            
+            try {
+                context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex("_data")
+                        if (idx != -1) {
+                            return validatePath(context, cursor.getString(idx))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to query _data column for $uri", e)
+            }
+        }
+        return null
+    }
+
+    private fun validatePath(context: Context, path: String?): String? {
+        if (path.isNullOrBlank()) return null
+        try {
+            val file = java.io.File(path)
+            val canonicalPath = file.canonicalPath
+            
+            // Path Traversal Mitigation: Ensure the path is not pointing to the app's internal sandbox
+            val internalDir = context.filesDir.parentFile?.canonicalPath
+            if (internalDir != null && canonicalPath.startsWith(internalDir)) {
+                Log.e(TAG, "Security Exception: Blocked access to internal app sandbox directory: $canonicalPath")
+                return null
+            }
+            return canonicalPath
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to validate path: $path", e)
+            return null
+        }
+    }
 }
