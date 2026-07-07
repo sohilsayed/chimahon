@@ -115,21 +115,28 @@ object LensResponseParser {
         var i = 0
         val seenTexts = mutableSetOf<String>()
         while (i < parsed.size) {
-            if (parsed[i].dir != DIR_LINE && parsed[i].dir != DIR_LINE_ALT) { i++; continue }
+            if (parsed[i].dir != DIR_LINE && parsed[i].dir != DIR_LINE_ALT) {
+                i++
+                continue
+            }
             i++
             while (i < parsed.size && parsed[i].dir != DIR_LINE && parsed[i].dir != DIR_LINE_ALT) {
                 val e = parsed[i]
                 if ((e.dir == DIR_CHAR || e.dir == DIR_CHAR_ALT) && e.text != null && e.text !in blockedTexts && e.text !in seenTexts) {
                     seenTexts += e.text
-                    val bestBox = (e.msg?.let { findBox(it, imageWidth, imageHeight) }
-                        ?: e.bbox
-                        ?: continue)
-                    result.add(EngineLine(
-                        text = e.text,
-                        bbox = bestBox,
-                        writingDirection = inferDirection(bestBox, e.rawAngleDegrees),
-                        language = languageMap[e.language] ?: OcrLanguage.JAPANESE,
-                    ))
+                    val bestBox = (
+                        e.msg?.let { findBox(it, imageWidth, imageHeight) }
+                            ?: e.bbox
+                            ?: continue
+                        )
+                    result.add(
+                        EngineLine(
+                            text = e.text,
+                            bbox = bestBox,
+                            writingDirection = inferDirection(bestBox, e.rawAngleDegrees),
+                            language = languageMap[e.language] ?: OcrLanguage.JAPANESE,
+                        ),
+                    )
                 }
                 i++
             }
@@ -165,7 +172,9 @@ object LensResponseParser {
     // ---- bbox extraction ----
 
     private fun extractBbox(
-        msg: Message, imageWidth: Int, imageHeight: Int,
+        msg: Message,
+        imageWidth: Int,
+        imageHeight: Int,
     ): Pair<NormalizedBBox?, Double> {
         val rect = msg.fields.firstOrNull { it.number == 2 }?.child
             ?.fields?.firstOrNull { it.number == 2 }?.child ?: return null to 0.0
@@ -252,10 +261,13 @@ object LensResponseParser {
     }
 
     private fun screenAiRect(
-        x: Double, y: Double,
-        width: Double, height: Double,
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double,
         angleDegrees: Double,
-        imageWidth: Int, imageHeight: Int,
+        imageWidth: Int,
+        imageHeight: Int,
     ): NormalizedBBox? {
         if (width <= 0.0 || height <= 0.0) return null
         if (imageWidth <= 0 || imageHeight <= 0) return null
@@ -276,8 +288,12 @@ object LensResponseParser {
     }
 
     private fun cornerBox(
-        left: Double, top: Double, right: Double, bottom: Double,
-        imageWidth: Int, imageHeight: Int,
+        left: Double,
+        top: Double,
+        right: Double,
+        bottom: Double,
+        imageWidth: Int,
+        imageHeight: Int,
     ): NormalizedBBox? {
         if (right <= left || bottom <= top) return null
         if (right <= 1.5 || bottom <= 1.5) return null
@@ -293,10 +309,13 @@ object LensResponseParser {
     }
 
     private fun centerBox(
-        centerX: Double, centerY: Double,
-        width: Double, height: Double,
+        centerX: Double,
+        centerY: Double,
+        width: Double,
+        height: Double,
         rotation: Double,
-        imageWidth: Int, imageHeight: Int,
+        imageWidth: Int,
+        imageHeight: Int,
     ): NormalizedBBox? {
         if (width <= 0.0 || height <= 0.0) return null
         if (centerX !in -0.2..1.2 || centerY !in -0.2..1.2) return null

@@ -31,7 +31,6 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
 
     override val name: String = "Local OCR"
 
-    private val TAG = "LensEngine"
     private val nativeApi = OnDeviceEngineNativeApi()
     private val registry = LodeSplitRegistry()
     private var initialized = false
@@ -53,7 +52,7 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
 
     override suspend fun recognize(
         bytes: ByteArray,
-        language: OcrLanguage
+        language: OcrLanguage,
     ): List<EngineLine> {
         if (!initialized) {
             init()
@@ -85,12 +84,12 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
                 val dumpDir = File(context.cacheDir, "ocr_dumps")
                 dumpDir.mkdirs()
                 val baseName = "response_${dumpCounter++}_${bitmap.width}x${bitmap.height}"
-                val rawFile = File(dumpDir, "${baseName}.bin")
+                val rawFile = File(dumpDir, "$baseName.bin")
                 rawFile.writeBytes(response)
                 Log.d(TAG, "Dumped raw (${response.size} bytes) to ${rawFile.absolutePath}")
 
                 val parsed = LensResponseParser.parse(response, bitmap.width, bitmap.height)
-                val jsonFile = File(dumpDir, "${baseName}.json")
+                val jsonFile = File(dumpDir, "$baseName.json")
                 jsonFile.writeText(parsed.toJson())
                 Log.d(TAG, "Dumped parsed to ${jsonFile.absolutePath}")
 
@@ -162,13 +161,13 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
             'e'.code.toByte(), 'n'.code.toByte(), 'g'.code.toByte(), 'i'.code.toByte(),
             'n'.code.toByte(), 'e'.code.toByte(), '.'.code.toByte(), 'b'.code.toByte(),
             'i'.code.toByte(), 'n'.code.toByte(), 'a'.code.toByte(), 'r'.code.toByte(),
-            'y'.code.toByte(), 'p'.code.toByte(), 'b'.code.toByte()
+            'y'.code.toByte(), 'p'.code.toByte(), 'b'.code.toByte(),
         )
         val dataNeedle = byteArrayOf(
             0x0A, 0x0F, 0x0A, 0x08,
             'd'.code.toByte(), 'a'.code.toByte(), 't'.code.toByte(), 'a'.code.toByte(),
             '_'.code.toByte(), 'd'.code.toByte(), 'i'.code.toByte(), 'r'.code.toByte(),
-            0x12, 0x03, 0x0A, 0x01, '.'.code.toByte()
+            0x12, 0x03, 0x0A, 0x01, '.'.code.toByte(),
         )
         val enginePos = original.indexOfSubarray(engineNeedle)
         val dataPos = original.indexOfSubarray(dataNeedle)
@@ -193,13 +192,13 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
         }
 
         val engineReplacementPayload = bytesField(1, "ocr_subgraph_template".toByteArray(Charsets.UTF_8)) +
-                bytesField(2, bytesField(1, enginePathBytes))
+            bytesField(2, bytesField(1, enginePathBytes))
         val engineReplacement = bytesField(1, engineReplacementPayload)
         val dataReplacementPayload = bytesField(1, "data_dir".toByteArray(Charsets.UTF_8)) +
-                bytesField(2, bytesField(1, dataDirBytes))
+            bytesField(2, bytesField(1, dataDirBytes))
         val dataReplacement = bytesField(1, dataReplacementPayload)
         val delta = (engineReplacement.size - engineNeedle.size) +
-                (dataReplacement.size - dataNeedle.size)
+            (dataReplacement.size - dataNeedle.size)
 
         val out = original.toMutableList()
         fun replacePrefix(oldPrefix: ByteArray, tagSize: Int, newLength: Int) {
@@ -221,7 +220,7 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
 
         listOf(
             Triple(dataPos, dataNeedle.size, dataReplacement),
-            Triple(enginePos, engineNeedle.size, engineReplacement)
+            Triple(enginePos, engineNeedle.size, engineReplacement),
         ).sortedByDescending { it.first }.forEach { (pos, size, replacement) ->
             repeat(size) { out.removeAt(pos) }
             out.addAll(pos, replacement.toList())
@@ -320,9 +319,12 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
         append('"')
         for (c in s) {
             when (c) {
-                '\\' -> append("\\\\"); '"' -> append("\\\"")
-                '\n' -> append("\\n"); '\r' -> append("\\r")
-                '\t' -> append("\\t"); '\b' -> append("\\b")
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                '\b' -> append("\\b")
                 '\u000C' -> append("\\f")
                 else -> append(c)
             }
@@ -333,4 +335,8 @@ class LensEngine(private val context: Context) : chimahon.ocr.OcrEngine {
     fun isInitialized(): Boolean = initialized
 
     private external fun nativeInitAssetManager(context: android.content.Context, cacheDir: String)
+
+    companion object {
+        private const val TAG = "LensEngine"
+    }
 }
