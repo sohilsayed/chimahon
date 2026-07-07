@@ -56,12 +56,15 @@ object BookImporter {
             Log.d(TAG, "Books directory: ${booksDir.absolutePath}")
             booksDir.mkdirs()
 
-            val tempExtractDir = File(context.cacheDir, "temp_extract_${System.currentTimeMillis()}")
+            val tempExtractDir = File(context.cacheDir, "temp_extract_${System.currentTimeMillis()}").canonicalFile
             tempExtractDir.mkdirs()
 
             ZipFile(tempFile).use { zip ->
                 zip.entries().asSequence().forEach { entry ->
-                    val file = File(tempExtractDir, entry.name)
+                    val file = File(tempExtractDir, entry.name).canonicalFile
+                    if (!file.path.startsWith(tempExtractDir.path + File.separator)) {
+                        throw SecurityException("Unsafe zip entry: ${entry.name}")
+                    }
                     if (entry.isDirectory) {
                         file.mkdirs()
                     } else {
