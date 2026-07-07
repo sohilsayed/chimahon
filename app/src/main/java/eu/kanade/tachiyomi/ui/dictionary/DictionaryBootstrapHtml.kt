@@ -96,18 +96,24 @@ internal fun getDictionaryBootstrapHtml(
           <script>
             window.AnkiBridge = {
               addToAnki: function(index, glossary, selectedDict, popupSelection) {
-                var url = "anki://add?index=" + index;
-                if (glossary !== undefined && glossary !== null) url += "&glossary=" + glossary;
-                if (selectedDict) url += "&selected_dict=" + encodeURIComponent(selectedDict);
-                if (popupSelection) url += "&popup_selection=" + encodeURIComponent(popupSelection);
-                window.location.href = url;
+                if (typeof AnkiJsBridge !== 'undefined') {
+                  AnkiJsBridge.addToAnki(
+                    String(index),
+                    String(glossary != null ? glossary : '-1'),
+                    selectedDict || '',
+                    popupSelection || ''
+                  );
+                }
               },
               openInAnki: function(index, glossary, selectedDict, popupSelection) {
-                var url = "anki://open?index=" + index;
-                if (glossary !== undefined && glossary !== null) url += "&glossary=" + glossary;
-                if (selectedDict) url += "&selected_dict=" + encodeURIComponent(selectedDict);
-                if (popupSelection) url += "&popup_selection=" + encodeURIComponent(popupSelection);
-                window.location.href = url;
+                if (typeof AnkiJsBridge !== 'undefined') {
+                  AnkiJsBridge.openInAnki(
+                    String(index),
+                    String(glossary != null ? glossary : '-1'),
+                    selectedDict || '',
+                    popupSelection || ''
+                  );
+                }
               }
             };
           </script>

@@ -70,6 +70,37 @@ internal class PayloadBridge {
 }
 
 /**
+ * JavaScript bridge for Anki card creation.
+ * Replaces URL scheme navigation with direct native calls via @JavascriptInterface,
+ * avoiding WebView navigation pipeline overhead.
+ */
+internal class AnkiJsBridge(
+    private val webViewProvider: () -> WebView?,
+) {
+    var onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null
+
+    private val scope = CoroutineScope(Dispatchers.Main + Job())
+
+    @JavascriptInterface
+    fun addToAnki(index: String, glossary: String, selectedDict: String, popupSelection: String) {
+        val idx = index.toIntOrNull() ?: return
+        val gloss = glossary.toIntOrNull()
+        scope.launch {
+            onAnkiLookup?.invoke(idx, gloss, selectedDict, popupSelection, false)
+        }
+    }
+
+    @JavascriptInterface
+    fun openInAnki(index: String, glossary: String, selectedDict: String, popupSelection: String) {
+        val idx = index.toIntOrNull() ?: return
+        val gloss = glossary.toIntOrNull()
+        scope.launch {
+            onAnkiLookup?.invoke(idx, gloss, selectedDict, popupSelection, true)
+        }
+    }
+}
+
+/**
  * JavaScript bridge for word audio playback.
  */
 internal class WordAudioBridge(

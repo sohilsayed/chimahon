@@ -210,6 +210,7 @@ fun DictionaryEntryWebView(
                     state.reloadShell(webView, bootstrapHtml)
                 }
                 state.onAnkiLookup = onAnkiLookup
+                state.ankiJsBridge.onAnkiLookup = onAnkiLookup
                 state.onRecursiveLookup = onRecursiveLookup
                 state.onTabSelect = onTabSelect
                 state.onBack = onBack
@@ -269,6 +270,7 @@ fun DictionaryEntryWebView(
                 state?.pendingExistingExpressions = null
                 state?.pendingMediaDataUris = null
                 state?.pendingRenderSignature = null
+                state?.ankiJsBridge?.onAnkiLookup = null
                 state?.payloadBridge?.rawPayloadJson = ""
                 state?.payloadBridge?.rawEntryJsons = emptyList()
             },
