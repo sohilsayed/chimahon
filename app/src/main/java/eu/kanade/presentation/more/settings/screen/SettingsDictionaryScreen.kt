@@ -309,44 +309,36 @@ object SettingsDictionaryScreen : SearchableSettings {
         ) { uris ->
             Log.d(TAG, "importLauncher: uris=${uris.size}")
             if (uris.isEmpty()) return@rememberLauncherForActivityResult
-            val successNames = mutableListOf<String>()
-            val failedImports = mutableListOf<Pair<String, String>>()
-            
-            val pending = uris.map { uri ->
-                val name = getFileNameFromUri(context, uri)
-                try {
-                    val stream = openStreamWithFallback(context, uri)
-                    if (stream != null) {
-                        Triple(name, stream, null)
-                    } else {
-                        Triple(name, null, "Could not open file stream")
-                    }
-                } catch (e: Exception) {
-                    Triple(name, null, e.message ?: "Failed to open file")
-                }
-            }
-            
             scope.launch {
                 _isImporting.value = true
-                pending.forEach { (name, stream, err) ->
-                    if (err != null) {
-                        failedImports.add(name to err)
-                        return@forEach
-                    }
-                    if (stream != null) {
-                        val activeProfile = dictionaryPreferences.profileStore.getActiveProfile()
-                        val result = importDictionaryFromStream(context, stream, activeProfile)
-                        if (result.second) {
-                            successNames.add(name)
-                        } else {
-                            failedImports.add(name to result.first)
+                val successNames = mutableListOf<String>()
+                val failedImports = mutableListOf<Pair<String, String>>()
+
+                withContext(Dispatchers.IO) {
+                    uris.forEach { uri ->
+                        val name = getFileNameFromUri(context, uri)
+                        try {
+                            val stream = openStreamWithFallback(context, uri)
+                            if (stream != null) {
+                                val activeProfile = dictionaryPreferences.profileStore.getActiveProfile()
+                                val result = importDictionaryFromStream(context, stream, activeProfile)
+                                if (result.second) {
+                                    successNames.add(name)
+                                } else {
+                                    failedImports.add(name to result.first)
+                                }
+                            } else {
+                                failedImports.add(name to "Could not open file stream")
+                            }
+                        } catch (e: Exception) {
+                            failedImports.add(name to (e.message ?: "Failed to open file"))
                         }
                     }
                 }
-                
+
                 loadDictionaryList(context)
                 _isImporting.value = false
-                
+
                 // Construct and display the result report dialog
                 val report = StringBuilder()
                 if (successNames.isNotEmpty()) {
@@ -1383,7 +1375,15 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     .padding(horizontal = 16.dp, vertical = 4.dp)
                                     .clickable {
                                         try {
-                                            importLauncher?.launch(arrayOf("application/zip"))
+                                            importLauncher?.launch(
+                                                arrayOf(
+                                                    "application/zip",
+                                                    "application/x-zip-compressed",
+                                                    "application/x-zip",
+                                                    "application/x-compressed",
+                                                    "application/octet-stream",
+                                                ),
+                                            )
                                         } catch (_: ActivityNotFoundException) {
                                             context.toast(MR.strings.file_picker_error)
                                         }
@@ -2959,7 +2959,7 @@ private fun getPathFromUri(context: Context, uri: Uri): String? {
                 return validatePath(context, id.substring(4))
             }
         }
-        
+
         try {
             context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
@@ -2981,7 +2981,7 @@ private fun validatePath(context: Context, path: String?): String? {
     try {
         val file = java.io.File(path)
         val canonicalPath = file.canonicalPath
-        
+
         // Path Traversal Mitigation: Ensure the path is not pointing to the app's internal sandbox
         val internalDir = context.filesDir.parentFile?.canonicalPath
         if (internalDir != null && canonicalPath.startsWith(internalDir)) {
