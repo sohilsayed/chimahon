@@ -30,7 +30,7 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.i18n.MR
 import java.io.File
 import logcat.LogPriority
-import logcat.logcat
+import tachiyomi.core.common.util.system.logcat
 
 class StorageManager(
     private val context: Context,
