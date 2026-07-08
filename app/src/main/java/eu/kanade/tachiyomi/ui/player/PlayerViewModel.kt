@@ -144,8 +144,8 @@ import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.EpisodeUpdate
 import tachiyomi.domain.episode.service.getEpisodeSort
 import tachiyomi.domain.history.interactor.GetNextEpisodes
-import tachiyomi.domain.history.interactor.UpsertHistory
-import tachiyomi.domain.history.model.HistoryUpdate
+import tachiyomi.domain.history.interactor.UpsertAnimeHistory
+import tachiyomi.domain.history.model.AnimeHistoryUpdate
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.i18n.MR
@@ -183,7 +183,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val getEpisodesByAnimeId: GetEpisodesByAnimeId = Injekt.get(),
     private val getAnimeCategories: GetCategories = Injekt.get(),
     private val getTracks: GetAnimeTracks = Injekt.get(),
-    private val upsertHistory: UpsertHistory = Injekt.get(),
+    private val upsertAnimeHistory: UpsertAnimeHistory = Injekt.get(),
     private val updateEpisode: UpdateEpisode = Injekt.get(),
     private val setAnimeViewerFlags: SetAnimeViewerFlags = Injekt.get(),
     internal val playerPreferences: PlayerPreferences = Injekt.get(),
@@ -2904,8 +2904,8 @@ class PlayerViewModel @JvmOverloads constructor(
         if (!incognitoMode) {
             val episodeId = episode.id!!
             val seenAt = Date()
-            upsertHistory.await(
-                HistoryUpdate(episodeId, seenAt, 0),
+            upsertAnimeHistory.await(
+                AnimeHistoryUpdate(episodeId, seenAt, 0),
             )
         }
     }

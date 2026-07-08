@@ -44,8 +44,8 @@ import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.model.EpisodeUpdate
-import tachiyomi.domain.history.interactor.UpsertHistory
-import tachiyomi.domain.history.model.HistoryUpdate
+import tachiyomi.domain.history.interactor.UpsertAnimeHistory
+import tachiyomi.domain.history.model.AnimeHistoryUpdate
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.anime.interactor.GetAnimeTracks
 import tachiyomi.domain.track.anime.interactor.InsertAnimeTrack
@@ -437,7 +437,7 @@ class ExternalIntents {
     }
 
     // List of all the required Injectable classes
-    private val upsertHistory: UpsertHistory = Injekt.get()
+    private val upsertAnimeHistory: UpsertAnimeHistory = Injekt.get()
     private val updateEpisode: UpdateEpisode = Injekt.get()
     private val getAnime: GetAnime = Injekt.get()
     private val sourceManager: SourceManager = Injekt.get()
@@ -459,8 +459,8 @@ class ExternalIntents {
      */
     private suspend fun saveEpisodeHistory(currentEpisode: Episode) {
         if (basePreferences.incognitoMode().get()) return
-        upsertHistory.await(
-            HistoryUpdate(currentEpisode.id, Date(), 0),
+        upsertAnimeHistory.await(
+            AnimeHistoryUpdate(currentEpisode.id, Date(), 0),
         )
     }
 

@@ -97,6 +97,8 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.source.NoResultsException
+import tachiyomi.domain.history.interactor.UpsertAnimeHistory
+import tachiyomi.domain.history.model.AnimeHistoryUpdate
 import tachiyomi.domain.entries.anime.interactor.GetAnimeWithEpisodes
 import tachiyomi.domain.entries.anime.interactor.GetDuplicateLibraryAnime
 import tachiyomi.domain.entries.anime.interactor.NetworkToLocalAnime
@@ -161,6 +163,7 @@ class AnimeScreenModel(
     private val setAnimeDefaultEpisodeFlags: SetAnimeDefaultEpisodeFlags = Injekt.get(),
     private val setAnimeDefaultSeasonFlags: SetAnimeDefaultSeasonFlags = Injekt.get(),
     private val setSeenStatus: SetSeenStatus = Injekt.get(),
+    private val upsertAnimeHistory: UpsertAnimeHistory = Injekt.get(),
     private val getAvailableAnimeScanlators: GetAvailableAnimeScanlators = Injekt.get(),
     private val getExcludedAnimeScanlators: GetExcludedAnimeScanlators = Injekt.get(),
     private val setExcludedAnimeScanlators: SetExcludedAnimeScanlators = Injekt.get(),
@@ -1050,6 +1053,14 @@ class AnimeScreenModel(
                 seen = seen,
                 episodes = episodes.toTypedArray(),
             )
+
+            if (seen) {
+                episodes.filter { !it.seen }.forEach { episode ->
+                    upsertAnimeHistory.await(
+                        AnimeHistoryUpdate(episode.id!!, java.util.Date(), 0),
+                    )
+                }
+            }
 
             if (!seen || successState?.hasLoggedInTrackers == false || autoTrackState == AutoTrackState.NEVER) {
                 return@launchIO

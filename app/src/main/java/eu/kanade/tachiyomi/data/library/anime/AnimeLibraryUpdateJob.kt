@@ -27,6 +27,7 @@ import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
@@ -108,11 +109,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
             }
         }
 
-        try {
-            setForeground(getForegroundInfo())
-        } catch (e: IllegalStateException) {
-            logcat(LogPriority.ERROR, e) { "Not allowed to set foreground job" }
-        }
+        setForegroundSafely()
 
         libraryPreferences.lastUpdatedTimestamp().set(Instant.now().toEpochMilli())
 
@@ -200,7 +197,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         animeToUpdate = listToUpdateWithSeasons
             .filter {
                 when {
-                    it.anime.updateStrategy != UpdateStrategy.ALWAYS_UPDATE -> {
+                    it.anime.updateStrategy == UpdateStrategy.ONLY_FETCH_ONCE && it.totalEpisodes > 0L -> {
                         skippedUpdates.add(
                             it.anime to context.stringResource(MR.strings.skipped_reason_not_always_update),
                         )
