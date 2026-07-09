@@ -228,7 +228,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         MangaCoverMetadata.load()
         // KMK <--
 
-        // Updates widget update
         WidgetManager(Injekt.get(), Injekt.get()).apply { init(scope) }
 
         if (!WorkManager.isInitialized()) {

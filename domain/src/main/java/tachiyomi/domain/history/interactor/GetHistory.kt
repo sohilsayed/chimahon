@@ -13,6 +13,10 @@ class GetHistory(
         return repository.getHistoryByMangaId(mangaId)
     }
 
+    suspend fun awaitLast(): HistoryWithRelations? {
+        return repository.getLastHistory()
+    }
+
     fun subscribe(
         query: String,
         // KMK -->

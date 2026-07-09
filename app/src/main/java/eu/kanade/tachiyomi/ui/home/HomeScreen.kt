@@ -215,10 +215,10 @@ object HomeScreen : Screen() {
                         if (it is Tab.More) {
                             if (it.toDownloads) {
                                 navigator.push(DownloadQueueScreen)
-                                // KMK -->
+                            } else if (it.toStats) {
+                                navigator.push(eu.kanade.tachiyomi.ui.stats.StatsScreen())
                             } else if (it.toLibraryUpdateErrors) {
                                 navigator.push(LibraryUpdateErrorScreen())
-                                // KMK <--
                             }
                         }
                     }
@@ -374,6 +374,7 @@ object HomeScreen : Screen() {
         data object Anime : Tab
         data class More(
             val toDownloads: Boolean,
+            val toStats: Boolean = false,
             // KMK -->
             val toLibraryUpdateErrors: Boolean = false,
             // KMK <--

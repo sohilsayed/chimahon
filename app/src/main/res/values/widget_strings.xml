@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description_recent_history">Recent History</string>
+    <string name="widget_description_novel_progress">Novel Progress</string>
+    <string name="widget_description_continue_reading">Continue Reading</string>
+    <string name="widget_description_reading_stats">Reading Statistics</string>
+    <string name="widget_description_screen_lookup">System Lookup</string>
+    <string name="widget_description_search">Search</string>
+
+    <string name="widget_no_recent_history">No recent history</string>
+    <string name="widget_no_recent_novels">No recent novels</string>
+    <string name="widget_current_novel">Current novel</string>
+    <string name="widget_unknown_title">Unknown Title</string>
+    <string name="widget_chapter_unknown">Chapter -</string>
+    <string name="widget_search_dictionary_hint">Search dictionary...</string>
+    <string name="widget_system_lookup">System Lookup</string>
+    <string name="widget_stat_characters">Characters read</string>
+    <string name="widget_stat_reading_time">Reading time</string>
+    <string name="widget_stat_speed">Avg speed</string>
+    <string name="widget_stat_mined_cards">Added cards</string>
+    <string name="widget_continue_reading_title">Continue reading</string>
+
+</resources>
