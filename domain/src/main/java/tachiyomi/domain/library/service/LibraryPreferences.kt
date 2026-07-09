@@ -38,9 +38,6 @@ class LibraryPreferences(
     fun animePortraitColumns() = preferenceStore.getInt("pref_anime_library_columns_portrait_key", 0)
     fun animeLandscapeColumns() = preferenceStore.getInt("pref_anime_library_columns_landscape_key", 0)
 
-    fun novelPortraitColumns() = preferenceStore.getInt("pref_novel_library_columns_portrait_key", 2)
-    fun novelLandscapeColumns() = preferenceStore.getInt("pref_novel_library_columns_landscape_key", 0)
-
     fun lastUpdatedTimestamp() = preferenceStore.getLong(Preference.appStateKey("library_update_last_timestamp"), 0L)
     fun autoUpdateInterval() = preferenceStore.getInt("pref_library_update_interval_key", 0)
 
@@ -190,8 +187,6 @@ class LibraryPreferences(
     fun defaultCategory() = preferenceStore.getInt(DEFAULT_CATEGORY_PREF_KEY, -1)
 
     fun defaultAnimeCategory() = preferenceStore.getInt("default_anime_category", 0)
-
-    fun novelDefaultCategory() = preferenceStore.getString(NOVEL_DEFAULT_CATEGORY_PREF_KEY, "")
 
     fun lastUsedCategory() = preferenceStore.getInt(Preference.appStateKey("last_used_category"), 0)
 
@@ -479,7 +474,6 @@ class LibraryPreferences(
         const val MARK_DUPLICATE_CHAPTER_READ_EXISTING = "existing"
 
         const val DEFAULT_CATEGORY_PREF_KEY = "default_category"
-        const val NOVEL_DEFAULT_CATEGORY_PREF_KEY = "novel_default_category"
         private const val LIBRARY_UPDATE_CATEGORIES_PREF_KEY = "library_update_categories"
         private const val LIBRARY_UPDATE_CATEGORIES_EXCLUDE_PREF_KEY = "library_update_categories_exclude"
         private const val LIBRARY_UPDATE_ANIME_CATEGORIES_PREF_KEY = "animelib_update_categories"
