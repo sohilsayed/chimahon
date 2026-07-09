@@ -41,6 +41,15 @@ class NovelProgressWidget : GlanceAppWidget() {
             BookStorage.getBookDirectory(context, book.folder ?: book.id)
         }
         val bookmark = bookDir?.let { BookStorage.loadBookmark(it) }
+        // TOC 1-based number (same basis as reader chapterStarts / chapter list), not spine index.
+        val chapterText = if (bookDir != null && bookmark != null) {
+            runCatching {
+                val epub = BookStorage.loadEpub(bookDir)
+                "Chapter ${epub.tocChapterNumber(bookmark.chapterIndex)}"
+            }.getOrNull()
+        } else {
+            null
+        }
 
         val noRecentNovels = context.getString(R.string.widget_no_recent_novels)
         val currentNovelLabel = context.getString(R.string.widget_current_novel)
@@ -89,8 +98,7 @@ class NovelProgressWidget : GlanceAppWidget() {
 
                         Spacer(modifier = GlanceModifier.defaultWeight())
 
-                        val chapterText = bookmark?.chapterIndex?.let { "Chapter $it" }
-                            ?: chapterUnknown
+                        val chapterLabel = chapterText ?: chapterUnknown
                         val progressPercent = PROGRESS_FORMAT.format((bookmark?.progress ?: 0.0) * 100)
 
                         Row(
@@ -98,12 +106,13 @@ class NovelProgressWidget : GlanceAppWidget() {
                             verticalAlignment = Alignment.Bottom,
                         ) {
                             Text(
-                                text = chapterText,
+                                text = chapterLabel,
                                 style = TextStyle(
                                     color = GlanceTheme.OnSurfaceVariant,
                                     fontSize = 12.sp,
                                 ),
                                 modifier = GlanceModifier.defaultWeight(),
+                                maxLines = 1,
                             )
                             Text(
                                 text = "$progressPercent%",

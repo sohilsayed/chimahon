@@ -43,6 +43,81 @@ data class EpubBook(
         }
     }
 
+    /**
+     * Same label as the novel reader chapter list / app bar:
+     * TOC title → file name → "Chapter {spineIndex}" (0-based, matches list fallback).
+     */
+    fun getChapterTitle(chapterIndex: Int): String {
+        val href = getChapterHref(chapterIndex)
+            ?: return "Chapter $chapterIndex"
+        findTocLabel(tableOfContents, href)?.let { return it }
+        return href.substringAfterLast("/").substringBefore(".")
+    }
+
+    /** Depth-first TOC list (same order as reader chapter sheet / chapterStarts). */
+    fun flattenedToc(indentLabels: Boolean = false): List<TocEntry> {
+        val flat = mutableListOf<TocEntry>()
+        fun flatten(entries: List<TocEntry>, depth: Int) {
+            for (e in entries) {
+                val label = if (indentLabels) "  ".repeat(depth) + e.label else e.label
+                flat.add(e.copy(label = label))
+                flatten(e.children, depth + 1)
+            }
+        }
+        flatten(tableOfContents, 0)
+        return flat
+    }
+
+    fun getSpineIndexForHref(href: String): Int? {
+        val decodedHref = java.net.URLDecoder.decode(
+            href.substringBefore('#').substringBefore('?'),
+            "UTF-8",
+        )
+        val fileName = decodedHref.substringAfterLast("/")
+        for (i in linearSpineItems.indices) {
+            val chapterHref = getChapterHref(i) ?: continue
+            val chapterFileName = chapterHref.substringAfterLast("/")
+            if (chapterHref.endsWith(decodedHref) || chapterFileName == fileName) {
+                return i
+            }
+        }
+        return null
+    }
+
+    /**
+     * 1-based chapter number by TOC order (matches stats [chapterStarts] when TOC exists).
+     * Spine index overcounts front matter / non-TOC pages — map spine → last TOC entry at or before it.
+     * No TOC: fall back to 1-based spine position.
+     */
+    fun tocChapterNumber(spineIndex: Int): Int {
+        val flat = flattenedToc()
+        if (flat.isEmpty()) return spineIndex + 1
+
+        val tocSpines = flat.mapIndexedNotNull { tocIndex, entry ->
+            val href = entry.href ?: return@mapIndexedNotNull null
+            val spine = getSpineIndexForHref(href) ?: return@mapIndexedNotNull null
+            tocIndex to spine
+        }
+        if (tocSpines.isEmpty()) return spineIndex + 1
+
+        tocSpines.lastOrNull { it.second == spineIndex }?.let { return it.first + 1 }
+        tocSpines.lastOrNull { it.second <= spineIndex }?.let { return it.first + 1 }
+        return 1
+    }
+
+    private fun findTocLabel(toc: List<TocEntry>, href: String): String? {
+        val fileName = href.substringAfterLast("/")
+        for (entry in toc) {
+            val entryHref = entry.href ?: continue
+            if (entryHref.endsWith(fileName) || entryHref.contains(fileName.substringBefore("."))) {
+                return entry.label
+            }
+            val found = findTocLabel(entry.children, href)
+            if (found != null) return found
+        }
+        return null
+    }
+
     // Hoshi Shims
     fun title(): String? = title
     fun spine(): EpubSpine = spine

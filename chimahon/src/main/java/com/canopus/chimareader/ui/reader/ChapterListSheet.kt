@@ -96,7 +96,7 @@ fun ChapterListSheet(
                 ) {
                     itemsIndexed(chapters) { index, _ ->
                         val isCurrent = index == viewModel.index
-                        val title = viewModel.getChapterTitle(index) ?: viewModel.document.getChapterHref(index) ?: "Chapter $index"
+                        val title = viewModel.document.getChapterTitle(index)
 
                         Row(
                             modifier = Modifier

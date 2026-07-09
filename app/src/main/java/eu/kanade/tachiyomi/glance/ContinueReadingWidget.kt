@@ -157,7 +157,7 @@ private fun ContinueReadingContent(
             )
             Spacer(modifier = GlanceModifier.height(4.dp))
             Text(
-                text = formatWidgetChapterLabel(history.chapterNumber, short = true),
+                text = formatWidgetChapterLabel(history.chapterNumber),
                 style = TextStyle(
                     color = GlanceTheme.OnSurfaceVariant,
                     fontSize = 14.sp,
