@@ -18,6 +18,7 @@ object MangaStatsStorage {
 
     fun saveAll(context: Context, stats: List<MangaStats>) {
         BookStorage.save(stats, context.filesDir, FileNames.mangaStats)
+        chimahon.widget.ImmersionWidgetSignals.notifyStatsChanged()
     }
 
     fun addStats(context: Context, characters: Int, timeMs: Long, mangaId: Long = 0, date: LocalDate = LocalDate.now()) {

@@ -18,6 +18,7 @@ object AnkiStatsStorage {
 
     fun saveAll(context: Context, stats: List<AnkiStats>) {
         BookStorage.save(stats, context.filesDir, FileNames.ankiStats)
+        chimahon.widget.ImmersionWidgetSignals.notifyStatsChanged()
     }
 
     fun addCard(context: Context, type: String? = null, date: LocalDate = LocalDate.now(), profileId: String = "", titleId: String? = null) {

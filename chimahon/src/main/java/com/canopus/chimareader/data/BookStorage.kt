@@ -44,6 +44,13 @@ object BookStorage {
             `object`,
         )
         targetFile.writeText(data)
+        // Reader hot path uses save() directly (not saveBookmark/saveMetadata).
+        when (fileName) {
+            FileNames.bookmark, FileNames.metadata, FileNames.bookinfo ->
+                chimahon.widget.ImmersionWidgetSignals.notifyNovelsChanged()
+            FileNames.statistics ->
+                chimahon.widget.ImmersionWidgetSignals.notifyStatsChanged()
+        }
     }
 
     inline fun <reified T> load(directory: File, fileName: String): T? {
@@ -158,7 +165,11 @@ object BookStorage {
         }.orEmpty()
 
         val dirsToDelete = (duplicateDirs + bookDir).distinctBy { it.absolutePath }
-        return dirsToDelete.all { delete(it) }
+        val deleted = dirsToDelete.all { delete(it) }
+        if (deleted) {
+            chimahon.widget.ImmersionWidgetSignals.notifyNovelsChanged()
+        }
+        return deleted
     }
 
     private fun loadStoredBookDirs(booksDir: File): List<StoredBookDir> {
