@@ -2,6 +2,7 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/appwidget_updates_description"
     android:previewImage="@drawable/updates_grid_widget_preview"
+    android:previewLayout="@layout/widget_preview_updates"
     android:initialLayout="@layout/appwidget_loading"
     android:minWidth="250dp"
     android:minHeight="110dp"

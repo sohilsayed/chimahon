@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description_reading_stats"
+    android:previewImage="@drawable/widget_reading_stats_preview"
+    android:previewLayout="@layout/widget_preview_reading_stats"
     android:initialLayout="@layout/appwidget_loading"
     android:minWidth="320dp"
     android:minHeight="110dp"

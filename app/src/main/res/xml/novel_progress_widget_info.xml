@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description_novel_progress"
+    android:previewImage="@drawable/widget_novel_progress_preview"
+    android:previewLayout="@layout/widget_preview_novel_progress"
     android:initialLayout="@layout/appwidget_loading"
     android:minWidth="110dp"
     android:minHeight="110dp"
