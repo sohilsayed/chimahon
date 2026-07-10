@@ -83,7 +83,6 @@ object Marker {
     const val SCREENSHOT = "screenshot"
     const val SEARCH_QUERY = "search-query"
     const val URL = "url"
-    const val BOOK = "book"
     const val CHAPTER = "chapter"
     const val MEDIA = "media"
     const val SINGLE_GLOSSARY = "single-glossary"
@@ -98,7 +97,7 @@ object Marker {
     const val MISC_INFO = "misc-info"
     const val POPUP_SELECTION_TEXT = "popup-selection-text"
     const val SELECTED_GLOSSARY = "selected-glossary"
-    const val DOCUMENT_TITLE = "document-title"
+    const val MEDIA_NAME = "media-name"
     const val WORD_AUDIO = "word-audio"
     const val SENTENCE_AUDIO = "sentence-audio"
 
@@ -129,7 +128,7 @@ object Marker {
         TAGS, PART_OF_SPEECH, CONJUGATION, DICTIONARY, DICTIONARY_ALIAS,
 
         // Source/Context
-        URL, BOOK, CHAPTER, MEDIA, DOCUMENT_TITLE,
+        URL, CHAPTER, MEDIA, MEDIA_NAME,
 
         // Other
         SENTENCE_AUDIO, POPUP_SELECTION_TEXT,
@@ -161,13 +160,12 @@ object Marker {
         FREQUENCY_AVERAGE_RANK to listOf("freq-avg", "frequency-average"),
         SENTENCE_TRANSLATION to listOf("sentence-translation", "sentencetranslation", "meaning-eng"),
         POPUP_SELECTION_TEXT to listOf("selection", "selection-text", "selectiontext", "popupselectiontext", "popup-selection-text"),
-        DOCUMENT_TITLE to listOf("miscinfo", "document-title", "documenttitle"),
+        MEDIA_NAME to listOf("media-name", "medianame", "book", "manga", "series", "title", "miscinfo", "document-title", "documenttitle"),
         SEARCH_QUERY to listOf("search-query", "query"),
         SCREENSHOT to listOf("screenshot"),
         TAGS to listOf("tags", "tag"),
         PART_OF_SPEECH to listOf("part-of-speech", "pos", "part"),
         CONJUGATION to listOf("conjugation", "inflection"),
-        BOOK to listOf("book", "manga", "series", "title"),
         CHAPTER to listOf("chapter", "episode"),
         MEDIA to listOf("media", "source", "context"),
         SENTENCE_AUDIO to listOf("sentence-audio", "sentenceaudio", "sentence-sound", "sentence_sound"),
@@ -387,7 +385,12 @@ object AnkiCardCreator {
             )
             val fields = resolveDictionaryMediaPlaceholders(fieldsWithPlaceholders, exportMedia, bridge)
             android.util.Log.d(TAG, "addToAnki: built fields=$fields")
-            val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            val resolvedTags = formatField(
+                tags, result, cloze, media, screenshotFilename, wordAudioFilename,
+                sentenceAudioFilename, selectedDict, popupSelection, glossaryIndex,
+                styles, exportMedia,
+            )
+            val tagList = resolvedTags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
             if (dupCheck || forceOpen) {
                 val targetDeckId = if (dupScope == "deck" && effectiveDeck.isNotBlank()) {
@@ -801,7 +804,7 @@ object AnkiCardCreator {
         Marker.SCREENSHOT -> screenshotFilename?.let { "<img src=\"$it\">" } ?: ""
         Marker.SEARCH_QUERY -> escapeHtml(result.term.expression)
         Marker.URL -> ""
-        Marker.BOOK -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
+        Marker.MEDIA_NAME -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         Marker.CHAPTER -> media?.chapterName?.let { escapeHtml(it) } ?: ""
         Marker.MEDIA -> {
             if (media != null && media.mangaTitle.isNotBlank()) {
@@ -831,7 +834,6 @@ object AnkiCardCreator {
                 renderMarker(Marker.GLOSSARY_FIRST, result, glossaryIndex = glossaryIndex, styles = styles, exportMedia = exportMedia)
             }
         }
-        Marker.DOCUMENT_TITLE -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         else -> parseDynamicMarker(marker, result, styles, exportMedia)
     }
 

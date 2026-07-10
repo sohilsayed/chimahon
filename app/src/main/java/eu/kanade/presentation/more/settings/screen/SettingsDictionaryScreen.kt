@@ -204,10 +204,9 @@ private val markerSections = listOf(
             Marker.DICTIONARY_ALIAS,
             Marker.SEARCH_QUERY,
             Marker.URL,
-            Marker.BOOK,
+            Marker.MEDIA_NAME,
             Marker.CHAPTER,
             Marker.MEDIA,
-            Marker.DOCUMENT_TITLE,
         ),
     ),
 )
@@ -251,7 +250,7 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.PITCH_ACCENT_GRAPHS_JJ -> "${prefix}Pitch Graphs JJ"
         Marker.MORAE -> "${prefix}Morae"
         Marker.SCREENSHOT -> "${prefix}Screenshot"
-        Marker.BOOK -> "${prefix}Book"
+        Marker.MEDIA_NAME -> "${prefix}Media Name"
         Marker.CHAPTER -> "${prefix}Chapter"
         Marker.MEDIA -> "${prefix}Media"
         Marker.SINGLE_GLOSSARY -> "${prefix}Single Glossary ▸"

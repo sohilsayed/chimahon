@@ -48,7 +48,7 @@ object LapisPreset {
         "PitchCategories" to "{${Marker.PITCH_ACCENT_CATEGORIES}}",
         "Frequency" to "{${Marker.FREQUENCIES}}",
         "FreqSort" to "{${Marker.FREQUENCY_HARMONIC_RANK}}",
-        "MiscInfo" to "{${Marker.DOCUMENT_TITLE}}",
+        "MiscInfo" to "{${Marker.MEDIA_NAME}}",
     )
 
     val defaultFieldMapJson: String
