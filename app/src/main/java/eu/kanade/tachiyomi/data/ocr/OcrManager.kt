@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -693,7 +694,9 @@ class CbzImageProvider(
         imageEntries = archiveReader.useEntries { entries ->
             entries
                 .filter { it.isFile && ImageUtil.isImage(it.name) { archiveReader.getInputStream(it.name)!! } }
-                .sortedBy { it.name }
+                .sortedWith { e1, e2 ->
+                    e1.name.compareToCaseInsensitiveNaturalOrder(e2.name)
+                }
                 .map { it.name }
                 .toList()
         }

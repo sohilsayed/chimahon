@@ -256,6 +256,22 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         prefs[keys.KEEP_SCREEN_ON] ?: false
     }
 
+    val einkRefreshOnPageTurn: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[keys.EINK_REFRESH_ON_PAGE_TURN] ?: false
+    }
+
+    val einkRefreshDurationMillis: Flow<Int> = dataStore.data.map { prefs ->
+        prefs.getSafeInt(keys.EINK_REFRESH_DURATION_MILLIS, 100)
+    }
+
+    val einkRefreshPageInterval: Flow<Int> = dataStore.data.map { prefs ->
+        prefs.getSafeInt(keys.EINK_REFRESH_PAGE_INTERVAL, 1)
+    }
+
+    val einkRefreshColor: Flow<String> = dataStore.data.map { prefs ->
+        prefs[keys.EINK_REFRESH_COLOR] ?: "BLACK"
+    }
+
     suspend fun setTheme(value: Theme) {
         dataStore.edit { prefs ->
             prefs[keys.THEME] = value.name
@@ -515,6 +531,30 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         }
     }
 
+    suspend fun setEinkRefreshOnPageTurn(value: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[keys.EINK_REFRESH_ON_PAGE_TURN] = value
+        }
+    }
+
+    suspend fun setEinkRefreshDurationMillis(value: Int) {
+        dataStore.edit { prefs ->
+            prefs[keys.EINK_REFRESH_DURATION_MILLIS] = value
+        }
+    }
+
+    suspend fun setEinkRefreshPageInterval(value: Int) {
+        dataStore.edit { prefs ->
+            prefs[keys.EINK_REFRESH_PAGE_INTERVAL] = value
+        }
+    }
+
+    suspend fun setEinkRefreshColor(value: String) {
+        dataStore.edit { prefs ->
+            prefs[keys.EINK_REFRESH_COLOR] = value
+        }
+    }
+
     @Suppress("PropertyName", "ktlint:standard:property-naming")
     private inner class PreferencesKeys {
         val THEME = stringKey("theme")
@@ -555,6 +595,10 @@ class NovelReaderSettings(private val context: Context, private val namespace: S
         val MAX_RESULTS = intKey("max_results")
         val SCAN_LENGTH = intKey("scan_length")
         val KEEP_SCREEN_ON = booleanKey("keep_screen_on")
+        val EINK_REFRESH_ON_PAGE_TURN = booleanKey("eink_refresh_on_page_turn")
+        val EINK_REFRESH_DURATION_MILLIS = intKey("eink_refresh_duration_millis")
+        val EINK_REFRESH_PAGE_INTERVAL = intKey("eink_refresh_page_interval")
+        val EINK_REFRESH_COLOR = stringKey("eink_refresh_color")
     }
 
     private val keys = PreferencesKeys()

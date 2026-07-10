@@ -79,6 +79,12 @@ data class ReaderSettings(
     val continuousMode: Boolean = false,
 )
 
+enum class EinkRefreshColor {
+    BLACK,
+    WHITE,
+    WHITE_BLACK,
+}
+
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
 class WebViewBridge {
@@ -175,6 +181,10 @@ class ReaderViewModel(
     var tapZonePercent by mutableIntStateOf(20)
     var keepScreenOn by mutableStateOf(false)
     var systemLightSepia by mutableStateOf(false)
+    var einkRefreshOnPageTurn by mutableStateOf(false)
+    var einkRefreshDurationMillis by mutableIntStateOf(100)
+    var einkRefreshPageInterval by mutableIntStateOf(1)
+    var einkRefreshColor by mutableStateOf("BLACK")
 
     private val ttuSyncManager: TtuSyncManager? by lazy {
         try { Injekt.get<TtuSyncManager>() } catch (_: Exception) { null }
@@ -245,6 +255,10 @@ class ReaderViewModel(
             tapZonePercent = settings.chapterTapZones.first()
             keepScreenOn = settings.keepScreenOn.first()
             systemLightSepia = settings.systemLightSepia.first()
+            einkRefreshOnPageTurn = settings.einkRefreshOnPageTurn.first()
+            einkRefreshDurationMillis = settings.einkRefreshDurationMillis.first()
+            einkRefreshPageInterval = settings.einkRefreshPageInterval.first()
+            einkRefreshColor = settings.einkRefreshColor.first()
         }
 
         val bookmark = BookStorage.loadBookmark(rootUrl)
@@ -405,6 +419,18 @@ class ReaderViewModel(
         scope.launch {
             settings.systemLightSepia.collect { systemLightSepia = it }
         }
+        scope.launch {
+            settings.einkRefreshOnPageTurn.collect { einkRefreshOnPageTurn = it }
+        }
+        scope.launch {
+            settings.einkRefreshDurationMillis.collect { einkRefreshDurationMillis = it }
+        }
+        scope.launch {
+            settings.einkRefreshPageInterval.collect { einkRefreshPageInterval = it }
+        }
+        scope.launch {
+            settings.einkRefreshColor.collect { einkRefreshColor = it }
+        }
 
         syncOnOpen()
     }
@@ -432,6 +458,10 @@ class ReaderViewModel(
     fun updateTapZonePercent(value: Int) = scope.launch { settings.setChapterTapZones(value) }
     fun updateKeepScreenOn(value: Boolean) = scope.launch { settings.setKeepScreenOn(value) }
     fun updateSystemLightSepia(value: Boolean) = scope.launch { settings.setSystemLightSepia(value) }
+    fun updateEinkRefreshOnPageTurn(value: Boolean) = scope.launch { settings.setEinkRefreshOnPageTurn(value) }
+    fun updateEinkRefreshDurationMillis(value: Int) = scope.launch { settings.setEinkRefreshDurationMillis(value) }
+    fun updateEinkRefreshPageInterval(value: Int) = scope.launch { settings.setEinkRefreshPageInterval(value) }
+    fun updateEinkRefreshColor(value: String) = scope.launch { settings.setEinkRefreshColor(value) }
 
     fun getReaderSettings(context: Context): ReaderSettings {
         val fontUrl = if (FontManager.isCustomFont(context, selectedFont)) {

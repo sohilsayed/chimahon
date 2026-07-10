@@ -23,14 +23,14 @@ import kotlinx.coroutines.launch
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryDisplayMode
-import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.library.service.NovelLibraryPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class NovelLibraryScreenModel(
     private val app: Application = Injekt.get(),
     private val categoryStorage: NovelCategoryStorage = Injekt.get(),
-    private val libraryPreferences: LibraryPreferences = Injekt.get(),
+    private val libraryPreferences: NovelLibraryPreferences = Injekt.get(),
 ) : StateScreenModel<NovelLibraryScreenModel.State>(State()) {
 
     private val _searchQuery = MutableStateFlow<String?>(null)
@@ -377,9 +377,9 @@ class NovelLibraryScreenModel(
     }
 
     fun getColumnsPreferenceForOrientation(isLandscape: Boolean) = if (isLandscape) {
-        libraryPreferences.novelLandscapeColumns()
+        libraryPreferences.landscapeColumns()
     } else {
-        libraryPreferences.novelPortraitColumns()
+        libraryPreferences.portraitColumns()
     }
 
     fun getDisplayMode() = libraryPreferences.displayMode()
@@ -397,14 +397,14 @@ class NovelLibraryScreenModel(
     }
 
     fun setNovelDefaultCategory(categoryId: String) {
-        libraryPreferences.novelDefaultCategory().set(categoryId)
+        libraryPreferences.defaultCategory().set(categoryId)
         closeDialog()
     }
 
-    fun getNovelDefaultCategory() = libraryPreferences.novelDefaultCategory()
+    fun getNovelDefaultCategory() = libraryPreferences.defaultCategory()
 
     fun getDefaultCategoryDisplayName(): String {
-        val defaultId = libraryPreferences.novelDefaultCategory().get()
+        val defaultId = libraryPreferences.defaultCategory().get()
         if (defaultId.isEmpty()) return "None"
         val cat = mutableState.value.categories.find { it.id == defaultId }
         return cat?.name ?: "None"

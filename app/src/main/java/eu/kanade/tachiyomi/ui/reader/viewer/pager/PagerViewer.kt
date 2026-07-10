@@ -394,7 +394,7 @@ abstract class PagerViewer(
         val position = adapter.joinedItems.indexOfFirst { it.first == page || it.second == page }
         if (position != -1) {
             val currentPosition = pager.currentItem
-            pager.setCurrentItem(position, !config.eInkMode)
+            pager.setCurrentItem(position, config.usePageTransitions && !config.eInkMode)
             // manually call onPageChange since ViewPager listener is not triggered in this case
             if (currentPosition == position) {
                 onPageChange(position)

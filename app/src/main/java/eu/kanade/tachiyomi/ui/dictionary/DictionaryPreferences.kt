@@ -45,6 +45,12 @@ class DictionaryPreferences(
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
 
+    /** Whether horizontal swipe-to-dismiss is enabled on dictionary popups. */
+    fun popupSwipeToDismiss() = preferenceStore.getBoolean("pref_dictionary_popup_swipe_to_dismiss", true)
+
+    /** Horizontal swipe distance (in dp) required to dismiss a dictionary popup. */
+    fun popupSwipeThreshold() = preferenceStore.getInt("pref_dictionary_popup_swipe_threshold", 56)
+
     fun themeMode(): tachiyomi.core.common.preference.Preference<String> {
         // One-time migration from old boolean pref
         val oldPref = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)

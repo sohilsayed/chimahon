@@ -53,6 +53,7 @@ fun ReaderWebView(
     onDismissPopupRequested: () -> Unit = {},
     onInternalLinkClicked: (url: String) -> Unit = {},
     onSelectionRectsReceived: ((String) -> Unit)? = null,
+    onPageTurned: () -> Unit = {},
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -110,6 +111,7 @@ fun ReaderWebView(
                 onSentenceReadyCallback = onSentenceReady,
                 onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
+                onPageTurned = onPageTurned,
             ).apply {
                 setSelectionRectsCallback(onSelectionRectsReceived)
                 settings.allowFileAccess = true
@@ -359,6 +361,7 @@ private class ReaderAndroidWebView(
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
     private val onDismissPopupRequested: () -> Unit = {},
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
+    private val onPageTurned: () -> Unit = {},
 ) : WebView(context) {
 
     private var touchStartX = 0f
@@ -1290,6 +1293,7 @@ private class ReaderAndroidWebView(
 
         evaluateJavascript(script) { result ->
             if (result?.trim('"') == "scrolled") {
+                onPageTurned()
                 evaluateJavascript(
                     "(function() { return window.hoshiReader.calculateProgress(); })()",
                 ) { progressResult ->

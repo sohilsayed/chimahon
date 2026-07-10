@@ -24,7 +24,6 @@
   --tag-frequent-background-color: #5bc0de;
   --tag-archaism-background-color: #d9534f;
   --tag-dictionary-background-color: #aa66cc;
-  --tag-frequency-background-color: #5cb85c;
   --tag-part-of-speech-background-color: #565656;
   --tag-search-background-color: #8a8a91;
   --tag-pronunciation-dictionary-background-color: #6640be;
@@ -215,7 +214,22 @@ body {
 .tag[data-category="name"]       { --tag-color: var(--tag-name-background-color); }
 .tag[data-category="popular"]    { --tag-color: var(--tag-popular-background-color); }
 .tag[data-category="dictionary"] { --tag-color: var(--tag-dictionary-background-color); }
-.tag[data-category="frequency"]  { --tag-color: var(--tag-frequency-background-color); }
+.tag[data-category="frequency"]  { --tag-color: var(--secondary); }
+
+.tag[data-category="frequency"] .tag-label {
+  background-color: color-mix(in srgb, var(--secondary) 10%, var(--bg));
+  color: var(--secondary);
+}
+
+.tag[data-category="frequency"] .tag-body {
+  background-color: color-mix(in srgb, var(--secondary) 15%, var(--bg));
+  color: var(--secondary);
+}
+
+.tag[data-category="frequency"] .tag-label-content,
+.tag[data-category="frequency"] .tag-body-content {
+  color: inherit;
+}
 
 .frequency-top-section,
 .frequency-top-section .tag,
@@ -225,6 +239,18 @@ body {
 .frequency-group-item .tag-label,
 .frequency-group-item .tag-body {
   color: #fff !important;
+}
+
+.frequency-top-section .tag[data-category="frequency"] .tag-label,
+.frequency-group-item[data-category="frequency"] .tag-label {
+  background-color: color-mix(in srgb, var(--secondary) 10%, var(--bg));
+  color: var(--secondary) !important;
+}
+
+.frequency-top-section .tag[data-category="frequency"] .tag-body,
+.frequency-group-item[data-category="frequency"] .tag-body {
+  background-color: color-mix(in srgb, var(--secondary) 15%, var(--bg));
+  color: var(--secondary) !important;
 }
 
 .tag.selected .tag-label {

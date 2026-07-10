@@ -335,6 +335,11 @@ object SettingsAppearanceScreen : SearchableSettings {
         val navbarEntries = remember(navTabLayoutStr) {
             val layout = eu.kanade.domain.ui.model.NavTabLayout.parse(navTabLayoutStr)
             layout.getKeysForSection(eu.kanade.domain.ui.model.NavSection.NAVBAR)
+                .let { keys ->
+                    if (Injekt.get<UiPreferences>().useConsolidatedLibrary().get()) {
+                        keys.filter { it != eu.kanade.domain.ui.model.NavTabLayout.KEY_NOVELS && it != eu.kanade.domain.ui.model.NavTabLayout.KEY_ANIME }
+                    } else keys
+                }
                 .associateWith { key ->
                     when (key) {
                         eu.kanade.domain.ui.model.NavTabLayout.KEY_LIBRARY -> "Library"
@@ -361,6 +366,11 @@ object SettingsAppearanceScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = uiPreferences.bottomBarLabels(),
                     title = stringResource(SYMR.strings.pref_show_bottom_bar_labels),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = uiPreferences.useConsolidatedLibrary(),
+                    title = stringResource(SYMR.strings.pref_consolidated_library),
+                    subtitle = stringResource(SYMR.strings.pref_consolidated_library_summary),
                 ),
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(SYMR.strings.pref_navigation_style),

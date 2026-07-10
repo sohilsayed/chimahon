@@ -36,7 +36,6 @@ import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupService
 import eu.kanade.tachiyomi.ui.dictionary.ScreenLookupServiceState
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
-import eu.kanade.tachiyomi.ui.library.novels.NovelLibraryScreenModel
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsScreen
@@ -95,7 +94,12 @@ data object MoreTab : Tab {
                 }
             },
             // SY -->
-            moreTabKeys = NavTabLayout.parse(screenModel.moreTabKeys.value).getKeysForSection(NavSection.MORE),
+            moreTabKeys = {
+                val consolidated = Injekt.get<UiPreferences>().useConsolidatedLibrary().get()
+                NavTabLayout.parse(screenModel.moreTabKeys.value)
+                    .let { if (consolidated) NavTabLayout(it.entries.filter { e -> e.key != NavTabLayout.KEY_NOVELS && e.key != NavTabLayout.KEY_ANIME }) else it }
+                    .getKeysForSection(NavSection.MORE)
+            }(),
             // SY <--
             onClickDownloadQueue = { navigator.push(DownloadQueueScreen) },
             onClickCategories = { navigator.push(CategoryScreen()) },

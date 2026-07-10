@@ -214,6 +214,8 @@ fun ReaderScreen(
 
                     val tapZonePx = with(density) { 64.dp.toPx() }.toInt()
 
+                    val einkRefreshHost = remember { EinkRefreshHost() }
+
                     // Single WebView handles all chapters
                     ReaderWebView(
                         modifier = Modifier.fillMaxWidth().then(heightModifier),
@@ -243,7 +245,22 @@ fun ReaderScreen(
                         onSentenceReady = onSentenceReady,
                         onInternalLinkClicked = { viewModel.jumpToUrl(it) },
                         onSelectionRectsReceived = onSelectionRectsReceived,
+                        onPageTurned = { if (viewModel.einkRefreshOnPageTurn) einkRefreshHost.trigger() },
                     )
+
+                    if (viewModel.einkRefreshOnPageTurn) {
+                        EinkRefreshOverlay(
+                            hostState = einkRefreshHost,
+                            durationMillis = viewModel.einkRefreshDurationMillis,
+                            color = runCatching { EinkRefreshColor.valueOf(viewModel.einkRefreshColor) }
+                                .getOrDefault(EinkRefreshColor.BLACK),
+                            interval = viewModel.einkRefreshPageInterval,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .align(Alignment.Center)
+                                .zIndex(20f),
+                        )
+                    }
                 }
             }
         }

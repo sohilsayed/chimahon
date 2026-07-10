@@ -88,6 +88,8 @@ import eu.kanade.tachiyomi.data.SyncStatus
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
+import eu.kanade.tachiyomi.ui.library.LibraryModeTitleContent
+import eu.kanade.tachiyomi.ui.library.LibraryViewMode
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -125,6 +127,11 @@ import uy.kohesive.injekt.api.get
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Screen.NovelLibraryScreen(
+    libraryMode: LibraryViewMode? = null,
+    showModeDropdown: Boolean = false,
+    onToggleDropdown: () -> Unit = {},
+    onDismissDropdown: () -> Unit = {},
+    onModeSelected: (LibraryViewMode) -> Unit = {},
     requestSortEvent: Channel<Unit>? = null,
 ) {
     val navigator = LocalNavigator.currentOrThrow
@@ -224,15 +231,30 @@ fun Screen.NovelLibraryScreen(
 
     Scaffold(
         topBar = { scrollBehavior ->
+            val title = state.getToolbarTitle(
+                defaultTitle = stringResource(MR.strings.label_novels),
+                defaultCategoryTitle = stringResource(MR.strings.label_default),
+                showTabs = showTabs,
+                showCount = showNumberOfItems,
+            )
             LibraryToolbar(
                 hasActiveFilters = state.hasActiveFilters,
                 selectedCount = state.selection.size,
-                title = state.getToolbarTitle(
-                    defaultTitle = stringResource(MR.strings.label_novels),
-                    defaultCategoryTitle = stringResource(MR.strings.label_default),
-                    showTabs = showTabs,
-                    showCount = showNumberOfItems,
-                ),
+                titleContent = if (libraryMode != null) {
+                    {
+                        LibraryModeTitleContent(
+                            title = title,
+                            showModeDropdown = showModeDropdown,
+                            onToggleDropdown = onToggleDropdown,
+                            onDismissDropdown = onDismissDropdown,
+                            libraryMode = libraryMode,
+                            onModeSelected = onModeSelected,
+                        )
+                    }
+                } else {
+                    null
+                },
+                title = title,
                 onClickUnselectAll = screenModel::clearSelection,
                 onClickSelectAll = screenModel::selectAll,
                 onClickInvertSelection = screenModel::invertSelection,

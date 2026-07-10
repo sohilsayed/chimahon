@@ -88,6 +88,10 @@ class UiPreferences(
 
     fun navStartScreen() = preferenceStore.getString("pref_nav_start_screen", "Library")
 
+    fun lastUsedBrowseMode() = preferenceStore.getInt("browse_last_used_mode", 0)
+
+    fun useConsolidatedLibrary() = preferenceStore.getBoolean("use_consolidated_library", true)
+
     // SY <--
 
     companion object {

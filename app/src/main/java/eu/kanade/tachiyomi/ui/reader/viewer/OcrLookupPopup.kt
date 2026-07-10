@@ -189,6 +189,8 @@ fun OcrLookupPopup(
     val popupModePref by dictionaryPreferences.popupMode().collectAsState()
     val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
     val eInkMode by dictionaryPreferences.eInkMode().collectAsState()
+    val popupSwipeToDismissPref by dictionaryPreferences.popupSwipeToDismiss().collectAsState()
+    val popupSwipeThresholdPref by dictionaryPreferences.popupSwipeThreshold().collectAsState()
 
     val ankiEnabled = activeProfile.ankiEnabled
     val ankiDeck = activeProfile.ankiDeck
@@ -979,13 +981,14 @@ fun OcrLookupPopup(
 
     @Composable
     fun PopupContent() {
-        val swipeThreshold = with(density) { 56.dp.toPx() }
+        val swipeThreshold = with(density) { popupSwipeThresholdPref.dp.toPx() }
         Surface(
             modifier = modifier
                 .width(actualWidthDp)
                 .height(actualHeightDp)
                 .alpha(if (contentReady || isLoading || errorMessage != null) 1f else 0f)
                 .pointerInput(Unit) {
+                    if (!popupSwipeToDismissPref) return@pointerInput
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -1000,8 +1003,8 @@ fun OcrLookupPopup(
                                     totalDragX += delta.x
                                     totalDragY += delta.y
                                     // If horizontal swipe is dominant and exceeds threshold, dismiss
-                                    if (kotlin.math.abs(totalDragX) > swipeThreshold && 
-                                        kotlin.math.abs(totalDragX) > kotlin.math.abs(totalDragY) * 1.5f
+                                    if (kotlin.math.abs(totalDragX) > swipeThreshold &&
+                                        kotlin.math.abs(totalDragX) > kotlin.math.abs(totalDragY) * 1.75f
                                     ) {
                                         onDismiss()
                                         throw CancellationException("Dismissed by swipe")

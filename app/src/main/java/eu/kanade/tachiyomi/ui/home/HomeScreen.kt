@@ -46,11 +46,11 @@ import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryTab
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
+import eu.kanade.tachiyomi.ui.entries.anime.AnimeTab
 import eu.kanade.tachiyomi.ui.library.LibraryTab
+import eu.kanade.tachiyomi.ui.library.novels.NovelsTab
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
-import eu.kanade.tachiyomi.ui.entries.anime.AnimeTab
-import eu.kanade.tachiyomi.ui.library.novels.NovelsTab
 import eu.kanade.tachiyomi.ui.more.MoreTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import kotlinx.coroutines.channels.Channel
@@ -82,12 +82,12 @@ object HomeScreen : Screen() {
 
     private val ALL_TABS_MAP = mapOf(
         NavTabLayout.KEY_LIBRARY to LibraryTab,
+        NavTabLayout.KEY_NOVELS to NovelsTab,
+        NavTabLayout.KEY_ANIME to AnimeTab,
         NavTabLayout.KEY_UPDATES to UpdatesTab,
         NavTabLayout.KEY_HISTORY to HistoryTab,
         NavTabLayout.KEY_BROWSE to BrowseTab,
         NavTabLayout.KEY_DICTIONARY to DictionaryTab,
-        NavTabLayout.KEY_NOVELS to NovelsTab,
-        NavTabLayout.KEY_ANIME to AnimeTab,
     )
 
     @Composable
@@ -103,10 +103,12 @@ object HomeScreen : Screen() {
 
         val navTabLayoutStr by uiPreferences.navTabLayout().collectAsState()
         val navStartScreenKey by uiPreferences.navStartScreen().collectAsState()
+        val useConsolidatedLibrary by uiPreferences.useConsolidatedLibrary().asState(scope)
 
-        val navbarTabs = remember(navTabLayoutStr) {
+        val navbarTabs = remember(navTabLayoutStr, useConsolidatedLibrary) {
             val layout = NavTabLayout.parse(navTabLayoutStr)
             val navbarKeys = layout.getKeysForSection(NavSection.NAVBAR)
+                .filterNot { useConsolidatedLibrary && (it == NavTabLayout.KEY_NOVELS || it == NavTabLayout.KEY_ANIME) }
             navbarKeys.mapNotNull { ALL_TABS_MAP[it] } + listOf(MoreTab)
         }
 
@@ -197,6 +199,8 @@ object HomeScreen : Screen() {
                             is Tab.Library -> LibraryTab
                             Tab.Updates -> UpdatesTab
                             Tab.History -> HistoryTab
+                            Tab.Novels -> NovelsTab
+                            Tab.Anime -> AnimeTab
                             is Tab.Browse -> {
                                 if (it.toExtensions) {
                                     BrowseTab.showExtension()
@@ -204,8 +208,6 @@ object HomeScreen : Screen() {
                                 BrowseTab
                             }
                             Tab.Dictionary -> DictionaryTab
-                            Tab.Novels -> NovelsTab
-                            Tab.Anime -> AnimeTab
                             is Tab.More -> MoreTab
                         }
 
@@ -368,10 +370,10 @@ object HomeScreen : Screen() {
         data class Library(val mangaIdToOpen: Long? = null) : Tab
         data object Updates : Tab
         data object History : Tab
-        data class Browse(val toExtensions: Boolean = false) : Tab
-        data object Dictionary : Tab
         data object Novels : Tab
         data object Anime : Tab
+        data class Browse(val toExtensions: Boolean = false) : Tab
+        data object Dictionary : Tab
         data class More(
             val toDownloads: Boolean,
             // KMK -->

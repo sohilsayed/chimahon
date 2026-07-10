@@ -58,6 +58,7 @@ internal fun prepareDictionaryWebViewShell(
         addJavascriptInterface(state.wordAudioBridge, "WordAudioBridge")
         addJavascriptInterface(state.readyBridge, "DictionaryReadyBridge")
         addJavascriptInterface(state.payloadBridge, "PayloadBridge")
+        addJavascriptInterface(state.ankiJsBridge, "AnkiJsBridge")
 
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -103,25 +104,6 @@ internal fun prepareDictionaryWebViewShell(
                     return true
                 }
 
-                if (url.scheme == ANKI_SCHEME) {
-                    val host = url.host ?: ""
-                    val isAdd = host.equals(ANKI_PATH_ADD, ignoreCase = true)
-                    val isOpen = host.equals(ANKI_PATH_OPEN, ignoreCase = true)
-
-                    if (isAdd || isOpen) {
-                        val index = url.getQueryParameter("index")?.toIntOrNull()
-                        val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
-                        val selectedDict = url.getQueryParameter("selected_dict")
-                        val popupSelection = url.getQueryParameter("popup_selection")
-
-                        android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: host=$host, index=$index, isOpen=$isOpen")
-
-                        if (index != null && index >= 0) {
-                            s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, isOpen)
-                        }
-                        return true
-                    }
-                }
                 return false
             }
         }
@@ -140,6 +122,7 @@ internal class DictionaryWebViewState(
     val wordAudioBridge: WordAudioBridge = WordAudioBridge(context, webViewProvider)
     val readyBridge: DictionaryReadyBridge = DictionaryReadyBridge(webViewProvider) { this }
     val payloadBridge: PayloadBridge = PayloadBridge()
+    val ankiJsBridge: AnkiJsBridge = AnkiJsBridge(webViewProvider)
     var pageReady: Boolean = false
     var fontSize: Int = 16
     @Volatile var contentReadyGeneration: Long = 0
@@ -349,10 +332,6 @@ private fun disableSafeBrowsingForDictionary(webView: WebView) {
         settings.safeBrowsingEnabled = false
     }
 }
-
-private const val ANKI_SCHEME = "anki"
-private const val ANKI_PATH_ADD = "add"
-private const val ANKI_PATH_OPEN = "open"
 
 private const val CHIMA_SCHEME = "chima"
 private const val CHIMA_HOST_LOOKUP = "lookup"

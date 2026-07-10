@@ -122,6 +122,7 @@ internal object DictionaryPopupWebViewWarmup {
     private fun WebView.resetDictionaryCallbacks() {
         val state = tag as? DictionaryWebViewState ?: return
         state.onAnkiLookup = null
+        state.ankiJsBridge.onAnkiLookup = null
         state.onRecursiveLookup = null
         state.onTabSelect = null
         state.onBack = null

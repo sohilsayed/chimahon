@@ -136,6 +136,11 @@ private enum class OcrScaleAxis(val label: String) {
     Y("Y"),
 }
 
+private enum class PopupSizeAxis(val label: String) {
+    WIDTH("W"),
+    HEIGHT("H"),
+}
+
 private val _dictionaryNames = MutableStateFlow<List<String>>(emptyList())
 private val dictionaryNames = _dictionaryNames.asStateFlow()
 
@@ -474,6 +479,9 @@ object SettingsDictionaryScreen : SearchableSettings {
         val heightPref = dictionaryPreferences.popupHeight()
         val height by heightPref.collectAsState()
 
+        val popupSwipeThresholdPref = dictionaryPreferences.popupSwipeThreshold()
+        val popupSwipeThreshold by popupSwipeThresholdPref.collectAsState()
+
         val fontSizePref = dictionaryPreferences.fontSize()
         val fontSize by fontSizePref.collectAsState()
 
@@ -508,24 +516,73 @@ object SettingsDictionaryScreen : SearchableSettings {
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_dict_appearance),
             preferenceItems = persistentListOf(
-                Preference.PreferenceItem.SliderPreference(
-                    value = width,
-                    title = stringResource(MR.strings.pref_dict_popup_width),
-                    subtitle = "${width}px",
-                    valueRange = 200..1920 step 10,
-                    steps = 171,
-                    onValueChanged = { newValue ->
-                        widthPref.set(newValue)
-                    },
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = height,
-                    title = stringResource(MR.strings.pref_dict_popup_height),
-                    subtitle = "${height}px",
-                    valueRange = 100..1080 step 10,
-                    steps = 97,
-                    onValueChanged = { newValue ->
-                        heightPref.set(newValue)
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_dict_popup_size),
+                    content = {
+                        var selectedAxis by remember { mutableStateOf(PopupSizeAxis.WIDTH) }
+                        val selectedValue = when (selectedAxis) {
+                            PopupSizeAxis.WIDTH -> width
+                            PopupSizeAxis.HEIGHT -> height
+                        }
+                        val setSelectedValue: (Int) -> Unit = { value ->
+                            when (selectedAxis) {
+                                PopupSizeAxis.WIDTH -> widthPref.set(value)
+                                PopupSizeAxis.HEIGHT -> heightPref.set(value)
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_dict_popup_size),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(
+                                    onClick = {
+                                        widthPref.set(300)
+                                        heightPref.set(360)
+                                    },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Refresh,
+                                        contentDescription = "Reset popup size",
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "W ${width}px  H ${height}px",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                PopupSizeAxis.entries.forEachIndexed { index, axis ->
+                                    SegmentedButton(
+                                        selected = selectedAxis == axis,
+                                        onClick = { selectedAxis = axis },
+                                        shape = SegmentedButtonDefaults.itemShape(index, PopupSizeAxis.entries.size),
+                                    ) {
+                                        Text(axis.label)
+                                    }
+                                }
+                            }
+                            Slider(
+                                value = selectedValue.toFloat(),
+                                onValueChange = { setSelectedValue(it.roundToInt()) },
+                                valueRange = (if (selectedAxis == PopupSizeAxis.WIDTH) 200f else 100f)..(if (selectedAxis == PopupSizeAxis.WIDTH) 1920f else 1080f),
+                                steps = (if (selectedAxis == PopupSizeAxis.WIDTH) 171 else 97),
+                            )
+                        }
                     },
                 ),
                 Preference.PreferenceItem.CustomPreference(
@@ -939,6 +996,20 @@ object SettingsDictionaryScreen : SearchableSettings {
                         "popup" to stringResource(MR.strings.pref_dict_recursive_mode_popup),
                     ).associate { it.first to it.second }.toPersistentMap(),
                     title = stringResource(MR.strings.pref_dict_recursive_mode),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.popupSwipeToDismiss(),
+                    title = stringResource(MR.strings.pref_dict_popup_swipe_to_dismiss),
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = popupSwipeThreshold,
+                    title = stringResource(MR.strings.pref_dict_popup_swipe_threshold),
+                    subtitle = "${popupSwipeThreshold}dp",
+                    valueRange = 20..100,
+                    steps = 79,
+                    onValueChanged = { newValue ->
+                        popupSwipeThresholdPref.set(newValue)
+                    },
                 ),
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_pitch_accent_display),

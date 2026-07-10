@@ -97,6 +97,7 @@ fun AppearanceSheet(
     var renameTarget by remember { mutableStateOf<CustomReaderTheme?>(null) }
     var deleteTarget by remember { mutableStateOf<CustomReaderTheme?>(null) }
     var renameInput by remember { mutableStateOf("") }
+    var einkExpanded by remember { mutableStateOf(false) }
 
     val fontPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -530,6 +531,104 @@ fun AppearanceSheet(
                                 valueRange = 0f..2f,
                                 steps = 39,
                             )
+                        }
+                    }
+                }
+            }
+
+            // E-Ink
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { einkExpanded = !einkExpanded }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text("E-Ink", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        imageVector = if (einkExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (einkExpanded) "Collapse" else "Expand",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                if (einkExpanded) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        // Refresh on page turn
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Text("Refresh on page turn", style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = viewModel.einkRefreshOnPageTurn,
+                                onCheckedChange = { viewModel.updateEinkRefreshOnPageTurn(it) },
+                            )
+                        }
+
+                        if (viewModel.einkRefreshOnPageTurn) {
+                            // Duration
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Duration", style = MaterialTheme.typography.bodyMedium)
+                                    Text("${viewModel.einkRefreshDurationMillis} ms", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Slider(
+                                    value = (viewModel.einkRefreshDurationMillis / 100).toFloat(),
+                                    onValueChange = { viewModel.updateEinkRefreshDurationMillis((it * 100).roundToInt()) },
+                                    valueRange = 1f..15f,
+                                    steps = 14,
+                                )
+                            }
+
+                            // Interval
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("Every Nth page", style = MaterialTheme.typography.bodyMedium)
+                                    Text("${viewModel.einkRefreshPageInterval}", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Slider(
+                                    value = viewModel.einkRefreshPageInterval.toFloat(),
+                                    onValueChange = { viewModel.updateEinkRefreshPageInterval(it.roundToInt()) },
+                                    valueRange = 1f..10f,
+                                    steps = 9,
+                                )
+                            }
+
+                            // Color
+                            Text("Refresh color", style = MaterialTheme.typography.bodyMedium)
+                            val einkColor = runCatching { EinkRefreshColor.valueOf(viewModel.einkRefreshColor) }
+                                .getOrDefault(EinkRefreshColor.BLACK)
+                            val einkColorOptions = listOf(
+                                EinkRefreshColor.BLACK to "Black",
+                                EinkRefreshColor.WHITE to "White",
+                                EinkRefreshColor.WHITE_BLACK to "White→Black",
+                            )
+                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                einkColorOptions.forEachIndexed { index, (value, label) ->
+                                    SegmentedButton(
+                                        selected = einkColor == value,
+                                        onClick = { viewModel.updateEinkRefreshColor(value.name) },
+                                        shape = SegmentedButtonDefaults.itemShape(index = index, count = einkColorOptions.size),
+                                    ) {
+                                        Text(label)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

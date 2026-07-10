@@ -57,6 +57,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.connections.service.ConnectionsPreferences
 import eu.kanade.domain.source.interactor.GetIncognitoState
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.presentation.components.AppStateBanners
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
@@ -669,7 +670,11 @@ class MainActivity : BaseActivity() {
             }
             Constants.SHORTCUT_ANIME -> {
                 navigator.popUntilRoot()
-                HomeScreen.Tab.Anime
+                if (Injekt.get<UiPreferences>().useConsolidatedLibrary().get()) {
+                    HomeScreen.Tab.Library()
+                } else {
+                    HomeScreen.Tab.Anime
+                }
             }
             // KMK -->
             Constants.SHORTCUT_LIBRARY_UPDATE_ERRORS -> {

@@ -58,6 +58,36 @@ open class Pager(
         }
 
     /**
+     * Cached reflection access to DirectionalViewPager's private `mScroller` field.
+     * DirectionalViewPager re-declares its own `mScroller` shadow field, separate
+     * from ViewPager's, so we use DirectionalViewPager's class explicitly.
+     */
+    private val scrollerField by lazy {
+        runCatching {
+            DirectionalViewPager::class.java
+                .getDeclaredField("mScroller")
+                .apply { isAccessible = true }
+        }.getOrNull()
+    }
+
+    /**
+     * Safety net: in E-Ink mode, force any in-progress scroll to snap instantly.
+     * This guarantees no visible scroll animation even if the Scroller override
+     * from updatePageScroller() was lost or never applied.
+     */
+    override fun computeScroll() {
+        if (eInkMode) {
+            (scrollerField?.get(this) as? Scroller)?.let { scroller ->
+                if (!scroller.isFinished) {
+                    scrollTo(scroller.finalX, scroller.finalY)
+                    scroller.abortAnimation()
+                }
+            }
+        }
+        super.computeScroll()
+    }
+
+    /**
      * Gesture listener that implements tap and long tap events.
      */
     private val gestureListener = object : GestureDetectorWithLongTap.Listener() {

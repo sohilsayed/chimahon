@@ -2,14 +2,25 @@ package eu.kanade.tachiyomi.ui.library
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.graphics.res.animatedVectorResource
+import dev.icerock.moko.resources.StringResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -17,12 +28,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAll
 import androidx.compose.ui.util.fastAny
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -36,6 +54,7 @@ import eu.kanade.presentation.library.DeleteLibraryMangaDialog
 import eu.kanade.presentation.library.LibrarySettingsDialog
 import eu.kanade.presentation.library.components.LibraryContent
 import eu.kanade.presentation.library.components.LibraryToolbar
+import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.presentation.library.components.SyncFavoritesConfirmDialog
 import eu.kanade.presentation.library.components.SyncFavoritesProgressDialog
 import eu.kanade.presentation.library.components.SyncFavoritesWarningDialog
@@ -51,7 +70,10 @@ import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
+import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.tachiyomi.ui.entries.anime.AnimeLibraryPanel
 import eu.kanade.tachiyomi.ui.home.HomeScreen
+import eu.kanade.tachiyomi.ui.library.novels.NovelLibraryScreen
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
@@ -64,6 +86,7 @@ import exh.recs.batch.SearchStatus
 import exh.source.MERGED_SOURCE_ID
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlin.jvm.Volatile
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -78,10 +101,12 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryGroup
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
+import tachiyomi.presentation.core.components.Pill
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
@@ -90,6 +115,12 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+
+enum class LibraryViewMode(val labelRes: StringResource) {
+    Manga(MR.strings.manga_singular),
+    Anime(MR.strings.label_anime),
+    Novels(MR.strings.label_novels),
+}
 
 data object LibraryTab : Tab {
     @Suppress("unused")
@@ -100,19 +131,98 @@ data object LibraryTab : Tab {
         get() {
             val isSelected = LocalTabNavigator.current.current.key == key
             val image = AnimatedImageVector.animatedVectorResource(R.drawable.anim_library_enter)
+            val label = if (Injekt.get<UiPreferences>().useConsolidatedLibrary().get()) {
+                MR.strings.label_library
+            } else {
+                MR.strings.manga_singular
+            }
             return TabOptions(
                 index = 0u,
-                title = stringResource(MR.strings.label_library),
+                title = stringResource(label),
                 icon = rememberAnimatedVectorPainter(image, isSelected),
             )
         }
 
+    @Volatile
+    private var currentReselectMode: LibraryViewMode = LibraryViewMode.Manga
+
     override suspend fun onReselect(navigator: Navigator) {
-        requestOpenSettingsSheet()
+        if (!Injekt.get<UiPreferences>().useConsolidatedLibrary().get()) {
+            mangaSettingsEvent.send(Unit)
+            return
+        }
+        when (currentReselectMode) {
+            LibraryViewMode.Manga -> mangaSettingsEvent.send(Unit)
+            LibraryViewMode.Anime -> animeSettingsEvent.send(Unit)
+            LibraryViewMode.Novels -> novelSortEvent.send(Unit)
+        }
     }
 
     @Composable
     override fun Content() {
+        val uiPreferences = remember { Injekt.get<UiPreferences>() }
+        val useConsolidatedLibrary = remember { uiPreferences.useConsolidatedLibrary().get() }
+
+        if (!useConsolidatedLibrary) {
+            MangaLibraryContent()
+            return
+        }
+
+        val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        var libraryMode by remember {
+            mutableStateOf(LibraryViewMode.entries.getOrElse(libraryPreferences.lastUsedLibraryMode().get()) { LibraryViewMode.Manga })
+        }
+        var showModeDropdown by remember { mutableStateOf(false) }
+
+        currentReselectMode = libraryMode
+
+        when (libraryMode) {
+            LibraryViewMode.Manga -> MangaLibraryContent(
+                libraryMode = libraryMode,
+                showModeDropdown = showModeDropdown,
+                onToggleDropdown = { showModeDropdown = true },
+                onDismissDropdown = { showModeDropdown = false },
+                onModeSelected = { mode ->
+                    showModeDropdown = false
+                    libraryMode = mode
+                    libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
+                },
+            )
+            LibraryViewMode.Anime -> AnimeLibraryPanel(
+                libraryMode = libraryMode,
+                showModeDropdown = showModeDropdown,
+                onToggleDropdown = { showModeDropdown = true },
+                onDismissDropdown = { showModeDropdown = false },
+                onModeSelected = { mode ->
+                    showModeDropdown = false
+                    libraryMode = mode
+                    libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
+                },
+                settingsEvent = animeSettingsEvent,
+            )
+            LibraryViewMode.Novels -> NovelLibraryScreen(
+                libraryMode = libraryMode,
+                showModeDropdown = showModeDropdown,
+                onToggleDropdown = { showModeDropdown = true },
+                onDismissDropdown = { showModeDropdown = false },
+                onModeSelected = { mode ->
+                    showModeDropdown = false
+                    libraryMode = mode
+                    libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
+                },
+                requestSortEvent = novelSortEvent,
+            )
+        }
+    }
+
+    @Composable
+    private fun MangaLibraryContent(
+        libraryMode: LibraryViewMode? = null,
+        showModeDropdown: Boolean = false,
+        onToggleDropdown: () -> Unit = {},
+        onDismissDropdown: () -> Unit = {},
+        onModeSelected: (LibraryViewMode) -> Unit = {},
+    ) {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
@@ -154,7 +264,7 @@ data object LibraryTab : Tab {
         Scaffold(
             topBar = { scrollBehavior ->
                 val title = state.getToolbarTitle(
-                    defaultTitle = stringResource(MR.strings.label_library),
+                    defaultTitle = stringResource(libraryMode?.labelRes ?: MR.strings.manga_singular),
                     defaultCategoryTitle = stringResource(MR.strings.label_default),
                     page = state.coercedActiveCategoryIndex,
                 )
@@ -162,6 +272,20 @@ data object LibraryTab : Tab {
                     hasActiveFilters = state.hasActiveFilters,
                     selectedCount = state.selection.size,
                     title = title,
+                    titleContent = if (libraryMode != null) {
+                        {
+                            LibraryModeTitleContent(
+                                title = title,
+                                showModeDropdown = showModeDropdown,
+                                onToggleDropdown = onToggleDropdown,
+                                onDismissDropdown = onDismissDropdown,
+                                libraryMode = libraryMode,
+                                onModeSelected = onModeSelected,
+                            )
+                        }
+                    } else {
+                        null
+                    },
                     onClickUnselectAll = screenModel::clearSelection,
                     onClickSelectAll = screenModel::selectAll,
                     onClickInvertSelection = screenModel::invertSelection,
@@ -513,15 +637,71 @@ data object LibraryTab : Tab {
 
         LaunchedEffect(Unit) {
             launch { queryEvent.receiveAsFlow().collect(screenModel::search) }
-            launch { requestSettingsSheetEvent.receiveAsFlow().collectLatest { screenModel.showSettingsDialog() } }
+            launch { mangaSettingsEvent.receiveAsFlow().collectLatest { screenModel.showSettingsDialog() } }
         }
     }
 
     // For invoking search from other screen
-    private val queryEvent = Channel<String>()
+    private val queryEvent = Channel<String>(Channel.BUFFERED)
     suspend fun search(query: String) = queryEvent.send(query)
 
-    // For opening settings sheet in LibraryController
-    private val requestSettingsSheetEvent = Channel<Unit>()
-    private suspend fun requestOpenSettingsSheet() = requestSettingsSheetEvent.send(Unit)
+    private val mangaSettingsEvent = Channel<Unit>(Channel.BUFFERED)
+    private val animeSettingsEvent = Channel<Unit>(Channel.BUFFERED)
+    private val novelSortEvent = Channel<Unit>(Channel.BUFFERED)
+}
+
+@Composable
+internal fun LibraryModeTitleContent(
+    title: LibraryToolbarTitle,
+    showModeDropdown: Boolean,
+    onToggleDropdown: () -> Unit,
+    onDismissDropdown: () -> Unit,
+    libraryMode: LibraryViewMode,
+    onModeSelected: (LibraryViewMode) -> Unit,
+) {
+    val pillAlpha = if (isSystemInDarkTheme()) 0.12f else 0.08f
+    Row(
+        modifier = Modifier.clickable { onToggleDropdown() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            if (title.numberOfManga != null) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Pill(
+                    text = "${title.numberOfManga}",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = pillAlpha),
+                    fontSize = 14.sp,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Icon(
+            imageVector = Icons.Default.ArrowDropDown,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onBackground,
+        )
+        DropdownMenu(
+            expanded = showModeDropdown,
+            onDismissRequest = onDismissDropdown,
+        ) {
+            LibraryViewMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(mode.labelRes),
+                            fontWeight = if (mode == libraryMode) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    onClick = { onModeSelected(mode) },
+                )
+            }
+        }
+    }
 }
