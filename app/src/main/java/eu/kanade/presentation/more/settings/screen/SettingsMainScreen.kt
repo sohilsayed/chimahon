@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -241,6 +243,18 @@ object SettingsMainScreen : Screen() {
             subtitleRes = MR.strings.pref_dictionary_summary,
             icon = Icons.Outlined.MenuBook,
             screen = SettingsDictionaryScreen,
+        ),
+        Item(
+            titleRes = KMR.strings.pref_category_dictionary_popup,
+            subtitleRes = KMR.strings.pref_dictionary_popup_summary,
+            icon = Icons.Outlined.Style,
+            screen = SettingsDictionaryPopupScreen,
+        ),
+        Item(
+            titleRes = KMR.strings.pref_category_anki,
+            subtitleRes = KMR.strings.pref_anki_settings_summary,
+            icon = Icons.Outlined.EditNote,
+            screen = SettingsAnkiScreen,
         ),
         Item(
             titleRes = MR.strings.label_data_storage,

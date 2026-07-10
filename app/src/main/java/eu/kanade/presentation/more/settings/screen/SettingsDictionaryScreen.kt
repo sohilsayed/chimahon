@@ -455,14 +455,24 @@ object SettingsDictionaryScreen : SearchableSettings {
             )
         }
 
+        // Dictionary tab: profiles + imported dicts + word audio (popup/Anki live on sibling screens)
         return listOf(
-            getAppearanceGroup(),
             getAnkiProfileGroup(),
             getDictionaryListGroup(importLauncher),
             getWordAudioGroup(pickDb),
-            getAnkiGroup(),
         )
     }
+
+    /** Shared by [SettingsDictionaryPopupScreen] — appearance prefs only (global). */
+    @Composable
+    fun popupPreferences(): List<Preference> = listOf(getAppearanceGroup())
+
+    /** Shared by [SettingsAnkiScreen] — profiles + Anki mining prefs (per-profile). */
+    @Composable
+    fun ankiPreferences(): List<Preference> = listOf(
+        getAnkiProfileGroup(),
+        getAnkiGroup(),
+    )
 
     @Composable
     private fun getAppearanceGroup(): Preference.PreferenceGroup {

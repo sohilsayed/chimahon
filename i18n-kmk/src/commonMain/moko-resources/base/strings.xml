@@ -245,4 +245,8 @@
     <string name="pref_dict_auto_kana_conversion_summary">Convert romaji to kana while typing (like Yomitan)</string>
     <string name="pref_dict_group_pitches">Group pitches</string>
     <string name="pref_dict_group_pitches_summary">Deduplicate and merge pitches across dictionaries</string>
+    <string name="pref_category_dictionary_popup">Dictionary Popup</string>
+    <string name="pref_dictionary_popup_summary">Overlay style, theme, OCR</string>
+    <string name="pref_category_anki">Anki</string>
+    <string name="pref_anki_settings_summary">Sync, card templates, export</string>
 </resources>
