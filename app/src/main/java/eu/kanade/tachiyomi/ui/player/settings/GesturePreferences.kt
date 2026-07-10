@@ -14,6 +14,8 @@ class GesturePreferences(
     )
     fun swapVolumeBrightness() = preferenceStore.getBoolean("pref_swap_volume_and_brightness", false)
 
+    fun subtitleSwipeControls() = preferenceStore.getBoolean("pref_subtitle_swipe_controls", true)
+
     // Seeking
 
     fun gestureHorizontalSeek() = preferenceStore.getBoolean("pref_gesture_horizontal_seek", true)

@@ -307,6 +307,8 @@
     <string name="pref_player_swap_vol_bright_summary">Volume on left, brightness on right</string>
     <string name="pref_player_gesture_h_seek">Horizontal seek gesture</string>
     <string name="pref_player_gesture_h_seek_summary">Swipe horizontally to seek</string>
+    <string name="pref_player_gesture_subtitle_swipe">Subtitle swipe controls</string>
+    <string name="pref_player_gesture_subtitle_swipe_summary">Swipe left/right between subtitles, up to hide, and down to show. Replaces seek and volume/brightness swipes.</string>
     <string name="pref_player_skip_length">Seek skip length</string>
     <string name="pref_player_smooth_seek">Smooth seek</string>
     <string name="pref_player_smooth_seek_summary">Show video while seeking</string>
@@ -1713,6 +1715,8 @@
     <string name="enable_volume_brightness_gestures">Volume and brightness gestures</string>
     <string name="enable_horizontal_seek_gesture">Horizontal seek gesture</string>
     <string name="pref_show_seekbar">Seekbar</string>
+    <string name="player_subtitles_hidden">Subtitles hidden</string>
+    <string name="player_subtitles_shown">Subtitles shown</string>
 
     <!-- Anime library/detail UI -->
     <string name="action_bookmark_episode">Bookmark episode</string>

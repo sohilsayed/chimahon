@@ -20,6 +20,7 @@ package eu.kanade.tachiyomi.ui.player.controls
 import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -51,8 +52,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.player.components.LeftSideOvalShape
 import eu.kanade.presentation.player.components.RightSideOvalShape
@@ -76,6 +79,10 @@ import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.abs
+
+private const val SUBTITLE_SWIPE_TIME_LIMIT_MILLIS = 500L
+private const val SUBTITLE_SWIPE_DOMINANCE_RATIO = 1.5f
 
 @Composable
 fun GestureHandler(
@@ -109,6 +116,7 @@ fun GestureHandler(
     }
 
     val gestureVolumeBrightness = gesturePreferences.gestureVolumeBrightness().get()
+    val subtitleSwipeControls by gesturePreferences.subtitleSwipeControls().collectAsState()
     val swapVolumeBrightness by gesturePreferences.swapVolumeBrightness().collectAsState()
     val seekGesture by gesturePreferences.gestureHorizontalSeek().collectAsState()
     val preciseSeeking by gesturePreferences.playerSmoothSeek().collectAsState()
@@ -119,6 +127,7 @@ fun GestureHandler(
     val currentBrightness by viewModel.currentBrightness.collectAsState()
     val volumeBoostingCap = audioPreferences.volumeBoostCap().get()
     val haptics = LocalHapticFeedback.current
+    val subtitleSwipeDistance = with(LocalDensity.current) { 50.dp.toPx() }
 
     Box(
         modifier = modifier
@@ -229,8 +238,47 @@ fun GestureHandler(
                     )
                 }
             }
-            .pointerInput(areControlsLocked) {
-                if (!seekGesture || areControlsLocked) return@pointerInput
+            .pointerInput(areControlsLocked, subtitleSwipeControls, subtitleSwipeDistance) {
+                if (!subtitleSwipeControls || areControlsLocked) return@pointerInput
+                var startedAt = 0L
+                var totalDragX = 0f
+                var totalDragY = 0f
+                detectDragGestures(
+                    onDragStart = {
+                        startedAt = SystemClock.uptimeMillis()
+                        totalDragX = 0f
+                        totalDragY = 0f
+                    },
+                    onDragEnd = {
+                        if (SystemClock.uptimeMillis() - startedAt > SUBTITLE_SWIPE_TIME_LIMIT_MILLIS) {
+                            return@detectDragGestures
+                        }
+
+                        val horizontalDistance = abs(totalDragX)
+                        val verticalDistance = abs(totalDragY)
+                        when {
+                            horizontalDistance >= subtitleSwipeDistance &&
+                                horizontalDistance > verticalDistance * SUBTITLE_SWIPE_DOMINANCE_RATIO -> {
+                                viewModel.seekToAdjacentSubtitle(forward = totalDragX > 0f)
+                            }
+                            verticalDistance >= subtitleSwipeDistance &&
+                                verticalDistance > horizontalDistance * SUBTITLE_SWIPE_DOMINANCE_RATIO -> {
+                                viewModel.setSubtitlesVisible(visible = totalDragY > 0f)
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        totalDragX = 0f
+                        totalDragY = 0f
+                    },
+                ) { change, dragAmount ->
+                    totalDragX += dragAmount.x
+                    totalDragY += dragAmount.y
+                    change.consume()
+                }
+            }
+            .pointerInput(areControlsLocked, subtitleSwipeControls) {
+                if (subtitleSwipeControls || !seekGesture || areControlsLocked) return@pointerInput
                 var startingPosition = position.toInt()
                 var startingX = 0f
                 var wasPlayerAlreadyPause = false
@@ -263,8 +311,8 @@ fun GestureHandler(
                     if (showSeekbar) viewModel.showSeekBar()
                 }
             }
-            .pointerInput(areControlsLocked) {
-                if (!gestureVolumeBrightness || areControlsLocked) return@pointerInput
+            .pointerInput(areControlsLocked, subtitleSwipeControls) {
+                if (subtitleSwipeControls || !gestureVolumeBrightness || areControlsLocked) return@pointerInput
                 var startingY = 0f
                 var mpvVolumeStartingY = 0f
                 var originalVolume = currentVolume

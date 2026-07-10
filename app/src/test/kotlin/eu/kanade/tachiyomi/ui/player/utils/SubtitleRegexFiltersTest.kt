@@ -23,6 +23,26 @@ class SubtitleRegexFiltersTest {
     }
 
     @Test
+    fun `removes speaker names after dialogue dashes`() {
+        assertEquals(
+            "- \u308f\u30fc\u3044\uff01\n- \u5de8\u4eba\u65cf\u306e\u5b50\u4f9b\uff1f",
+            (
+                "- (\u5b50\u4f9b\u305f\u3061) \u308f\u30fc\u3044\uff01\n" +
+                    "- (\u30ca\u30df) \u5de8\u4eba\u65cf\u306e\u5b50\u4f9b\uff1f"
+            ).applySubtitleRegexFilters(options(removeSpeakerNames = true)),
+        )
+    }
+
+    @Test
+    fun `removes full width speaker names after unicode dialogue dashes`() {
+        assertEquals(
+            "\u2014 \u5834\u6240\u306f?",
+            "\u2014 \uff08\u30ca\u30df\uff09 \u5834\u6240\u306f?"
+                .applySubtitleRegexFilters(options(removeSpeakerNames = true)),
+        )
+    }
+
+    @Test
     fun `speaker filter keeps parenthesized text outside the speaker prefix`() {
         assertEquals(
             "\u5834\u6240\u306f? (\u6771\u4eac)",

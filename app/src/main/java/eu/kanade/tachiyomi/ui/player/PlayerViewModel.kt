@@ -239,6 +239,8 @@ class PlayerViewModel @JvmOverloads constructor(
     val jimakuState = _jimakuState.asStateFlow()
     private val _currentSubtitleText = MutableStateFlow("")
     val currentSubtitleText = _currentSubtitleText.asStateFlow()
+    private val _subtitlesVisible = MutableStateFlow(true)
+    val subtitlesVisible = _subtitlesVisible.asStateFlow()
     private val _subtitleHistory = MutableStateFlow<List<SubtitleCue>>(emptyList())
     val subtitleHistory = _subtitleHistory.asStateFlow()
     private val _activeSubtitleCueIndex = MutableStateFlow<Int?>(null)
@@ -1330,6 +1332,41 @@ class PlayerViewModel @JvmOverloads constructor(
         val cue = subtitleHistory.value.firstOrNull { it.index == index } ?: return
         seekTo(cue.effectiveStartSeconds().coerceAtLeast(0.0))
         _activeSubtitleCueIndex.update { cue.index }
+    }
+
+    fun seekToAdjacentSubtitle(forward: Boolean) {
+        val delaySeconds = currentPrimarySubtitleDelaySeconds()
+        val speed = currentSubtitleSpeed()
+        val positionSeconds = pos.value.toDouble()
+        val target = if (forward) {
+            subtitleHistory.value
+                .filter { it.effectiveStartSeconds(delaySeconds, speed) > positionSeconds }
+                .minByOrNull { it.effectiveStartSeconds(delaySeconds, speed) }
+        } else {
+            subtitleHistory.value
+                .filter { it.effectiveEndSeconds(delaySeconds, speed) < positionSeconds }
+                .maxByOrNull { it.effectiveEndSeconds(delaySeconds, speed) }
+        }
+
+        if (target == null) {
+            MPVLib.command(arrayOf("sub-seek", if (forward) "1" else "-1", "primary"))
+            return
+        }
+
+        seekTo(target.effectiveStartSeconds(delaySeconds, speed).coerceAtLeast(0.0))
+        _activeSubtitleCueIndex.update { target.index }
+    }
+
+    fun setSubtitlesVisible(visible: Boolean) {
+        MPVLib.setPropertyBoolean("sub-visibility", visible)
+        _subtitlesVisible.update { visible }
+        playerUpdate.update {
+            PlayerUpdates.ShowText(
+                activity.stringResource(
+                    if (visible) MR.strings.player_subtitles_shown else MR.strings.player_subtitles_hidden,
+                ),
+            )
+        }
     }
 
     fun updatePlayBackPos(pos: Float) {

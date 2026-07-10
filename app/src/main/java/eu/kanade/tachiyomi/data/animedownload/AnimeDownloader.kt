@@ -352,10 +352,20 @@ class AnimeDownloader(
 
             val resolvedVideo = resolveExternalTracks(video)
 
-            if (resolvedVideo.videoUrl.startsWith("http")) {
-                ffmpegDownloadVideo(resolvedVideo, tmpDir, download)
-            } else {
-                downloadVideoFile(resolvedVideo, tmpDir, download)
+            when {
+                resolvedVideo.canUseDirectHttpDownload() -> {
+                    try {
+                        downloadVideoFile(resolvedVideo, tmpDir, download)
+                    } catch (_: HlsStreamRequiresFFmpegException) {
+                        ffmpegDownloadVideo(resolvedVideo, tmpDir, download)
+                    }
+                }
+                resolvedVideo.videoUrl.startsWith("http") -> {
+                    ffmpegDownloadVideo(resolvedVideo, tmpDir, download)
+                }
+                else -> {
+                    downloadVideoFile(resolvedVideo, tmpDir, download)
+                }
             }
 
             writeMetadata(video, tmpDir)
@@ -478,18 +488,11 @@ class AnimeDownloader(
                             if (ReturnCode.isSuccess(returnedSession.returnCode)) {
                                 cont.resume(Unit)
                             } else {
-                                val detail = buildString {
-                                    append("FFmpeg exit code: ${returnedSession.returnCode}")
-                                    val trace = returnedSession.failStackTrace
-                                    if (!trace.isNullOrBlank()) {
-                                        append("\n$trace")
-                                    } else {
-                                        val logs = returnedSession.allLogsAsString?.trim()
-                                        if (!logs.isNullOrBlank()) {
-                                            append("\n$logs")
-                                        }
-                                    }
-                                }
+                                val detail = buildFFmpegFailureMessage(
+                                    exitCode = returnedSession.returnCode.toString(),
+                                    failStackTrace = returnedSession.failStackTrace,
+                                    logs = returnedSession.allLogsAsString,
+                                )
                                 cont.resumeWithException(Exception(detail))
                             }
                         },
@@ -669,6 +672,10 @@ class AnimeDownloader(
 
                 downloadClient.newCall(request).execute().use { response ->
                     if (response.isSuccessful || response.code == 206) {
+                        val contentType = response.body.contentType()?.toString().orEmpty()
+                        if (contentType.isHlsContentType()) {
+                            throw HlsStreamRequiresFFmpegException()
+                        }
                         if (response.code == 200 && downloadedBytes > 0) {
                             outputFile.delete()
                         }
@@ -707,6 +714,8 @@ class AnimeDownloader(
                     }
                 }
             } catch (e: CancellationException) {
+                throw e
+            } catch (e: HlsStreamRequiresFFmpegException) {
                 throw e
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "Download attempt $attempt failed" }
@@ -805,6 +814,55 @@ class AnimeDownloader(
 }
 
 // Video files are much larger than manga pages — require 500 MB free
+private fun Video.canUseDirectHttpDownload(): Boolean {
+    return videoUrl.startsWith("http") &&
+        !videoUrl.contains("m3u8", ignoreCase = true) &&
+        subtitleTracks.isEmpty() &&
+        audioTracks.isEmpty() &&
+        ffmpegStreamArgs.isEmpty() &&
+        ffmpegVideoArgs.isEmpty()
+}
+
+private fun String.isHlsContentType(): Boolean {
+    return contains("mpegurl", ignoreCase = true) ||
+        contains("vnd.apple", ignoreCase = true)
+}
+
+private class HlsStreamRequiresFFmpegException : Exception()
+
+internal fun buildFFmpegFailureMessage(
+    exitCode: String,
+    failStackTrace: String?,
+    logs: String?,
+): String {
+    val details = sequenceOf(failStackTrace, logs)
+        .filterNotNull()
+        .flatMap { it.lineSequence() }
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .filterNot(String::isFFmpegBannerLine)
+        .toList()
+        .takeLast(8)
+
+    return buildString {
+        append("FFmpeg exit code: $exitCode")
+        if (details.isNotEmpty()) {
+            append('\n')
+            append(details.joinToString("\n"))
+        }
+    }
+}
+
+private fun String.isFFmpegBannerLine(): Boolean {
+    val normalized = lowercase()
+    return normalized.startsWith("ffmpeg version") ||
+        normalized.startsWith("built with") ||
+        normalized.startsWith("configuration:") ||
+        normalized.startsWith("libav") ||
+        normalized.startsWith("libsw") ||
+        normalized.startsWith("libpostproc")
+}
+
 private const val MIN_DISK_SPACE = 500L * 1024 * 1024
 
 private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "webm", "avi", "m4v", "ts")

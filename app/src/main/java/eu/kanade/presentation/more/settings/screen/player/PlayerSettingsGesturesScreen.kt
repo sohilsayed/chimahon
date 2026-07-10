@@ -53,6 +53,7 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
     private fun getSlidersGroup(gesturePreferences: GesturePreferences): Preference.PreferenceGroup {
         val enableVolumeBrightnessGestures = gesturePreferences.gestureVolumeBrightness()
         val swapVol = gesturePreferences.swapVolumeBrightness()
+        val subtitleSwipeControls by gesturePreferences.subtitleSwipeControls().collectAsState()
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_player_sliders),
@@ -60,10 +61,12 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = enableVolumeBrightnessGestures,
                     title = stringResource(MR.strings.enable_volume_brightness_gestures),
+                    enabled = !subtitleSwipeControls,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = swapVol,
                     title = stringResource(MR.strings.pref_controls_swap_vol_brightness),
+                    enabled = !subtitleSwipeControls,
                 ),
             ),
         )
@@ -72,6 +75,8 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
     @Composable
     private fun getSeekingGroup(gesturePreferences: GesturePreferences): Preference.PreferenceGroup {
         val scope = rememberCoroutineScope()
+        val subtitleSwipeControls = gesturePreferences.subtitleSwipeControls()
+        val subtitleSwipeControlsEnabled by subtitleSwipeControls.collectAsState()
         val enableHorizontalSeekGesture = gesturePreferences.gestureHorizontalSeek()
         val showSeekbar = gesturePreferences.showSeekBar()
         val defaultSkipIntroLength by gesturePreferences.defaultIntroLength().stateIn(scope).collectAsState()
@@ -94,8 +99,14 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
             title = stringResource(MR.strings.pref_category_player_seeking),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = subtitleSwipeControls,
+                    title = stringResource(MR.strings.pref_player_gesture_subtitle_swipe),
+                    subtitle = stringResource(MR.strings.pref_player_gesture_subtitle_swipe_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = enableHorizontalSeekGesture,
                     title = stringResource(MR.strings.enable_horizontal_seek_gesture),
+                    enabled = !subtitleSwipeControlsEnabled,
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = showSeekbar,
