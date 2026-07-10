@@ -496,15 +496,56 @@ class ReaderViewModel(
     }
 
     fun getChapterTitle(chapterIndex: Int): String? {
-        if (document.getChapterHref(chapterIndex) == null) return null
-        return document.getChapterTitle(chapterIndex)
+        val href = document.getChapterHref(chapterIndex) ?: return null
+        // Try TOC lookup first
+        val tocLabel = findTocLabel(document.tableOfContents, href)
+        if (tocLabel != null) return tocLabel
+        // Fallback to file name without path
+        return href.substringAfterLast("/").substringBefore(".")
     }
 
-    fun getFlattenedToc(): List<com.canopus.chimareader.data.epub.TocEntry> =
-        document.flattenedToc(indentLabels = true)
+    private fun findTocLabel(toc: List<com.canopus.chimareader.data.epub.TocEntry>, href: String): String? {
+        val fileName = href.substringAfterLast("/")
+        for (entry in toc) {
+            val entryHref = entry.href ?: continue
+            // Check if the href ends with the same file name
+            if (entryHref.endsWith(fileName) || entryHref.contains(fileName.substringBefore("."))) {
+                return entry.label
+            }
+            val found = findTocLabel(entry.children, href)
+            if (found != null) return found
+        }
+        return null
+    }
 
-    fun getSpineIndexForHref(href: String): Int? =
-        document.getSpineIndexForHref(href)
+    fun getFlattenedToc(): List<com.canopus.chimareader.data.epub.TocEntry> {
+        val flat = mutableListOf<com.canopus.chimareader.data.epub.TocEntry>()
+        fun flatten(entries: List<com.canopus.chimareader.data.epub.TocEntry>, depth: Int = 0) {
+            for (e in entries) {
+                // Add depth indentation to label if it's nested
+                val indent = "  ".repeat(depth)
+                flat.add(e.copy(label = "$indent${e.label}"))
+                flatten(e.children, depth + 1)
+            }
+        }
+        flatten(document.tableOfContents)
+        return flat
+    }
+
+    fun getSpineIndexForHref(href: String): Int? {
+        val decodedHref = java.net.URLDecoder.decode(href.substringBefore('#').substringBefore('?'), "UTF-8")
+        val fileName = decodedHref.substringAfterLast("/")
+
+        for (i in 0 until document.linearSpineItems.size) {
+            val chapterHref = document.getChapterHref(i) ?: continue
+            val chapterFileName = chapterHref.substringAfterLast("/")
+
+            if (chapterHref.endsWith(decodedHref) || chapterFileName == fileName) {
+                return i
+            }
+        }
+        return null
+    }
 
     fun saveBookmark(progress: Double, updateTracker: Boolean = true, force: Boolean = false) {
         currentProgress = progress

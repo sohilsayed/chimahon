@@ -41,14 +41,14 @@ class NovelProgressWidget : GlanceAppWidget() {
             BookStorage.getBookDirectory(context, book.folder ?: book.id)
         }
         val bookmark = bookDir?.let { BookStorage.loadBookmark(it) }
-        // TOC 1-based number (same basis as reader chapterStarts / chapter list), not spine index.
-        val chapterText = if (bookDir != null && bookmark != null) {
-            runCatching {
-                val epub = BookStorage.loadEpub(bookDir)
-                "Chapter ${epub.tocChapterNumber(bookmark.chapterIndex)}"
-            }.getOrNull()
-        } else {
-            null
+        // Same basis as StatsScreenModel: precomputed chapterStarts + explored char count
+        // (no EPUB parse / TOC helpers). Fallback: 1-based spine index.
+        val chapterText = bookmark?.let {
+            novelChapterLabelFromStarts(
+                chapterStarts = lastNovel?.chapterStarts,
+                exploredChars = it.characterCount,
+                spineChapterIndex = it.chapterIndex,
+            )
         }
 
         val noRecentNovels = context.getString(R.string.widget_no_recent_novels)
@@ -131,5 +131,24 @@ class NovelProgressWidget : GlanceAppWidget() {
 
     companion object {
         private val PROGRESS_FORMAT = DecimalFormat("#.##")
+
+        /**
+         * 1-based chapter number matching [eu.kanade.tachiyomi.ui.stats.StatsScreenModel] novel logic:
+         * [chapterStarts] are char offsets at chapter boundaries (last entry = book total).
+         * Current chapter = last start index with start <= exploredChars.
+         */
+        internal fun novelChapterLabelFromStarts(
+            chapterStarts: List<Int>?,
+            exploredChars: Int,
+            spineChapterIndex: Int,
+        ): String {
+            if (chapterStarts != null && chapterStarts.size > 1) {
+                val boundaries = chapterStarts.dropLast(1)
+                val idx = boundaries.indexOfLast { it <= exploredChars }
+                val number = if (idx >= 0) idx + 1 else 1
+                return "Chapter $number"
+            }
+            return "Chapter ${spineChapterIndex + 1}"
+        }
     }
 }
