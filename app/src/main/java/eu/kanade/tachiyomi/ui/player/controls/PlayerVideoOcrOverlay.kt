@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import chimahon.DictionaryRepository
 import chimahon.MediaInfo
 import chimahon.ocr.OcrLanguage
@@ -35,6 +35,7 @@ import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.ui.dictionary.screenLookupCharOffset
 import eu.kanade.tachiyomi.ui.dictionary.toScreenLookupBlocks
 import eu.kanade.tachiyomi.ui.player.PlayerViewModel
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrLineGeometry
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
 import eu.kanade.tachiyomi.ui.reader.viewer.extractOcrLookupString
@@ -44,12 +45,13 @@ import eu.kanade.tachiyomi.ui.reader.viewer.toOrderedOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import tachiyomi.core.common.i18n.stringResource as contextStringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.min
+import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 private const val TAP_HINT_DURATION_MS = 1_200L
 
@@ -103,43 +105,49 @@ internal fun PlayerVideoOcrOverlay(
     var showTapHint by remember { mutableStateOf(false) }
     var lookupNonce by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(screenshot, activeProfile.languageCode) {
-        isLoading = true
-        error = null
-        blocks = emptyList()
-        showTapHint = false
-        val language = OcrLanguage.entries.find {
-            it.bcp47.equals(activeProfile.languageCode, ignoreCase = true)
-        } ?: OcrLanguage.JAPANESE
-
-        runCatching {
-            withContext(Dispatchers.Default) {
-                recognizePage(screenshot, language)
-                    .toScreenLookupBlocks(language.bcp47)
-            }
-        }.onSuccess {
-            blocks = it
-            if (it.isEmpty()) {
-                error = context.contextStringResource(MR.strings.screen_lookup_no_text)
-            } else {
-                showTapHint = true
-            }
-        }.onFailure {
-            error = it.message ?: context.contextStringResource(MR.strings.screen_lookup_capture_failed)
-        }
-        isLoading = false
-
-        if (showTapHint) {
-            delay(TAP_HINT_DURATION_MS)
-            showTapHint = false
-        }
-    }
-
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
     ) {
         val widthPx = with(localDensity) { maxWidth.toPx() }
         val heightPx = with(localDensity) { maxHeight.toPx() }
+
+        LaunchedEffect(screenshot, activeProfile.languageCode) {
+            isLoading = true
+            error = null
+            blocks = emptyList()
+            showTapHint = false
+            val language = OcrLanguage.entries.find {
+                it.bcp47.equals(activeProfile.languageCode, ignoreCase = true)
+            } ?: OcrLanguage.JAPANESE
+
+            runCatching {
+                withContext(Dispatchers.Default) {
+                    recognizePage(screenshot, language)
+                        .toScreenLookupBlocks(language.bcp47)
+                }
+            }.onSuccess { ocrBlocks ->
+                blocks = remapToScreenArea(
+                    ocrBlocks,
+                    imgWidth = screenshot.width,
+                    imgHeight = screenshot.height,
+                    screenWidth = widthPx,
+                    screenHeight = heightPx,
+                )
+                if (blocks.isEmpty()) {
+                    error = context.contextStringResource(MR.strings.screen_lookup_no_text)
+                } else {
+                    showTapHint = true
+                }
+            }.onFailure {
+                error = it.message ?: context.contextStringResource(MR.strings.screen_lookup_capture_failed)
+            }
+            isLoading = false
+
+            if (showTapHint) {
+                delay(TAP_HINT_DURATION_MS)
+                showTapHint = false
+            }
+        }
 
         OcrBlockCanvas(
             blocks = blocks,
@@ -234,5 +242,43 @@ internal fun PlayerVideoOcrOverlay(
                 )
             }
         }
+    }
+}
+
+private fun remapToScreenArea(
+    blocks: List<OcrTextBlock>,
+    imgWidth: Int,
+    imgHeight: Int,
+    screenWidth: Float,
+    screenHeight: Float,
+): List<OcrTextBlock> {
+    if (imgWidth <= 0 || imgHeight <= 0 || screenWidth <= 0f || screenHeight <= 0f) return blocks
+    val scale = min(screenWidth / imgWidth, screenHeight / imgHeight)
+    val videoW = imgWidth * scale
+    val videoH = imgHeight * scale
+    val offX = (screenWidth - videoW) / 2f
+    val offY = (screenHeight - videoH) / 2f
+    return blocks.mapNotNull { block ->
+        val newXmin = (offX + block.xmin * videoW) / screenWidth
+        val newYmin = (offY + block.ymin * videoH) / screenHeight
+        val newXmax = (offX + block.xmax * videoW) / screenWidth
+        val newYmax = (offY + block.ymax * videoH) / screenHeight
+        if (newXmax <= newXmin || newYmax <= newYmin) return@mapNotNull null
+        val newGeometries = block.lineGeometries?.map { geo ->
+            OcrLineGeometry(
+                xmin = (offX + geo.xmin * videoW) / screenWidth,
+                ymin = (offY + geo.ymin * videoH) / screenHeight,
+                xmax = (offX + geo.xmax * videoW) / screenWidth,
+                ymax = (offY + geo.ymax * videoH) / screenHeight,
+                rotation = geo.rotation,
+            )
+        }
+        block.copy(
+            xmin = newXmin,
+            ymin = newYmin,
+            xmax = newXmax,
+            ymax = newYmax,
+            lineGeometries = newGeometries,
+        )
     }
 }
