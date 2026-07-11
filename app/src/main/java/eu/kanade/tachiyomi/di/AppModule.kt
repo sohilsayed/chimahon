@@ -269,7 +269,13 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { EHentaiUpdateHelper(app) }
 
         addSingletonFactory { NovelCategoryStorage(app) }
-        addSingletonFactory { DictionaryRepository(app.getExternalFilesDir(null)) }
+        addSingletonFactory {
+            val dictionaryPreferences = get<DictionaryPreferences>()
+            DictionaryRepository(
+                externalFilesDir = app.getExternalFilesDir(null),
+                koreanParserMode = { dictionaryPreferences.koreanParserMode().get() },
+            )
+        }
         addSingletonFactory { TtuOAuthManager(app) }
         addSingletonFactory { SyncSettingsRepository(app) }
         addSingletonFactory { TtuSyncManager(app, get(), get()) }

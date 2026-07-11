@@ -396,6 +396,10 @@
     <string name="pref_dict_recursive_mode_popup">Popup</string>
     <string name="pref_dict_popup_swipe_to_dismiss">Swipe to dismiss popup</string>
     <string name="pref_dict_popup_swipe_threshold">Swipe-to-dismiss distance</string>
+    <string name="pref_dict_korean_parser">Korean parser</string>
+    <string name="pref_dict_korean_parser_summary">Choose the parser used for Korean dictionary lookups</string>
+    <string name="pref_dict_korean_parser_legacy">Legacy parser</string>
+    <string name="pref_dict_korean_parser_analyzer">Morpheme analyzer</string>
     <string name="pref_category_ocr">OCR</string>
     <string name="pref_ocr_summary">Auto-OCR, cache management</string>
     <string name="pref_ocr_auto_on_download">Auto-OCR on download</string>

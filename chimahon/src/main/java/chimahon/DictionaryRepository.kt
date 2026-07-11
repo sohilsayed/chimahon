@@ -3,6 +3,8 @@ package chimahon
 import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
+import chimahon.dictionary.ko.KoreanAnalyzerDeinflector
+import chimahon.dictionary.ko.KoreanParserMode
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -12,6 +14,7 @@ import java.util.LinkedHashMap
 
 class DictionaryRepository(
     private val externalFilesDir: File?,
+    private val koreanParserMode: () -> String = { KoreanParserMode.Legacy },
 ) {
     private var session: Long? = null
     val lookupSession: Long? get() = session
@@ -61,7 +64,11 @@ class DictionaryRepository(
 
         val effectiveLang = languageCode.lowercase()
 
-        val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
+        val genericDeinflector = if (effectiveLang == "ko" && koreanParserMode() == KoreanParserMode.Analyzer) {
+            KoreanAnalyzerDeinflector
+        } else {
+            chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
+        }
 
         val results = if (effectiveLang == "ja") {
             HoshiDicts.lookup(activeSession, query, 20, 25).toList()

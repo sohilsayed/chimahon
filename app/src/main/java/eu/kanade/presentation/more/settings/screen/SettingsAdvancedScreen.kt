@@ -31,6 +31,7 @@ import androidx.core.net.toUri
 import androidx.core.text.HtmlCompat
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import chimahon.dictionary.ko.KoreanParserMode
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
@@ -63,6 +64,7 @@ import eu.kanade.tachiyomi.network.PREF_DOH_QUAD101
 import eu.kanade.tachiyomi.network.PREF_DOH_QUAD9
 import eu.kanade.tachiyomi.network.PREF_DOH_SHECAN
 import eu.kanade.tachiyomi.source.AndroidSourceManager
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.util.CrashLogUtil
 import eu.kanade.tachiyomi.util.storage.DiskUtil
@@ -124,6 +126,7 @@ object SettingsAdvancedScreen : SearchableSettings {
         val basePreferences = remember { Injekt.get<BasePreferences>() }
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         // SY -->
         val downloadPreferences = remember { Injekt.get<DownloadPreferences>() }
         val exhPreferences = remember { Injekt.get<ExhPreferences>() }
@@ -205,6 +208,7 @@ object SettingsAdvancedScreen : SearchableSettings {
             // KMK <--
             getBackgroundActivityGroup(),
             getDataGroup(),
+            getDictionaryGroup(dictionaryPreferences = dictionaryPreferences),
             getNetworkGroup(networkPreferences = networkPreferences),
             getLibraryGroup(libraryPreferences = libraryPreferences),
             // SY -->
@@ -217,6 +221,26 @@ object SettingsAdvancedScreen : SearchableSettings {
             getDataSaverGroup(),
             getDeveloperToolsGroup(),
             // SY <--
+        )
+    }
+
+    @Composable
+    private fun getDictionaryGroup(
+        dictionaryPreferences: DictionaryPreferences,
+    ): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_category_dictionary),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.koreanParserMode(),
+                    entries = persistentMapOf(
+                        KoreanParserMode.Legacy to stringResource(MR.strings.pref_dict_korean_parser_legacy),
+                        KoreanParserMode.Analyzer to stringResource(MR.strings.pref_dict_korean_parser_analyzer),
+                    ),
+                    title = stringResource(MR.strings.pref_dict_korean_parser),
+                    subtitle = stringResource(MR.strings.pref_dict_korean_parser_summary),
+                ),
+            ),
         )
     }
 

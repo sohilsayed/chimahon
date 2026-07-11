@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.dictionary
 import chimahon.anki.AnkiProfile
 import chimahon.anki.AnkiProfileStore
 import chimahon.audio.WordAudioPreferences
+import chimahon.dictionary.ko.KoreanParserMode
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 
@@ -42,6 +43,8 @@ class DictionaryPreferences(
     fun showNavigationButtons() = preferenceStore.getBoolean("pref_dict_show_navigation_buttons", true)
 
     fun autoKanaConversion() = preferenceStore.getBoolean("pref_dict_auto_kana_conversion", true)
+
+    fun koreanParserMode() = preferenceStore.getString("pref_dict_korean_parser_mode", KoreanParserMode.Legacy)
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
 

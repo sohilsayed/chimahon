@@ -353,9 +353,69 @@ class KoreanMorphemeChainAnalyzerTest {
         }
     }
 
+    @Test
+    fun `recovers copula contractions after nouns`() {
+        val cases = mapOf(
+            "사과야" to "사과",
+            "선생님이야" to "선생님",
+            "사과예요" to "사과",
+            "사과에요" to "사과",
+            "선생님이에요" to "선생님",
+            "선생님이예요" to "선생님",
+            "사과라도" to "사과",
+        )
+
+        for ((surface, noun) in cases) {
+            val parse = KoreanMorphemeChainAnalyzer.analyze(surface, lexicon = nominalLexiconOf(noun)).parseForExact(noun)
+            assertEquals(noun, parse.displayParts().first(), surface)
+            assertTrue(parse.segments.any { it.tag == KoreanMorphemeTag.Copula }, surface)
+        }
+    }
+
+    @Test
+    fun `recovers anida contracted copula-like endings`() {
+        val cases = mapOf(
+            "아니야" to "아니다",
+            "아니에요" to "아니다",
+            "아니예요" to "아니다",
+            "아녜요" to "아니다",
+            "아녀요" to "아니다",
+            "아니어서" to "아니다",
+            "아니었다" to "아니다",
+            "아니였다" to "아니다",
+            "아니라도" to "아니다",
+            "아니라서" to "아니다",
+        )
+
+        for ((surface, lemma) in cases) {
+            val parse = KoreanMorphemeChainAnalyzer.analyze(surface, lexicon = lexiconOf(lemma)).parseForExact(lemma)
+            assertTrue(parse.displayParts().isNotEmpty(), surface)
+        }
+    }
+
+    @Test
+    fun `recovers conjugated change in state ending`() {
+        val parses = KoreanMorphemeChainAnalyzer.analyze(
+            "예뻐지셨습니다",
+            lexicon = lexiconOf("예쁘다", "지다"),
+        )
+
+        assertEquals(
+            listOf("예쁘다", "-아/어", "지다", "-시", "-았/었", "-(스)ㅂ니다"),
+            parses.parseForAll("예쁘다", "지다").displayParts(),
+        )
+    }
+
     private fun lexiconOf(vararg lemmas: String): KoreanMorphemeLexicon {
         val entries = lemmas.associateWith { lemma ->
             listOf(KoreanMorphemeLexiconEntry(lemma = lemma, partsOfSpeech = setOf("VV"), score = 10))
+        }
+        return KoreanMorphemeLexicon { lemma -> entries[lemma].orEmpty() }
+    }
+
+    private fun nominalLexiconOf(vararg lemmas: String): KoreanMorphemeLexicon {
+        val entries = lemmas.associateWith { lemma ->
+            listOf(KoreanMorphemeLexiconEntry(lemma = lemma, partsOfSpeech = setOf("n"), score = 10))
         }
         return KoreanMorphemeLexicon { lemma -> entries[lemma].orEmpty() }
     }

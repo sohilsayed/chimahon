@@ -108,6 +108,47 @@ class KoreanMorphemeChainAnalyzerComparisonTest {
         )
     }
 
+    @Test
+    fun `current deinflector covers local yomitan korean irregular fixtures`() {
+        val fixturePath = localYomitanKoreanIrregularFixture()
+        assumeTrue(Files.exists(fixturePath), "Local Yomitan irregular fixture is not present")
+
+        val cases = parseValidYomitanTransformCases(String(Files.readAllBytes(fixturePath), Charsets.UTF_8))
+        val missing = cases.filterNot { case ->
+            case.expectedTerm in currentDeinflectorCandidates(case.source, maxCandidates = 200)
+        }
+
+        assertTrue(
+            missing.isEmpty(),
+            "Current Korean deinflector missed Yomitan irregular fixture cases (${missing.size}/${cases.size}):\n${missing.take(50).joinToString("\n")}",
+        )
+    }
+
+    @Test
+    fun `analyzer covers local yomitan korean irregular fixtures`() {
+        val fixturePath = localYomitanKoreanIrregularFixture()
+        assumeTrue(Files.exists(fixturePath), "Local Yomitan irregular fixture is not present")
+
+        val cases = parseValidYomitanTransformCases(String(Files.readAllBytes(fixturePath), Charsets.UTF_8))
+        val missing = cases.mapNotNull { case ->
+            val analyzerCandidates = KoreanMorphemeChainAnalyzer.analyze(case.source, maxResults = 50)
+                .flatMap { it.lemmaCandidates }
+                .toSet()
+            if (case.expectedTerm in analyzerCandidates) {
+                null
+            } else {
+                val currentCandidates = currentDeinflectorCandidates(case.source, maxCandidates = 20)
+                "${case.category}: ${case.source} -> ${case.expectedTerm}; " +
+                    "current=${currentCandidates.joinToString()}; analyzer=${analyzerCandidates.joinToString()}"
+            }
+        }
+
+        assertTrue(
+            missing.isEmpty(),
+            "Analyzer missed Yomitan irregular fixture cases (${missing.size}/${cases.size}):\n${missing.take(50).joinToString("\n")}",
+        )
+    }
+
     private fun localYomitanKoreanTransformFixture(): Path {
         var directory: Path? = Paths.get("").toAbsolutePath()
         while (directory != null) {
@@ -116,6 +157,16 @@ class KoreanMorphemeChainAnalyzerComparisonTest {
             directory = directory.parent
         }
         return Paths.get("ref", "yomitan", "test", "language", "korean-transforms.test.js")
+    }
+
+    private fun localYomitanKoreanIrregularFixture(): Path {
+        var directory: Path? = Paths.get("").toAbsolutePath()
+        while (directory != null) {
+            val fixture = directory.resolve(Paths.get("ref", "yomitan", "test", "language", "korean-irregular.test.js"))
+            if (Files.exists(fixture)) return fixture
+            directory = directory.parent
+        }
+        return Paths.get("ref", "yomitan", "test", "language", "korean-irregular.test.js")
     }
 
     private data class ComparisonCase(
