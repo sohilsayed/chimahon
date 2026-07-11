@@ -248,6 +248,10 @@ fun Screen.AnimeLibraryPanel(
     when (val dialog = state.dialog) {
         is AnimeLibraryScreenModel.Dialog.SettingsSheet -> run {
             val category = state.displayCategories.getOrNull(state.coercedActiveCategoryIndex)
+            if (category == null) {
+                onDismissRequest()
+                return@run
+            }
             AnimeLibrarySettingsDialog(
                 onDismissRequest = onDismissRequest,
                 screenModel = settingsScreenModel,

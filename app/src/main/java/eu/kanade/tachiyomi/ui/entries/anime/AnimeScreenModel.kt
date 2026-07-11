@@ -19,6 +19,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.entries.anime.interactor.SetAnimeViewerFlags
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.entries.anime.interactor.UpdateAnime
 import eu.kanade.domain.entries.anime.model.downloadedFilter
 import eu.kanade.domain.entries.anime.model.episodesFiltered
@@ -184,6 +185,7 @@ class AnimeScreenModel(
     private val storagePreferences: StoragePreferences = Injekt.get(),
     // <-- AM (FILE_SIZE)
 ) : StateScreenModel<AnimeScreenModel.State>(State.Loading) {
+    val themeCoverBased = Injekt.get<UiPreferences>().themeCoverBased().get()
 
     private val successState: State.Success?
         get() = state.value as? State.Success
@@ -421,7 +423,7 @@ class AnimeScreenModel(
         updateSuccessState { it.copy(isRelatedAnimeFetched = state) }
     }
 
-    private suspend fun fetchRelatedAnimeFromSource() {
+    internal suspend fun fetchRelatedAnimeFromSource() {
         val state = successState ?: return
         if (state.anime.isLocal() || state.source is StubAnimeSource) {
             setRelatedAnimeFetchedStatus(true)

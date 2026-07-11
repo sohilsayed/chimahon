@@ -148,11 +148,16 @@ class EpisodeLoader {
          * @param hoster the hoster.
          */
         private suspend fun getVideos(source: AnimeSource, hoster: Hoster): List<Video> {
-            return when {
+            val videos = when {
                 hoster.videoList != null && source is AnimeHttpSource -> hoster.videoList!!.parseVideoUrls(source)
                 hoster.videoList != null -> hoster.videoList!!
                 source is AnimeHttpSource -> getVideosOnHttp(source, hoster)
                 else -> error("source not supported")
+            }
+            return if (source is AnimeHttpSource) {
+                videos
+            } else {
+                videos
             }
         }
 

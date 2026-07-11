@@ -17,3 +17,18 @@ data class MALSearchResultNode(
 data class MALSearchPaging(
     val next: String?,
 )
+
+@Serializable
+data class MALAnimeSearchResult(
+    val data: List<MALAnimeSearchResultNode>,
+)
+
+@Serializable
+data class MALAnimeSearchResultNode(
+    val node: MALSearchResultItem,
+)
+
+@Serializable
+data class MALSearchResultItem(
+    val id: Int,
+)

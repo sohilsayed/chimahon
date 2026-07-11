@@ -167,6 +167,7 @@ fun PlayerControls(
     var isSeeking by remember { mutableStateOf(false) }
     var resetControls by remember { mutableStateOf(true) }
     var subtitleLookupRequest by remember { mutableStateOf<SubtitleLookupRequest?>(null) }
+    var wasPlayerAlreadyPause by remember { mutableStateOf(false) }
     val customButtons by viewModel.customButtons.collectAsState()
     val customButton by viewModel.primaryButton.collectAsState()
 
@@ -191,7 +192,7 @@ fun PlayerControls(
     val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
         if (subtitleLookupRequest?.matchesTap(subtitleLookup) == true) {
             subtitleLookupRequest = null
-            viewModel.unpause()
+            if (!wasPlayerAlreadyPause) viewModel.unpause()
             return@openSubtitleLookup
         }
         val currentPanel = viewModel.panelShown.value
@@ -202,6 +203,7 @@ fun PlayerControls(
         ) {
             return@openSubtitleLookup
         }
+        wasPlayerAlreadyPause = viewModel.paused.value
         viewModel.pause()
         subtitleLookupRequest = SubtitleLookupRequest(
             lookupString = subtitleLookup.lookupString,
@@ -246,7 +248,7 @@ fun PlayerControls(
         if (subtitleLookupRequest != null) {
             Box(Modifier.fillMaxSize().clickable {
                 subtitleLookupRequest = null
-                viewModel.unpause()
+                if (!wasPlayerAlreadyPause) viewModel.unpause()
             })
         }
         PlayerSubtitleTextLayer(
@@ -805,7 +807,7 @@ fun PlayerControls(
             request = subtitleLookupRequest,
             onDismiss = {
                 subtitleLookupRequest = null
-                viewModel.unpause()
+                if (!wasPlayerAlreadyPause) viewModel.unpause()
             },
             onTermMatched = { count, offset ->
                 subtitleLookupRequest = subtitleLookupRequest?.copy(

@@ -50,6 +50,7 @@ import tachiyomi.domain.entries.anime.interactor.NetworkToLocalAnime
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.entries.anime.model.toAnimeUpdate
 import tachiyomi.domain.episode.interactor.SetAnimeDefaultEpisodeFlags
+import tachiyomi.domain.library.service.AnimeLibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.source.anime.interactor.GetRemoteAnime
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
@@ -63,6 +64,7 @@ class BrowseAnimeSourceScreenModel(
     listingQuery: String?,
     sourceManager: AnimeSourceManager = Injekt.get(),
     sourcePreferences: SourcePreferences = Injekt.get(),
+    private val animeLibraryPreferences: AnimeLibraryPreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: AnimeCoverCache = Injekt.get(),
     private val backgroundCache: AnimeBackgroundCache = Injekt.get(),
@@ -128,9 +130,9 @@ class BrowseAnimeSourceScreenModel(
     fun getColumnsPreference(orientation: Int): GridCells {
         val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
         val columns = if (isLandscape) {
-            libraryPreferences.animeLandscapeColumns()
+            animeLibraryPreferences.landscapeColumns()
         } else {
-            libraryPreferences.animePortraitColumns()
+            animeLibraryPreferences.portraitColumns()
         }.get()
         return if (columns == 0) GridCells.Adaptive(128.dp) else GridCells.Fixed(columns)
     }
@@ -138,9 +140,9 @@ class BrowseAnimeSourceScreenModel(
     fun getColumnsPreferenceForCurrentOrientation(orientation: Int): Int {
         val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
         return if (isLandscape) {
-            libraryPreferences.animeLandscapeColumns()
+            animeLibraryPreferences.landscapeColumns()
         } else {
-            libraryPreferences.animePortraitColumns()
+            animeLibraryPreferences.portraitColumns()
         }.get()
     }
 

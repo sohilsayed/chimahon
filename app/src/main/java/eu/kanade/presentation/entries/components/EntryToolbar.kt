@@ -22,6 +22,7 @@ import eu.kanade.presentation.components.AppBarTitle
 import eu.kanade.presentation.components.EntryDownloadDropdownMenu
 import eu.kanade.presentation.entries.DownloadAction
 import kotlinx.collections.immutable.persistentListOf
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.theme.active
@@ -40,6 +41,7 @@ fun EntryToolbar(
     onClickSettings: (() -> Unit)?,
     // Anime only
     changeAnimeSkipIntro: (() -> Unit)?,
+    onClickRelatedAnime: (() -> Unit)?,
     // For action mode
     actionModeCounter: Int,
     onCancelActionMode: () -> Unit,
@@ -113,6 +115,14 @@ fun EntryToolbar(
                             onClick = onClickFilter,
                         ),
                     )
+                    if (onClickRelatedAnime != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(KMR.strings.pref_source_related_mangas),
+                                onClick = onClickRelatedAnime,
+                            ),
+                        )
+                    }
                     if (changeAnimeSkipIntro != null) {
                         add(
                             AppBar.OverflowAction(

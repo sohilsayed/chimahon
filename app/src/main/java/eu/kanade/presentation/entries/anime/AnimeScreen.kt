@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.util.fastAll
 import androidx.compose.ui.util.fastAny
+import tachiyomi.presentation.core.util.collectAsState
 import androidx.compose.ui.util.fastMap
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -97,6 +98,7 @@ import tachiyomi.domain.entries.anime.model.SeasonDisplayMode
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.service.missingEpisodesCount
 import tachiyomi.domain.library.service.LibraryPreferences
+import exh.source.MERGED_SOURCE_ID
 import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
@@ -109,6 +111,11 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.shouldExpandFAB
 import tachiyomi.source.local.entries.anime.isLocal
+import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.manga.components.OutlinedButtonWithArrow
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -168,6 +175,9 @@ fun AnimeScreen(
     // Season clicked
     onSeasonClicked: (SeasonAnime) -> Unit,
     onContinueWatchingClicked: ((SeasonAnime) -> Unit)?,
+
+    // Related anime
+    onRelatedAnimeScreenClick: (() -> Unit)?,
 ) {
     val context = LocalContext.current
     val onCopyTagToClipboard: (tag: String) -> Unit = {
@@ -180,6 +190,12 @@ fun AnimeScreen(
     val onSettingsClicked: (() -> Unit)? = {
         navigator.push(AnimeSourcePreferencesScreen(state.source.id))
     }.takeIf { state.source is ConfigurableAnimeSource }
+
+    val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
+    val uiPreferences = remember { Injekt.get<UiPreferences>() }
+    val relatedMangasEnabled by sourcePreferences.relatedMangas().collectAsState()
+    val expandRelatedAnime by uiPreferences.expandRelatedMangas().collectAsState()
+    val showRelatedAnimeInOverflow by uiPreferences.relatedMangasInOverflow().collectAsState()
 
     if (!isTabletUi) {
         AnimeScreenSmallImpl(
@@ -223,6 +239,7 @@ fun AnimeScreen(
             onSettingsClicked = onSettingsClicked,
             onSeasonClicked = onSeasonClicked,
             onClickContinueWatching = onContinueWatchingClicked,
+            onRelatedAnimeScreenClick = onRelatedAnimeScreenClick,
         )
     } else {
         AnimeScreenLargeImpl(
@@ -266,6 +283,7 @@ fun AnimeScreen(
             onSettingsClicked = onSettingsClicked,
             onSeasonClicked = onSeasonClicked,
             onClickContinueWatching = onContinueWatchingClicked,
+            onRelatedAnimeScreenClick = onRelatedAnimeScreenClick,
         )
     }
 }
@@ -328,6 +346,9 @@ private fun AnimeScreenSmallImpl(
     // Season clicked
     onSeasonClicked: (SeasonAnime) -> Unit,
     onClickContinueWatching: ((SeasonAnime) -> Unit)?,
+
+    // Related anime
+    onRelatedAnimeScreenClick: (() -> Unit)?,
 ) {
     val density = LocalDensity.current
     val offsetGridPaddingPx = with(density) { GRID_PADDING.roundToPx() }
@@ -344,6 +365,10 @@ private fun AnimeScreenSmallImpl(
             FetchType.Episodes -> state.anime.episodesFiltered()
         }
     }
+
+    val relatedMangasEnabled by remember { Injekt.get<SourcePreferences>().relatedMangas() }.collectAsState()
+    val expandRelatedAnime by remember { Injekt.get<UiPreferences>().expandRelatedMangas() }.collectAsState()
+    val showRelatedAnimeInOverflow by remember { Injekt.get<UiPreferences>().relatedMangasInOverflow() }.collectAsState()
 
     var toolbarHeight by remember { mutableIntStateOf(0) }
 
@@ -395,6 +420,11 @@ private fun AnimeScreenSmallImpl(
                     onClickMigrate = onMigrateClicked,
                     onClickSettings = onSettingsClicked,
                     changeAnimeSkipIntro = changeAnimeSkipIntro,
+                    onClickRelatedAnime = onRelatedAnimeScreenClick.takeIf {
+                        !expandRelatedAnime &&
+                            showRelatedAnimeInOverflow &&
+                            state.anime.source != MERGED_SOURCE_ID
+                    },
                     actionModeCounter = selectedEpisodeCount,
                     onCancelActionMode = { onAllEpisodeSelected(false) },
                     onSelectAll = { onAllEpisodeSelected(true) },
@@ -528,19 +558,42 @@ private fun AnimeScreenSmallImpl(
                         )
                     }
 
-                    if (state.relatedAnimeSorted?.isNotEmpty() != false) {
-                        item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
-                        item(
-                            key = EntryScreenItem.RELATED_ANIME,
-                            contentType = EntryScreenItem.RELATED_ANIME,
-                            span = { GridItemSpan(maxLineSpan) },
-                        ) {
-                            RelatedAnimeSection(
-                                relatedAnime = state.relatedAnimeSorted,
-                                modifier = Modifier.ignorePadding(offsetGridPaddingPx),
-                            )
+                    if (
+                        relatedMangasEnabled &&
+                        state.source !is StubAnimeSource &&
+                        state.anime.source != MERGED_SOURCE_ID
+                    ) {
+                        if (expandRelatedAnime && state.relatedAnimeSorted?.isNotEmpty() != false) {
+                            item {
+                                HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx))
+                            }
+                            item(
+                                key = EntryScreenItem.RELATED_ANIME,
+                                contentType = EntryScreenItem.RELATED_ANIME,
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                RelatedAnimeSection(
+                                    relatedAnime = state.relatedAnimeSorted,
+                                    modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                                )
+                            }
+                            item {
+                                HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx))
+                            }
+                        } else if (!expandRelatedAnime && !showRelatedAnimeInOverflow) {
+                            item(
+                                key = EntryScreenItem.RELATED_ANIME,
+                                contentType = EntryScreenItem.RELATED_ANIME,
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                OutlinedButtonWithArrow(
+                                    text = stringResource(KMR.strings.pref_source_related_mangas)
+                                        .uppercase(),
+                                    onClick = onRelatedAnimeScreenClick ?: {},
+                                    modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                                )
+                            }
                         }
-                        item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
                     }
 
                     item(
@@ -691,6 +744,9 @@ fun AnimeScreenLargeImpl(
     // Season clicked
     onSeasonClicked: (SeasonAnime) -> Unit,
     onClickContinueWatching: ((SeasonAnime) -> Unit)?,
+
+    // Related anime
+    onRelatedAnimeScreenClick: (() -> Unit)?,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
@@ -706,6 +762,10 @@ fun AnimeScreenLargeImpl(
     }
 
     val insetPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal).asPaddingValues()
+    val relatedMangasEnabled by remember { Injekt.get<SourcePreferences>().relatedMangas() }.collectAsState()
+    val expandRelatedAnime by remember { Injekt.get<UiPreferences>().expandRelatedMangas() }.collectAsState()
+    val showRelatedAnimeInOverflow by remember { Injekt.get<UiPreferences>().relatedMangasInOverflow() }.collectAsState()
+
     var topBarHeight by remember { mutableIntStateOf(0) }
     val offsetGridPaddingPx = with(density) { GRID_PADDING.roundToPx() }
     val gridSize = remember(state.anime) { state.anime.seasonDisplayGridSize }
@@ -748,6 +808,11 @@ fun AnimeScreenLargeImpl(
                     onCancelActionMode = { onAllEpisodeSelected(false) },
                     onClickSettings = onSettingsClicked,
                     changeAnimeSkipIntro = changeAnimeSkipIntro,
+                    onClickRelatedAnime = onRelatedAnimeScreenClick.takeIf {
+                        !expandRelatedAnime &&
+                            showRelatedAnimeInOverflow &&
+                            state.anime.source != MERGED_SOURCE_ID
+                    },
                     actionModeCounter = selectedChapterCount,
                     onSelectAll = { onAllEpisodeSelected(true) },
                     onInvertSelection = { onInvertSelection() },
@@ -871,19 +936,42 @@ fun AnimeScreenLargeImpl(
                                 bottom = contentPadding.calculateBottomPadding(),
                             ),
                         ) {
-                            if (state.relatedAnimeSorted?.isNotEmpty() != false) {
-                                item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
-                                item(
-                                    key = EntryScreenItem.RELATED_ANIME,
-                                    contentType = EntryScreenItem.RELATED_ANIME,
-                                    span = { GridItemSpan(maxLineSpan) },
-                                ) {
-                                    RelatedAnimeSection(
-                                        relatedAnime = state.relatedAnimeSorted,
-                                        modifier = Modifier.ignorePadding(offsetGridPaddingPx),
-                                    )
+                            if (
+                                relatedMangasEnabled &&
+                                state.source !is StubAnimeSource &&
+                                state.anime.source != MERGED_SOURCE_ID
+                            ) {
+                                if (expandRelatedAnime && state.relatedAnimeSorted?.isNotEmpty() != false) {
+                                    item {
+                                        HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx))
+                                    }
+                                    item(
+                                        key = EntryScreenItem.RELATED_ANIME,
+                                        contentType = EntryScreenItem.RELATED_ANIME,
+                                        span = { GridItemSpan(maxLineSpan) },
+                                    ) {
+                                        RelatedAnimeSection(
+                                            relatedAnime = state.relatedAnimeSorted,
+                                            modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                                        )
+                                    }
+                                    item {
+                                        HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx))
+                                    }
+                                } else if (!expandRelatedAnime && !showRelatedAnimeInOverflow) {
+                                    item(
+                                        key = EntryScreenItem.RELATED_ANIME,
+                                        contentType = EntryScreenItem.RELATED_ANIME,
+                                        span = { GridItemSpan(maxLineSpan) },
+                                    ) {
+                                        OutlinedButtonWithArrow(
+                                            text = stringResource(KMR.strings.pref_source_related_mangas)
+                                                .uppercase(),
+                                            onClick = onRelatedAnimeScreenClick ?: {},
+                                            modifier = Modifier.ignorePadding(offsetGridPaddingPx),
+                                        )
+                                    }
                                 }
-                                item { HorizontalDivider(modifier = Modifier.ignorePadding(offsetGridPaddingPx)) }
                             }
 
                             item(
@@ -1206,10 +1294,7 @@ private fun RelatedAnimeSection(
     val navigator = LocalNavigator.currentOrThrow
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f))
-            .padding(vertical = MaterialTheme.padding.extraSmall),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Text(
             text = stringResource(KMR.strings.pref_source_related_mangas),

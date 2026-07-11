@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALListItemStatus
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALManga
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALMangaMetadata
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALOAuth
+import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALAnimeSearchResult
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALSearchResult
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALUser
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALUserSearchResult
@@ -123,9 +124,9 @@ class MyAnimeListApi(
             with(json) {
                 authClient.newCall(GET(url.toString()))
                     .awaitSuccess()
-                    .parseAs<MALSearchResult>()
+                    .parseAs<MALAnimeSearchResult>()
                     .data
-                    .map { async { getAnimeDetails(it.node.id.toInt()) } }
+                    .map { async { getAnimeDetails(it.node.id) } }
                     .awaitAll()
             }
         }
