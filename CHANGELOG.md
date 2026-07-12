@@ -4,6 +4,45 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v2.2.0]
+
+Chimahon is open to contributors; issues and pull requests are welcome.
+
+### Added
+- Additional home-screen widgets
+- Widget picker previews
+- Refreshed Updates widget with Material You styling
+- Consolidated Library and Browse mode dropdowns
+- Option to keep Manga, Novels, and Anime as separate tabs
+- Configurable subtitle swipe controls
+- Popup swipe-to-dismiss and size controls
+- Korean analyzer mode setting
+- E-Ink refresh on novel page turns
+
+### Changed
+- Reorganized Learning settings into Dictionary, Popup, and Anki
+- Anki settings now use standard preference controls
+- Faster Anki card creation through JavaScript bridge
+- Anki tags now support marker substitution
+- Consolidated book and document-title markers into media-name
+- Improved dictionary import reports, file picker support, and background handling
+- Direct video downloads now use the resumable HTTP downloader
+- Theme-aware frequency and pitch badges
+
+### Fixed
+- Dictionary import, storage, and SAF permission issues
+- Local audio database permission issues
+- Online audio saving to Anki cards
+- Anime history, progress, library updates, and auto-download filtering
+- MAL search for anime
+- Anime UI alignment
+- Anime browse columns and hoster sorting
+- Subtitle lookup pause state and subtitle swipe conflicts
+- FFmpeg error messages
+- OCR page ordering, overlay coordinates, zoom scaling, and newlines
+- E-Ink swipe animation enforcement
+- Novel settings leaking from Manga in consolidated Library mode
+
 ## [v2.1.4]
 
 ### Fixed
