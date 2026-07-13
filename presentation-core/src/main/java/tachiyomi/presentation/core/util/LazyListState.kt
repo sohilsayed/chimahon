@@ -107,23 +107,4 @@ fun LazyListState.isItemScrollingDown(initiallyVisible: Boolean = false): Boolea
 }
 // KMK <--
 
-@Composable
-fun LazyGridState.shouldExpandFAB(): Boolean {
-    var lastScrolledBackward by remember { mutableStateOf(true) }
-    LaunchedEffect(this) {
-        snapshotFlow { firstVisibleItemIndex }
-            .map { it }
-            .distinctUntilChanged()
-            .collect { currentIndex ->
-                lastScrolledBackward = currentIndex <= firstVisibleItemIndex
-            }
-    }
-    return remember {
-        derivedStateOf {
-            (firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0) ||
-                lastScrolledBackward ||
-                !canScrollForward
-        }
-    }
-        .value
-}
+fun LazyGridState.shouldExpandFAB(): Boolean = lastScrolledBackward || !canScrollForward || !canScrollBackward
