@@ -176,10 +176,6 @@ data object BrowseTab : Tab {
         }
         val pagerState = rememberPagerState { currentTabs.size }
 
-        LaunchedEffect(browseMode) {
-            pagerState.scrollToPage(0)
-        }
-
         val currentTabIndex = pagerState.currentPage.coerceAtMost(currentTabs.lastIndex)
         val currentTab = currentTabs.getOrNull(currentTabIndex)
         val searchEnabled = currentTab?.searchEnabled ?: false
