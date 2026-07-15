@@ -568,8 +568,8 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val parallelOcrSubtitle = when {
             parallelOcrLimit == 1 -> "1 chapter (Recommended - safe and stable)"
-            ocrEngine == "local" -> "$parallelOcrLimit chapters (⚠️ Warning: Running multiple OCR tasks on-device simultaneously will increase battery drain and cause the device to heat up)"
-            else -> "$parallelOcrLimit chapters (⚠️ Warning: Running multiple OCR tasks online simultaneously may cause temporary rate limits or IP blocks)"
+            ocrEngine == "local" -> "$parallelOcrLimit chapters (Running multiple OCR tasks on-device simultaneously will increase battery drain and cause the device to heat up)"
+            else -> "$parallelOcrLimit chapters (Running multiple OCR tasks online simultaneously may cause temporary rate limits or IP blocks)"
         }
 
         val navigator = LocalNavigator.currentOrThrow
