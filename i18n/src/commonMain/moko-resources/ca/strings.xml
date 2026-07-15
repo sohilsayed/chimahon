@@ -7,7 +7,7 @@
     <string name="track">En seguiment</string>
     <string name="history">Historial</string>
     <string name="label_settings">Configuració</string>
-    <string name="label_download_queue">Cua de baixades</string>
+    <string name="label_download_queue">Cua de baixades &amp; OCR</string>
     <string name="label_library">Biblioteca</string>
     <string name="label_recent_manga">Historial</string>
     <string name="label_recent_updates">Novetats</string>

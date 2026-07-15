@@ -88,7 +88,7 @@
     <string name="label_recent_manga">Kasaysayan</string>
     <string name="label_recent_updates">Bago</string>
     <string name="label_library">Aklatan</string>
-    <string name="label_download_queue">Pila ng mga download</string>
+    <string name="label_download_queue">Pila ng mga download &amp; OCR</string>
     <string name="label_settings">Mga Setting</string>
     <string name="label_more">Higit pa</string>
     <string name="name">Pangalan</string>

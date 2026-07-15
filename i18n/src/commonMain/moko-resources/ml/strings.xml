@@ -29,7 +29,7 @@
     <string name="track">ട്രാക്കിംഗ്</string>
     <string name="delete_downloaded">ഡൗൺലോഡ് ചെയ്‌തത് ഇല്ലാതാക്കുക</string>
     <string name="label_more">ഇനിയും</string>
-    <string name="label_download_queue">ഡൗൺലോഡ് ക്യൂ</string>
+    <string name="label_download_queue">ഡൗൺലോഡ് ക്യൂ &amp; OCR</string>
     <string name="label_library">ലൈബ്രറി</string>
     <string name="label_recent_updates">അപ്ഡേറ്റുകൾ</string>
     <string name="label_upcoming">അടുത്തതായി</string>

@@ -79,7 +79,7 @@
     <string name="label_recent_manga">Гісторыя</string>
     <string name="label_recent_updates">Абнаўленні</string>
     <string name="label_library">Бібліятэка</string>
-    <string name="label_download_queue">Чарга загрузак</string>
+    <string name="label_download_queue">Чарга загрузак &amp; OCR</string>
     <string name="label_settings">Налады</string>
     <string name="label_more">Яшчэ</string>
     <string name="history">Гісторыя</string>

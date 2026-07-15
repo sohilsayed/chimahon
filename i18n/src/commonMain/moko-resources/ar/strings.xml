@@ -7,7 +7,7 @@
     <string name="track">تعقب</string>
     <string name="history">تاريخ</string>
     <string name="label_settings">اﻹعدادات</string>
-    <string name="label_download_queue">قائمة التنزيلات</string>
+    <string name="label_download_queue">قائمة التنزيلات &amp; OCR</string>
     <string name="label_library">المكتبة</string>
     <string name="label_recent_manga">السجل</string>
     <string name="label_recent_updates">التحديثات</string>

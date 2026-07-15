@@ -2,7 +2,7 @@
 <resources>
     <string name="name">Име</string>
     <string name="label_settings">Настройки</string>
-    <string name="label_download_queue">Изтегляния</string>
+    <string name="label_download_queue">Изтегляния &amp; OCR</string>
     <string name="label_library">Библиотека</string>
     <string name="label_recent_manga">История</string>
     <string name="label_recent_updates">Нови глави</string>

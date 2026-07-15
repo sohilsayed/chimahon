@@ -5,7 +5,7 @@
     <string name="name">ناو</string>
     <string name="label_more">زیاتر</string>
     <string name="label_settings">سازکارییەکان</string>
-    <string name="label_download_queue">لیستی داونلۆد</string>
+    <string name="label_download_queue">لیستی داونلۆد &amp; OCR</string>
     <string name="history">تۆماری ڕابردوو</string>
     <string name="confirm_lock_change">دڵنیابوونەوە تا گۆڕانکاری بکرێت</string>
     <string name="action_mark_previous_as_read">ئاماژەکردنی پێشوو وەک خوێندراو</string>

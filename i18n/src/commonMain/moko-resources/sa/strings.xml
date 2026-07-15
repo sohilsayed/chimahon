@@ -4,7 +4,7 @@
     <string name="name">नाम</string>
     <string name="label_more">इतोऽपि</string>
     <string name="label_settings">समायोजनानि</string>
-    <string name="label_download_queue">अवारोपणश्रेणिः</string>
+    <string name="label_download_queue">अवारोपणश्रेणिः &amp; OCR</string>
     <string name="label_recent_manga">चरित्रम्</string>
     <string name="label_migration">स्थानान्तरगमनम्</string>
     <string name="label_extensions">विस्ताराः</string>

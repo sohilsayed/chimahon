@@ -84,7 +84,7 @@
     <string name="information_no_recent">Нет новых обновлений</string>
     <string name="information_no_recent_manga">Ничего не прочитано в последнее время</string>
     <string name="label_backup">Резервная копия</string>
-    <string name="label_download_queue">Очередь загрузки</string>
+    <string name="label_download_queue">Очередь загрузки &amp; OCR</string>
     <string name="label_library">Библиотека</string>
     <string name="label_recent_manga">История</string>
     <string name="label_recent_updates">Обновления</string>

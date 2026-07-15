@@ -6,7 +6,7 @@
     <string name="chapters">Kapitler</string>
     <string name="history">Historikk</string>
     <string name="label_settings">Innstillinger</string>
-    <string name="label_download_queue">Nedlastingskø</string>
+    <string name="label_download_queue">Nedlastingskø &amp; OCR</string>
     <string name="label_library">Bibliotek</string>
     <string name="label_recent_manga">Historikk</string>
     <string name="label_recent_updates">Oppdateringer</string>

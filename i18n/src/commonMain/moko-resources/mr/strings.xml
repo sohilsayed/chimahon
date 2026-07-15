@@ -40,7 +40,7 @@
     <string name="label_sources">स्त्रोत</string>
     <string name="label_recent_updates">अपडेट्स</string>
     <string name="label_library">संग्रहालय</string>
-    <string name="label_download_queue">डाऊनलोड रांग</string>
+    <string name="label_download_queue">डाऊनलोड रांग &amp; OCR</string>
     <string name="action_restore">पुनर्संचयित करा</string>
     <string name="action_open_log">लॉग उघडा</string>
     <string name="action_undo">पूर्ववत करा</string>

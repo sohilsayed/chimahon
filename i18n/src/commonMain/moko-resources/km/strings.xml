@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="label_download_queue">កំពុងទាញយក</string>
+    <string name="label_download_queue">កំពុងទាញយក &amp; OCR</string>
     <string name="action_search_settings">ស្វែងរកក្នុងការកំណត់</string>
     <string name="chapters">ភាគ</string>
     <string name="label_warning">បំរាម</string>

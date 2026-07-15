@@ -13,7 +13,7 @@
     <string name="track">ခြေရာခံ</string>
     <string name="scanlator">ဘာသာပြန်သူ</string>
     <string name="label_more">ပိုမို၍</string>
-    <string name="label_download_queue">ဒေါင်းလုဒ် စာရင်း</string>
+    <string name="label_download_queue">ဒေါင်းလုဒ် စာရင်း &amp; OCR</string>
     <string name="label_library">စာအုပ်စင်</string>
     <string name="label_recent_updates">အပ်ဒိတ်များ</string>
     <string name="label_recent_manga">မှတ်တမ်းများ</string>

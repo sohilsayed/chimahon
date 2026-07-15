@@ -53,7 +53,7 @@
     <string name="label_recent_manga">Tarix</string>
     <string name="label_recent_updates">Yangilanishlar</string>
     <string name="label_library">Kutubxona</string>
-    <string name="label_download_queue">Yuklash navbati</string>
+    <string name="label_download_queue">Yuklash navbati &amp; OCR</string>
     <string name="label_settings">Sozlamalar</string>
     <string name="label_more">Kõproq</string>
     <string name="name">Name</string>

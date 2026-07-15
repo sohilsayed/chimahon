@@ -93,7 +93,7 @@
     <string name="label_recent_manga">Sejarah</string>
     <string name="label_recent_updates">Nganyari</string>
     <string name="label_library">Perpustakaan</string>
-    <string name="label_download_queue">Antrian Donlot</string>
+    <string name="label_download_queue">Antrian Donlot &amp; OCR</string>
     <string name="label_settings">Setelan</string>
     <string name="label_more">Liyane</string>
     <string name="name">Jeneng</string>

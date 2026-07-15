@@ -6,7 +6,7 @@
     <string name="history">ისტორია</string>
     <string name="label_more">მეტი</string>
     <string name="label_settings">პარამეტრები</string>
-    <string name="label_download_queue">გადმოწერის რიგი</string>
+    <string name="label_download_queue">გადმოწერის რიგი &amp; OCR</string>
     <string name="label_library">ბიბლიოთეკა</string>
     <string name="label_recent_updates">განახლებები</string>
     <string name="label_recent_manga">ისტორია</string>

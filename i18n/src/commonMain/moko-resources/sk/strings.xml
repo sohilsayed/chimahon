@@ -7,7 +7,7 @@
     <string name="track">Sledovanie</string>
     <string name="history">História</string>
     <string name="label_settings">Nastavenia</string>
-    <string name="label_download_queue">Sťahujúce sa</string>
+    <string name="label_download_queue">Sťahujúce sa &amp; OCR</string>
     <string name="label_library">Knižnica</string>
     <string name="label_recent_manga">Nedávno čítané</string>
     <string name="label_recent_updates">Updaty</string>

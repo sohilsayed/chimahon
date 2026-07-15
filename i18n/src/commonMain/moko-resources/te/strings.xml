@@ -10,7 +10,7 @@
     <string name="label_recent_manga">చరిత్ర</string>
     <string name="label_recent_updates">నవీకరణలు</string>
     <string name="label_library">గ్రంథాలయము</string>
-    <string name="label_download_queue">దిగుమతి వరుస</string>
+    <string name="label_download_queue">దిగుమతి వరుస &amp; OCR</string>
     <string name="label_settings">అమరికలు</string>
     <string name="label_more">మరింత</string>
     <string name="name">పేరు</string>

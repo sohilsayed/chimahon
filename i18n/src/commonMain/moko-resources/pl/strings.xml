@@ -5,7 +5,7 @@
     <string name="name">Nazwa</string>
     <string name="history">Historia</string>
     <string name="label_settings">Ustawienia</string>
-    <string name="label_download_queue">Kolejka pobierania</string>
+    <string name="label_download_queue">Kolejka pobierania &amp; OCR</string>
     <string name="label_recent_manga">Historia</string>
     <string name="action_settings">Ustawienia</string>
     <string name="action_filter">Filtry</string>

@@ -153,7 +153,7 @@
     <string name="label_recent_manga">ታሪክ</string>
     <string name="label_recent_updates">ዝመናዎች</string>
     <string name="label_library">ቤተ መጻሕፍት</string>
-    <string name="label_download_queue">የሚወርድ ወረፋ</string>
+    <string name="label_download_queue">የሚወርድ ወረፋ &amp; OCR</string>
     <string name="label_settings">ማስተካከያዎች</string>
     <string name="label_more">ተጨማሪ</string>
     <string name="name">ስም</string>

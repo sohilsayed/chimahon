@@ -5,7 +5,7 @@
     <string name="scanlator">ச்கேன்லேட்டர்</string>
     <string name="label_more">மேலும்</string>
     <string name="label_settings">அமைப்புகள்</string>
-    <string name="label_download_queue">வரிசையைப் பதிவிறக்கவும்</string>
+    <string name="label_download_queue">வரிசையைப் பதிவிறக்கவும் &amp; OCR</string>
     <string name="label_library">நூலகம்</string>
     <string name="label_recent_updates">புதுப்பிப்புகள்</string>
     <string name="label_default">இயல்புநிலை</string>

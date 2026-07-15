@@ -7,7 +7,7 @@
     <string name="track">Spårning</string>
     <string name="history">Historik</string>
     <string name="label_settings">Inställningar</string>
-    <string name="label_download_queue">Nedladdningskö</string>
+    <string name="label_download_queue">Nedladdningskö &amp; OCR</string>
     <string name="label_library">Bibliotek</string>
     <string name="label_recent_manga">Historik</string>
     <string name="label_recent_updates">Uppdateringar</string>

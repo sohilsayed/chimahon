@@ -6,7 +6,7 @@
     <string name="chapters">章节</string>
     <string name="history">历史</string>
     <string name="label_settings">设置</string>
-    <string name="label_download_queue">下载队列</string>
+    <string name="label_download_queue">下载队列 &amp; OCR</string>
     <string name="label_library">书架</string>
     <string name="label_recent_manga">历史</string>
     <string name="label_recent_updates">更新</string>

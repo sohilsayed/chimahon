@@ -107,7 +107,7 @@
     <string name="label_recent_manga">ಇತಿಹಾಸ</string>
     <string name="label_recent_updates">ನವೀಕರಣಗಳು</string>
     <string name="label_library">ಗ್ರಂಥಾಲಯ</string>
-    <string name="label_download_queue">ಡೌನ್‌ಲೋಡ್ ಸಾಲು</string>
+    <string name="label_download_queue">ಡೌನ್‌ಲೋಡ್ ಸಾಲು &amp; OCR</string>
     <string name="label_settings">ಸಂಯೋಜನೆಗಳು</string>
     <string name="label_more">ಇನ್ನಷ್ಟು</string>
     <string name="name">ಹೆಸರು</string>

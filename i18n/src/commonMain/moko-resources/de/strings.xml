@@ -6,7 +6,7 @@
     <string name="chapters">Kapitel</string>
     <string name="history">Verlauf</string>
     <string name="label_settings">Einstellungen</string>
-    <string name="label_download_queue">Downloadwarteschlange</string>
+    <string name="label_download_queue">Downloadwarteschlange &amp; OCR</string>
     <string name="label_library">Bibliothek</string>
     <string name="label_recent_manga">Verlauf</string>
     <string name="label_backup">Sichern und Wiederherstellen</string>

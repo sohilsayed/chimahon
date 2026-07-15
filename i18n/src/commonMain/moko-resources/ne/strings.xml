@@ -92,7 +92,7 @@
     <string name="information_empty_library">तपाईंको पुस्तकालय खाली छ</string>
     <string name="information_no_recent_manga">हालै केहि पढेको छैन</string>
     <string name="information_no_recent">हालैका कुनै अपडेट छैन</string>
-    <string name="label_download_queue">डाउनलोड सूची</string>
+    <string name="label_download_queue">डाउनलोड सूची &amp; OCR</string>
     <string name="information_no_downloads">कुनै डाउनलोड्स छैन</string>
     <string name="label_help">मद्दत</string>
     <string name="label_extension_info">एक्सटेन्शनको जानकारी</string>

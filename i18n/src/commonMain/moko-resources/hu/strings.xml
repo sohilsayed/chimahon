@@ -63,7 +63,7 @@
     <string name="chapter_progress">%1$d. oldal</string>
     <string name="no_next_chapter">Nem található a következő fejezet</string>
     <string name="download_notifier_no_network">A hálózat nem érhető el</string>
-    <string name="label_download_queue">Letöltési sor</string>
+    <string name="label_download_queue">Letöltési sor &amp; OCR</string>
     <string name="label_library">Könyvtár</string>
     <string name="label_recent_updates">Frissítések</string>
     <string name="action_filter">Szűrők</string>

@@ -30,7 +30,7 @@
     <string name="label_settings">Mga setting</string>
     <string name="label_sources">Tinubdan</string>
     <string name="label_default">Default</string>
-    <string name="label_download_queue">Pila sa Pag-download</string>
+    <string name="label_download_queue">Pila sa Pag-download &amp; OCR</string>
     <string name="manga">Mga entri sa basahonan</string>
     <string name="track">Pagsubay</string>
     <string name="label_library">Librarya</string>

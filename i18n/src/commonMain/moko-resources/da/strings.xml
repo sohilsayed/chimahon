@@ -38,7 +38,7 @@
     <string name="action_filter">Filter</string>
     <string name="action_sort_alpha">Alfabetisk</string>
     <string name="action_remove">Fjern</string>
-    <string name="label_download_queue">Download kø</string>
+    <string name="label_download_queue">Download kø &amp; OCR</string>
     <string name="history">Historik</string>
     <string name="label_backup">Backup og gendannelse</string>
     <string name="label_extensions">Udvidelser</string>
