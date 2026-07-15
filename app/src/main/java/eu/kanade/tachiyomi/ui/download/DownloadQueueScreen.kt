@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -285,9 +286,53 @@ object DownloadQueueScreen : Screen() {
             val colorScheme = AndroidViewColorScheme(MaterialTheme.colorScheme)
             // KMK <--
 
-            Box(modifier = Modifier.nestedScroll(nestedScrollConnection)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(nestedScrollConnection)
+            ) {
+                if (ocrQueue.isNotEmpty()) {
+                    OcrQueueSection(
+                        ocrQueue = ocrQueue,
+                        onCancelClick = { screenModel.cancelOcr(it) },
+                        modifier = Modifier.padding(
+                            start = with(density) { left.toDp() },
+                            top = with(density) { top.toDp() },
+                            end = with(density) { right.toDp() },
+                        ),
+                    )
+                }
+
+                if (ocrQueue.isNotEmpty() && downloadList.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                start = with(density) { (left + 16).toDp() },
+                                top = 16.dp,
+                                end = with(density) { (right + 16).toDp() },
+                                bottom = 8.dp,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(MR.strings.label_download_queue),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Pill(
+                            text = "$downloadCount",
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+
                 AndroidView(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     factory = { context ->
                         screenModel.controllerBinding = DownloadListBinding.inflate(LayoutInflater.from(context))
                         screenModel.adapter = DownloadAdapter(
@@ -325,7 +370,7 @@ object DownloadQueueScreen : Screen() {
                         screenModel.controllerBinding.root
                             .updatePadding(
                                 left = left,
-                                top = top,
+                                top = if (ocrQueue.isEmpty()) top else 0,
                                 right = right,
                                 bottom = bottom,
                             )
@@ -333,17 +378,6 @@ object DownloadQueueScreen : Screen() {
                         screenModel.adapter?.updateDataSet(downloadList)
                     },
                 )
-
-                if (ocrQueue.isNotEmpty()) {
-                    OcrQueueSection(
-                        ocrQueue = ocrQueue,
-                        onCancelClick = { screenModel.cancelOcr(it) },
-                        modifier = Modifier.padding(
-                            start = with(density) { left.toDp() },
-                            end = with(density) { right.toDp() },
-                        ),
-                    )
-                }
             }
         }
     }
