@@ -47,9 +47,16 @@ internal fun Uri.resolveUri(context: Context): String? {
 }
 
 internal fun Uri.getFileName(context: Context): String? {
-    return context.contentResolver.query(this, null, null, null, null)?.use { cursor ->
-        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        cursor.moveToFirst()
-        cursor.getString(nameIndex)
+    return try {
+        context.contentResolver.query(this, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                cursor.getString(nameIndex)
+            } else {
+                null
+            }
+        }
+    } catch (e: Exception) {
+        null
     }
 }
