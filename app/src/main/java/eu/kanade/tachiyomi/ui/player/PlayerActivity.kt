@@ -1505,10 +1505,11 @@ class PlayerActivity : BaseActivity() {
         val audioTracks = viewModel.currentVideo.value?.audioTracks?.takeIf { it.isNotEmpty() }
         val subtitleTracks = viewModel.currentVideo.value?.subtitleTracks?.takeIf { it.isNotEmpty() }
         val restoredSubtitleCount = viewModel.restoreAddedSubtitlesForCurrentEpisode()
+        val restoredAudioCount = viewModel.restoreAddedAudioForCurrentEpisode()
 
         // If no external audio or subtitle tracks are present, loadTracks() won't be
         // called and we need to call onFinishLoadingTracks() manually
-        if (audioTracks == null && subtitleTracks == null && restoredSubtitleCount == 0) {
+        if (audioTracks == null && subtitleTracks == null && restoredSubtitleCount == 0 && restoredAudioCount == 0) {
             viewModel.onFinishLoadingTracks()
             return
         }

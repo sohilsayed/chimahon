@@ -594,11 +594,21 @@ class PlayerViewModel @JvmOverloads constructor(
         val path = (if (isContentUri) uri.openContentFd(activity) else url)
             ?: return
         val name = if (isContentUri) uri.getFileName(activity) else null
+        val title = name ?: url.substringAfterLast('/')
+        rememberAddedAudioForCurrentEpisode(
+            AddedAudioTrack(
+                uriString = url,
+                path = path,
+                title = title,
+                isContentUri = isContentUri,
+            ),
+        )
         if (name == null) {
             MPVLib.command(arrayOf("audio-add", path, "cached"))
         } else {
             MPVLib.command(arrayOf("audio-add", path, "cached", name))
         }
+        loadTracks()
     }
 
     fun selectAudio(id: Int) {
@@ -1967,12 +1977,20 @@ class PlayerViewModel @JvmOverloads constructor(
         val isContentUri: Boolean,
     )
 
+    private data class AddedAudioTrack(
+        val uriString: String,
+        val path: String,
+        val title: String?,
+        val isContentUri: Boolean,
+    )
+
     private data class SubtitleTrackSelection(
         val primaryKey: String?,
         val secondaryKey: String?,
     )
 
     private val addedSubtitleTracksByEpisodeId = mutableMapOf<Long, MutableList<AddedSubtitleTrack>>()
+    private val addedAudioTracksByEpisodeId = mutableMapOf<Long, MutableList<AddedAudioTrack>>()
     private val subtitleTrackSelectionsByEpisodeId = mutableMapOf<Long, SubtitleTrackSelection>()
     private var pendingSubtitleSelectionKey: String? = null
 
@@ -2237,6 +2255,40 @@ class PlayerViewModel @JvmOverloads constructor(
                 MPVLib.command(arrayOf("sub-add", path, "cached"))
             } else {
                 MPVLib.command(arrayOf("sub-add", path, "cached", track.title))
+            }
+            restored += 1
+        }
+        return restored
+    }
+
+    private fun rememberAddedAudioForCurrentEpisode(track: AddedAudioTrack) {
+        val episodeId = currentEpisode.value?.id ?: return
+        val tracks = addedAudioTracksByEpisodeId.getOrPut(episodeId) { mutableListOf() }
+        val sourceKey = if (track.isContentUri) track.uriString else track.path
+        if (tracks.none { existing ->
+                existing.isContentUri == track.isContentUri &&
+                    (if (existing.isContentUri) existing.uriString else existing.path) == sourceKey
+            }
+        ) {
+            tracks += track
+        }
+    }
+
+    fun restoreAddedAudioForCurrentEpisode(): Int {
+        val episodeId = currentEpisode.value?.id ?: return 0
+        val tracks = addedAudioTracksByEpisodeId[episodeId].orEmpty()
+        var restored = 0
+        tracks.forEach { track ->
+            val path = if (track.isContentUri) {
+                Uri.parse(track.uriString).openContentFd(activity)
+            } else {
+                track.path
+            } ?: return@forEach
+
+            if (track.title == null) {
+                MPVLib.command(arrayOf("audio-add", path, "cached"))
+            } else {
+                MPVLib.command(arrayOf("audio-add", path, "cached", track.title))
             }
             restored += 1
         }
