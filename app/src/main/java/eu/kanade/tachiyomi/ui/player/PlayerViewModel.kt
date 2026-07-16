@@ -1572,15 +1572,20 @@ class PlayerViewModel @JvmOverloads constructor(
     val maxVolume = activity.audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
     fun changeVolumeBy(change: Int) {
         val mpvVolume = MPVLib.getPropertyInt("volume")
+        val step = Math.round(maxVolume * 0.05f).coerceAtLeast(1)
+        val signedStep = if (change > 0) step else -step
+
         if (volumeBoostCap > 0 && currentVolume.value == maxVolume) {
-            if (mpvVolume == 100 && change < 0) changeVolumeTo(currentVolume.value + change)
-            val finalMPVVolume = (mpvVolume + change).coerceAtLeast(100)
-            if (finalMPVVolume in 100..volumeBoostCap + 100) {
+            val boostStep = if (change > 0) 5 else -5
+            val finalMPVVolume = (mpvVolume + boostStep).coerceAtLeast(100)
+            if (change < 0 && mpvVolume == 100) {
+                changeVolumeTo(currentVolume.value + signedStep)
+            } else if (finalMPVVolume in 100..volumeBoostCap + 100) {
                 changeMPVVolumeTo(finalMPVVolume)
-                return
             }
+        } else {
+            changeVolumeTo(currentVolume.value + signedStep)
         }
-        changeVolumeTo(currentVolume.value + change)
     }
 
     fun changeVolumeTo(volume: Int) {
