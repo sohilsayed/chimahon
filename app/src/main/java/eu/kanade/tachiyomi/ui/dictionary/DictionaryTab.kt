@@ -90,6 +90,16 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
     if (!dictionariesDir.exists()) return chimahon.DictionaryPaths()
 
+    val currentModified = dictionariesDir.lastModified()
+    if (cachedDictionaryPaths != null && lastDictDirModified == currentModified) {
+        val activeProfile = activeProfileOverride ?: run {
+            try { Injekt.get<DictionaryPreferences>().profileStore.getActiveProfile() } catch (_: Exception) { null }
+        }
+        if (activeProfile != null && lastProfileHash == activeProfile.hashCode()) {
+            return cachedDictionaryPaths!!
+        }
+    }
+
     val typeDirs = mapOf(
         "term" to File(dictionariesDir, "term"),
         "frequency" to File(dictionariesDir, "frequency"),
