@@ -1294,7 +1294,17 @@ object SettingsDictionaryScreen : SearchableSettings {
             if (fromIdx in dictNamesState.indices && toIdx in dictNamesState.indices) {
                 val item = dictNamesState.removeAt(fromIdx)
                 dictNamesState.add(toIdx, item)
-                profileStore.updateProfile(profileStore.getActiveProfile().copy(dictionaryOrder = dictNamesState.toList()))
+                val newOrder = if (typeFilter == null) {
+                    dictNamesState.toList()
+                } else {
+                    val fullList = orderedDicts.toMutableList()
+                    val visibleIndices = fullList.indices.filter { fullList[it] in filteredOrderedDicts }
+                    visibleIndices.forEachIndexed { i, originalIndex ->
+                        fullList[originalIndex] = dictNamesState[i]
+                    }
+                    fullList.toList()
+                }
+                profileStore.updateProfile(profileStore.getActiveProfile().copy(dictionaryOrder = newOrder))
             }
         }
 
