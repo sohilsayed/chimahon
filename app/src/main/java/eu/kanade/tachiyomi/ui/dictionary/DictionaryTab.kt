@@ -331,6 +331,15 @@ data object DictionaryTab : Tab {
             }
         }
 
+        LaunchedEffect(activeProfile) {
+            val trimmed = query.trim()
+            if (trimmed.isNotEmpty() && hasSearched) {
+                lookupStack.clear()
+                activeTabIndex = 0
+                stackLookup(trimmed)
+            }
+        }
+
         // Simple callback for Anki lookup - index maps to results array, glossaryIndex is optional
         val onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = if (ankiEnabled) {
             { resultIndex, glossaryIndex, selectedDict, popupSelection, forceOpen ->
