@@ -2601,16 +2601,24 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         }
                                     }
 
-                                    if (localUri.isNotBlank()) {
+                                    if (localUri.isNotBlank() || localPath.isNotBlank()) {
                                         OutlinedButton(
                                             onClick = {
-                                                try {
-                                                    context.contentResolver.releasePersistableUriPermission(
-                                                        Uri.parse(localUri),
-                                                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                                                    )
-                                                } catch (_: Exception) { }
-                                                prefs.wordAudioLocalUri().set("")
+                                                if (localUri.isNotBlank()) {
+                                                    try {
+                                                        context.contentResolver.releasePersistableUriPermission(
+                                                            Uri.parse(localUri),
+                                                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                                                        )
+                                                    } catch (_: Exception) { }
+                                                    prefs.wordAudioLocalUri().set("")
+                                                }
+                                                if (localPath.isNotBlank()) {
+                                                    try {
+                                                        File(localPath).delete()
+                                                    } catch (_: Exception) { }
+                                                    prefs.wordAudioLocalPath().set("")
+                                                }
                                             },
                                             enabled = !isImportingDb
                                         ) {
