@@ -49,6 +49,11 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.bundles.media3)
 
+    // Zoomable image viewer for novel illustrations
+    implementation(libs.subsamplingscaleimageview) {
+        exclude(module = "image-decoder")
+    }
+
     // Dependency injection
     implementation(libs.injekt)
     

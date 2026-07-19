@@ -111,6 +111,8 @@ private data class RecursivePopupRequest(
     val sentenceOffset: Int,
     val tapX: Float? = null,
     val tapY: Float? = null,
+    val anchorWidth: Float = 0f,
+    val anchorHeight: Float = 0f,
     val deferredResult: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>,
 )
 
@@ -141,6 +143,7 @@ fun OcrLookupPopup(
     onTermMatched: ((Int, Int) -> Unit)? = null,
     onContentReadyChange: ((Boolean) -> Unit)? = null,
     dismissOnOutsideTap: Boolean = false,
+    isRecursiveChild: Boolean = false,
     modifier: Modifier = Modifier,
     titleId: String? = null,
 ) {
@@ -178,6 +181,30 @@ fun OcrLookupPopup(
 
     androidx.compose.runtime.DisposableEffect(childPopupWebView) {
         onDispose { childPopupWebView.destroy() }
+    }
+
+    fun dismissPopup() {
+        if (!isRecursiveChild) {
+            childPopupRequest = null
+            webView.evaluateJavascript(
+                "window.DictionaryRenderer && window.DictionaryRenderer.clearRecursiveSelection();",
+                null,
+            )
+        }
+        onDismiss()
+    }
+
+    androidx.compose.runtime.DisposableEffect(webView, childPopupRequest) {
+        if (childPopupRequest != null) {
+            webView.setOnScrollChangeListener { _, _, _, _, _ ->
+                childPopupRequest = null
+                webView.evaluateJavascript(
+                    "window.DictionaryRenderer && window.DictionaryRenderer.clearRecursiveSelection();",
+                    null,
+                )
+            }
+        }
+        onDispose { webView.setOnScrollChangeListener(null) }
     }
 
 
@@ -418,9 +445,16 @@ fun OcrLookupPopup(
     val (maxWidthDp, maxHeightDp) = with(density) {
         val sw = screenWidthPx.toDp()
         val sh = screenHeightPx.toDp()
+        val childMaxWidth = (sw - 12.dp).coerceAtLeast(120.dp)
+        val childMaxHeight = maxOf(
+            anchorY - with(density) { 12.dp.toPx() },
+            screenHeightPx - anchorY - anchorHeight - with(density) { 12.dp.toPx() },
+        ).toDp().coerceAtLeast(120.dp)
         Pair(
-            popupWidthPref.dp.coerceIn(280.dp, sw * 0.9f),
-            popupHeightPref.dp.coerceIn(200.dp, sh * 0.8f),
+            if (isRecursiveChild) popupWidthPref.dp.coerceAtMost(childMaxWidth).coerceAtLeast(120.dp)
+            else popupWidthPref.dp.coerceIn(280.dp, sw * 0.9f),
+            if (isRecursiveChild) popupHeightPref.dp.coerceAtMost(childMaxHeight).coerceAtLeast(120.dp)
+            else popupHeightPref.dp.coerceIn(200.dp, sh * 0.8f),
         )
     }
 
@@ -521,7 +555,7 @@ fun OcrLookupPopup(
                         when (ankiResult) {
                             is AnkiResult.Success -> {
                                 updateStatus(result.term.expression)
-                                onDismiss()
+                                dismissPopup()
                                 onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
                             }
                             is AnkiResult.CardExists -> {
@@ -625,13 +659,14 @@ fun OcrLookupPopup(
     val layoutResult = remember(
         anchorX, anchorY, anchorWidth, anchorHeight,
         screenWidthPx, screenHeightPx, popupWidthPx, popupHeightPx, isVertical, popupModePref,
+        isRecursiveChild,
     ) {
         val w: Float
         val h: Float
         val bestX: Float
         val bestY: Float
 
-        when (popupModePref) {
+        when (if (isRecursiveChild) "floating" else popupModePref) {
             "full_width" -> {
                 w = screenWidthPx
                 h = minOf(popupHeightPx, screenHeightPx)
@@ -678,7 +713,9 @@ fun OcrLookupPopup(
             val all = listOf(right, left, below, above)
 
             // Priority order: 0=Right, 1=Left, 2=Below, 3=Above
-            val order = if (isVertical) {
+            val order = if (isRecursiveChild) {
+                if (acy < screenHeightPx / 2f) listOf(2, 3, 0, 1) else listOf(3, 2, 0, 1)
+            } else if (isVertical) {
                 if (acx < screenWidthPx / 2f) listOf(0, 1, 2, 3) else listOf(1, 0, 2, 3)
             } else {
                 if (acy < screenHeightPx / 2f) listOf(2, 3, 0, 1) else listOf(3, 2, 0, 1)
@@ -723,7 +760,16 @@ fun OcrLookupPopup(
 
 
     LaunchedEffect(visible) {
-        if (!visible) stopDictionaryAudio(webView)
+        if (!visible) {
+            stopDictionaryAudio(webView)
+            if (!isRecursiveChild) {
+                childPopupRequest = null
+                webView.evaluateJavascript(
+                    "window.DictionaryRenderer && window.DictionaryRenderer.clearRecursiveSelection();",
+                    null,
+                )
+            }
+        }
     }
 
     LaunchedEffect(lookupString, ankiEnabled, ankiModel, visible) {
@@ -778,21 +824,42 @@ fun OcrLookupPopup(
                     )
                 }
                 val orderedResults = orderLookupResultsForDisplay(result.results, activeProfile, context)
-                childPopupRequest = RecursivePopupRequest(
-                    query = word,
-                    sentence = targetSentence,
-                    sentenceOffset = targetOffset,
-                    tapX = x,
-                    tapY = y,
-                    deferredResult = CompletableDeferred(
+                val matched = orderedResults.firstOrNull()?.matched
+                if (!matched.isNullOrBlank()) {
+                    val resolvedResult = CompletableDeferred(
                         chimahon.DictionaryRepository.LookupResult2(
                             results = orderedResults,
                             styles = result.styles,
                             mediaDataUris = result.mediaDataUris,
                             error = result.error,
                         ),
-                    ),
-                )
+                    )
+                    val matchedLength = matched.codePointCount(0, matched.length)
+                    webView.evaluateJavascript(
+                        "window.DictionaryRenderer && window.DictionaryRenderer.resolveRecursiveSelection($matchedLength);",
+                    ) { encodedRect ->
+                        val rect = runCatching {
+                            val decoded = org.json.JSONTokener(encodedRect).nextValue() as? String
+                            decoded?.let { org.json.JSONObject(it) }
+                        }.getOrNull()
+                        val cssScale = density.density
+                        childPopupRequest = RecursivePopupRequest(
+                            query = matched,
+                            sentence = targetSentence,
+                            sentenceOffset = targetOffset,
+                            tapX = (rect?.optDouble("x")?.toFloat() ?: x ?: 0f) * cssScale,
+                            tapY = (rect?.optDouble("y")?.toFloat() ?: y ?: 0f) * cssScale,
+                            anchorWidth = (rect?.optDouble("width")?.toFloat() ?: 0f) * cssScale,
+                            anchorHeight = (rect?.optDouble("height")?.toFloat() ?: 0f) * cssScale,
+                            deferredResult = resolvedResult,
+                        )
+                    }
+                } else {
+                    webView.evaluateJavascript(
+                        "window.DictionaryRenderer && window.DictionaryRenderer.clearRecursiveSelection();",
+                        null,
+                    )
+                }
             }
         } else {
             pushLookup(
@@ -963,7 +1030,7 @@ fun OcrLookupPopup(
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() },
-                        ) { onDismiss() },
+                        ) { dismissPopup() },
                     shape = RoundedCornerShape(if (eInkMode) 0.dp else 14.dp),
                     color = Color.Transparent,
                     contentColor = chromeText,
@@ -1006,7 +1073,7 @@ fun OcrLookupPopup(
                                     if (kotlin.math.abs(totalDragX) > swipeThreshold &&
                                         kotlin.math.abs(totalDragX) > kotlin.math.abs(totalDragY) * 1.75f
                                     ) {
-                                        onDismiss()
+                                        dismissPopup()
                                         throw CancellationException("Dismissed by swipe")
                                     }
                                 }
@@ -1107,7 +1174,7 @@ fun OcrLookupPopup(
         if (visible) {
             Popup(
                 offset = IntOffset(layoutResult.x.roundToInt(), layoutResult.y.roundToInt()),
-                onDismissRequest = { onDismiss() },
+                onDismissRequest = { dismissPopup() },
                 properties = PopupProperties(
                     focusable = dismissOnOutsideTap,
                     dismissOnClickOutside = dismissOnOutsideTap,
@@ -1139,7 +1206,7 @@ fun OcrLookupPopup(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() },
                         ) {
-                            onDismiss()
+                            dismissPopup()
                         }
                 )
             }
@@ -1148,7 +1215,11 @@ fun OcrLookupPopup(
     }
 
     childPopupRequest?.let { request ->
-        val closeChromePx = with(density) { 32.dp.toPx() }
+        val closeChromePx = if (dismissOnOutsideTap && recursiveNavMode == "popup") {
+            with(density) { 32.dp.toPx() }
+        } else {
+            0f
+        }
         val tapScreenX = layoutResult.x + (request.tapX ?: layoutResult.widthPx / 2f)
         val tapScreenY = layoutResult.y + closeChromePx + (request.tapY ?: layoutResult.heightPx / 2f)
         OcrLookupPopup(
@@ -1156,14 +1227,20 @@ fun OcrLookupPopup(
             lookupString = request.query,
             fullText = request.sentence,
             charOffset = request.sentenceOffset,
-            onDismiss = { childPopupRequest = null },
+            onDismiss = {
+                childPopupRequest = null
+                webView.evaluateJavascript(
+                    "window.DictionaryRenderer && window.DictionaryRenderer.clearRecursiveSelection();",
+                    null,
+                )
+            },
             dismissOnOutsideTap = true,
             webView = childPopupWebView,
             repository = repository,
             anchorX = tapScreenX,
             anchorY = tapScreenY,
-            anchorWidth = 0f,
-            anchorHeight = 0f,
+            anchorWidth = request.anchorWidth,
+            anchorHeight = request.anchorHeight,
             isVertical = isVertical,
             activeProfile = activeProfile,
             type = type,
@@ -1176,6 +1253,7 @@ fun OcrLookupPopup(
             onTermMatched = null,
             onContentReadyChange = null,
             initialLookupDeferred = request.deferredResult,
+            isRecursiveChild = true,
             titleId = titleId,
         )
     }

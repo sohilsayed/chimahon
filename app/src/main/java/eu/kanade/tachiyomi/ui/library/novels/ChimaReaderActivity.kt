@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.library.novels
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -33,7 +34,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import chimahon.DictionaryRepository
+import chimahon.ocr.OcrLanguage
+import chimahon.ocr.OcrResult
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
+import eu.kanade.tachiyomi.data.ocr.recognizePage
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
@@ -293,6 +297,8 @@ class ChimaReaderActivity : NovelReaderActivity() {
         val anchorHeight: Float,
         val isVertical: Boolean,
         val activeProfile: chimahon.anki.AnkiProfile,
+        val screenshot: Bitmap? = null,
+        val sentenceOffset: Int = 0,
     )
 
     private var lookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null
@@ -301,8 +307,53 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
+        startLookup(word, sentence, x, y, w, h, isVerticalWriting, screenshot = null, resolveAnchorFromWebView = true)
+    }
+
+    override suspend fun recognizeImage(bitmap: Bitmap, language: OcrLanguage): List<OcrResult> {
+        val profileLanguage = getOrRefreshLookupPaths().first.languageCode
+        val resolvedLanguage = OcrLanguage.entries.firstOrNull {
+            it.bcp47.equals(profileLanguage, ignoreCase = true) ||
+                profileLanguage.startsWith("${it.bcp47}-", ignoreCase = true)
+        } ?: language
+        return recognizePage(bitmap, resolvedLanguage)
+    }
+
+    override fun onImageOcrLookupRequested(
+        word: String,
+        sentence: String,
+        sentenceOffset: Int,
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        vertical: Boolean,
+        bitmap: Bitmap,
+    ) {
+        startLookup(
+            word, sentence, x, y, w, h, vertical,
+            screenshot = bitmap,
+            resolveAnchorFromWebView = false,
+            sentenceOffset = sentenceOffset,
+        )
+    }
+
+    private fun startLookup(
+        word: String,
+        sentence: String,
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        vertical: Boolean,
+        screenshot: Bitmap?,
+        resolveAnchorFromWebView: Boolean,
+        sentenceOffset: Int = sentence.indexOf(word).coerceAtLeast(0),
+    ) {
         val (profile, termPaths) = getOrRefreshLookupPaths()
         cancelActiveLookup()
+        pendingShowByRects = false
+        selectionRects.clear()
         lookupStartTime = SystemClock.elapsedRealtime()
         pendingLookupRects.clear()
         lookupDeferred = lifecycleScope.async(Dispatchers.Default) {
@@ -310,12 +361,12 @@ class ChimaReaderActivity : NovelReaderActivity() {
         }
         // Set preliminary state with tap coordinates; refined to exact
         // character position when rects arrive from JS (match path).
-        lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting, profile)
+        lookupState = LookupState(word, sentence, x, y, w, h, vertical, profile, screenshot, sentenceOffset)
 
         lifecycleScope.launch(Dispatchers.Default) {
             val result = try { lookupDeferred?.await() } catch (_: Exception) { null }
             val firstMatched = result?.results?.firstOrNull()?.matched
-            if (firstMatched != null) {
+            if (firstMatched != null && resolveAnchorFromWebView) {
                 val matchOffset = word.indexOf(firstMatched).coerceAtLeast(0)
                 val charCount = firstMatched.codePointCount(0, firstMatched.length)
                 withContext(Dispatchers.Main) {
@@ -402,7 +453,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
                     visible = popupVisible,
                     lookupString = if (popupVisible) popupState.word else "",
                     fullText = popupState.sentence,
-                    charOffset = popupState.sentence.indexOf(popupState.word).coerceAtLeast(0),
+                    charOffset = popupState.sentenceOffset,
                     onDismiss = {
                         popupVisible = false
                         selectionRects.clear()
@@ -420,13 +471,20 @@ class ChimaReaderActivity : NovelReaderActivity() {
                     activeProfile = if (popupVisible) getOrRefreshLookupPaths().first else popupState.activeProfile,
                     type = "novel",
                     mediaInfo = mediaInfo,
-                    onRequestScreenshot = null,
+                    onRequestScreenshot = if (popupState.screenshot != null) {
+                        { popupState.screenshot }
+                    } else {
+                        null
+                    },
                     onCropTriggered = null,
                     initialLookupDeferred = if (popupVisible) lookupDeferred else null,
                     usePopup = false,
                     // Novel reader: rects already sent by onLookupRequested; no OCR block to refine
                     onTermMatched = null,
                     onContentReadyChange = ::onPopupContentReady,
+                    // The novel SSIV owns outside-tap routing so another OCR word can be
+                    // selected while this popup is already visible.
+                    dismissOnOutsideTap = false,
                     modifier = Modifier,
                     titleId = bookMetadata?.id,
                 )

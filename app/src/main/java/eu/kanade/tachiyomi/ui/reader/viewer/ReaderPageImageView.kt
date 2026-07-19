@@ -26,6 +26,8 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import chimahon.DictionaryRepository
+import chimahon.ocr.OcrCharacterLine
+import chimahon.ocr.OcrHitTester
 import coil3.BitmapImage
 import coil3.asDrawable
 import coil3.dispose
@@ -128,11 +130,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
     internal var activeOcrMatchedCount: Int = 0
     internal var ocrLayoutCache: Pair<OcrTextBlock, StaticLayout>? = null
     internal var ocrPopupLookupString: String? = null
-
-    private data class OcrLineHit(
-        val offset: Int,
-        val distance: Float,
-    )
 
     var onOcrLookup: ((String) -> Unit)? = null
     var onDismissOcrPopup: (() -> Unit)? = null
@@ -825,23 +822,23 @@ open class ReaderPageImageView @JvmOverloads constructor(
     ): Int? {
         val geometries = block.lineGeometries
         if (geometries != null && geometries.size == block.lines.size) {
-            var bestHit: OcrLineHit? = null
             var lineStart = 0
-
-            for (i in geometries.indices) {
-                val geo = geometries[i]
-                val hit = getCharOffsetInLine(block.lines[i], geo, viewX, viewY, ssiv, isOcrLineVertical(block.vertical, geo))
-                if (hit != null) {
-                    val absoluteHit = OcrLineHit(lineStart + hit.offset, hit.distance)
-                    if (bestHit == null || absoluteHit.distance < bestHit.distance) {
-                        bestHit = absoluteHit
-                    }
+            val lines = buildList<OcrCharacterLine<Unit>> {
+                for (i in geometries.indices) {
+                    val geo = geometries[i]
+                    getCharacterLine(
+                        text = block.lines[i],
+                        textOffset = lineStart,
+                        geo = geo,
+                        ssiv = ssiv,
+                        isVertical = isOcrLineVertical(block.vertical, geo),
+                    )?.let(::add)
+                    lineStart += block.lines[i].length
                 }
-                lineStart += block.lines[i].length
             }
 
-            if (bestHit != null) {
-                return bestHit.offset
+            OcrHitTester.hitLines(lines, viewX, viewY)?.let { hit ->
+                return hit.textOffset
             }
         }
 
@@ -877,14 +874,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
         return layout.getOffsetForHorizontal(line, lx)
     }
 
-    private fun getCharOffsetInLine(
+    private fun getCharacterLine(
         text: String,
+        textOffset: Int,
         geo: OcrLineGeometry,
-        viewX: Float,
-        viewY: Float,
         ssiv: SubsamplingScaleImageView,
         isVertical: Boolean,
-    ): OcrLineHit? {
+    ): OcrCharacterLine<Unit>? {
         if (text.isEmpty()) return null
 
         val centerX = (geo.xmin + geo.xmax) / 2f
@@ -899,45 +895,27 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: return null
         val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: return null
-        val sW = br.x - tl.x
-        val sH = br.y - tl.y
-
-        // Translate and rotate tap point to local space of the line box
-        val cx = tl.x + sW / 2f
-        val cy = tl.y + sH / 2f
-
-        // Inverse rotation: rotate point around center by -rotation
-        val rad = Math.toRadians(-geo.rotation.toDouble())
-        val dx = (viewX - cx).toDouble()
-        val dy = (viewY - cy).toDouble()
-        val rx = (dx * Math.cos(rad) - dy * Math.sin(rad)).toFloat()
-        val ry = (dx * Math.sin(rad) + dy * Math.cos(rad)).toFloat()
-
-        // Local coordinates relative to top-left of the line box (at 0 deg)
-        val lx = rx + sW / 2f
-        val ly = ry + sH / 2f
-
-        // Hit test. Multiple scaled vertical columns can overlap, so the caller
-        // chooses the candidate nearest to the touched column/row center.
-        if (lx < 0 || lx > sW || ly < 0 || ly > sH) return null
-
-        return if (isVertical) {
-            val charIndex = (ly / (sH / text.length.coerceAtLeast(1)))
-                .toInt().coerceIn(0, text.length - 1)
-            val distance = kotlin.math.abs(lx - sW / 2f)
-            OcrLineHit(charIndex, distance)
-        } else {
-            val charIndex = (lx / (sW / text.length.coerceAtLeast(1)))
-                .toInt().coerceIn(0, text.length - 1)
-            val distance = kotlin.math.abs(ly - sH / 2f)
-            OcrLineHit(charIndex, distance)
-        }
+        return OcrCharacterLine(
+            value = Unit,
+            text = text,
+            textOffset = textOffset,
+            left = tl.x,
+            top = tl.y,
+            right = br.x,
+            bottom = br.y,
+            rotation = geo.rotation,
+            vertical = isVertical,
+        )
     }
 
     private fun isOcrLineVertical(blockVertical: Boolean, geo: OcrLineGeometry): Boolean {
-        val width = geo.xmax - geo.xmin
-        if (width <= 0f) return blockVertical
-        return blockVertical || (geo.ymax - geo.ymin) / width > 1.2f
+        return OcrHitTester.isLineVertical(
+            blockVertical = blockVertical,
+            left = geo.xmin,
+            top = geo.ymin,
+            right = geo.xmax,
+            bottom = geo.ymax,
+        )
     }
 
     /**

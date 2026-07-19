@@ -2,6 +2,7 @@ package com.canopus.chimareader.ui.reader
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,6 +18,8 @@ import androidx.core.view.WindowCompat
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelReaderSettings
+import chimahon.ocr.OcrLanguage
+import chimahon.ocr.OcrResult
 import androidx.core.graphics.ColorUtils
 import java.io.File
 
@@ -122,6 +125,22 @@ open class NovelReaderActivity : ComponentActivity() {
     /** Override in subclass to receive text selection events from the reader. */
     protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) = Unit
 
+    /** Override in the app host so interactive OCR follows the configured engine. */
+    protected open suspend fun recognizeImage(bitmap: Bitmap, language: OcrLanguage): List<OcrResult> = emptyList()
+
+    /** Override to open a lookup backed by an OCR image for Anki screenshot fields. */
+    protected open fun onImageOcrLookupRequested(
+        word: String,
+        sentence: String,
+        sentenceOffset: Int,
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        vertical: Boolean,
+        bitmap: Bitmap,
+    ) = onLookupRequested(word, sentence, x, y, w, h)
+
     /** Override in subclass to receive the sentence context after onLookupRequested. */
     protected open fun onSentenceReady(sentence: String) = Unit
 
@@ -190,6 +209,10 @@ open class NovelReaderActivity : ComponentActivity() {
                     additionalSettings = { AdditionalAppearanceSettings() },
                     settingsNamespace = getSettingsNamespace(),
                     onSelectionRectsReceived = getSelectionRectsCallback(),
+                    recognizeImage = { bitmap, language -> recognizeImage(bitmap, language) },
+                    onImageOcrLookupRequested = { word, sentence, sentenceOffset, x, y, w, h, vertical, bitmap ->
+                        onImageOcrLookupRequested(word, sentence, sentenceOffset, x, y, w, h, vertical, bitmap)
+                    },
                 )
                 PopupOverlay()
             }

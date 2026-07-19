@@ -530,6 +530,15 @@ table {
 
 .gloss-link { color: inherit; }
 
+.recursive-lookup-highlight {
+  position: absolute;
+  z-index: 20;
+  height: 2px;
+  pointer-events: none;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
 .gloss-image-link {
   color: inherit; text-decoration: none; display: inline-block; max-width: 100%;
   vertical-align: middle;

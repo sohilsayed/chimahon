@@ -54,6 +54,7 @@ fun ReaderWebView(
     onInternalLinkClicked: (url: String) -> Unit = {},
     onSelectionRectsReceived: ((String) -> Unit)? = null,
     onPageTurned: () -> Unit = {},
+    onImageTapped: (imageUrl: String) -> Unit = {},
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -112,6 +113,7 @@ fun ReaderWebView(
                 onDismissPopupRequested = onDismissPopupRequested,
                 onInternalLinkClicked = onInternalLinkClicked,
                 onPageTurned = onPageTurned,
+                onImageTappedCallback = onImageTapped,
             ).apply {
                 setSelectionRectsCallback(onSelectionRectsReceived)
                 settings.allowFileAccess = true
@@ -362,6 +364,7 @@ private class ReaderAndroidWebView(
     private val onDismissPopupRequested: () -> Unit = {},
     internal val onInternalLinkClicked: (url: String) -> Unit = {},
     private val onPageTurned: () -> Unit = {},
+    private val onImageTappedCallback: (imageUrl: String) -> Unit = {},
 ) : WebView(context) {
 
     private var touchStartX = 0f
@@ -486,6 +489,9 @@ private class ReaderAndroidWebView(
         },
         onSentenceReadyCallback = { sentence ->
             post { onSentenceReadyCallback(sentence) }
+        },
+        onImageTappedCallback = { src ->
+            post { onImageTappedCallback(src) }
         },
     )
 
@@ -615,6 +621,45 @@ private class ReaderAndroidWebView(
 
                 window.hoshiReader = {
                     handleTap: function(clientX, clientY) {
+                        var img = document.querySelector('img, svg');
+                        if (img && window.ReaderAndroid && window.ReaderAndroid.onImageTapped) {
+                            var rect = img.getBoundingClientRect();
+                            var contentWidth = rect.width;
+                            var contentHeight = rect.height;
+                            var naturalWidth = img.naturalWidth || 0;
+                            var naturalHeight = img.naturalHeight || 0;
+                            if ((!naturalWidth || !naturalHeight) && img.tagName.toLowerCase() === 'svg') {
+                                var viewBox = img.viewBox && img.viewBox.baseVal;
+                                naturalWidth = viewBox && viewBox.width || 0;
+                                naturalHeight = viewBox && viewBox.height || 0;
+                            }
+                            if (naturalWidth > 0 && naturalHeight > 0) {
+                                var scale = Math.min(rect.width / naturalWidth, rect.height / naturalHeight);
+                                contentWidth = naturalWidth * scale;
+                                contentHeight = naturalHeight * scale;
+                            }
+                            var contentLeft = rect.left + (rect.width - contentWidth) / 2;
+                            var contentTop = rect.top + (rect.height - contentHeight) / 2;
+                            var tappedImage = clientX >= contentLeft && clientX <= contentLeft + contentWidth &&
+                                clientY >= contentTop && clientY <= contentTop + contentHeight;
+                            if (tappedImage) {
+                                var src = img.currentSrc || img.getAttribute('src') ||
+                                    img.getAttribute('data-src') || img.getAttribute('data-original') || '';
+                                if (!src && img.tagName.toLowerCase() === 'svg') {
+                                    var nested = img.querySelector('image');
+                                    if (nested) {
+                                        src = nested.getAttribute('href') ||
+                                            nested.getAttributeNS('http://www.w3.org/1999/xlink', 'href') ||
+                                            nested.getAttribute('xlink:href') || '';
+                                    }
+                                }
+                                if (src) {
+                                    try { src = new URL(src, document.baseURI).href; } catch (e) {}
+                                    window.ReaderAndroid.onImageTapped(src);
+                                    return true;
+                                }
+                            }
+                        }
                         if (window.ReaderAndroid && window.ReaderAndroid.onBackgroundTap)
                             window.ReaderAndroid.onBackgroundTap(clientX, clientY);
                         return false;
@@ -1323,6 +1368,7 @@ private class ReaderJavascriptBridge(
     private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
     private val onSentenceReadyCallback: (sentence: String) -> Unit = {},
+    private val onImageTappedCallback: (imageUrl: String) -> Unit = {},
 ) {
     /** Callback for selection rects from JS. Set by the hosting Activity. */
     var onSelectionRectsCallback: ((String) -> Unit)? = null
@@ -1350,6 +1396,11 @@ private class ReaderJavascriptBridge(
     @JavascriptInterface
     fun onSelectionRects(json: String) {
         onSelectionRectsCallback?.invoke(json)
+    }
+
+    @JavascriptInterface
+    fun onImageTapped(imageUrl: String) {
+        if (imageUrl.isNotBlank()) onImageTappedCallback.invoke(imageUrl)
     }
 }
 

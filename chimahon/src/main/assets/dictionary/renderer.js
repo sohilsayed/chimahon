@@ -952,6 +952,91 @@
   // ── Touch / tap listener (delegated on document) ──────────────────────────
 
   let _lookupEnabled = false;
+  let _recursiveSelectionStart = null;
+  let _recursiveHighlightNodes = [];
+
+  function clearRecursiveHighlight() {
+    _recursiveHighlightNodes.forEach((node) => node.remove());
+    _recursiveHighlightNodes = [];
+  }
+
+  function clearRecursiveSelection() {
+    clearRecursiveHighlight();
+    _recursiveSelectionStart = null;
+  }
+
+  function rememberRecursiveSelectionAtPoint(x, y) {
+    const range = caretRangeAtPoint(x, y);
+    const node = range?.startContainer;
+    if (!range || !node || node.nodeType !== Node.TEXT_NODE) {
+      _recursiveSelectionStart = null;
+      return;
+    }
+
+    const text = node.textContent || '';
+    let offset = Math.min(range.startOffset, text.length);
+    if (offset < text.length && !isCJK(text[offset])) {
+      while (offset > 0 && isWordChar(text[offset - 1]) && !isScanBoundary(text[offset - 1])) offset--;
+    }
+    _recursiveSelectionStart = { node, offset };
+  }
+
+  function resolveRecursiveSelection(codePointCount) {
+    clearRecursiveHighlight();
+    const start = _recursiveSelectionStart;
+    if (!start || !Number.isFinite(codePointCount) || codePointCount <= 0) return null;
+
+    const root = start.node.parentElement?.closest('.entry-body, .headword, .gloss-content') || document.body;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => isFurigana(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+    });
+    walker.currentNode = start.node;
+
+    let remaining = Math.floor(codePointCount);
+    let current = start.node;
+    let currentOffset = start.offset;
+    let endNode = start.node;
+    let endOffset = start.offset;
+
+    while (current && remaining > 0) {
+      const text = current.textContent || '';
+      let consumedUnits = 0;
+      for (const character of text.slice(currentOffset)) {
+        if (remaining <= 0) break;
+        consumedUnits += character.length;
+        remaining--;
+      }
+      endNode = current;
+      endOffset = currentOffset + consumedUnits;
+      if (remaining <= 0) break;
+      current = walker.nextNode();
+      currentOffset = 0;
+    }
+
+    if (endNode === start.node && endOffset <= start.offset) return null;
+
+    const target = document.createRange();
+    target.setStart(start.node, start.offset);
+    target.setEnd(endNode, endOffset);
+    const rects = Array.from(target.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    for (const rect of rects) {
+      const marker = document.createElement('span');
+      marker.className = 'recursive-lookup-highlight';
+      marker.style.left = `${rect.left + window.scrollX}px`;
+      marker.style.top = `${rect.bottom + window.scrollY - 2}px`;
+      marker.style.width = `${rect.width}px`;
+      _recursiveHighlightNodes.push(marker);
+      document.body.appendChild(marker);
+    }
+    if (rects.length === 0) return null;
+
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return JSON.stringify({ x: left, y: top, width: right - left, height: bottom - top });
+  }
+
   let _touchStartX = 0;
   let _touchStartY = 0;
   const TAP_MOVE_THRESHOLD = 10;  // px — ignore if finger moved too far (scroll)
@@ -972,6 +1057,8 @@
 
       const word = extractTextAtPoint(e.clientX, e.clientY);
       if (!word) return;
+
+      rememberRecursiveSelectionAtPoint(e.clientX, e.clientY);
 
       const sentenceContext = getSentenceContextAtPoint(e.clientX, e.clientY);
       let url = CHIMA_SCHEME + '//lookup?q=' + encodeURIComponent(word);
@@ -2658,6 +2745,7 @@
       const freshRootLookup = tabs.length <= 1 && activeIndex <= 0;
       if (freshRootLookup) {
         _scrollPositions.clear();
+        clearRecursiveSelection();
       }
 
       // Save scroll position of the previously active tab
@@ -2782,6 +2870,7 @@
 
   function clear() {
     _autoplayGuard = false;
+    clearRecursiveSelection();
     resetDictionaryMediaObserver();
     const container = document.getElementById('entries');
     if (container) {
@@ -2836,6 +2925,9 @@
       _lookupEnabled = enabled;
       if (enabled) installTapListener();
     },
+
+    resolveRecursiveSelection,
+    clearRecursiveSelection,
 
     navigate(delta) {
       const groups = document.querySelectorAll('.entry');

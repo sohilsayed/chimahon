@@ -596,7 +596,96 @@ window.hoshiReader = {
         return (partsBefore.reverse().join('') + partsAfter.join('')).trim();
     },
 
+    findImageElement: function(el) {
+        if (!el || !el.tagName) return null;
+        var tag = el.tagName.toLowerCase();
+        if (tag === 'img' || tag === 'svg') return el;
+        if (tag === 'image' && el.closest) return el.closest('svg');
+        var child = el.querySelector && el.querySelector('img, svg');
+        if (child) return child;
+        if (el.closest) {
+            var anc = el.closest('figure, picture, svg');
+            if (anc) {
+                var found = anc.querySelector('img, svg');
+                if (found) return found;
+                if (anc.tagName && anc.tagName.toLowerCase() === 'svg') return anc;
+            }
+        }
+        return null;
+    },
+
+    getImageSource: function(el) {
+        if (!el || !el.tagName) return '';
+        var tag = el.tagName.toLowerCase();
+        var source = '';
+
+        if (tag === 'img') {
+            source = el.currentSrc || el.getAttribute('src') ||
+                el.getAttribute('data-src') || el.getAttribute('data-original') || '';
+        } else if (tag === 'svg') {
+            var nested = el.querySelector('image');
+            if (nested) {
+                source = nested.getAttribute('href') ||
+                    nested.getAttributeNS('http://www.w3.org/1999/xlink', 'href') ||
+                    nested.getAttribute('xlink:href') || '';
+            }
+        }
+
+        if (!source) return '';
+        try { return new URL(source, document.baseURI).href; } catch (_) { return source; }
+    },
+
+    findImageAtPoint: function(clientX, clientY) {
+        var points = [[clientX, clientY]];
+        if (clientX > 4) points.push([clientX - 4, clientY]);
+        if (clientY > 4) points.push([clientX, clientY - 4]);
+        points.push([clientX + 4, clientY]);
+        points.push([clientX, clientY + 4]);
+
+        for (var i = 0; i < points.length; i++) {
+            var hit = document.elementFromPoint(points[i][0], points[i][1]);
+            var image = this.findImageElement(hit);
+            if (image && this.getImageSource(image)) return image;
+        }
+
+        // Some EPUB styles put transparent overlays above illustrations. In
+        // that case elementFromPoint cannot reach the image, but its rendered
+        // bounds still tell us unambiguously that it was tapped.
+        var images = document.querySelectorAll('img, svg');
+        for (var j = images.length - 1; j >= 0; j--) {
+            var candidate = images[j];
+            var rect = candidate.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            if (clientX >= rect.left && clientX <= rect.right &&
+                clientY >= rect.top && clientY <= rect.bottom &&
+                this.getImageSource(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    },
+
+    handleImageTap: function(clientX, clientY) {
+        try {
+            var imgEl = this.findImageAtPoint(clientX, clientY);
+            if (imgEl) {
+                var isGaiji = imgEl.classList && (imgEl.classList.contains('gaiji') || imgEl.classList.contains('gaiji-line'));
+                var nw = imgEl.naturalWidth || 0;
+                var nh = imgEl.naturalHeight || 0;
+                var isTiny = (nw > 0 && nw < 32) && (nh > 0 && nh < 32);
+                var source = this.getImageSource(imgEl);
+                if (!isGaiji && !isTiny && source && window.ReaderAndroid && window.ReaderAndroid.onImageTapped) {
+                    window.ReaderAndroid.onImageTapped(source);
+                    return true;
+                }
+            }
+        } catch (_) {}
+        return false;
+    },
+
     handleTap: function(clientX, clientY) {
+        if (this.handleImageTap(clientX, clientY)) return true;
+
         const hit = this.getCharacterAtPoint(clientX, clientY);
         if (!hit) {
             this.clearSelection();
