@@ -1890,12 +1890,11 @@ class ReaderViewModel @JvmOverloads constructor(
                 chapterName.endsWith(".epub", ignoreCase = true) ||
                     Archive.isSupported(chapterFile)
             )
-            val mokuroFile = findMokuroFile(chapterFile, chapterName, baseDir, isArchive)
+            val content = readMokuroContent(chapterFile, chapterName, baseDir, isArchive)
                 ?: return@withLock null
 
             val imageFiles = resolveChapterImageFiles(chapterFile, chapterName)
 
-            val content = mokuroFile.openInputStream().use { it.bufferedReader().readText() }
             val mokuro = chimahon.ocr.Mokuro.parseMokuro(content)
                 ?: return@withLock null
 
@@ -2128,12 +2127,12 @@ class ReaderViewModel @JvmOverloads constructor(
         return getMokuroBlocksForPage(chapterData, pageIndex)
     }
 
-    private fun findMokuroFile(
+    private fun readMokuroContent(
         chapterFile: com.hippo.unifile.UniFile,
         chapterName: String,
         parentDir: com.hippo.unifile.UniFile,
         isArchive: Boolean,
-    ): com.hippo.unifile.UniFile? {
+    ): String? {
         val mokuroBaseName = if (isArchive) {
             chapterName.substringBeforeLast('.')
         } else {
@@ -2146,7 +2145,7 @@ class ReaderViewModel @JvmOverloads constructor(
             }
             if (insideFile != null) {
                 logcat { "Mokuro: found inside chapter folder: ${insideFile.name}" }
-                return insideFile
+                return insideFile.openInputStream().use { it.bufferedReader().readText() }
             }
         }
 
@@ -2154,11 +2153,35 @@ class ReaderViewModel @JvmOverloads constructor(
             val siblingFile = parentDir.findFile("$baseName.mokuro")
             if (siblingFile != null && siblingFile.isFile == true) {
                 logcat { "Mokuro: found as sibling: $baseName.mokuro" }
-                return siblingFile
+                return siblingFile.openInputStream().use { it.bufferedReader().readText() }
             }
         }
 
-        logcat { "Mokuro: no .mokuro file found for $chapterName (tried inside folder and sibling)" }
+        if (isArchive) {
+            val archiveContent = runCatching {
+                chapterFile.archiveReader(application).use { reader ->
+                    val entry = reader.useEntries { entries ->
+                        entries.firstOrNull {
+                            it.isFile && it.name.endsWith(".mokuro", ignoreCase = true)
+                        }
+                    } ?: return@runCatching null
+
+                    reader.getInputStream(entry.name)!!.bufferedReader().use {
+                        val text = it.readText()
+                        logcat { "Mokuro: found inside archive file: ${chapterFile.name}/${entry.name}" }
+                        text
+                    }
+                }
+            }.getOrElse { e ->
+                logcat(LogPriority.ERROR, e) { "Mokuro: failed to read .mokuro file in archive for $chapterName" }
+                null
+            }
+
+            if (archiveContent != null)
+                return archiveContent
+        }
+
+        logcat { "Mokuro: no .mokuro file found for $chapterName (tried inside folder, inside archive and siblings)" }
         return null
     }
 
