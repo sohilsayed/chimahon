@@ -1136,7 +1136,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            profileStore.deleteProfile(profile.id)
+                            dictionaryPreferences.deleteProfileWithOverrides(profile.id)
                             showDeleteDialog = null
                         }
                     ) { Text("Delete") }
