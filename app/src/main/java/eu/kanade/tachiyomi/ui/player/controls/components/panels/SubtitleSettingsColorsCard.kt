@@ -57,7 +57,6 @@ import eu.kanade.presentation.player.components.TintedSliderItem
 import eu.kanade.tachiyomi.ui.player.controls.CARDS_MAX_WIDTH
 import eu.kanade.tachiyomi.ui.player.controls.panelCardsColors
 import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
-import `is`.xyz.mpv.MPVLib
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.deleteAndGet
 import tachiyomi.i18n.MR
@@ -88,9 +87,9 @@ fun SubtitleSettingsColorsCard(
     ) {
         Column {
             var currentColorType by remember { mutableStateOf(SubColorType.Text) }
-            var currentColor by remember { mutableIntStateOf(getCurrentMPVColor(currentColorType)) }
+            var currentColor by remember { mutableIntStateOf(currentColorType.preference(preferences).get()) }
             LaunchedEffect(currentColorType) {
-                currentColor = getCurrentMPVColor(currentColorType)
+                currentColor = currentColorType.preference(preferences).get()
             }
             Row(
                 horizontalArrangement = Arrangement.Center,
@@ -120,7 +119,7 @@ fun SubtitleSettingsColorsCard(
                 TextButton(
                     onClick = {
                         resetColors(preferences, currentColorType)
-                        currentColor = getCurrentMPVColor(currentColorType)
+                        currentColor = currentColorType.preference(preferences).get()
                     },
                 ) {
                     Row(
@@ -137,7 +136,6 @@ fun SubtitleSettingsColorsCard(
                 onColorChange = {
                     currentColor = it
                     currentColorType.preference(preferences).set(it)
-                    MPVLib.setPropertyString(currentColorType.property, it.toColorHexString())
                 },
             )
         }
@@ -156,52 +154,28 @@ fun Int.toColorHexString() = "#" + this.toHexString().uppercase()
 
 enum class SubColorType(
     val titleRes: StringResource,
-    val property: String,
     val preference: (SubtitlePreferences) -> Preference<Int>,
 ) {
     Text(
         MR.strings.player_sheets_subtitles_color_text,
-        "sub-color",
         preference = SubtitlePreferences::textColorSubtitles,
     ),
     Border(
         MR.strings.player_sheets_subtitles_color_border,
-        "sub-border-color",
         preference = SubtitlePreferences::borderColorSubtitles,
     ),
     Background(
         MR.strings.player_sheets_subtitles_color_background,
-        "sub-back-color",
         preference = SubtitlePreferences::backgroundColorSubtitles,
     ),
 }
 
 fun resetColors(preferences: SubtitlePreferences, type: SubColorType) {
     when (type) {
-        SubColorType.Text -> {
-            MPVLib.setPropertyString("sub-color", preferences.textColorSubtitles().deleteAndGet().toColorHexString())
-        }
-
-        SubColorType.Border -> {
-            MPVLib.setPropertyString(
-                "sub-border-color",
-                preferences.borderColorSubtitles().deleteAndGet().toColorHexString(),
-            )
-        }
-
-        SubColorType.Background -> {
-            MPVLib.setPropertyString(
-                "sub-back-color",
-                preferences.backgroundColorSubtitles().deleteAndGet().toColorHexString(),
-            )
-        }
+        SubColorType.Text -> preferences.textColorSubtitles().deleteAndGet()
+        SubColorType.Border -> preferences.borderColorSubtitles().deleteAndGet()
+        SubColorType.Background -> preferences.backgroundColorSubtitles().deleteAndGet()
     }
-}
-
-val getCurrentMPVColor: (SubColorType) -> Int = { colorType ->
-    MPVLib.getPropertyString(colorType.property)?.let {
-        android.graphics.Color.parseColor(it.uppercase())
-    }!!
 }
 
 @Composable

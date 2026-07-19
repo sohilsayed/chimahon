@@ -101,6 +101,7 @@ import eu.kanade.tachiyomi.ui.player.controls.components.SeekbarWithTimers
 import eu.kanade.tachiyomi.ui.player.controls.components.TextPlayerUpdate
 import eu.kanade.tachiyomi.ui.player.controls.components.VolumeSlider
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitlesBorderStyle
+import eu.kanade.tachiyomi.ui.player.controls.components.panels.toColorHexString
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.toFixed
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
@@ -860,7 +861,6 @@ private fun PlayerSubtitleTextLayer(
             .filter { it.hasLookupCharacters() }
             .joinToString("\n")
     }
-    if (subtitleText.isBlank()) return
 
     val subtitlePreferences = remember { Injekt.get<SubtitlePreferences>() }
     val subtitleFontSize by subtitlePreferences.subtitleFontSize().collectAsState()
@@ -873,6 +873,20 @@ private fun PlayerSubtitleTextLayer(
     val borderSize by subtitlePreferences.subtitleBorderSize().collectAsState()
     val bold by subtitlePreferences.boldSubtitles().collectAsState()
     val italic by subtitlePreferences.italicSubtitles().collectAsState()
+
+    LaunchedEffect(subtitleText.isNotBlank(), textColor, borderColor, backgroundColor) {
+        if (subtitleText.isNotBlank()) {
+            MPVLib.setPropertyString("sub-color", "#00FFFFFF")
+            MPVLib.setPropertyString("sub-border-color", "#00000000")
+            MPVLib.setPropertyString("sub-back-color", "#00000000")
+        } else {
+            MPVLib.setPropertyString("sub-color", textColor.toColorHexString())
+            MPVLib.setPropertyString("sub-border-color", borderColor.toColorHexString())
+            MPVLib.setPropertyString("sub-back-color", backgroundColor.toColorHexString())
+        }
+    }
+
+    if (subtitleText.isBlank()) return
 
     var textLayout by remember(subtitleText) { mutableStateOf<TextLayoutResult?>(null) }
     var textLayerOrigin by remember(subtitleText) { mutableStateOf(Offset.Zero) }
@@ -894,6 +908,9 @@ private fun PlayerSubtitleTextLayer(
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
         fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
         textAlign = TextAlign.Center,
+    )
+    val outlineColor = Color(borderColor).copy(
+        alpha = minOf(Color(borderColor).alpha, Color(textColor).alpha),
     )
 
     Box(
@@ -972,9 +989,9 @@ private fun PlayerSubtitleTextLayer(
                 Text(
                     text = subtitleText,
                     modifier = Modifier.fillMaxWidth(),
-                    color = Color(borderColor),
+                    color = outlineColor,
                     style = baseStyle.copy(
-                        color = Color(borderColor),
+                        color = outlineColor,
                         drawStyle = Stroke(width = outlineWidth),
                     ),
                 )
