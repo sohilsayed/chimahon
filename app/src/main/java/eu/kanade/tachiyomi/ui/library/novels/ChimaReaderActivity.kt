@@ -126,6 +126,15 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 }
             }
         }
+
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                prefs.rawProfiles().changes().collect {
+                    cachedActiveProfile = null
+                    cachedTermPaths = null
+                }
+            }
+        }
     }
 
     override fun getSettingsNamespace(): String? {

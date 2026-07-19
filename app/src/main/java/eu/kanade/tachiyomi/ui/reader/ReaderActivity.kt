@@ -372,6 +372,16 @@ class ReaderActivity : BaseActivity() {
                     }
                 }
             }
+
+            lifecycleScope.launch {
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    prefs.rawProfiles().changes().collect {
+                        // Profile content changed — invalidate cache so next access re-resolves
+                        cachedActiveProfile = null
+                        cachedTermPaths = null
+                    }
+                }
+            }
         }
 
         binding = ReaderActivityBinding.inflate(layoutInflater)
