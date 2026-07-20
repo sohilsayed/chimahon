@@ -30,6 +30,8 @@ class DictionaryPreferences(
     /** "cloud" (default) or "local" */
     fun ocrEngine() = preferenceStore.getString("pref_ocr_engine", "cloud")
 
+    fun parallelOcrLimit() = preferenceStore.getInt("pref_parallel_ocr_limit", 1)
+
     fun videoOcrSentenceAudioPaddingSeconds() = preferenceStore.getInt("pref_video_ocr_sentence_audio_padding_seconds", 3)
 
     fun showFrequencyHarmonic() = preferenceStore.getBoolean("pref_dict_show_frequency_harmonic", false)

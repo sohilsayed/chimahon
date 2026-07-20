@@ -560,6 +560,18 @@ object SettingsDictionaryScreen : SearchableSettings {
         val videoOcrAudioPaddingPref = dictionaryPreferences.videoOcrSentenceAudioPaddingSeconds()
         val videoOcrAudioPadding by videoOcrAudioPaddingPref.collectAsState()
 
+        val parallelOcrLimitPref = dictionaryPreferences.parallelOcrLimit()
+        val parallelOcrLimit by parallelOcrLimitPref.collectAsState()
+
+        val ocrEnginePref = dictionaryPreferences.ocrEngine()
+        val ocrEngine by ocrEnginePref.collectAsState()
+
+        val parallelOcrSubtitle = when {
+            parallelOcrLimit == 1 -> "1 chapter (Recommended - safe and stable)"
+            ocrEngine == "local" -> "$parallelOcrLimit chapters (Running multiple OCR tasks on-device simultaneously will increase battery drain and cause the device to heat up)"
+            else -> "$parallelOcrLimit chapters (Running multiple OCR tasks online simultaneously may cause temporary rate limits or IP blocks)"
+        }
+
         val navigator = LocalNavigator.currentOrThrow
         val customCssPref = dictionaryPreferences.customCss()
 
@@ -1042,6 +1054,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                             }
                             true
                         },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = parallelOcrLimit,
+                        title = "Concurrent OCR tasks",
+                        subtitle = parallelOcrSubtitle,
+                        valueRange = 1..5,
+                        steps = 3,
+                        onValueChanged = { parallelOcrLimitPref.set(it) },
                     ),
                     Preference.PreferenceItem.SliderPreference(
                         value = videoOcrAudioPadding,
