@@ -161,8 +161,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
         pitchPaths = pathsForType("pitch"),
     )
     val currentProfileHash = activeProfile.hashCode()
-    val currentModified = dictionariesDir.lastModified()
-    
+
     cachedDictionaryPaths = result
     lastProfileHash = currentProfileHash
     lastDictDirModified = currentModified
