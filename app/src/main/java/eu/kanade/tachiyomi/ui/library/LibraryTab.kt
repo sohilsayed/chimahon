@@ -53,9 +53,11 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.library.DeleteLibraryMangaDialog
 import eu.kanade.presentation.library.LibrarySettingsDialog
 import eu.kanade.presentation.library.components.LibraryContent
+import eu.kanade.presentation.library.components.LibraryPagerBoundary
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.presentation.library.components.SyncFavoritesConfirmDialog
+import eu.kanade.presentation.library.components.libraryModeBoundarySwipe
 import eu.kanade.presentation.library.components.SyncFavoritesProgressDialog
 import eu.kanade.presentation.library.components.SyncFavoritesWarningDialog
 import eu.kanade.presentation.manga.components.LibraryBottomActionMenu
@@ -173,6 +175,35 @@ data object LibraryTab : Tab {
             mutableStateOf(LibraryViewMode.entries.getOrElse(libraryPreferences.lastUsedLibraryMode().get()) { LibraryViewMode.Manga })
         }
         var showModeDropdown by remember { mutableStateOf(false) }
+        var entryTarget by remember { mutableStateOf<LibraryPagerBoundary?>(null) }
+
+        fun selectMode(mode: LibraryViewMode, target: LibraryPagerBoundary? = null) {
+            showModeDropdown = false
+            entryTarget = target
+            libraryMode = mode
+            libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
+        }
+
+        val onBoundarySwipe: (LibraryPagerBoundary) -> Unit = { boundary ->
+            val targetMode = when (boundary) {
+                LibraryPagerBoundary.Start -> LibraryViewMode.entries.getOrNull(libraryMode.ordinal - 1)
+                LibraryPagerBoundary.End -> LibraryViewMode.entries.getOrNull(libraryMode.ordinal + 1)
+            }
+            if (targetMode != null) {
+                selectMode(
+                    targetMode,
+                    target = if (boundary == LibraryPagerBoundary.Start) {
+                        LibraryPagerBoundary.End
+                    } else {
+                        LibraryPagerBoundary.Start
+                    },
+                )
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            modeSelectionEvent.receiveAsFlow().collectLatest { mode -> selectMode(mode) }
+        }
 
         currentReselectMode = libraryMode
 
@@ -182,35 +213,32 @@ data object LibraryTab : Tab {
                 showModeDropdown = showModeDropdown,
                 onToggleDropdown = { showModeDropdown = true },
                 onDismissDropdown = { showModeDropdown = false },
-                onModeSelected = { mode ->
-                    showModeDropdown = false
-                    libraryMode = mode
-                    libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
-                },
+                onModeSelected = { mode -> selectMode(mode) },
+                entryTarget = entryTarget,
+                onEntryTargetConsumed = { entryTarget = null },
+                onBoundarySwipe = onBoundarySwipe,
             )
             LibraryViewMode.Anime -> AnimeLibraryPanel(
                 libraryMode = libraryMode,
                 showModeDropdown = showModeDropdown,
                 onToggleDropdown = { showModeDropdown = true },
                 onDismissDropdown = { showModeDropdown = false },
-                onModeSelected = { mode ->
-                    showModeDropdown = false
-                    libraryMode = mode
-                    libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
-                },
+                onModeSelected = { mode -> selectMode(mode) },
                 settingsEvent = animeSettingsEvent,
+                entryTarget = entryTarget,
+                onEntryTargetConsumed = { entryTarget = null },
+                onBoundarySwipe = onBoundarySwipe,
             )
             LibraryViewMode.Novels -> NovelLibraryScreen(
                 libraryMode = libraryMode,
                 showModeDropdown = showModeDropdown,
                 onToggleDropdown = { showModeDropdown = true },
                 onDismissDropdown = { showModeDropdown = false },
-                onModeSelected = { mode ->
-                    showModeDropdown = false
-                    libraryMode = mode
-                    libraryPreferences.lastUsedLibraryMode().set(mode.ordinal)
-                },
+                onModeSelected = { mode -> selectMode(mode) },
                 requestSortEvent = novelSortEvent,
+                entryTarget = entryTarget,
+                onEntryTargetConsumed = { entryTarget = null },
+                onBoundarySwipe = onBoundarySwipe,
             )
         }
     }
@@ -222,6 +250,9 @@ data object LibraryTab : Tab {
         onToggleDropdown: () -> Unit = {},
         onDismissDropdown: () -> Unit = {},
         onModeSelected: (LibraryViewMode) -> Unit = {},
+        entryTarget: LibraryPagerBoundary? = null,
+        onEntryTargetConsumed: () -> Unit = {},
+        onBoundarySwipe: (LibraryPagerBoundary) -> Unit = {},
     ) {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
@@ -429,7 +460,12 @@ data object LibraryTab : Tab {
                     val handler = LocalUriHandler.current
                     EmptyScreen(
                         stringRes = MR.strings.information_empty_library,
-                        modifier = Modifier.padding(contentPadding),
+                        modifier = Modifier
+                            .padding(contentPadding)
+                            .libraryModeBoundarySwipe(
+                                enabled = state.selection.isEmpty(),
+                                onBoundarySwipe = onBoundarySwipe,
+                            ),
                         actions = persistentListOf(
                             EmptyScreenAction(
                                 stringRes = MR.strings.getting_started_guide,
@@ -479,6 +515,9 @@ data object LibraryTab : Tab {
                         getDisplayMode = { screenModel.getDisplayMode() },
                         getColumnsForOrientation = { screenModel.getColumnsForOrientation(it) },
                         getItemsForCategory = { state.getItemsForCategory(it) },
+                        entryTarget = entryTarget,
+                        onEntryTargetConsumed = onEntryTargetConsumed,
+                        onBoundarySwipe = onBoundarySwipe,
                     )
                 }
             }
@@ -648,6 +687,11 @@ data object LibraryTab : Tab {
     private val mangaSettingsEvent = Channel<Unit>(Channel.BUFFERED)
     private val animeSettingsEvent = Channel<Unit>(Channel.BUFFERED)
     private val novelSortEvent = Channel<Unit>(Channel.BUFFERED)
+    private val modeSelectionEvent = Channel<LibraryViewMode>(Channel.BUFFERED)
+
+    suspend fun selectLibraryMode(mode: LibraryViewMode) {
+        modeSelectionEvent.send(mode)
+    }
 }
 
 @Composable

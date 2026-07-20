@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.presentation.library.components.GlobalSearchItem
+import eu.kanade.presentation.library.components.LibraryPagerBoundary
+import eu.kanade.presentation.library.components.libraryPagerBoundarySwipe
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryItem
 import tachiyomi.domain.library.model.LibraryAnime
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -42,13 +44,21 @@ fun AnimeLibraryPager(
     onClickAnime: (LibraryAnime) -> Unit,
     onLongClickAnime: (LibraryAnime) -> Unit,
     onClickContinueWatching: ((LibraryAnime) -> Unit)?,
+    boundarySwipeEnabled: Boolean,
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit,
 ) {
     BoxWithConstraints {
         val density = LocalDensity.current
         val containerHeightPx = with(density) { this@BoxWithConstraints.maxHeight.roundToPx() }
 
         HorizontalPager(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .libraryPagerBoundarySwipe(
+                    state = state,
+                    enabled = boundarySwipeEnabled,
+                    onBoundarySwipe = onBoundarySwipe,
+                ),
             state = state,
             verticalAlignment = Alignment.Top,
         ) { page ->

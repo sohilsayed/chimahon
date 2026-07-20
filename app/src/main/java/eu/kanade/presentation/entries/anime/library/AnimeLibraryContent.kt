@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import eu.kanade.core.preference.PreferenceMutableState
+import eu.kanade.presentation.library.components.LibraryPagerBoundary
 import eu.kanade.presentation.library.components.LibraryTabs
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryItem
 import kotlinx.coroutines.delay
@@ -33,7 +34,7 @@ fun AnimeLibraryContent(
     searchQuery: String?,
     selection: List<LibraryAnime>,
     contentPadding: PaddingValues,
-    currentPage: () -> Int,
+    currentPage: Int,
     hasActiveFilters: Boolean,
     showPageTabs: Boolean,
     onChangeCurrentPage: (Int) -> Unit,
@@ -47,6 +48,9 @@ fun AnimeLibraryContent(
     getDisplayMode: (Int) -> PreferenceMutableState<LibraryDisplayMode>,
     getColumnsForOrientation: (Boolean) -> PreferenceMutableState<Int>,
     getAnimeLibraryForPage: (Int) -> List<AnimeLibraryItem>,
+    entryTarget: LibraryPagerBoundary? = null,
+    onEntryTargetConsumed: () -> Unit = {},
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit = {},
 ) {
     Column(
         modifier = Modifier.padding(
@@ -55,23 +59,30 @@ fun AnimeLibraryContent(
             end = contentPadding.calculateEndPadding(LocalLayoutDirection.current),
         ),
     ) {
-        val coercedCurrentPage = remember { currentPage().coerceAtMost(categories.lastIndex) }
+        val coercedCurrentPage = remember { currentPage.coerceAtMost(categories.lastIndex) }
         val pagerState = rememberPagerState(coercedCurrentPage) { categories.size }
 
         val scope = rememberCoroutineScope()
         var isRefreshing by remember(pagerState.currentPage) { mutableStateOf(false) }
 
-        if (showPageTabs && categories.isNotEmpty() && (categories.size > 1 || !categories.first().isSystemCategory)) {
-            LaunchedEffect(categories) {
-                val targetPage = when {
-                    categories.isEmpty() -> 0
-                    pagerState.currentPage >= categories.size -> categories.size - 1
-                    else -> pagerState.currentPage
+        LaunchedEffect(categories, currentPage, entryTarget) {
+            if (categories.isNotEmpty()) {
+                val targetPage = when (entryTarget) {
+                    LibraryPagerBoundary.Start -> 0
+                    LibraryPagerBoundary.End -> categories.lastIndex
+                    null -> currentPage.coerceAtMost(categories.lastIndex)
                 }
                 if (targetPage != pagerState.currentPage) {
                     pagerState.scrollToPage(targetPage)
                 }
+                if (entryTarget != null) {
+                    onChangeCurrentPage(targetPage)
+                    onEntryTargetConsumed()
+                }
             }
+        }
+
+        if (showPageTabs && categories.isNotEmpty() && (categories.size > 1 || !categories.first().isSystemCategory)) {
             val categoryItems = categories.map { animeCategory ->
                 Category(animeCategory.id, animeCategory.name, animeCategory.order, animeCategory.flags, animeCategory.hidden)
             }
@@ -97,7 +108,7 @@ fun AnimeLibraryContent(
         PullRefresh(
             refreshing = isRefreshing,
             onRefresh = {
-                val started = categories.getOrNull(currentPage())?.let(onRefresh) ?: false
+                val started = categories.getOrNull(currentPage)?.let(onRefresh) ?: false
                 if (!started) return@PullRefresh
                 scope.launch {
                     // Fake refresh status but hide it after a second as it's a long running task
@@ -121,6 +132,8 @@ fun AnimeLibraryContent(
                 onClickAnime = onClickAnime,
                 onLongClickAnime = onToggleRangeSelection,
                 onClickContinueWatching = onContinueWatchingClicked,
+                boundarySwipeEnabled = notSelectionMode,
+                onBoundarySwipe = onBoundarySwipe,
             )
         }
 

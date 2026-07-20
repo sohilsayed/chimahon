@@ -79,9 +79,12 @@ import com.canopus.chimareader.data.BookMetadata
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.presentation.library.components.CommonMangaItemDefaults
+import eu.kanade.presentation.library.components.LibraryPagerBoundary
 import eu.kanade.presentation.library.components.LibraryTabs
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
+import eu.kanade.presentation.library.components.libraryModeBoundarySwipe
+import eu.kanade.presentation.library.components.libraryPagerBoundarySwipe
 import eu.kanade.presentation.manga.components.Button as BottomMenuButton
 import com.canopus.chimareader.ttusync.TtuSyncManager
 import eu.kanade.tachiyomi.data.SyncStatus
@@ -133,6 +136,9 @@ fun Screen.NovelLibraryScreen(
     onDismissDropdown: () -> Unit = {},
     onModeSelected: (LibraryViewMode) -> Unit = {},
     requestSortEvent: Channel<Unit>? = null,
+    entryTarget: LibraryPagerBoundary? = null,
+    onEntryTargetConsumed: () -> Unit = {},
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
     val screenModel = rememberScreenModel { NovelLibraryScreenModel() }
@@ -440,7 +446,12 @@ fun Screen.NovelLibraryScreen(
         } else if (state.isLibraryEmpty) {
             EmptyScreen(
                 stringRes = MR.strings.information_empty_library,
-                modifier = Modifier.padding(contentPadding),
+                modifier = Modifier
+                    .padding(contentPadding)
+                    .libraryModeBoundarySwipe(
+                        enabled = state.selection.isEmpty(),
+                        onBoundarySwipe = onBoundarySwipe,
+                    ),
             )
         } else {
             NovelLibraryContent(
@@ -450,6 +461,9 @@ fun Screen.NovelLibraryScreen(
                 context = context,
                 snackbarHostState = snackbarHostState,
                 onCategoryChange = screenModel::updateActiveCategoryIndex,
+                entryTarget = entryTarget,
+                onEntryTargetConsumed = onEntryTargetConsumed,
+                onBoundarySwipe = onBoundarySwipe,
                 onClickBook = { book ->
                     if (book.isGhost) {
                         epubPicker.launch("application/epub+zip")
@@ -823,6 +837,9 @@ fun NovelLibraryContent(
     context: android.content.Context,
     snackbarHostState: SnackbarHostState,
     onCategoryChange: (Int) -> Unit,
+    entryTarget: LibraryPagerBoundary? = null,
+    onEntryTargetConsumed: () -> Unit = {},
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit = {},
     onClickBook: (BookMetadata) -> Unit,
 ) {
     val pagerState = rememberPagerState(state.coercedActiveCategoryIndex) { state.displayedCategories.size }
@@ -837,8 +854,20 @@ fun NovelLibraryContent(
     val showTabs by screenModel.showTabs().collectAsState()
     val showNumberOfItems by screenModel.showNumberOfItems().collectAsState()
 
+    LaunchedEffect(entryTarget, state.displayedCategories) {
+        if (entryTarget != null && state.displayedCategories.isNotEmpty()) {
+            val targetPage = when (entryTarget) {
+                LibraryPagerBoundary.Start -> 0
+                LibraryPagerBoundary.End -> state.displayedCategories.lastIndex
+            }
+            pagerState.scrollToPage(targetPage)
+            onCategoryChange(targetPage)
+            onEntryTargetConsumed()
+        }
+    }
+
     Column(modifier = Modifier.padding(top = contentPadding.calculateTopPadding())) {
-        if (showTabs && state.displayedCategories.size >= 1) {
+        if (showTabs && state.displayedCategories.isNotEmpty()) {
             LibraryTabs(
                 categories = state.displayedCategories.map {
                     val name = if (it.isSystemCategory) {
@@ -884,7 +913,13 @@ fun NovelLibraryContent(
         ) {
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .libraryPagerBoundarySwipe(
+                        state = pagerState,
+                        enabled = state.selection.isEmpty(),
+                        onBoundarySwipe = onBoundarySwipe,
+                    ),
                 verticalAlignment = Alignment.Top,
             ) { page ->
                 val category = state.displayedCategories[page]

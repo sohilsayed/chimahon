@@ -33,8 +33,10 @@ import eu.kanade.presentation.entries.components.LibraryBottomActionMenu
 import eu.kanade.presentation.library.DeleteLibraryEntryDialog
 import eu.kanade.presentation.entries.anime.library.AnimeLibraryContent
 import eu.kanade.presentation.entries.anime.library.AnimeLibrarySettingsDialog
+import eu.kanade.presentation.library.components.LibraryPagerBoundary
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
+import eu.kanade.presentation.library.components.libraryModeBoundarySwipe
 import eu.kanade.presentation.more.onboarding.GETTING_STARTED_URL
 import eu.kanade.tachiyomi.ui.library.LibraryModeTitleContent
 import eu.kanade.tachiyomi.ui.library.LibraryViewMode
@@ -77,6 +79,9 @@ fun Screen.AnimeLibraryPanel(
     onDismissDropdown: () -> Unit = {},
     onModeSelected: (LibraryViewMode) -> Unit = {},
     settingsEvent: Channel<Unit> = requestSettingsSheetEvent,
+    entryTarget: LibraryPagerBoundary? = null,
+    onEntryTargetConsumed: () -> Unit = {},
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
     val context = LocalContext.current
@@ -193,7 +198,12 @@ fun Screen.AnimeLibraryPanel(
                 val handler = LocalUriHandler.current
                 EmptyScreen(
                     stringRes = MR.strings.information_empty_library,
-                    modifier = Modifier.padding(contentPadding),
+                    modifier = Modifier
+                        .padding(contentPadding)
+                        .libraryModeBoundarySwipe(
+                            enabled = state.selection.isEmpty(),
+                            onBoundarySwipe = onBoundarySwipe,
+                        ),
                     actions = persistentListOf(
                         EmptyScreenAction(
                             stringRes = MR.strings.getting_started_guide,
@@ -209,7 +219,7 @@ fun Screen.AnimeLibraryPanel(
                     searchQuery = state.searchQuery,
                     selection = state.selection,
                     contentPadding = contentPadding,
-                    currentPage = { state.coercedActiveCategoryIndex },
+                    currentPage = state.coercedActiveCategoryIndex,
                     hasActiveFilters = state.hasActiveFilters,
                     showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
                     onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
@@ -239,7 +249,11 @@ fun Screen.AnimeLibraryPanel(
                             it,
                         )
                     },
-                ) { state.getAnimelibItemsByPage(it) }
+                    entryTarget = entryTarget,
+                    onEntryTargetConsumed = onEntryTargetConsumed,
+                    onBoundarySwipe = onBoundarySwipe,
+                    getAnimeLibraryForPage = { state.getAnimelibItemsByPage(it) },
+                )
             }
         }
     }
