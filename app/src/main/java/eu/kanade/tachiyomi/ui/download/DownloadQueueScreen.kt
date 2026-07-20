@@ -315,9 +315,9 @@ object DownloadQueueScreen : Screen() {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(
-                                start = with(density) { (left + 16).toDp() },
+                                start = with(density) { left.toDp() } + 16.dp,
                                 top = 16.dp,
-                                end = with(density) { (right + 16).toDp() },
+                                end = with(density) { right.toDp() } + 16.dp,
                                 bottom = 8.dp,
                             ),
                         verticalAlignment = Alignment.CenterVertically,
