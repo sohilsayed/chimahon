@@ -53,11 +53,16 @@ class AnimeSourcesScreenModel(
                         )
                     }
                     .sortedWith(
-                        compareBy<AnimeSourceUiModel> { !it.isPinned }
-                            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.source.name },
+                        compareBy(String.CASE_INSENSITIVE_ORDER) { it.source.name },
                     )
-                    .groupBy { it.source.lang }
-                    .toSortedMap(LocaleHelper.comparator)
+                    .groupBy { if (it.isPinned) PINNED_KEY else it.source.lang }
+                    .toSortedMap { first, second ->
+                        when {
+                            first == PINNED_KEY && second != PINNED_KEY -> -1
+                            second == PINNED_KEY && first != PINNED_KEY -> 1
+                            else -> LocaleHelper.comparator(first, second)
+                        }
+                    }
             }
                 .collectLatest { grouped ->
                     mutableState.update {
@@ -109,4 +114,8 @@ class AnimeSourcesScreenModel(
         val extension: AnimeExtension.Installed?,
         val isPinned: Boolean,
     )
+
+    companion object {
+        const val PINNED_KEY = "pinned"
+    }
 }

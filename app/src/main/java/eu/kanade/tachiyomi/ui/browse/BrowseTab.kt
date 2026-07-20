@@ -181,12 +181,12 @@ data object BrowseTab : Tab {
         val searchEnabled = currentTab?.searchEnabled ?: false
 
         val searchQuery: String? = when {
-            browseMode == BrowseViewMode.Anime && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsState.searchQuery
+            browseMode == BrowseViewMode.Anime && currentTab?.titleRes == MR.strings.label_extensions -> animeExtensionsState.searchQuery
             browseMode == BrowseViewMode.Sources && currentTab?.titleRes == MR.strings.label_extensions -> extensionsState.searchQuery
             else -> null
         }
         val onChangeSearchQuery: (String?) -> Unit = when {
-            browseMode == BrowseViewMode.Anime && currentTab?.titleRes == MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
+            browseMode == BrowseViewMode.Anime && currentTab?.titleRes == MR.strings.label_extensions -> animeExtensionsScreenModel::search
             browseMode == BrowseViewMode.Sources && currentTab?.titleRes == MR.strings.label_extensions -> extensionsScreenModel::search
             else -> { _ -> }
         }

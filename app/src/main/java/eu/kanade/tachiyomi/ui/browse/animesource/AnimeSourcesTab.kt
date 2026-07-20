@@ -29,7 +29,7 @@ fun Screen.animeSourcesTab(): TabContent {
     val state by screenModel.state.collectAsState()
 
     return TabContent(
-        titleRes = MR.strings.label_anime_sources,
+        titleRes = MR.strings.label_sources,
         actions = persistentListOf(
             AppBar.Action(
                 title = stringResource(MR.strings.action_global_search),

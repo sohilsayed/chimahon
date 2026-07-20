@@ -201,7 +201,7 @@ data object HistoryTab : Tab {
                     Tab(
                         selected = selectedTab == TAB_MANGA,
                         onClick = { selectedTab = TAB_MANGA },
-                        text = { TabText(text = stringResource(MR.strings.label_library)) },
+                        text = { TabText(text = stringResource(MR.strings.manga_singular)) },
                         unselectedContentColor = MaterialTheme.colorScheme.onSurface,
                     )
                     Tab(

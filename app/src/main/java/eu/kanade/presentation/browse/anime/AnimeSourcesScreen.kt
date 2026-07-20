@@ -26,6 +26,7 @@ import eu.kanade.presentation.browse.anime.components.BaseAnimeSourceItem
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel
 import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel.AnimeSourceUiModel
+import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourcesScreenModel.Companion.PINNED_KEY
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -86,8 +87,12 @@ private fun AnimeSourcesList(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = LocaleHelper.getSourceDisplayName(lang, context) +
-                            " ${FlagEmoji.getEmojiLangFlag(lang)}",
+                        text = if (lang == PINNED_KEY) {
+                            stringResource(MR.strings.pinned_sources)
+                        } else {
+                            LocaleHelper.getSourceDisplayName(lang, context) +
+                                " ${FlagEmoji.getEmojiLangFlag(lang)}"
+                        },
                         modifier = Modifier
                             .padding(vertical = MaterialTheme.padding.small)
                             .weight(1f),
