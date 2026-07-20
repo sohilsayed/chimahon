@@ -15,8 +15,13 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 // =============================================================================
 // Legacy FieldType enum for UI backwards compatibility
@@ -211,6 +216,7 @@ object AnkiCardCreator {
     private const val TAG = "AnkiCardCreator"
     private const val TRANSPARENT_IMAGE_DATA_URI =
         "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+    private val addLocks = ConcurrentHashMap<String, Mutex>()
 
     private data class DictionaryMediaReference(
         val dictionary: String,
@@ -369,60 +375,78 @@ object AnkiCardCreator {
             }
 
             val exportMedia = ExportMediaContext()
-            val fieldsWithPlaceholders = buildFields(
-                result,
-                fieldMap,
-                cloze,
-                media,
-                screenshotFilename,
-                wordAudioFilename,
-                sentenceAudioFilename,
-                selectedDict,
-                popupSelection,
-                glossaryIndex,
-                styles,
-                exportMedia,
-            )
+            val fieldsWithPlaceholders = withContext(Dispatchers.Default) {
+                buildFields(
+                    result,
+                    fieldMap,
+                    cloze,
+                    media,
+                    screenshotFilename,
+                    wordAudioFilename,
+                    sentenceAudioFilename,
+                    selectedDict,
+                    popupSelection,
+                    glossaryIndex,
+                    styles,
+                    exportMedia,
+                )
+            }
             val fields = resolveDictionaryMediaPlaceholders(fieldsWithPlaceholders, exportMedia, bridge)
             android.util.Log.d(TAG, "addToAnki: built fields=$fields")
-            val resolvedTags = formatField(
-                tags, result, cloze, media, screenshotFilename, wordAudioFilename,
-                sentenceAudioFilename, selectedDict, popupSelection, glossaryIndex,
-                styles, exportMedia,
-            )
-            val tagList = resolvedTags.split(",").map { it.trim() }.filter { it.isNotBlank() }
-
-            if (dupCheck || forceOpen) {
-                val targetDeckId = if (dupScope == "deck" && effectiveDeck.isNotBlank()) {
-                    try {
-                        bridge.getDeckId(effectiveDeck)
-                    } catch (e: Exception) {
-                        null
+            val tagList = withContext(Dispatchers.Default) {
+                // Split configured tags before rendering markers so commas from a
+                // resolved value (for example a title) stay inside one tag.
+                tags.split(",")
+                    .map { template ->
+                        formatField(
+                            template, result, cloze, media, screenshotFilename, wordAudioFilename,
+                            sentenceAudioFilename, selectedDict, popupSelection, glossaryIndex,
+                            styles, exportMedia,
+                        )
                     }
-                } else {
-                    null
-                }
-
-                val existing = bridge.findNotes(result.term.expression, null, targetDeckId)
-                if (existing.isNotEmpty()) {
-                    if (forceOpen) return AnkiResult.OpenCard(existing.first())
-                    when (dupAction) {
-                        "prevent" -> return AnkiResult.CardExists(existing.first())
-                        "open" -> return AnkiResult.OpenCard(existing.first())
-                        "overwrite" -> {
-                            bridge.updateNoteFields(existing.first(), fields)
-                            com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type, profileId = profileId, titleId = titleId)
-                            if (syncOnCreate) bridge.triggerSync()
-                            return AnkiResult.Success(existing.first())
-                        }
-                    }
-                }
+                    .mapNotNull(::normalizeAnkiTag)
             }
 
-            val noteId = bridge.addNote(deckName = effectiveDeck, modelName = effectiveModel, fields = fields, tags = tagList)
-            com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type, profileId = profileId, titleId = titleId)
-            if (syncOnCreate) bridge.triggerSync()
-            AnkiResult.Success(noteId)
+            // Keep duplicate lookup and insertion atomic for rapid repeated taps.
+            val lockKey = "${dupScope.lowercase()}|${if (dupScope == "deck") effectiveDeck else ""}|${result.term.expression}"
+            val addLock = addLocks.computeIfAbsent(lockKey) { Mutex() }
+            try {
+                addLock.withLock {
+                    if (dupCheck || forceOpen) {
+                        val targetDeckId = if (dupScope == "deck" && effectiveDeck.isNotBlank()) {
+                            try {
+                                bridge.getDeckId(effectiveDeck)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else {
+                            null
+                        }
+
+                        val existing = bridge.findNotes(result.term.expression, null, targetDeckId)
+                        if (existing.isNotEmpty()) {
+                            if (forceOpen) return@withLock AnkiResult.OpenCard(existing.first())
+                            when (dupAction) {
+                                "prevent" -> return@withLock AnkiResult.CardExists(existing.first())
+                                "open" -> return@withLock AnkiResult.OpenCard(existing.first())
+                                "overwrite" -> {
+                                    bridge.updateNoteFields(existing.first(), fields)
+                                    com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type, profileId = profileId, titleId = titleId)
+                                    if (syncOnCreate) bridge.triggerSync()
+                                    return@withLock AnkiResult.Success(existing.first())
+                                }
+                            }
+                        }
+                    }
+
+                    val noteId = bridge.addNote(deckName = effectiveDeck, modelName = effectiveModel, fields = fields, tags = tagList)
+                    com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type, profileId = profileId, titleId = titleId)
+                    if (syncOnCreate) bridge.triggerSync()
+                    AnkiResult.Success(noteId)
+                }
+            } finally {
+                addLocks.remove(lockKey, addLock)
+            }
         } catch (e: SecurityException) {
             AnkiResult.PermissionDenied
         } catch (e: Exception) {
@@ -573,9 +597,9 @@ object AnkiCardCreator {
         fields: Map<String, String>,
         exportMedia: ExportMediaContext,
         bridge: AnkiDroidBridge,
-    ): Map<String, String> {
+    ): Map<String, String> = withContext(Dispatchers.IO) {
         val references = exportMedia.references
-        if (references.isEmpty()) return fields
+        if (references.isEmpty()) return@withContext fields
 
         val session = Injekt.get<DictionaryRepository>().lookupSession
         val replacements = linkedMapOf<String, String>()
@@ -588,7 +612,7 @@ object AnkiCardCreator {
             replacements[reference.placeholder] = replacement ?: TRANSPARENT_IMAGE_DATA_URI
         }
 
-        return fields.mapValues { (_, value) ->
+        fields.mapValues { (_, value) ->
             replacements.entries.fold(value) { current, (placeholder, replacement) ->
                 current.replace(placeholder, replacement)
             }
@@ -955,68 +979,97 @@ object AnkiCardCreator {
         if (expression.isBlank()) return ""
         if (reading.isBlank() || expression == reading) return expression
         val segments = distributeFurigana(expression, reading)
-        return segments.joinToString("") { (text, furigana) ->
-            if (furigana.isNotEmpty()) "$text[$furigana]" else "$text "
-        }.trimEnd()
+        return buildString {
+            for ((text, furigana) in segments) {
+                if (furigana.isNotEmpty()) append(text).append('[').append(furigana).append(']')
+                else append(text).append(' ')
+            }
+        }
     }
 
-    private fun distributeFurigana(expression: String, reading: String): List<Pair<String, String>> {
-        val exprChars = expression.toList()
-        val result = mutableListOf<Pair<String, String>>()
-        var i = 0
-        var readingPos = 0
+    private data class FuriganaGroup(val isKanji: Boolean, val text: String, val normalized: String?)
 
-        while (i < exprChars.size) {
-            val ch = exprChars[i]
-            when {
-                isKana(ch) -> {
-                    val kana = toHiragana(ch.toString())
-                    if (readingPos < reading.length && reading.startsWith(kana, readingPos)) {
-                        readingPos += kana.length
-                    }
-                    result.add(ch.toString() to "")
-                    i++
-                }
-                isKanji(ch) -> {
-                    val kanjiEnd = findNextKana(exprChars, i + 1)
-                    val kanjiStr = exprChars.subList(i, kanjiEnd).joinToString("")
-                    val readingEnd = if (kanjiEnd < exprChars.size) {
-                        val nextKanaHiragana = toHiragana(exprChars[kanjiEnd].toString())
-                        findReadingEndBefore(reading, readingPos, nextKanaHiragana)
-                    } else {
-                        reading.length
-                    }
-                    result.add(kanjiStr to reading.substring(readingPos, readingEnd))
-                    readingPos = readingEnd
-                    i = kanjiEnd
-                }
-                else -> {
-                    result.add(ch.toString() to "")
-                    i++
-                }
+    private fun distributeFurigana(expression: String, reading: String): List<Pair<String, String>> {
+        if (reading == expression) return listOf(expression to "")
+        val groups = mutableListOf<FuriganaGroup>()
+        for (char in expression) {
+            val kanji = isKanji(char)
+            if (groups.lastOrNull()?.isKanji == kanji) {
+                val previous = groups.removeAt(groups.lastIndex)
+                val text = previous.text + char
+                groups += FuriganaGroup(kanji, text, if (!kanji) toHiragana(text) else null)
+            } else {
+                groups += FuriganaGroup(kanji, char.toString(), if (!kanji) toHiragana(char.toString()) else null)
             }
+        }
+        return segmentizeFurigana(reading, toHiragana(reading), groups, 0)
+            ?: listOf(expression to reading)
+    }
+
+    private fun segmentizeFurigana(
+        reading: String,
+        readingNormalized: String,
+        groups: List<FuriganaGroup>,
+        start: Int,
+    ): List<Pair<String, String>>? {
+        if (start >= groups.size) return if (reading.isEmpty()) emptyList() else null
+        val group = groups[start]
+        if (!group.isKanji) {
+            if (group.normalized == null || !readingNormalized.startsWith(group.normalized)) return null
+            val tail = segmentizeFurigana(
+                reading.substring(group.text.length),
+                readingNormalized.substring(group.text.length),
+                groups,
+                start + 1,
+            )?.toMutableList() ?: return null
+            if (reading.startsWith(group.text)) {
+                tail.add(0, group.text to "")
+            } else {
+                tail.addAll(0, getFuriganaKanaSegments(group.text, reading))
+            }
+            return tail
+        }
+
+        var result: List<Pair<String, String>>? = null
+        for (i in reading.length downTo group.text.length) {
+            val tail = segmentizeFurigana(reading.substring(i), readingNormalized.substring(i), groups, start + 1)
+                ?: continue
+            if (result != null) return null
+            result = tail.toMutableList().also { it.add(0, group.text to reading.substring(0, i)) }
+            if (groups.size - start == 1) break
         }
         return result
     }
 
-    private fun isKana(ch: Char) = ch.code in 0x3040..0x309F || ch.code in 0x30A0..0x30FF
-    private fun isKanji(ch: Char) = ch.code in 0x4E00..0x9FAF || ch.code in 0x3400..0x4DBF
+    private fun getFuriganaKanaSegments(text: String, reading: String): List<Pair<String, String>> {
+        val result = mutableListOf<Pair<String, String>>()
+        var start = 0
+        var state = reading.firstOrNull() == text.firstOrNull()
+        for (i in 1 until text.length) {
+            val nextState = reading.getOrNull(i) == text[i]
+            if (nextState != state) {
+                result += text.substring(start, i) to if (state) "" else reading.substring(start, i.coerceAtMost(reading.length))
+                start = i
+                state = nextState
+            }
+        }
+        result += text.substring(start) to if (state) "" else reading.substring(start.coerceAtMost(reading.length))
+        return result
+    }
+
+    private fun isKanji(ch: Char) =
+        ch.code in 0x4E00..0x9FFF ||
+            ch.code in 0x3400..0x4DBF ||
+            ch.code in 0xF900..0xFAFF ||
+            ch == '\u3005'
 
     private fun toHiragana(str: String) = str.map { ch ->
         if (ch.code in 0x30A1..0x30F6) (ch.code - 0x60).toChar() else ch
     }.joinToString("")
 
-    private fun findNextKana(chars: List<Char>, start: Int): Int {
-        var i = start
-        while (i < chars.size && !isKana(chars[i])) i++
-        return i
-    }
-
-    private fun findReadingEndBefore(reading: String, start: Int, nextKana: String): Int {
-        if (nextKana.isEmpty()) return reading.length
-        val idx = reading.indexOf(nextKana, start)
-        return if (idx >= 0) idx else reading.length
-    }
+    private fun normalizeAnkiTag(value: String): String? = value.trim()
+        .replace(Regex("\\s+"), "_")
+        .takeIf { it.isNotBlank() }
 
     // =============================================================================
     // Sentence Furigana
