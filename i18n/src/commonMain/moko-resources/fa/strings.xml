@@ -100,7 +100,7 @@
     <string name="label_recent_manga">سابقه</string>
     <string name="label_recent_updates">به روز رسانی‌ها</string>
     <string name="label_library">کتابخانه</string>
-    <string name="label_download_queue">صف دانلود &amp; OCR</string>
+    <string name="label_download_queue">صف دانلود</string>
     <string name="label_settings">تنظیمات</string>
     <string name="label_more">بیشتر</string>
     <string name="name">نام</string>

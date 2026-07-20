@@ -121,7 +121,7 @@
     <string name="categories">Пухмӑшсем</string>
     <string name="information_empty_library">Санӑн вулавӑш пушӑ</string>
     <string name="label_recent_manga">Кун-ҫул</string>
-    <string name="label_download_queue">Тийев черечӗ &amp; OCR</string>
+    <string name="label_download_queue">Тийев черечӗ</string>
     <string name="name">Йат</string>
     <string name="download_notifier_no_network">Тетел ҫыхӑну ҫук</string>
     <string name="download_notifier_text_only_wifi">Wi-Fi ҫыхӑну ҫук</string>

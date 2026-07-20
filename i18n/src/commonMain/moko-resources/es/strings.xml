@@ -2,7 +2,7 @@
 <resources>
     <string name="name">Nombre</string>
     <string name="label_settings">Ajustes</string>
-    <string name="label_download_queue">Cola de descargas &amp; OCR</string>
+    <string name="label_download_queue">Cola de descargas</string>
     <string name="label_library">Biblioteca</string>
     <string name="label_recent_manga">Historial</string>
     <string name="label_recent_updates">Actualizaciones</string>

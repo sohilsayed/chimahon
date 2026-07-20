@@ -2,7 +2,7 @@
 <resources>
     <string name="name">Nome</string>
     <string name="label_settings">Definições</string>
-    <string name="label_download_queue">Fila de Transferências &amp; OCR</string>
+    <string name="label_download_queue">Fila de Transferências</string>
     <string name="label_library">Biblioteca</string>
     <string name="label_recent_manga">Histórico</string>
     <string name="label_recent_updates">Atualizações</string>

@@ -3,7 +3,7 @@
     <string name="name">Emri</string>
     <string name="label_more">Më tepër</string>
     <string name="label_settings">Cilësimet</string>
-    <string name="label_download_queue">Radha e shkarkimeve &amp; OCR</string>
+    <string name="label_download_queue">Radha e shkarkimeve</string>
     <string name="label_library">Libraria</string>
     <string name="label_recent_updates">Përditësimet</string>
     <string name="information_no_downloads">S\'ka shkarkime</string>

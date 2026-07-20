@@ -22,7 +22,7 @@
     <string name="label_recent_manga">Istorija</string>
     <string name="label_recent_updates">Naujienos</string>
     <string name="label_library">Biblioteka</string>
-    <string name="label_download_queue">Atsisiuntimų eilė &amp; OCR</string>
+    <string name="label_download_queue">Atsisiuntimų eilė</string>
     <string name="label_settings">Nustatymai</string>
     <string name="label_more">Daugiau</string>
     <string name="name">Vardas</string>

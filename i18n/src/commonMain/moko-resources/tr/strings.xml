@@ -7,7 +7,7 @@
     <string name="track">İzleme</string>
     <string name="history">Geçmiş</string>
     <string name="label_settings">Ayarlar</string>
-    <string name="label_download_queue">İndirme kuyruğu &amp; OCR</string>
+    <string name="label_download_queue">İndirme kuyruğu</string>
     <string name="label_library">Kitaplık</string>
     <string name="label_recent_manga">Geçmiş</string>
     <string name="label_recent_updates">Güncellemeler</string>

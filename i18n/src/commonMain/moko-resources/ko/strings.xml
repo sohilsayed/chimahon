@@ -42,7 +42,7 @@
     <string name="label_settings">설정</string>
     <string name="action_display">화면 표시</string>
     <string name="history">기록</string>
-    <string name="label_download_queue">다운로드 대기열 &amp; OCR</string>
+    <string name="label_download_queue">다운로드 대기열</string>
     <string name="label_library">서재</string>
     <string name="label_recent_manga">기록</string>
     <string name="label_recent_updates">업데이트</string>

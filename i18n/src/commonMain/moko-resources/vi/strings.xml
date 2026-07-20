@@ -2,7 +2,7 @@
 <resources>
     <string name="name">Tên</string>
     <string name="label_settings">Cài đặt</string>
-    <string name="label_download_queue">Hàng chờ tải xuống &amp; OCR</string>
+    <string name="label_download_queue">Hàng chờ tải xuống</string>
     <string name="label_library">Thư viện</string>
     <string name="label_recent_manga">Lịch sử</string>
     <string name="label_recent_updates">Cập nhật</string>

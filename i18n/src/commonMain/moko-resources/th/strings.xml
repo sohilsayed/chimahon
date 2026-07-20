@@ -7,7 +7,7 @@
     <string name="track">ติดตาม</string>
     <string name="history">ประวัติ</string>
     <string name="label_settings">ตั้งค่า</string>
-    <string name="label_download_queue">คิวดาวน์โหลด &amp; OCR</string>
+    <string name="label_download_queue">คิวดาวน์โหลด</string>
     <string name="label_library">คลัง</string>
     <string name="label_backup">สำรองข้อมูลและการเรียกคืน</string>
     <string name="label_extensions">ส่วนขยาย</string>

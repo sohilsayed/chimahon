@@ -6,7 +6,7 @@
     <string name="chapters">章</string>
     <string name="history">履歴</string>
     <string name="label_settings">設定</string>
-    <string name="label_download_queue">ダウンロードキュー &amp; OCR</string>
+    <string name="label_download_queue">ダウンロードキュー</string>
     <string name="label_library">ライブラリ</string>
     <string name="label_recent_manga">履歴</string>
     <string name="label_recent_updates">新着</string>

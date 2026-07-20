@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="label_settings">Баптау</string>
-    <string name="label_download_queue">Жүктеу кезегі &amp; OCR</string>
+    <string name="label_download_queue">Жүктеу кезегі</string>
     <string name="label_library">Кітапхана</string>
     <string name="label_recent_updates">Жаңартпа</string>
     <string name="label_sources">Дереккөз</string>

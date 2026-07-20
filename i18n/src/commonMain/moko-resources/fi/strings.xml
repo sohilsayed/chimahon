@@ -6,7 +6,7 @@
     <string name="track">Seuranta</string>
     <string name="history">Historia</string>
     <string name="label_settings">Asetukset</string>
-    <string name="label_download_queue">Latausjono &amp; OCR</string>
+    <string name="label_download_queue">Latausjono</string>
     <string name="label_library">Kirjasto</string>
     <string name="label_recent_manga">Historia</string>
     <string name="action_settings">Asetukset</string>
