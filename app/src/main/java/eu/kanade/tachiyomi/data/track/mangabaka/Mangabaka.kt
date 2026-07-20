@@ -5,14 +5,18 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.BaseTracker
 import eu.kanade.tachiyomi.data.track.DeletableTracker
+import eu.kanade.tachiyomi.data.track.mangabaka.dto.MangaBakaOAuth
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.injectLazy
 import tachiyomi.domain.track.model.Track as DomainTrack
 
 class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
 
+    private val json: Json by injectLazy()
     private val interceptor by lazy { MangaBakaInterceptor(this) }
     private val api by lazy { MangaBakaApi(id, client, interceptor) }
 
@@ -109,30 +113,46 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         return track
     }
 
-    override suspend fun login(username: String, password: String) {
-        interceptor.setKey(password)
+    override suspend fun login(username: String, password: String) = login(password)
+
+    suspend fun login(code: String) {
         try {
-            val profile = api.getProfile()
-            saveCredentials(profile.id, password)
-            val scoreType = when (profile.ratingSteps) {
+            val oauth = api.getAccessToken(code)
+            interceptor.setAuth(oauth)
+            val currentUser = api.getCurrentUser()
+            val scoreType = when (currentUser.ratingSteps) {
                 1 -> STEP_1
                 5 -> STEP_5
                 10 -> STEP_10
                 20 -> STEP_20
                 25 -> STEP_25
-                else -> STEP_10
+                else -> throw Exception("Unknown score step size ${currentUser.ratingSteps}")
             }
             scorePreference.set(scoreType)
+            saveCredentials(currentUser.id, oauth.accessToken)
         } catch (_: Exception) {
-            interceptor.setKey(null)
             logout()
-            throw Exception("Failed to authenticate with MangaBaka. Check your API key.")
         }
     }
 
+    fun saveToken(oauth: MangaBakaOAuth?) {
+        trackPreferences.trackToken(this).set(json.encodeToString(oauth))
+    }
+
+    fun restoreToken(): MangaBakaOAuth? {
+        return try {
+            json.decodeFromString(trackPreferences.trackToken(this).get())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun verifyOAuthState(state: String): Boolean = MangaBakaApi.isValidOAuthState(state)
+
     override fun logout() {
         super.logout()
-        interceptor.setKey(null)
+        trackPreferences.trackToken(this).delete()
+        interceptor.setAuth(null)
     }
 
     override suspend fun delete(track: DomainTrack) {

@@ -12,5 +12,8 @@ data class MangaBakaUserProfileResponse(
 data class MangaBakaUserProfile(
     val id: String,
     @SerialName("rating_steps")
-    val ratingSteps: Int,
+    val ratingSteps: Int? = null,
+    val nickname: String? = null,
+    @SerialName("preferred_username")
+    val preferredUsername: String? = null,
 )
