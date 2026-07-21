@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -297,13 +299,14 @@ object DownloadQueueScreen : Screen() {
                     .nestedScroll(nestedScrollConnection)
             ) {
                 if (ocrQueue.isNotEmpty()) {
+                    val maxOcrHeight = LocalConfiguration.current.screenHeightDp.dp / 2
                     OcrQueueSection(
                         ocrQueue = ocrQueue,
                         onCancelClick = { screenModel.cancelOcr(it) },
                         modifier = Modifier
                             .then(
                                 if (downloadList.isEmpty()) Modifier.weight(1f)
-                                else Modifier.weight(1f, fill = false)
+                                else Modifier.heightIn(max = maxOcrHeight)
                             )
                             .padding(
                                 start = with(density) { left.toDp() },
