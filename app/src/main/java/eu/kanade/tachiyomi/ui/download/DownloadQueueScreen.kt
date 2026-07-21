@@ -301,7 +301,10 @@ object DownloadQueueScreen : Screen() {
                         ocrQueue = ocrQueue,
                         onCancelClick = { screenModel.cancelOcr(it) },
                         modifier = Modifier
-                            .weight(1f, fill = false)
+                            .then(
+                                if (downloadList.isEmpty()) Modifier.weight(1f)
+                                else Modifier.weight(1f, fill = false)
+                            )
                             .padding(
                                 start = with(density) { left.toDp() },
                                 top = with(density) { top.toDp() },
@@ -339,8 +342,10 @@ object DownloadQueueScreen : Screen() {
                 AndroidView(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .clipToBounds(),
+                        .then(
+                            if (downloadList.isNotEmpty()) Modifier.weight(1f).clipToBounds()
+                            else Modifier.height(0.dp)
+                        ),
                     factory = { context ->
                         screenModel.controllerBinding = DownloadListBinding.inflate(LayoutInflater.from(context))
                         screenModel.adapter = DownloadAdapter(
