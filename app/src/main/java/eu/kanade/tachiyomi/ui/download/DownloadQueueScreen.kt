@@ -6,15 +6,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,10 +42,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -285,9 +293,62 @@ object DownloadQueueScreen : Screen() {
             val colorScheme = AndroidViewColorScheme(MaterialTheme.colorScheme)
             // KMK <--
 
-            Box(modifier = Modifier.nestedScroll(nestedScrollConnection)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(nestedScrollConnection)
+            ) {
+                if (ocrQueue.isNotEmpty()) {
+                    val maxOcrHeight = LocalConfiguration.current.screenHeightDp.dp / 2
+                    OcrQueueSection(
+                        ocrQueue = ocrQueue,
+                        onCancelClick = { screenModel.cancelOcr(it) },
+                        modifier = Modifier
+                            .then(
+                                if (downloadList.isEmpty()) Modifier.weight(1f)
+                                else Modifier.heightIn(max = maxOcrHeight)
+                            )
+                            .padding(
+                                start = with(density) { left.toDp() },
+                                top = with(density) { top.toDp() },
+                                end = with(density) { right.toDp() },
+                            ),
+                    )
+                }
+
+                if (ocrQueue.isNotEmpty() && downloadList.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                start = with(density) { left.toDp() } + 16.dp,
+                                top = 16.dp,
+                                end = with(density) { right.toDp() } + 16.dp,
+                                bottom = 8.dp,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(MR.strings.label_download_queue),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Pill(
+                            text = "$downloadCount",
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+
                 AndroidView(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (downloadList.isNotEmpty()) Modifier.weight(1f).clipToBounds()
+                            else Modifier.height(0.dp)
+                        ),
                     factory = { context ->
                         screenModel.controllerBinding = DownloadListBinding.inflate(LayoutInflater.from(context))
                         screenModel.adapter = DownloadAdapter(
@@ -325,7 +386,7 @@ object DownloadQueueScreen : Screen() {
                         screenModel.controllerBinding.root
                             .updatePadding(
                                 left = left,
-                                top = top,
+                                top = if (ocrQueue.isEmpty()) top else 0,
                                 right = right,
                                 bottom = bottom,
                             )
@@ -333,17 +394,6 @@ object DownloadQueueScreen : Screen() {
                         screenModel.adapter?.updateDataSet(downloadList)
                     },
                 )
-
-                if (ocrQueue.isNotEmpty()) {
-                    OcrQueueSection(
-                        ocrQueue = ocrQueue,
-                        onCancelClick = { screenModel.cancelOcr(it) },
-                        modifier = Modifier.padding(
-                            start = with(density) { left.toDp() },
-                            end = with(density) { right.toDp() },
-                        ),
-                    )
-                }
             }
         }
     }
@@ -375,11 +425,15 @@ private fun OcrQueueSection(
             )
         }
 
-        ocrQueue.forEach { item ->
-            OcrQueueItemRow(
-                item = item,
-                onCancelClick = { onCancelClick(item.chapter.id) },
-            )
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+        ) {
+            ocrQueue.forEach { item ->
+                OcrQueueItemRow(
+                    item = item,
+                    onCancelClick = { onCancelClick(item.chapter.id) },
+                )
+            }
         }
     }
 }
@@ -396,6 +450,13 @@ private fun OcrQueueItemRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            imageVector = Icons.Outlined.DragHandle,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            modifier = Modifier.padding(end = 8.dp),
+        )
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.chapter.name,
