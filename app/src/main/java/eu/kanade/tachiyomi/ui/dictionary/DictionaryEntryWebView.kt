@@ -57,6 +57,7 @@ fun DictionaryEntryWebView(
     webViewProvider: ((android.content.Context) -> WebView)? = null,
     onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null,
     onRecursiveLookup: ((String, String?, Int?, Float?, Float?) -> Unit)? = null,
+    onKanjiLookup: ((String) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     onContentReadyChange: ((Boolean) -> Unit)? = null,
@@ -212,6 +213,7 @@ fun DictionaryEntryWebView(
                 state.onAnkiLookup = onAnkiLookup
                 state.ankiJsBridge.onAnkiLookup = onAnkiLookup
                 state.onRecursiveLookup = onRecursiveLookup
+                state.onKanjiLookup = onKanjiLookup
                 state.onTabSelect = onTabSelect
                 state.onBack = onBack
                 state.customCss = customCss

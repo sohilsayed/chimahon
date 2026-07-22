@@ -49,12 +49,12 @@ namespace {
 
     jobject new_import_result(JNIEnv *env, bool success, const std::string &title,
                               jlong term_count, jlong meta_count, jlong freq_count,
-                              jlong pitch_count, jlong media_count) {
+                              jlong pitch_count, jlong kanji_count, jlong media_count) {
         jclass cls = env->FindClass("chimahon/ImportResult");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(ZLjava/lang/String;JJJJJ)V");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(ZLjava/lang/String;JJJJJJ)V");
         jstring jtitle = new_string(env, title);
         jobject out = env->NewObject(cls, ctor, static_cast<jboolean>(success), jtitle,
-                                     term_count, meta_count, freq_count, pitch_count, media_count);
+                                     term_count, meta_count, freq_count, pitch_count, kanji_count, media_count);
         env->DeleteLocalRef(jtitle);
         return out;
     }
@@ -281,7 +281,7 @@ Java_chimahon_HoshiDicts_destroyLookupObject(JNIEnv *, jobject, jlong session) {
 extern "C" JNIEXPORT void JNICALL
 Java_chimahon_HoshiDicts_rebuildQuery(JNIEnv *env, jobject, jlong session,
                                       jobjectArray term_paths, jobjectArray freq_paths,
-                                      jobjectArray pitch_paths) {
+                                      jobjectArray pitch_paths, jobjectArray kanji_paths) {
     LookupObject *obj = as_object(session);
     obj->query = DictionaryQuery{};
     for_each_string(env, term_paths,
@@ -290,7 +290,74 @@ Java_chimahon_HoshiDicts_rebuildQuery(JNIEnv *env, jobject, jlong session,
                     [&](const std::string &path) { obj->query.add_freq_dict(path); });
     for_each_string(env, pitch_paths,
                     [&](const std::string &path) { obj->query.add_pitch_dict(path); });
+    for_each_string(env, kanji_paths,
+                    [&](const std::string &path) { obj->query.add_kanji_dict(path); });
     obj->lookup = std::make_unique<Lookup>(obj->query, obj->deinflector);
+}
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_chimahon_HoshiDicts_queryKanji(JNIEnv *env, jobject, jlong session, jstring character) {
+    LookupObject *obj = as_object(session);
+    auto text_str = jstring_to_std_string(env, character);
+    auto result = obj->query.query_kanji(text_str);
+
+    jclass entryCls = env->FindClass("chimahon/KanjiEntry");
+    jmethodID entryCtor = env->GetMethodID(entryCls, "<init>",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/util/Map;)V");
+    jclass mapCls = env->FindClass("java/util/HashMap");
+    jmethodID mapCtor = env->GetMethodID(mapCls, "<init>", "()V");
+    jmethodID mapPut = env->GetMethodID(mapCls, "put",
+        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    jclass strCls = env->FindClass("java/lang/String");
+
+    jobjectArray entryArray = env->NewObjectArray(
+        static_cast<jsize>(result.entries.size()), entryCls, nullptr);
+
+    for (size_t i = 0; i < result.entries.size(); ++i) {
+        const auto& e = result.entries[i];
+
+        jobject dictName = new_string(env, e.dict_name);
+        jobject onyomi = new_string(env, e.onyomi);
+        jobject kunyomi = new_string(env, e.kunyomi);
+        jobject tags = new_string(env, e.tags);
+
+        jobjectArray defs = env->NewObjectArray(
+            static_cast<jsize>(e.definitions.size()), strCls, nullptr);
+        for (size_t j = 0; j < e.definitions.size(); ++j) {
+            jobject def = new_string(env, e.definitions[j]);
+            env->SetObjectArrayElement(defs, static_cast<jsize>(j), def);
+            env->DeleteLocalRef(def);
+        }
+
+        jobject stats = env->NewObject(mapCls, mapCtor);
+        for (const auto& [k, v] : e.stats) {
+            jobject key = new_string(env, k);
+            jobject val = new_string(env, v);
+            env->CallObjectMethod(stats, mapPut, key, val);
+            env->DeleteLocalRef(key);
+            env->DeleteLocalRef(val);
+        }
+
+        jobject entry = env->NewObject(entryCls, entryCtor, dictName, onyomi, kunyomi, tags, defs, stats);
+        env->SetObjectArrayElement(entryArray, static_cast<jsize>(i), entry);
+
+        env->DeleteLocalRef(dictName);
+        env->DeleteLocalRef(onyomi);
+        env->DeleteLocalRef(kunyomi);
+        env->DeleteLocalRef(tags);
+        env->DeleteLocalRef(defs);
+        env->DeleteLocalRef(stats);
+        env->DeleteLocalRef(entry);
+    }
+
+    jclass resultCls = env->FindClass("chimahon/KanjiResult");
+    jmethodID resultCtor = env->GetMethodID(resultCls, "<init>",
+        "(Ljava/lang/String;[Lchimahon/KanjiEntry;)V");
+    jobject character_jstr = new_string(env, result.character);
+    jobject out = env->NewObject(resultCls, resultCtor, character_jstr, entryArray);
+    env->DeleteLocalRef(character_jstr);
+    env->DeleteLocalRef(entryArray);
+    return out;
 }
 
 extern "C" JNIEXPORT jobject JNICALL
@@ -325,6 +392,7 @@ Java_chimahon_HoshiDicts_importDictionary(JNIEnv *env, jobject, jstring zip_path
                              static_cast<jlong>(args.result.meta_count),
                              static_cast<jlong>(args.result.freq_count),
                              static_cast<jlong>(args.result.pitch_count),
+                             static_cast<jlong>(args.result.kanji_count),
                              static_cast<jlong>(args.result.media_count));
 }
 
@@ -384,9 +452,9 @@ Java_chimahon_HoshiDicts_probeEntryTypes(JNIEnv *env, jobject, jstring dict_path
     std::string blobsPath = dir + "/blobs.bin";
 
     auto make_zeros = [&]() {
-        jlongArray result = env->NewLongArray(3);
-        jlong zeros[3] = {0, 0, 0};
-        env->SetLongArrayRegion(result, 0, 3, zeros);
+        jlongArray result = env->NewLongArray(4);
+        jlong zeros[4] = {0, 0, 0, 0};
+        env->SetLongArrayRegion(result, 0, 4, zeros);
         return result;
     };
 
@@ -419,7 +487,7 @@ Java_chimahon_HoshiDicts_probeEntryTypes(JNIEnv *env, jobject, jstring dict_path
     }
     fclose(blobsFile);
 
-    uint64_t termCount = 0, freqCount = 0, pitchCount = 0;
+    uint64_t termCount = 0, freqCount = 0, pitchCount = 0, kanjiCount = 0;
 
     for (uint32_t i = 0; i < capacity; i++) {
         if (slots[i].hash == 0) continue;
@@ -459,16 +527,19 @@ Java_chimahon_HoshiDicts_probeEntryTypes(JNIEnv *env, jobject, jstring dict_path
                 } else if (mode == "pitch") {
                     pitchCount++;
                 }
+            } else if (type == 2) {
+                kanjiCount++;
             }
         }
     }
 
-    jlongArray result = env->NewLongArray(3);
-    jlong counts[3] = {
+    jlongArray result = env->NewLongArray(4);
+    jlong counts[4] = {
         static_cast<jlong>(termCount),
         static_cast<jlong>(freqCount),
         static_cast<jlong>(pitchCount),
+        static_cast<jlong>(kanjiCount),
     };
-    env->SetLongArrayRegion(result, 0, 3, counts);
+    env->SetLongArrayRegion(result, 0, 4, counts);
     return result;
 }

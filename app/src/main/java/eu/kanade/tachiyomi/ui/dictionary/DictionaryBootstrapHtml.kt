@@ -29,6 +29,9 @@ internal fun getDictionaryBootstrapHtml(
     val js = dictionaryRendererJs.getOrPut(Unit) {
         readTextAsset(context.applicationContext, "dictionary/renderer.js").replace("</script", "<\\/script")
     }
+    val kanjiJs = dictionaryKanjiRendererJs.getOrPut(Unit) {
+        readTextAsset(context.applicationContext, "dictionary/kanji-renderer.js")
+    }
 
     val fontUrl = FontManager.getFontUri(context, fontFamily)
     val fontFaceCss = if (fontUrl != null) {
@@ -121,6 +124,7 @@ internal fun getDictionaryBootstrapHtml(
         <body>
           <main id="entries" class="entries"></main>
           <script>$js</script>
+          <script>$kanjiJs</script>
         </body>
         </html>
     """.trimIndent()
@@ -134,6 +138,7 @@ private fun readTextAsset(context: Context, assetPath: String): String {
 
 private val dictionaryBaseCss = java.util.concurrent.ConcurrentHashMap<Unit, String>()
 private val dictionaryRendererJs = java.util.concurrent.ConcurrentHashMap<Unit, String>()
+private val dictionaryKanjiRendererJs = java.util.concurrent.ConcurrentHashMap<Unit, String>()
 
 fun getDictionaryColorScheme(
     isDark: Boolean,

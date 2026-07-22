@@ -59,6 +59,7 @@ internal fun prepareDictionaryWebViewShell(
         addJavascriptInterface(state.readyBridge, "DictionaryReadyBridge")
         addJavascriptInterface(state.payloadBridge, "PayloadBridge")
         addJavascriptInterface(state.ankiJsBridge, "AnkiJsBridge")
+        addJavascriptInterface(state.kanjiPayloadBridge, "KanjiPayloadBridge")
 
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -100,6 +101,11 @@ internal fun prepareDictionaryWebViewShell(
                             s?.onBack?.invoke()
                             return true
                         }
+                        CHIMA_HOST_KANJI -> {
+                            val char = url.getQueryParameter("char") ?: return true
+                            s?.onKanjiLookup?.invoke(char)
+                            return true
+                        }
                     }
                     return true
                 }
@@ -123,6 +129,7 @@ internal class DictionaryWebViewState(
     val readyBridge: DictionaryReadyBridge = DictionaryReadyBridge(webViewProvider) { this }
     val payloadBridge: PayloadBridge = PayloadBridge()
     val ankiJsBridge: AnkiJsBridge = AnkiJsBridge(webViewProvider)
+    val kanjiPayloadBridge: KanjiPayloadBridge = KanjiPayloadBridge()
     var pageReady: Boolean = false
     var fontSize: Int = 16
     @Volatile var contentReadyGeneration: Long = 0
@@ -131,6 +138,7 @@ internal class DictionaryWebViewState(
     var onRecursiveLookup: ((String, String?, Int?, Float?, Float?) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
+    var onKanjiLookup: ((String) -> Unit)? = null
     var onContentInvalidated: (() -> Unit)? = null
     var onContentReady: (() -> Unit)? = null
     var lastPayload: String? = null
@@ -337,3 +345,4 @@ private const val CHIMA_SCHEME = "chima"
 private const val CHIMA_HOST_LOOKUP = "lookup"
 private const val CHIMA_HOST_TAB = "tab"
 private const val CHIMA_HOST_BACK = "back"
+private const val CHIMA_HOST_KANJI = "kanji"

@@ -104,6 +104,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
         "term" to File(dictionariesDir, "term"),
         "frequency" to File(dictionariesDir, "frequency"),
         "pitch" to File(dictionariesDir, "pitch"),
+        "kanji" to File(dictionariesDir, "kanji"),
     )
 
     val allDictNames = typeDirs.values.flatMap { dir ->
@@ -159,6 +160,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
         termPaths = pathsForType("term"),
         freqPaths = pathsForType("frequency"),
         pitchPaths = pathsForType("pitch"),
+        kanjiPaths = pathsForType("kanji"),
     )
     val currentProfileHash = activeProfile.hashCode()
 
@@ -166,6 +168,12 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
     lastProfileHash = currentProfileHash
     lastDictDirModified = currentModified
     return result
+}
+
+private fun isKanjiChar(ch: String): Boolean {
+    if (ch.length != 1) return false
+    val cp = ch.codePointAt(0)
+    return cp in 0x4E00..0x9FFF || cp in 0x3400..0x4DBF || cp in 0xF900..0xFAFF
 }
 
 data object DictionaryTab : Tab {
@@ -599,6 +607,47 @@ data object DictionaryTab : Tab {
                     },
                     onAnkiLookup = onAnkiLookup,
                     onRecursiveLookup = { word, _, _, _, _ -> stackLookup(word) },
+                    onKanjiLookup = { char ->
+                        val wv = retainedWebView
+                        if (wv != null && isKanjiChar(char)) {
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val paths = getDictionaryPaths(context, activeProfile)
+                                    if (paths.kanjiPaths.isEmpty()) return@launch
+                                    val kanjiResult = sessionManager.queryKanji(char) ?: return@launch
+                                    val kanjiJson = run {
+                                        val root = org.json.JSONObject()
+                                        root.put("character", kanjiResult.character)
+                                        val entriesArray = org.json.JSONArray()
+                                        for (entry in kanjiResult.entries) {
+                                            val e = org.json.JSONObject()
+                                            e.put("dictName", entry.dictName)
+                                            e.put("onyomi", org.json.JSONArray(entry.onyomi.split(",").map { it.trim() }.filter { it.isNotEmpty() }))
+                                            e.put("kunyomi", org.json.JSONArray(entry.kunyomi.split(",").map { it.trim() }.filter { it.isNotEmpty() }))
+                                            e.put("tags", entry.tags)
+                                            e.put("definitions", org.json.JSONArray(entry.definitions.toList()))
+                                            val statsArray = org.json.JSONArray()
+                                            for ((statName, statValue) in entry.stats) {
+                                                val s = org.json.JSONObject()
+                                                s.put("name", statName)
+                                                s.put("value", statValue)
+                                                statsArray.put(s)
+                                            }
+                                            e.put("stats", statsArray)
+                                            entriesArray.put(e)
+                                        }
+                                        root.put("entries", entriesArray)
+                                        root.toString()
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        val state = wv.tag as? DictionaryWebViewState
+                                        state?.kanjiPayloadBridge?.rawKanjiJson = kanjiJson
+                                        wv.evaluateJavascript("KanjiRenderer.clear(); KanjiRenderer.render(JSON.parse(KanjiPayloadBridge.getKanjiResult()));", null)
+                                    }
+                                } catch (_: Exception) { }
+                            }
+                        }
+                    },
                     onTabSelect = { idx ->
                         if (idx in lookupStack.indices) activeTabIndex = idx
                     },
@@ -696,10 +745,19 @@ data object DictionaryTab : Tab {
                     termPaths = paths.termPaths.toTypedArray(),
                     freqPaths = paths.freqPaths.toTypedArray(),
                     pitchPaths = paths.pitchPaths.toTypedArray(),
+                    kanjiPaths = paths.kanjiPaths.toTypedArray(),
                 )
                 cachedStyles = HoshiDicts.getStyles(activeSession).toList()
                 configuredPaths = paths
             }
+        }
+
+        @Synchronized
+        fun queryKanji(char: String): chimahon.KanjiResult? {
+            val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
+            return try {
+                HoshiDicts.queryKanji(activeSession, char)
+            } catch (_: Exception) { null }
         }
 
         @Synchronized
