@@ -27,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.os.bundleOf
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.FragmentManager
@@ -287,7 +286,9 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
 
         fun getInstance(sourceId: Long): SourcePreferencesFragment {
             return SourcePreferencesFragment().apply {
-                arguments = bundleOf(SOURCE_ID to sourceId)
+                arguments = Bundle().apply {
+                    putLong(SOURCE_ID, sourceId)
+                }
             }
         }
     }

@@ -74,6 +74,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 object SettingsTrackingScreen : SearchableSettings {
+    @Suppress("unused")
     private fun readResolve(): Any = SettingsTrackingScreen
 
     @ReadOnlyComposable
@@ -122,7 +123,7 @@ object SettingsTrackingScreen : SearchableSettings {
             .filter { it is EnhancedTracker }
             .partition { service ->
                 val acceptedSources = (service as EnhancedTracker).getAcceptedSources()
-                sourceManager.getCatalogueSources().any { it::class.qualifiedName in acceptedSources }
+                sourceManager.getAll().any { it::class.qualifiedName in acceptedSources }
             }
         val enhancedAnimeTrackers = trackerManager.trackers
             .filter { it is EnhancedAnimeTracker }

@@ -57,7 +57,7 @@ class SyncManager(
         SYNCYOMI(1),
         GOOGLE_DRIVE(2),
         // KMK -->
-        WebDAV(3),
+        WEB_DAV(3),
         // KMK <--
         ;
 
@@ -88,7 +88,7 @@ class SyncManager(
             chapters = syncOptions.chapters,
             tracking = syncOptions.tracking,
             history = syncOptions.history,
-            extensionRepoSettings = syncOptions.extensionRepoSettings,
+            extensionStores = syncOptions.extensionStores,
             appSettings = syncOptions.appSettings,
             sourceSettings = syncOptions.sourceSettings,
             privateSettings = syncOptions.privateSettings,
@@ -115,9 +115,9 @@ class SyncManager(
             backupAnimeCategories = backupCreator.backupAnimeCategories(backupOptions),
             backupAnimeSources = backupCreator.backupAnimeSources(backupAnime),
             backupPreferences = backupCreator.backupAppPreferences(backupOptions),
-            backupExtensionRepo = backupCreator.backupExtensionRepos(backupOptions),
             backupAnimeExtensionRepo = backupCreator.backupAnimeExtensionRepos(backupOptions),
             backupSourcePreferences = backupCreator.backupSourcePreferences(backupOptions),
+            backupExtensionStores = backupCreator.backupExtensionStores(backupOptions),
 
             // SY -->
             backupSavedSearches = backupCreator.backupSavedSearches(backupOptions),
@@ -155,7 +155,7 @@ class SyncManager(
             }
 
             // KMK -->
-            SyncService.WebDAV -> {
+            SyncService.WEB_DAV -> {
                 WebDavSyncService(context, json, syncPreferences, notifier)
             }
             // KMK <--
@@ -200,7 +200,7 @@ class SyncManager(
             backupSources = remoteBackup.backupSources,
             backupPreferences = remoteBackup.backupPreferences,
             backupSourcePreferences = remoteBackup.backupSourcePreferences,
-            backupExtensionRepo = remoteBackup.backupExtensionRepo,
+            backupExtensionStores = remoteBackup.backupExtensionStores,
             backupAnime = remoteBackup.backupAnime,
             backupAnimeCategories = remoteBackup.backupAnimeCategories,
             backupAnimeSources = remoteBackup.backupAnimeSources,
@@ -241,10 +241,8 @@ class SyncManager(
                     appSettings = true,
                     sourceSettings = true,
                     libraryEntries = true,
-                    extensionRepoSettings = true,
-                    // Chimahon -->
+                    extensionStores = true,
                     novels = true,
-                    // Chimahon <--
                     animeEntries = true,
                 ),
             )

@@ -1,9 +1,9 @@
 [versions]
-compose-bom = "2026.02.00"
+compose-bom = "2026.06.01"
 constraint-layout = "1.1.1"
 
 [libraries]
-activity = "androidx.activity:activity-compose:1.12.4"
+activity = "androidx.activity:activity-compose:1.13.0"
 bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 foundation = { module = "androidx.compose.foundation:foundation" }
 animation = { module = "androidx.compose.animation:animation" }
@@ -20,4 +20,4 @@ material-icons = { module = "androidx.compose.material:material-icons-extended" 
 constraintlayout = { module = "androidx.constraintlayout:constraintlayout-compose", version.ref = "constraint-layout" }
 
 glance = "androidx.glance:glance-appwidget:1.1.1"
-colorpicker = {module = "com.github.skydoves:colorpicker-compose", version = "1.1.3"}
+colorpicker = {module = "com.github.skydoves:colorpicker-compose", version = "1.2.0"}

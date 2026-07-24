@@ -5,6 +5,7 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -31,6 +32,7 @@ class ChapterRepositoryImpl(
                         chapter.dateFetch,
                         chapter.dateUpload,
                         chapter.version,
+                        chapter.memo,
                     )
                     val lastInsertId = chaptersQueries.selectLastInsertedRowId().executeAsOne()
                     chapter.copy(id = lastInsertId)
@@ -68,6 +70,7 @@ class ChapterRepositoryImpl(
                     chapterId = chapterUpdate.id,
                     version = chapterUpdate.version,
                     isSyncing = 0,
+                    memo = chapterUpdate.memo?.let(MemoColumnAdapter::encode),
                     ocrReady = chapterUpdate.isOcrReady,
                 )
             }
@@ -194,40 +197,4 @@ class ChapterRepositoryImpl(
     }
     // SY <--
 
-    // Chimahon: Chapter factory with OCR support
-    private fun mapChapter(
-        id: Long,
-        mangaId: Long,
-        url: String,
-        name: String,
-        scanlator: String?,
-        read: Boolean,
-        bookmark: Boolean,
-        lastPageRead: Long,
-        chapterNumber: Double,
-        sourceOrder: Long,
-        dateFetch: Long,
-        dateUpload: Long,
-        lastModifiedAt: Long,
-        version: Long,
-        @Suppress("UNUSED_PARAMETER")
-        isSyncing: Long,
-        ocrReady: Boolean,
-    ): Chapter = Chapter(
-        id = id,
-        mangaId = mangaId,
-        read = read,
-        bookmark = bookmark,
-        lastPageRead = lastPageRead,
-        dateFetch = dateFetch,
-        sourceOrder = sourceOrder,
-        url = url,
-        name = name,
-        dateUpload = dateUpload,
-        chapterNumber = chapterNumber,
-        scanlator = scanlator,
-        lastModifiedAt = lastModifiedAt,
-        version = version,
-        isOcrReady = ocrReady,
-    )
 }

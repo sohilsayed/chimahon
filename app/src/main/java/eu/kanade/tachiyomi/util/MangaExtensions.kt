@@ -50,13 +50,25 @@ suspend fun Manga.updateLocalCoverFromSourceFetch(
     val generatedCover = sourceManga.thumbnail_url?.takeIf { it.isNotBlank() } ?: return
     if (!source.isLocal() || generatedCover == thumbnailUrl) return
 
-    updateManga.awaitUpdateFromSource(this, sourceManga, manualFetch = false, coverCache)
+    updateManga.await(
+        tachiyomi.domain.manga.model.MangaUpdate(
+            id = id,
+            thumbnailUrl = sourceManga.thumbnail_url,
+            coverLastModified = if (sourceManga.thumbnail_url != thumbnailUrl) {
+                coverCache.deleteFromCache(this, false)
+                java.time.Instant.now().toEpochMilli()
+            } else {
+                null
+            },
+            initialized = true,
+        ),
+    )
 }
 
 fun Manga.removeCovers(coverCache: CoverCache = Injekt.get()): Manga {
     if (isLocal()) return this
     return if (coverCache.deleteFromCache(this, true) > 0) {
-        return copy(coverLastModified = Instant.now().toEpochMilli())
+        copy(coverLastModified = Instant.now().toEpochMilli())
     } else {
         this
     }

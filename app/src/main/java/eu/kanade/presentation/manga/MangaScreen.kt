@@ -94,10 +94,8 @@ import eu.kanade.tachiyomi.source.online.all.EHentai
 import eu.kanade.tachiyomi.source.online.all.Lanraragi
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.source.online.all.NHentai
+import eu.kanade.tachiyomi.source.online.all.Pururin
 import eu.kanade.tachiyomi.source.online.english.EightMuses
-import eu.kanade.tachiyomi.source.online.english.HBrowse
-import eu.kanade.tachiyomi.source.online.english.Pururin
-import eu.kanade.tachiyomi.source.online.english.Tsumino
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
 import eu.kanade.tachiyomi.ui.manga.MergedMangaData
@@ -109,12 +107,10 @@ import exh.source.getMainSource
 import exh.source.isEhBasedManga
 import exh.ui.metadata.adapters.EHentaiDescription
 import exh.ui.metadata.adapters.EightMusesDescription
-import exh.ui.metadata.adapters.HBrowseDescription
 import exh.ui.metadata.adapters.LanraragiDescription
 import exh.ui.metadata.adapters.MangaDexDescription
 import exh.ui.metadata.adapters.NHentaiDescription
 import exh.ui.metadata.adapters.PururinDescription
-import exh.ui.metadata.adapters.TsuminoDescription
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.missingChaptersCount
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -195,7 +191,7 @@ fun MangaScreen(
     onChapterSwipe: (ChapterList.Item, LibraryPreferences.ChapterSwipeAction) -> Unit,
 
     // Chapter selection
-    onChapterSelected: (ChapterList.Item, Boolean, Boolean, Boolean) -> Unit,
+    onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
 
@@ -414,7 +410,7 @@ private fun MangaScreenSmallImpl(
     onChapterSwipe: (ChapterList.Item, LibraryPreferences.ChapterSwipeAction) -> Unit,
 
     // Chapter selection
-    onChapterSelected: (ChapterList.Item, Boolean, Boolean, Boolean) -> Unit,
+    onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
 
@@ -884,7 +880,7 @@ private fun MangaScreenLargeImpl(
     onChapterSwipe: (ChapterList.Item, LibraryPreferences.ChapterSwipeAction) -> Unit,
 
     // Chapter selection
-    onChapterSelected: (ChapterList.Item, Boolean, Boolean, Boolean) -> Unit,
+    onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
 
@@ -1329,7 +1325,7 @@ private fun LazyListScope.sharedChapterItems(
     // SY <--
     onChapterClicked: (Chapter) -> Unit,
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
-    onChapterSelected: (ChapterList.Item, Boolean, Boolean, Boolean) -> Unit,
+    onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onChapterSwipe: (ChapterList.Item, LibraryPreferences.ChapterSwipeAction) -> Unit,
 ) {
     items(
@@ -1400,14 +1396,14 @@ private fun LazyListScope.sharedChapterItems(
                     chapterSwipeStartAction = chapterSwipeStartAction,
                     chapterSwipeEndAction = chapterSwipeEndAction,
                     onLongClick = {
-                        onChapterSelected(item, !item.selected, true, true)
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onChapterSelected(item, !item.selected, true)
                     },
                     onClick = {
                         onChapterItemClick(
                             chapterItem = item,
                             isAnyChapterSelected = isAnyChapterSelected,
-                            onToggleSelection = { onChapterSelected(item, !item.selected, true, false) },
+                            onToggleSelection = { onChapterSelected(item, !item.selected, false) },
                             onChapterClicked = onChapterClicked,
                         )
                     },
@@ -1462,14 +1458,8 @@ fun metadataDescription(source: Source): MetadataDescriptionComposable? {
             is EightMuses -> { state, openMetadataViewer, _ ->
                 EightMusesDescription(state, openMetadataViewer)
             }
-            is HBrowse -> { state, openMetadataViewer, _ ->
-                HBrowseDescription(state, openMetadataViewer)
-            }
             is Pururin -> { state, openMetadataViewer, _ ->
                 PururinDescription(state, openMetadataViewer)
-            }
-            is Tsumino -> { state, openMetadataViewer, _ ->
-                TsuminoDescription(state, openMetadataViewer)
             }
             is Lanraragi -> { state, openMetadataViewer, _ ->
                 LanraragiDescription(state, openMetadataViewer)

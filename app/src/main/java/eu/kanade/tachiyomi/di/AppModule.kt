@@ -62,6 +62,7 @@ import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
 import tachiyomi.core.common.storage.UniFileTempFileManager
+import tachiyomi.data.Chapters
 import tachiyomi.data.Database
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.DatabaseHandler
@@ -70,6 +71,7 @@ import tachiyomi.data.FetchTypeColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.MangaUpdateStrategyColumnAdapter
 import tachiyomi.data.Mangas
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.Reading_sessions
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.handlers.anime.AndroidAnimeDatabaseHandler
@@ -135,6 +137,10 @@ class AppModule(val app: Application) : InjektModule {
                 mangasAdapter = Mangas.Adapter(
                     genreAdapter = StringListColumnAdapter,
                     update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
+                    memoAdapter = MemoColumnAdapter,
+                ),
+                chaptersAdapter = Chapters.Adapter(
+                    memoAdapter = MemoColumnAdapter,
                 ),
                 reading_sessionsAdapter = Reading_sessions.Adapter(
                     read_atAdapter = DateColumnAdapter,
@@ -228,7 +234,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { AnimeBackgroundCache(app) }
         addSingletonFactory { PagePreviewCache(app) }
 
-        addSingletonFactory { NetworkHelper(app, get(), isDebugBuildType) }
+        addSingletonFactory { NetworkHelper(app, get(), get()) }
         addSingletonFactory { JavaScriptEngine(app) }
 
         addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }

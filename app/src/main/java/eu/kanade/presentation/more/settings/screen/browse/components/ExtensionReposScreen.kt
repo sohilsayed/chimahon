@@ -3,30 +3,18 @@
 package eu.kanade.presentation.more.settings.screen.browse.components
 
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Help
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
 import eu.kanade.presentation.category.components.CategoryFloatingActionButton
 import eu.kanade.presentation.components.AppBar
-import eu.kanade.presentation.more.settings.screen.browse.RepoScreenState
-import eu.kanade.tachiyomi.util.system.openInBrowser
-import kotlinx.collections.immutable.persistentSetOf
-import mihon.domain.extensionrepo.interactor.CreateExtensionRepo.Companion.KOMIKKU_SIGNATURE
-import mihon.domain.extensionrepo.interactor.CreateExtensionRepo.Companion.REPO_HELP
-import mihon.domain.extensionrepo.interactor.CreateExtensionRepo.Companion.REPO_SIGNATURE
+import eu.kanade.presentation.more.settings.screen.browse.AnimeRepoScreenState
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -38,14 +26,10 @@ import tachiyomi.presentation.core.util.plus
 
 @Composable
 fun ExtensionReposScreen(
-    state: RepoScreenState.Success,
+    state: AnimeRepoScreenState.Success,
     onClickCreate: () -> Unit,
     onOpenWebsite: (ExtensionRepo) -> Unit,
     onClickDelete: (String) -> Unit,
-    // KMK -->
-    onClickEnable: (String) -> Unit,
-    onClickDisable: (String) -> Unit,
-    // KMK <--
     onClickRefresh: () -> Unit,
     navigateUp: () -> Unit,
 ) {
@@ -74,22 +58,9 @@ fun ExtensionReposScreen(
         },
     ) { paddingValues ->
         if (state.isEmpty) {
-            val context = LocalContext.current
             EmptyScreen(
                 MR.strings.information_empty_repos,
                 modifier = Modifier.padding(paddingValues),
-                // KMK -->
-                help = {
-                    TextButton(
-                        onClick = { context.openInBrowser(REPO_HELP) },
-                        modifier = Modifier.padding(top = MaterialTheme.padding.small),
-                    ) {
-                        Icon(imageVector = Icons.AutoMirrored.Outlined.Help, contentDescription = null)
-                        Spacer(modifier = Modifier.width(MaterialTheme.padding.extraSmall))
-                        Text(text = stringResource(MR.strings.label_help))
-                    }
-                },
-                // KMK <--
             )
             return@Scaffold
         }
@@ -101,52 +72,6 @@ fun ExtensionReposScreen(
                 PaddingValues(horizontal = MaterialTheme.padding.medium),
             onOpenWebsite = onOpenWebsite,
             onClickDelete = onClickDelete,
-            // KMK -->
-            onClickEnable = onClickEnable,
-            onClickDisable = onClickDisable,
-            disabledRepos = state.disabledRepos,
-            // KMK <--
         )
     }
 }
-
-// KMK -->
-@Preview
-@Composable
-private fun ExtensionReposScreenPreview() {
-    val state = RepoScreenState.Success(
-        repos = persistentSetOf(
-            ExtensionRepo("https://repo", "Komikku", "", "", KOMIKKU_SIGNATURE),
-            ExtensionRepo("https://repo", "Repo", "", "", REPO_SIGNATURE),
-            ExtensionRepo("https://repo", "Other", "", "", "key2"),
-        ),
-        disabledRepos = setOf("https://repo"),
-    )
-    ExtensionReposScreen(
-        state = state,
-        onClickCreate = { },
-        onOpenWebsite = { },
-        onClickDelete = { },
-        onClickEnable = { },
-        onClickDisable = { },
-        onClickRefresh = { },
-        navigateUp = { },
-    )
-}
-
-@Preview
-@Composable
-private fun ExtensionReposScreenEmptyPreview() {
-    val state = RepoScreenState.Success(repos = persistentSetOf())
-    ExtensionReposScreen(
-        state = state,
-        onClickCreate = { },
-        onOpenWebsite = { },
-        onClickDelete = { },
-        onClickEnable = { },
-        onClickDisable = { },
-        onClickRefresh = { },
-        navigateUp = { },
-    )
-}
-// KMK <--

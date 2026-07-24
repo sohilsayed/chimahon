@@ -2,6 +2,9 @@
 
 package eu.kanade.tachiyomi.data.database.models
 
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
+
 class ChapterImpl : Chapter {
 
     override var id: Long? = null
@@ -32,6 +35,7 @@ class ChapterImpl : Chapter {
 
     override var version: Long = 0
 
+    override var memo: JsonObject = JsonObject.EMPTY
     override var ocr_ready: Boolean = false
 
     override fun equals(other: Any?): Boolean {

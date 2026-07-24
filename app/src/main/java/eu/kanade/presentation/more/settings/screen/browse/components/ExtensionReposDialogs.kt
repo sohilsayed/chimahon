@@ -1,7 +1,6 @@
 package eu.kanade.presentation.more.settings.screen.browse.components
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -21,6 +20,7 @@ import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.coroutines.delay
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import tachiyomi.i18n.MR
+// import tachiyomi.i18n.ank.AMR
 import tachiyomi.presentation.core.i18n.stringResource
 import kotlin.time.Duration.Companion.seconds
 
@@ -58,11 +58,10 @@ fun ExtensionRepoCreateDialog(
         },
         text = {
             Column {
-                Text(text = stringResource(MR.strings.action_add_repo_message, stringResource(MR.strings.app_name)))
+                Text(text = stringResource(MR.strings.action_add_repo_message))
 
                 OutlinedTextField(
                     modifier = Modifier
-                        .fillMaxWidth()
                         .focusRequester(focusRequester),
                     value = name,
                     onValueChange = { name = it },
