@@ -136,7 +136,7 @@ class AppModule(val app: Application) : InjektModule {
                 ),
                 mangasAdapter = Mangas.Adapter(
                     genreAdapter = StringListColumnAdapter,
-                    update_strategyAdapter = UpdateStrategyColumnAdapter,
+                    update_strategyAdapter = MangaUpdateStrategyColumnAdapter,
                     memoAdapter = MemoColumnAdapter,
                 ),
                 chaptersAdapter = Chapters.Adapter(

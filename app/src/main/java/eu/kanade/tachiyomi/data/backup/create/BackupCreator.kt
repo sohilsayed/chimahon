@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupAnime
 import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
@@ -191,8 +192,6 @@ class BackupCreator(
         return sourcesBackupCreator(mangas)
     }
 
-    internal suspend fun backupAppPreferences(options: BackupOptions): List<BackupPreference> {
-
     suspend fun backupAnimeCategories(options: BackupOptions): List<BackupCategory> {
         if (!options.categories) return emptyList()
 
@@ -226,7 +225,7 @@ class BackupCreator(
     }
 
     suspend fun backupAnimeExtensionRepos(options: BackupOptions): List<BackupExtensionRepos> {
-        if (!options.extensionRepoSettings) return emptyList()
+        if (!options.extensionStores) return emptyList<BackupExtensionRepos>()
 
         return animeExtensionRepoBackupCreator()
     }

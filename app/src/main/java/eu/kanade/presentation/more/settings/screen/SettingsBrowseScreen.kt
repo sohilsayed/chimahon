@@ -26,6 +26,7 @@ import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
+import androidx.compose.runtime.collectAsState
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -47,8 +48,8 @@ object SettingsBrowseScreen : SearchableSettings {
         val getExtensionStoreCountAsFlow = remember { Injekt.get<GetExtensionStoreCountAsFlow>() }
         val getAnimeExtensionRepoCount = remember { Injekt.get<GetAnimeExtensionRepoCount>() }
 
-        val reposCount by getExtensionStoreCountAsFlow().collectAsState(0)
-        val animeReposCount by getAnimeExtensionRepoCount.subscribe().collectAsState(0)
+        val reposCount by getExtensionStoreCountAsFlow().collectAsState(0L)
+        val animeReposCount by getAnimeExtensionRepoCount.subscribe().collectAsState(0L)
 
         // SY -->
         val scope = rememberCoroutineScope()
@@ -153,7 +154,7 @@ object SettingsBrowseScreen : SearchableSettings {
                     ),
                     Preference.PreferenceItem.TextPreference(
                         title = "${stringResource(MR.strings.label_anime)} ${stringResource(MR.strings.label_extension_repos)}",
-                        subtitle = pluralStringResource(MR.plurals.num_repos, animeReposCount, animeReposCount),
+                        subtitle = pluralStringResource(MR.plurals.num_repos, animeReposCount.toInt(), animeReposCount),
                         onClick = {
                             navigator.push(AnimeExtensionReposScreen())
                         },

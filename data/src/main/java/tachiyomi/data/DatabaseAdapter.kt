@@ -58,4 +58,3 @@ object FetchTypeColumnAdapter : ColumnAdapter<FetchType, Long> {
 
     override fun encode(value: FetchType): Long = value.ordinal.toLong()
 }
-}

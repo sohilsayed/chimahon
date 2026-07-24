@@ -1745,4 +1745,20 @@
     <string name="show_episode_number">Show episode number</string>
     <string name="sort_by_episode_number">Episode number</string>
     <string name="unseen">Unseen</string>
+
+    <!-- Extension repo strings -->
+    <string name="label_extension_repos">Extension repos</string>
+    <string name="action_add_repo">Add repo</string>
+    <string name="action_add_repo_message">Enter the repo URL</string>
+    <string name="label_add_repo_input">Repo URL</string>
+    <string name="action_delete_repo">Delete repo</string>
+    <string name="delete_repo_confirmation">Delete repo \"%1$s\"?</string>
+    <string name="action_replace_repo">Replace repo</string>
+    <string name="action_replace_repo_title">Replace repo</string>
+    <string name="action_replace_repo_message">Replace \"%1$s\" with \"%2$s\"?</string>
+    <string name="add_repo_confirmation">Add repo \"%1$s\"?</string>
+    <string name="information_empty_repos">No repos yet</string>
+    <string name="invalid_repo_name">Invalid repo name</string>
+    <string name="error_repo_exists">Repo already exists</string>
+    <string name="extensionRepo_settings">Extension repo</string>
 </resources>

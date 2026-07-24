@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupEpisode
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupNovel
 import eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory
@@ -72,9 +73,9 @@ abstract class SyncService(
             localSyncData.backup?.backupAnimeSources,
             remoteSyncData.backup?.backupAnimeSources,
         )
-        val mergedExtensionRepoList = mergeExtensionRepoLists(
-            localSyncData.backup?.backupExtensionRepo,
-            remoteSyncData.backup?.backupExtensionRepo,
+        val mergedExtensionStoreList = mergeExtensionStoreLists(
+            localSyncData.backup?.backupExtensionStores,
+            remoteSyncData.backup?.backupExtensionStores,
         )
         val mergedAnimeExtensionRepoList = mergeExtensionRepoLists(
             localSyncData.backup?.backupAnimeExtensionRepo,
@@ -113,7 +114,7 @@ abstract class SyncService(
             backupManga = mergedMangaList,
             backupCategories = mergedCategoriesList,
             backupSources = mergedSourcesList,
-            backupExtensionRepo = mergedExtensionRepoList,
+            backupExtensionStores = mergedExtensionStoreList,
             backupAnime = mergedAnimeList,
             backupAnimeCategories = mergedAnimeCategoriesList,
             backupAnimeSources = mergedAnimeSourcesList,
@@ -514,6 +515,14 @@ abstract class SyncService(
                 else -> null
             }
         }
+    }
+
+    private fun mergeExtensionStoreLists(
+        localStores: List<BackupExtensionStore>?,
+        remoteStores: List<BackupExtensionStore>?,
+    ): List<BackupExtensionStore> {
+        return (localStores.orEmpty() + remoteStores.orEmpty())
+            .distinctBy { it.indexUrl }
     }
 
     private fun mergeExtensionRepoLists(

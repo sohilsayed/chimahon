@@ -842,7 +842,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     subtitle = stringResource(
                         SYMR.strings.toggle_delegated_sources_summary,
                         stringResource(MR.strings.app_name),
-                        AndroidSourceManager.DELEGATED_SOURCES.values
+                        AndroidSourceManager.DELEGATED_SOURCES
                             .filter { it.sourceName !in listOf("Pururin", "Tsumino", "HBrowse", "8Muses", "NHentai") }
                             .map { it.sourceName }.distinct()
                             .joinToString(),

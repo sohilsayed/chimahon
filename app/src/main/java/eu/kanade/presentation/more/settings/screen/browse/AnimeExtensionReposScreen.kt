@@ -38,14 +38,10 @@ class AnimeExtensionReposScreen : Screen() {
         val successState = state as AnimeRepoScreenState.Success
 
         ExtensionReposScreen(
-            state = RepoScreenState.Success(
-                repos = successState.repos,
-            ),
+            state = successState,
             onClickCreate = { screenModel.showDialog(AnimeRepoDialog.Create) },
             onOpenWebsite = { context.openInBrowser(it.website) },
             onClickDelete = { screenModel.showDialog(AnimeRepoDialog.Delete(it)) },
-            onClickEnable = {},
-            onClickDisable = {},
             onClickRefresh = { screenModel.refreshRepos() },
             navigateUp = navigator::pop,
         )

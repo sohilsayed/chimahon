@@ -25,7 +25,6 @@ data class LegacyBackup(
             backupSources = backupSources,
             backupPreferences = backupPreferences,
             backupSourcePreferences = backupSourcePreferences,
-            backupExtensionRepo = backupExtensionRepo,
             backupAnime = backupAnime,
             backupAnimeCategories = backupAnimeCategories,
             backupAnimeSources = backupAnimeSources,
@@ -47,7 +46,7 @@ data class Backup(
     @ProtoNumber(501) val backupAnime: List<BackupAnime> = emptyList(),
     @ProtoNumber(502) var backupAnimeCategories: List<BackupCategory> = emptyList(),
     @ProtoNumber(503) var backupAnimeSources: List<BackupAnimeSource> = emptyList(),
-    @ProtoNumber(505) var backupAnimeExtensionRepo: List<BackupExtensionStore> = emptyList(),
+    @ProtoNumber(505) var backupAnimeExtensionRepo: List<BackupExtensionRepos> = emptyList(),
     // SY specific values
     @ProtoNumber(600) var backupSavedSearches: List<BackupSavedSearch> = emptyList(),
     // KMK -->

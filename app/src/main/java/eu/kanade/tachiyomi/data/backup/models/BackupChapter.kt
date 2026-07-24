@@ -46,24 +46,9 @@ class BackupChapter(
     }
 }
 
-val backupChapterMapper = {
-        _: Long,
-        _: Long,
-        url: String,
-        name: String,
-        scanlator: String?,
-        read: Boolean,
-        bookmark: Boolean,
-        lastPageRead: Long,
-        chapterNumber: Double,
-        sourceOrder: Long,
-        dateFetch: Long,
-        dateUpload: Long,
-        lastModifiedAt: Long,
-        version: Long,
-        _: Long,
-        memo: JsonObject,
-    ->
+val backupChapterMapper: (
+    Long, Long, String, String, String?, Boolean, Boolean, Long, Double, Long, Long, Long, Long, Long, Long, JsonObject, Boolean,
+) -> BackupChapter = { _, _, url, name, scanlator, read, bookmark, lastPageRead, chapterNumber, sourceOrder, dateFetch, dateUpload, lastModifiedAt, version, _, memo, _ ->
     BackupChapter(
         url = url,
         name = name,
