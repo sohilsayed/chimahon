@@ -54,7 +54,7 @@ internal class DictionaryReadyBridge(
 }
 
 /**
- * Bridge for passing large payloads (JSON, HTML) from Kotlin to JS without
+ * JavaScript bridge for passing large payloads (JSON, HTML) from Kotlin to JS without
  * embedding them in evaluateJavascript() strings. The JS side calls
  * PayloadBridge.getPayloadJson() or PayloadBridge.getEntry(index) to pull
  * the data natively — avoids the overhead of encoding 300KB+ as a JS string literal.

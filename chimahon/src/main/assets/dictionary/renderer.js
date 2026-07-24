@@ -692,6 +692,12 @@
            (cp >= 0xFF00 && cp <= 0xFFEF);
   }
 
+  function isKanjiCodepoint(cp) {
+    return (cp >= 0x3400 && cp <= 0x4DBF) ||
+           (cp >= 0x4E00 && cp <= 0x9FFF) ||
+           (cp >= 0xF900 && cp <= 0xFAFF);
+  }
+
   function isWordChar(ch) {
     return isCJK(ch) || /[\w\u00C0-\u024F\u0600-\u06FF]/.test(ch);
   }
@@ -1046,13 +1052,21 @@
     _listenersInstalled = true;
 
     document.addEventListener('click', (e) => {
+      const target = e.target;
+      if (!target) return;
+
+      // If tapping on a rendered kanji-tappable span, route as kanji-only lookup
+      const kanjiSpan = target.closest('.kanji-tappable');
+      if (kanjiSpan) {
+        navigateTo(CHIMA_SCHEME + '//kanji?q=' + encodeURIComponent(kanjiSpan.textContent));
+        e.stopPropagation();
+        return;
+      }
+
       // If the user has an active text selection, don't trigger a lookup.
-      // This is a safety check, although 'click' shouldn't fire on long-press.
       if (window.getSelection().toString().trim().length > 0) return;
 
       // Skip interactive controls — buttons, dict tags, inflection toggles, etc.
-      const target = e.target;
-      if (!target) return;
       if (target.closest('button, .anki-add-btn, .lookup-tab, .entry-deinflection-row, .tag, .dictionary-header, details, summary, a, .gloss-link, .gloss-sc-a')) return;
 
       const word = extractTextAtPoint(e.clientX, e.clientY);
@@ -1690,7 +1704,13 @@
   }
 
   function isKana(ch) {
-    return (ch >= '\u3041' && ch <= '\u3096') || (ch >= '\u30a1' && ch <= '\u30fa') || ch === '々' || ch === 'ヶ';
+    return (ch >= '\u3041' && ch <= '\u3096') || (ch >= '\u30a1' && ch <= '\u30fa');
+  }
+
+  function katakanaToHiragana(str) {
+    return str.replace(/[\u30a1-\u30fa]/g, function(ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0x60);
+    });
   }
 
   function distributeFurigana(expression, reading) {
@@ -1698,35 +1718,112 @@
       return [{text: expression, reading: ''}];
     }
 
-    let start = 0;
-    while (start < expression.length && start < reading.length && expression[start] === reading[start]) {
-      start++;
+    const readingNorm = katakanaToHiragana(reading);
+
+    const groups = [];
+    let cur = null;
+    for (const c of expression) {
+      const kana = isKana(c);
+      if (cur && cur.kana === kana) { cur.text += c; }
+      else { cur = {kana, text: c}; groups.push(cur); }
     }
 
-    let endExpression = expression.length - 1;
-    let endReading = reading.length - 1;
-    while (endExpression >= start && endReading >= start && expression[endExpression] === reading[endReading]) {
-      endExpression--;
-      endReading--;
+    if (groups.length === 1) {
+      if (groups[0].kana) return [{text: expression, reading: ''}];
+      return [{text: expression, reading: reading}];
     }
 
-    const segments = [];
-    if (start > 0) {
-      segments.push({text: expression.substring(0, start), reading: ''});
+    // Pass 1: strict Yomitan-style matching (kana must appear in reading)
+    function tryMatch(groupIdx, readIdx) {
+      if (groupIdx >= groups.length) {
+        return readIdx >= reading.length ? [] : null;
+      }
+      const group = groups[groupIdx];
+      if (group.kana) {
+        const kn = katakanaToHiragana(group.text);
+        if (readingNorm.startsWith(kn, readIdx)) {
+          const rest = tryMatch(groupIdx + 1, readIdx + group.text.length);
+          if (rest !== null) return [{text: group.text, reading: ''}].concat(rest);
+        }
+        return null;
+      } else {
+        let result = null;
+        for (let i = reading.length; i >= readIdx + group.text.length; --i) {
+          const rest = tryMatch(groupIdx + 1, i);
+          if (rest !== null) {
+            if (result !== null) return null;
+            result = [{text: group.text, reading: reading.substring(readIdx, i)}].concat(rest);
+          }
+        }
+        return result;
+      }
     }
 
-    if (endExpression >= start) {
-      segments.push({
-        text: expression.substring(start, endExpression + 1),
-        reading: reading.substring(start, endReading + 1)
-      });
+    const strict = tryMatch(0, 0);
+    if (strict !== null) return strict;
+
+    // Pass 2: edge-match kana from start/end, distribute middle to kanji
+    let readPos = 0;
+    let gFront = 0;
+    while (gFront < groups.length && groups[gFront].kana) {
+      const kn = katakanaToHiragana(groups[gFront].text);
+      if (readingNorm.startsWith(kn, readPos)) { readPos += groups[gFront].text.length; gFront++; }
+      else break;
     }
 
-    if (endExpression < expression.length - 1) {
-      segments.push({text: expression.substring(endExpression + 1), reading: ''});
+    let gBack = groups.length - 1;
+    let readBack = reading.length;
+    while (gBack >= gFront && groups[gBack].kana) {
+      const kn = katakanaToHiragana(groups[gBack].text);
+      const endPos = readBack - groups[gBack].text.length;
+      if (endPos >= readPos && readingNorm.substring(endPos, readBack) === kn) { readBack = endPos; gBack--; }
+      else break;
     }
 
-    return segments;
+    const result = [];
+    for (let i = 0; i < gFront; i++) result.push({text: groups[i].text, reading: ''});
+
+    const middle = groups.slice(gFront, gBack + 1);
+    if (middle.length > 0) {
+      const midReading = reading.substring(readPos, readBack);
+      const kanjiGroups = middle.filter(g => !g.kana);
+      const totalKanjiLen = kanjiGroups.reduce((s, g) => s + g.text.length, 0);
+      if (totalKanjiLen > 0) {
+        let rp = readPos;
+        for (const g of middle) {
+          if (g.kana) {
+            result.push({text: g.text, reading: ''});
+          } else {
+            const take = Math.round((g.text.length / totalKanjiLen) * midReading.length);
+            const segEnd = Math.min(rp + Math.max(take, g.text.length), readBack);
+            result.push({text: g.text, reading: reading.substring(rp, segEnd)});
+            rp = segEnd;
+          }
+        }
+      } else {
+        for (const g of middle) result.push({text: g.text, reading: ''});
+      }
+    }
+
+    for (let i = gBack + 1; i < groups.length; i++) result.push({text: groups[i].text, reading: ''});
+
+    if (result.some(s => s.reading !== '')) return result;
+
+    return [{text: expression, reading: reading}];
+  }
+
+  function appendWithKanjiSpans(parent, text) {
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (isKanjiCodepoint(ch.codePointAt(0))) {
+        const span = document.createElement('span');
+        span.className = 'kanji-tappable';
+        span.textContent = ch;
+        parent.appendChild(span);
+      } else {
+        parent.appendChild(document.createTextNode(ch));
+      }
+    }
   }
 
   function createHeadwordNode(expression, reading, termTags) {
@@ -1747,7 +1844,7 @@
         const ruby = document.createElement('ruby');
         ruby.className = 'headword-text-container headword-term';
         if (popularityClass) ruby.classList.add(popularityClass);
-        ruby.textContent = segment.text;
+        appendWithKanjiSpans(ruby, segment.text);
 
         const rt = document.createElement('rt');
         rt.className = 'headword-furigana';
@@ -1759,7 +1856,7 @@
         const termNode = document.createElement('span');
         termNode.className = 'headword-term';
         if (popularityClass) termNode.classList.add(popularityClass);
-        termNode.textContent = segment.text;
+        appendWithKanjiSpans(termNode, segment.text);
         headword.appendChild(termNode);
       }
     }
@@ -2807,6 +2904,10 @@
       } else {
         const fragment = document.createDocumentFragment();
         for (const result of results) {
+          if (result.kanji) {
+            fragment.appendChild(KanjiRenderer.renderEntry(result.kanji, result.matched));
+            continue;
+          }
           const diagram = payload.showPitchDiagram !== false;
           const number = payload.showPitchNumber !== false;
           const text = payload.showPitchText !== false;
@@ -3008,7 +3109,7 @@
       }
     },
 
-    onAudioResults: (id, results) => { /* overriden by UI */ }
+    onAudioResults: (id, results) => { /* overriden by UI */ },
   };
 
   // Scroll state guards for programmatic jumps.

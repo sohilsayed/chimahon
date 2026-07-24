@@ -7,6 +7,7 @@ plugins {
 
 android {
     namespace = "mihon.chimahon"
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         consumerProguardFiles("consumer-rules.pro")
