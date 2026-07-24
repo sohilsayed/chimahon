@@ -75,6 +75,10 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
                     preference = disableLongPressScr,
                     title = stringResource(MR.strings.pref_disable_long_press_screenshot),
                 ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = playerPreferences.singleTapToPause(),
+                    title = stringResource(MR.strings.pref_single_tap_to_pause),
+                ),
             ),
         )
     }

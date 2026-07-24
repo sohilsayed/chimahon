@@ -82,7 +82,7 @@ import uy.kohesive.injekt.api.get
 import kotlin.math.abs
 
 private const val SUBTITLE_SWIPE_TIME_LIMIT_MILLIS = 500L
-private const val SUBTITLE_SWIPE_DOMINANCE_RATIO = 1.5f
+private const val SUBTITLE_SWIPE_DOMINANCE_RATIO = 1.2f
 
 @Composable
 fun GestureHandler(
@@ -103,6 +103,7 @@ fun GestureHandler(
     val controlsShown by viewModel.controlsShown.collectAsState()
     val areControlsLocked by viewModel.areControlsLocked.collectAsState()
     val disableLongPressScr by playerPreferences.disableLongPressScreenshot().collectAsState()
+    val singleTapToPause by playerPreferences.singleTapToPause().collectAsState()
     val seekAmount by viewModel.doubleTapSeekAmount.collectAsState()
     val isSeekingForwards by viewModel.isSeekingForwards.collectAsState()
     var isDoubleTapSeeking by remember { mutableStateOf(false) }
@@ -128,7 +129,7 @@ fun GestureHandler(
     val currentBrightness by viewModel.currentBrightness.collectAsState()
     val volumeBoostingCap = audioPreferences.volumeBoostCap().get()
     val haptics = LocalHapticFeedback.current
-    val subtitleSwipeDistance = with(LocalDensity.current) { 50.dp.toPx() }
+    val subtitleSwipeDistance = with(LocalDensity.current) { 30.dp.toPx() }
 
     Box(
         modifier = modifier
@@ -183,10 +184,20 @@ fun GestureHandler(
                                     delay(doubleTapWindowMillis)
                                     if (lastTapAt == now) {
                                         lastTapAt = 0L
-                                        if (viewModel.controlsShown.value) {
-                                            viewModel.hideControls()
+                                        if (singleTapToPause) {
+                                            if (viewModel.paused.value) {
+                                                viewModel.unpause()
+                                                viewModel.hideControls()
+                                            } else {
+                                                viewModel.pause()
+                                                viewModel.showControls()
+                                            }
                                         } else {
-                                            viewModel.showControls()
+                                            if (viewModel.controlsShown.value) {
+                                                viewModel.hideControls()
+                                            } else {
+                                                viewModel.showControls()
+                                            }
                                         }
                                     }
                                 }

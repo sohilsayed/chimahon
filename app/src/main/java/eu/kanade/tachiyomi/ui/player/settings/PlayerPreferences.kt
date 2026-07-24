@@ -23,6 +23,7 @@ class PlayerPreferences(
 
     fun allowGestures() = preferenceStore.getBoolean("pref_allow_gestures_in_panels", false)
     fun disableLongPressScreenshot() = preferenceStore.getBoolean("pref_disable_long_press_screenshot", false)
+    fun singleTapToPause() = preferenceStore.getBoolean("pref_single_tap_to_pause", false)
     fun showLoadingCircle() = preferenceStore.getBoolean("pref_show_loading", true)
     fun showCurrentChapter() = preferenceStore.getBoolean("pref_show_current_chapter", true)
     fun rememberPlayerBrightness() = preferenceStore.getBoolean("pref_remember_brightness", false)

@@ -1327,6 +1327,13 @@ class PlayerViewModel @JvmOverloads constructor(
             return
         }
 
+        // Reuse existing cue if same text appears again (e.g. after rewind)
+        if (existing != null) {
+            _activeSubtitleCueIndex.update { existing.index }
+            lastSubtitleHistoryText = text
+            return
+        }
+
         lastSubtitleHistoryText = text
         val cue = SubtitleCue(
             index = nextSubtitleCueIndex++,
@@ -1345,6 +1352,13 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun seekToAdjacentSubtitle(forward: Boolean) {
+        // When no parsed subtitle cues are available, use mpv's native sub-seek
+        // which is reliable regardless of playback position
+        if (showingParsedSubtitleTrackId == null) {
+            MPVLib.command(arrayOf("sub-seek", if (forward) "1" else "-1", "primary"))
+            return
+        }
+
         val delaySeconds = currentPrimarySubtitleDelaySeconds()
         val speed = currentSubtitleSpeed()
         val positionSeconds = pos.value.toDouble()
