@@ -86,6 +86,8 @@ import chimahon.dictionary.readDictionaryIndex
 import com.canopus.chimareader.data.FontManager
 import com.hippo.unifile.UniFile
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.ProgressListener
 import eu.kanade.tachiyomi.data.dictionary.DictionaryUpdateJob
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryTitle
@@ -2813,6 +2815,24 @@ private suspend fun importDictionaryFromStream(
                 if (destDir.exists()) destDir.deleteRecursively()
                 importedDir.copyRecursively(destDir, overwrite = true)
                 Log.d(TAG, "importDictionaryFromStream: copied to ${target.type}/$title")
+            }
+
+            // Auto-download kanji stroke font if any kanji dicts were imported
+            if (result.kanjiCount > 0 && !FontManager.hasKanjiStrokeFont(context)) {
+                try {
+                    val fontFile = FontManager.getKanjiStrokeFontFile(context)
+                    Log.d(TAG, "importDictionaryFromStream: downloading kanji stroke font to ${fontFile.absolutePath}")
+                    Injekt.get<NetworkHelper>().downloadFileWithResume(
+                        url = FontManager.KANJI_STROKE_FONT_URL,
+                        outputFile = fontFile,
+                        progressListener = object : ProgressListener {
+                            override fun update(bytesRead: Long, contentLength: Long, done: Boolean) {}
+                        },
+                    )
+                    Log.d(TAG, "importDictionaryFromStream: kanji stroke font downloaded successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "importDictionaryFromStream: failed to download kanji stroke font", e)
+                }
             }
 
             // Add to profile order once (dict name, no type prefix)
