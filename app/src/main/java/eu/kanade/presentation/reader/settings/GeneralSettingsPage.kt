@@ -110,6 +110,11 @@ internal fun GeneralPage(screenModel: ReaderSettingsScreenModel) {
     )
 
     CheckboxItem(
+        label = stringResource(MR.strings.pref_ocr_two_finger_gesture),
+        pref = screenModel.preferences.ocrTwoFingerGestureEnabled(),
+    )
+
+    CheckboxItem(
         label = stringResource(MR.strings.pref_always_show_chapter_transition),
         pref = screenModel.preferences.alwaysShowChapterTransition(),
     )

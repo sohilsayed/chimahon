@@ -1136,7 +1136,9 @@ class ReaderActivity : BaseActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        observeTwoFingerOcrTap(ev)
+        if (readerPreferences.ocrTwoFingerGestureEnabled().get()) {
+            observeTwoFingerOcrTap(ev)
+        }
         return super.dispatchTouchEvent(ev)
     }
 

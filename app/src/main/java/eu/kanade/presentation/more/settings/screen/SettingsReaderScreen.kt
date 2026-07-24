@@ -659,6 +659,11 @@ object SettingsReaderScreen : SearchableSettings {
             title = stringResource(MR.strings.pref_category_ocr),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.ocrTwoFingerGestureEnabled(),
+                    title = stringResource(MR.strings.pref_ocr_two_finger_gesture),
+                    subtitle = stringResource(MR.strings.pref_ocr_two_finger_gesture_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.ocrAutoOnDownload(),
                     title = stringResource(MR.strings.pref_ocr_auto_on_download),
                     subtitle = stringResource(MR.strings.pref_ocr_auto_on_download_summary),
