@@ -417,6 +417,7 @@
     <string name="action_run_ocr">Run OCR</string>
     <string name="action_delete_ocr">Delete OCR data</string>
     <string name="action_ocr">OCR</string>
+    <string name="action_pre_ocr">Pre-OCR chapters</string>
     <string name="ocr_processing">OCR processing</string>
     <string name="ocr_waiting_download">Waiting for download…</string>
     <string name="ocr_status_pending">Pending</string>
@@ -1746,4 +1747,5 @@
     <string name="show_episode_number">Show episode number</string>
     <string name="sort_by_episode_number">Episode number</string>
     <string name="unseen">Unseen</string>
+    <string name="pref_disable_long_press_screenshot">Disable long-press screenshot</string>
 </resources>

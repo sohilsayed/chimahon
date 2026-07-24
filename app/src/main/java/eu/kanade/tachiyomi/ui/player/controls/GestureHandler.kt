@@ -102,6 +102,7 @@ fun GestureHandler(
     val position by viewModel.pos.collectAsState()
     val controlsShown by viewModel.controlsShown.collectAsState()
     val areControlsLocked by viewModel.areControlsLocked.collectAsState()
+    val disableLongPressScr by playerPreferences.disableLongPressScreenshot().collectAsState()
     val seekAmount by viewModel.doubleTapSeekAmount.collectAsState()
     val isSeekingForwards by viewModel.isSeekingForwards.collectAsState()
     var isDoubleTapSeeking by remember { mutableStateOf(false) }
@@ -224,7 +225,7 @@ fun GestureHandler(
                         onLongPress = {
                             pendingSingleTap?.cancel()
                             lastTapAt = 0L
-                            if (areControlsLocked) return@detectTapGestures
+                            if (areControlsLocked || disableLongPressScr) return@detectTapGestures
                             if (!isLongPressing) {
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 if (onSubtitleLongPress(it.x, it.y, size.width, size.height)) {

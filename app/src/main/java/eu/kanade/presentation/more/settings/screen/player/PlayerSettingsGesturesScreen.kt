@@ -20,6 +20,7 @@ import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.SearchableSettings
 import eu.kanade.tachiyomi.ui.player.SingleActionGesture
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
+import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableList
@@ -40,9 +41,10 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
     @Composable
     override fun getPreferences(): List<Preference> {
         val gesturePreferences = remember { Injekt.get<GesturePreferences>() }
+        val playerPreferences = remember { Injekt.get<PlayerPreferences>() }
 
         return listOf(
-            getSlidersGroup(gesturePreferences = gesturePreferences),
+            getSlidersGroup(gesturePreferences = gesturePreferences, playerPreferences = playerPreferences),
             getSeekingGroup(gesturePreferences = gesturePreferences),
             getDoubleTapGroup(gesturePreferences = gesturePreferences),
             getMediaControlsGroup(gesturePreferences = gesturePreferences),
@@ -50,10 +52,11 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
     }
 
     @Composable
-    private fun getSlidersGroup(gesturePreferences: GesturePreferences): Preference.PreferenceGroup {
+    private fun getSlidersGroup(gesturePreferences: GesturePreferences, playerPreferences: PlayerPreferences): Preference.PreferenceGroup {
         val enableVolumeBrightnessGestures = gesturePreferences.gestureVolumeBrightness()
         val swapVol = gesturePreferences.swapVolumeBrightness()
         val subtitleSwipeControls by gesturePreferences.subtitleSwipeControls().collectAsState()
+        val disableLongPressScr = playerPreferences.disableLongPressScreenshot()
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_player_sliders),
@@ -67,6 +70,10 @@ object PlayerSettingsGesturesScreen : SearchableSettings {
                     preference = swapVol,
                     title = stringResource(MR.strings.pref_controls_swap_vol_brightness),
                     enabled = !subtitleSwipeControls,
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = disableLongPressScr,
+                    title = stringResource(MR.strings.pref_disable_long_press_screenshot),
                 ),
             ),
         )
