@@ -171,6 +171,10 @@ abstract class AnimeSearchScreenModel(
                         if (isActive) {
                             updateItem(source, AnimeSearchItemResult.Error(e))
                         }
+                    } catch (e: LinkageError) {
+                        if (isActive) {
+                            updateItem(source, AnimeSearchItemResult.Error(e))
+                        }
                     }
                 }
             }
