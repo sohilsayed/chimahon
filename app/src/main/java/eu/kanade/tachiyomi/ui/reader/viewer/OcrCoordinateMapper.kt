@@ -250,6 +250,88 @@ object OcrCoordinateMapper {
         }
     }
 
+    /**
+     * Remap blocks after a 90-degree rotation of a wide image (for dualPageRotateToFit).
+     *
+     * When a wide image is rotated 90° for display, the coordinate axes are transposed:
+     *   - 90° CW:  new_x = 1 - old_y,  new_y = old_x
+     *   - 90° CCW: new_x = old_y,       new_y = 1 - old_x
+     *
+     * @param blocks   OCR blocks normalized to the original unrotated image.
+     * @param clockwise  true for +90°, false for -90°.
+     */
+    fun mapToRotated(
+        blocks: List<OcrTextBlock>,
+        clockwise: Boolean,
+    ): List<OcrTextBlock> {
+        return blocks.mapNotNull { block ->
+            val newXmin = if (clockwise) 1f - block.ymax else block.ymin
+            val newYmin = if (clockwise) block.xmin else 1f - block.xmax
+            val newXmax = if (clockwise) 1f - block.ymin else block.ymax
+            val newYmax = if (clockwise) block.xmax else 1f - block.xmin
+            if (newXmax <= newXmin || newYmax <= newYmin) return@mapNotNull null
+
+            val newGeometries = block.lineGeometries?.mapNotNull { geo ->
+                val gnXmin = if (clockwise) 1f - geo.ymax else geo.ymin
+                val gnYmin = if (clockwise) geo.xmin else 1f - geo.xmax
+                val gnXmax = if (clockwise) 1f - geo.ymin else geo.ymax
+                val gnYmax = if (clockwise) geo.xmax else 1f - geo.xmin
+                if (gnXmax <= gnXmin || gnYmax <= gnYmin) return@mapNotNull null
+                OcrLineGeometry(gnXmin, gnYmin, gnXmax, gnYmax, geo.rotation)
+            }
+
+            block.copy(
+                xmin = newXmin, ymin = newYmin,
+                xmax = newXmax, ymax = newYmax,
+                lineGeometries = newGeometries,
+            )
+        }
+    }
+
+    /**
+     * Remap blocks when a horizontal center margin is added to a wide single image
+     * (via [ImageUtil.addHorizontalCenterMargin]).
+     *
+     * The right half is shifted rightward by [centerPadding] pixels, creating a gap
+     * at the vertical midline.  The resulting image is [origWidth] + [centerPadding] wide.
+     *
+     * @param blocks        OCR blocks normalized to the original (unpadded) image.
+     * @param origWidth     pixel width of the original image.
+     * @param centerPadding pixel width of the center gap.
+     */
+    fun mapWithCenterMargin(
+        blocks: List<OcrTextBlock>,
+        origWidth: Int,
+        centerPadding: Int,
+    ): List<OcrTextBlock> {
+        if (origWidth <= 0 || centerPadding <= 0) return blocks
+        val ratio = origWidth.toFloat() / (origWidth + centerPadding)
+        val gap = centerPadding.toFloat() / (origWidth + centerPadding)
+
+        return blocks.mapNotNull { block ->
+            val newXmin = if (block.xmin < 0.5f) block.xmin * ratio else block.xmin * ratio + gap
+            val newXmax = if (block.xmax < 0.5f) block.xmax * ratio else block.xmax * ratio + gap
+            val cx = (newXmin + newXmax) / 2f
+            // Discard blocks that end up entirely in the gap
+            if (cx in (ratio * 0.5f)..(ratio * 0.5f + gap)) return@mapNotNull null
+
+            val newGeometries = block.lineGeometries?.mapNotNull { geo ->
+                val gnXmin = if (geo.xmin < 0.5f) geo.xmin * ratio else geo.xmin * ratio + gap
+                val gnXmax = if (geo.xmax < 0.5f) geo.xmax * ratio else geo.xmax * ratio + gap
+                if (gnXmax <= gnXmin) return@mapNotNull null
+                OcrLineGeometry(gnXmin, geo.ymin, gnXmax, geo.ymax, geo.rotation)
+            }
+
+            block.copy(
+                xmin = newXmin.coerceIn(0f, 1f),
+                ymin = block.ymin,
+                xmax = newXmax.coerceIn(0f, 1f),
+                ymax = block.ymax,
+                lineGeometries = newGeometries,
+            )
+        }
+    }
+
     // ──────────────────────────────────────────────────
     // Internal helpers
     // ──────────────────────────────────────────────────

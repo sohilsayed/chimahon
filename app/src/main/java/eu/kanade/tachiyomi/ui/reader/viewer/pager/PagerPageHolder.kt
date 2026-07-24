@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.view.LayoutInflater
 import android.webkit.WebView
 import androidx.annotation.ColorInt
@@ -97,6 +98,10 @@ class PagerPageHolder(
      * Calculated during `setImage` if `imageCropBorders` is enabled.
      */
     private var pageCropRect: android.graphics.RectF? = null
+
+    // Dimensions recorded when handleWideImage adds a center margin to a single wide image.
+    private var wideImageWidth: Int = 0
+    private var wideCenterPadding: Int = 0
 
     init {
         // KMK: Dual page loading
@@ -385,16 +390,22 @@ class PagerPageHolder(
     }
 
     private fun handleWideImage(imageSource: BufferedSource): BufferedSource {
-        return if (
+        // Read image dimensions for the center-margin computation.
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeStream(imageSource.peek().inputStream(), null, opts)
+        wideImageWidth = opts.outWidth
+
+        if (
             !ImageUtil.isAnimatedAndSupported(imageSource) &&
-            ImageUtil.isWideImage(imageSource) &&
+            wideImageWidth > opts.outHeight &&
             viewer.config.centerMarginType and PagerConfig.CenterMarginType.WIDE_PAGE_CENTER_MARGIN > 0 &&
             !viewer.config.imageCropBorders
         ) {
-            ImageUtil.addHorizontalCenterMargin(imageSource, height, context)
-        } else {
-            imageSource
+            wideCenterPadding = 96 / (max(1, height) / opts.outHeight.coerceAtLeast(1)).coerceAtLeast(1)
+            return ImageUtil.addHorizontalCenterMargin(imageSource, height, context)
         }
+        wideCenterPadding = 0
+        return imageSource
     }
 
     private fun decodeImage(imageSource: BufferedSource): Bitmap? {
@@ -536,15 +547,19 @@ class PagerPageHolder(
      * Fetch OCR blocks for the current page(s) and remap coordinates to match the
      * bitmap that is actually displayed (crop / split / merge).
      *
-     * Three modes are handled:
+     * Five modes are handled:
      *   1. **Merge** (extraPage != null, merge succeeded): fetch OCR for both pages,
      *      project each page's blocks onto the shared merged canvas.
-     *   2. **Split** (dualPageSplit, page is InsertPage or wide): keep only the half
+     *   2. **Rotate** (dualPageRotateToFit, image is wide): transpose xy-coordinates
+     *      for a 90-degree rotation (CW or CCW).
+     *   3. **Split** (dualPageSplit, page is InsertPage or wide): keep only the half
      *      that is visible and rescale x-coordinates to [0,1].
-     *   3. **Crop** (imageCropBorders): read the image stream, detect crop margins with
+     *   4. **Center margin** (handleWideImage added a centre gap): shift right-half
+     *      x-coordinates to account for the padding.
+     *   5. **Crop** (imageCropBorders): read the image stream, detect crop margins with
      *      the same algorithm as ImageDecoder's borders.cpp, and shift OCR blocks.
      *
-     * Modes 2 and 3 can combine (crop applied after split).
+     * Modes 2+5 and 3+5 can combine (crop applied after rotate/split).
      */
     private suspend fun loadOcrWithTransform() {
         try {
@@ -580,24 +595,54 @@ class PagerPageHolder(
                 return
             }
 
-            // ── Case 2 (+ 3): Split mode / single page ──────────────────────────────────
+            // ── Case 2 (+ 3, 4, 5): Split / Rotate / Center-margin / single page ────────
             logcat { "OCR request start: chapter=${page.chapter.chapter.id} page=${page.index}" }
             var blocks = viewModel.getOcrBlocks(page)
 
-            if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
-                // Determine which half of the wide image this page shows
-                val keepLeft = when {
-                    viewer is L2RPagerViewer && page is InsertPage -> false  // InsertPage = right half in L2R
-                    viewer !is L2RPagerViewer && page is InsertPage -> true  // InsertPage = left half in R2L
-                    viewer is L2RPagerViewer && page !is InsertPage -> true  // Original = left half in L2R
-                    else -> false
-                }.let { side -> if (viewer.config.dualPageInvert) !side else side }
-
-                blocks = OcrCoordinateMapper.mapToSplit(blocks, keepLeft)
-                logcat { "OCR split (keepLeft=$keepLeft): ${blocks.size} blocks after remap" }
+            // ── Case 2: Rotation remap (dualPageRotateToFit) ─────────────────────────────
+            if (viewer.config.dualPageRotateToFit) {
+                val streamFn = page.stream
+                if (streamFn != null) {
+                    val isWide = withIOContext {
+                        streamFn().use { ImageUtil.isWideImage(okio.Buffer().readFrom(it)) }
+                    }
+                    if (isWide) {
+                        val clockwise = !viewer.config.dualPageRotateToFitInvert
+                        blocks = OcrCoordinateMapper.mapToRotated(blocks, clockwise)
+                        logcat { "OCR rotate remap: ${blocks.size} blocks after remap" }
+                    }
+                }
             }
 
-            // ── Case 3: Crop borders ────────────────────────────────────────────────────
+            // ── Case 3: Split remap (dualPageSplit) ─────────────────────────────────────
+            if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
+                // Only apply when the image was actually split (InsertPage or wide)
+                val isSplitPage = page is InsertPage || run {
+                    val streamFn = page.stream
+                    streamFn != null && withIOContext {
+                        streamFn().use { ImageUtil.isWideImage(okio.Buffer().readFrom(it)) }
+                    }
+                }
+                if (isSplitPage) {
+                    val keepLeft = when {
+                        viewer is L2RPagerViewer && page is InsertPage -> false  // InsertPage = right half in L2R
+                        viewer !is L2RPagerViewer && page is InsertPage -> true  // InsertPage = left half in R2L
+                        viewer is L2RPagerViewer && page !is InsertPage -> true  // Original = left half in L2R
+                        else -> false
+                    }.let { side -> if (viewer.config.dualPageInvert) !side else side }
+
+                    blocks = OcrCoordinateMapper.mapToSplit(blocks, keepLeft)
+                    logcat { "OCR split (keepLeft=$keepLeft): ${blocks.size} blocks after remap" }
+                }
+            }
+
+            // ── Case 4: Center margin remap (single wide image) ─────────────────────────
+            if (wideCenterPadding > 0 && wideImageWidth > 0) {
+                blocks = OcrCoordinateMapper.mapWithCenterMargin(blocks, wideImageWidth, wideCenterPadding)
+                logcat { "OCR center margin remap: ${blocks.size} blocks" }
+            }
+
+            // ── Case 5: Crop borders ────────────────────────────────────────────────────
             val cropRect = pageCropRect
             if (cropBordersEnabled && blocks.isNotEmpty() && cropRect != null) {
                 blocks = OcrCoordinateMapper.remapToCrop(blocks, cropRect)
