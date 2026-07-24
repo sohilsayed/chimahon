@@ -32,6 +32,8 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 
+import tachiyomi.domain.history.model.SearchHistory
+
 @Composable
 fun GlobalAnimeSearchToolbar(
     searchQuery: String?,
@@ -45,6 +47,7 @@ fun GlobalAnimeSearchToolbar(
     onlyShowHasResults: Boolean,
     onToggleResults: () -> Unit,
     scrollBehavior: TopAppBarScrollBehavior,
+    searchHistoryScope: String = SearchHistory.SCOPE_ANIME_MANGA,
 ) {
     Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
         Box {
@@ -55,6 +58,7 @@ fun GlobalAnimeSearchToolbar(
                 onClickCloseSearch = navigateUp,
                 navigateUp = navigateUp,
                 scrollBehavior = scrollBehavior,
+                searchHistoryScope = searchHistoryScope,
             )
             if (progress in 1..<total) {
                 LinearProgressIndicator(

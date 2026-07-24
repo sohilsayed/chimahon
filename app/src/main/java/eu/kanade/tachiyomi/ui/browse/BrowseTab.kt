@@ -53,6 +53,7 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.components.SearchToolbar
+import tachiyomi.domain.history.model.SearchHistory
 import eu.kanade.presentation.components.TabContent
 import tachiyomi.presentation.core.components.material.TabText
 import eu.kanade.presentation.util.Tab
@@ -257,6 +258,7 @@ data object BrowseTab : Tab {
                         searchEnabled = searchEnabled,
                         searchQuery = if (searchEnabled) searchQuery else null,
                         onChangeSearchQuery = onChangeSearchQuery,
+                        searchHistoryScope = if (currentTab?.titleRes == MR.strings.label_extensions || currentTab?.titleRes == MR.strings.label_migration) SearchHistory.SCOPE_EXTENSION_MIGRATE else SearchHistory.SCOPE_ANIME_MANGA,
                         actions = {
                             AppBarActions(currentTab?.actions ?: persistentListOf())
                         },

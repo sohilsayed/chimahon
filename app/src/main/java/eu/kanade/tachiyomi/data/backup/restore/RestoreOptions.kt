@@ -16,6 +16,7 @@ data class RestoreOptions(
     // SY <--
     // Chimahon -->
     val novels: Boolean = true,
+    val history: Boolean = true,
     // Chimahon <--
     val animeEntries: Boolean = true,
 ) {

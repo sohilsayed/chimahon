@@ -50,6 +50,15 @@ import tachiyomi.presentation.core.util.isItemScrollingUp
 import tachiyomi.presentation.core.util.runOnEnterKeyPressed
 import tachiyomi.presentation.core.util.secondaryItemAlpha
 
+import tachiyomi.domain.history.interactor.DeleteSearchHistory
+import tachiyomi.domain.history.interactor.GetSearchHistory
+import tachiyomi.domain.history.interactor.UpsertSearchHistory
+import tachiyomi.domain.history.model.SearchHistory
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
 @Composable
 fun AnimatedFloatingSearchBox(
     listState: LazyListState,
@@ -58,6 +67,7 @@ fun AnimatedFloatingSearchBox(
     modifier: Modifier = Modifier,
     onGloballyPositioned: (LayoutCoordinates) -> Unit = { },
     placeholderText: String? = null,
+    searchHistoryScope: String? = null,
     focusManager: FocusManager = LocalFocusManager.current,
     focusRequester: FocusRequester = remember { FocusRequester() },
     keyboardController: SoftwareKeyboardController? = LocalSoftwareKeyboardController.current,
@@ -73,6 +83,7 @@ fun AnimatedFloatingSearchBox(
             onChangeSearchQuery = onChangeSearchQuery,
             onGloballyPositioned = onGloballyPositioned,
             placeholderText = placeholderText,
+            searchHistoryScope = searchHistoryScope,
             focusManager = focusManager,
             focusRequester = focusRequester,
             keyboardController = keyboardController,
@@ -87,12 +98,34 @@ fun SourcesSearchBox(
     modifier: Modifier = Modifier,
     onGloballyPositioned: (LayoutCoordinates) -> Unit = { },
     placeholderText: String? = null,
+    searchHistoryScope: String? = null,
     focusManager: FocusManager = LocalFocusManager.current,
     focusRequester: FocusRequester = remember { FocusRequester() },
     keyboardController: SoftwareKeyboardController? = LocalSoftwareKeyboardController.current,
 ) {
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    val getSearchHistory: GetSearchHistory = remember { Injekt.get() }
+    val upsertSearchHistory: UpsertSearchHistory = remember { Injekt.get() }
+    val deleteSearchHistory: DeleteSearchHistory = remember { Injekt.get() }
+
+    val historyList by androidx.compose.runtime.produceState<List<SearchHistory>>(
+        initialValue = emptyList(),
+        key1 = searchHistoryScope,
+    ) {
+        if (!searchHistoryScope.isNullOrBlank()) {
+            getSearchHistory.subscribe(searchHistoryScope).collect { value = it }
+        } else {
+            value = emptyList()
+        }
+    }
+
     val searchAndClearFocus: () -> Unit = f@{
         if (searchQuery.isNullOrBlank()) return@f
+        if (!searchHistoryScope.isNullOrBlank()) {
+            coroutineScope.launch(Dispatchers.IO) {
+                upsertSearchHistory.await(searchHistoryScope, searchQuery.trim())
+            }
+        }
         focusManager.clearFocus()
         keyboardController?.hide()
     }
@@ -109,64 +142,97 @@ fun SourcesSearchBox(
 
     var isFocused by remember { mutableStateOf(false) }
 
-    BasicTextField(
-        value = searchQuery ?: "",
-        onValueChange = onChangeSearchQuery,
-        modifier = modifier
-            .onGloballyPositioned(onGloballyPositioned)
-            .fillMaxWidth()
-            .focusRequester(focusRequester)
-            .onFocusChanged { isFocused = it.isFocused }
-            .runOnEnterKeyPressed(action = searchAndClearFocus)
-            .clearFocusOnSoftKeyboardHide(),
-        enabled = true,
-        textStyle = MaterialTheme.typography.bodyMedium.copy(
-            color = MaterialTheme.colorScheme.onBackground,
-        ),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { searchAndClearFocus() }),
-        singleLine = true,
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
-        decorationBox = { innerTextField ->
-            TextFieldDefaults.DecorationBox(
-                value = searchQuery ?: "",
-                innerTextField = innerTextField,
-                enabled = true,
-                singleLine = true,
-                visualTransformation = VisualTransformation.None,
-                interactionSource = remember { MutableInteractionSource() },
-                placeholder = {
-                    Text(
-                        modifier = Modifier.secondaryItemAlpha(),
-                        text = (placeholderText ?: stringResource(MR.strings.action_search_hint)),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+    androidx.compose.foundation.layout.Column(
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        BasicTextField(
+            value = searchQuery ?: "",
+            onValueChange = onChangeSearchQuery,
+            modifier = Modifier
+                .onGloballyPositioned(onGloballyPositioned)
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { isFocused = it.isFocused }
+                .runOnEnterKeyPressed(action = searchAndClearFocus)
+                .clearFocusOnSoftKeyboardHide(),
+            enabled = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onBackground,
+            ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { searchAndClearFocus() }),
+            singleLine = true,
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
+            decorationBox = { innerTextField ->
+                TextFieldDefaults.DecorationBox(
+                    value = searchQuery ?: "",
+                    innerTextField = innerTextField,
+                    enabled = true,
+                    singleLine = true,
+                    visualTransformation = VisualTransformation.None,
+                    interactionSource = remember { MutableInteractionSource() },
+                    placeholder = {
+                        Text(
+                            modifier = Modifier.secondaryItemAlpha(),
+                            text = (placeholderText ?: stringResource(MR.strings.action_search_hint)),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                    leadingIcon = {
+                        SearchBoxLeadingIcon(
+                            isSearching = isFocused || !searchQuery.isNullOrBlank(),
+                            onClickCloseSearch = onClickCloseSearch,
+                        )
+                    },
+                    trailingIcon = {
+                        SearchBoxTrailingIcon(
+                            isEmpty = searchQuery.isNullOrEmpty(),
+                            onClickClearSearch = onClickClearSearch,
+                        )
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        errorIndicatorColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.onBackground,
+                    ),
+                    contentPadding = PaddingValues(MaterialTheme.padding.small),
+                )
+            },
+        )
+
+        if (!searchHistoryScope.isNullOrBlank() && historyList.isNotEmpty() && (isFocused || !searchQuery.isNullOrBlank())) {
+            SearchHistoryRow(
+                historyList = historyList,
+                onSelectQuery = { selectedQuery ->
+                    onChangeSearchQuery(selectedQuery)
+                    if (!searchHistoryScope.isNullOrBlank()) {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            upsertSearchHistory.await(searchHistoryScope, selectedQuery)
+                        }
+                    }
+                    searchAndClearFocus()
                 },
-                leadingIcon = {
-                    SearchBoxLeadingIcon(
-                        isSearching = isFocused || !searchQuery.isNullOrBlank(),
-                        onClickCloseSearch = onClickCloseSearch,
-                    )
+                onDeleteQuery = { queryToDelete ->
+                    if (!searchHistoryScope.isNullOrBlank()) {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            deleteSearchHistory.await(searchHistoryScope, queryToDelete)
+                        }
+                    }
                 },
-                trailingIcon = {
-                    SearchBoxTrailingIcon(
-                        isEmpty = searchQuery.isNullOrEmpty(),
-                        onClickClearSearch = onClickClearSearch,
-                    )
+                onClearAll = {
+                    if (!searchHistoryScope.isNullOrBlank()) {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            deleteSearchHistory.clearScope(searchHistoryScope)
+                        }
+                    }
                 },
-                shape = RoundedCornerShape(24.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    errorIndicatorColor = Color.Transparent,
-                    cursorColor = MaterialTheme.colorScheme.onBackground,
-                ),
-                contentPadding = PaddingValues(MaterialTheme.padding.small),
             )
-        },
-    )
+        }
+    }
 }
 
 @Composable

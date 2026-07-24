@@ -149,6 +149,7 @@ fun SourcesScreen(
                 searchQuery = state.searchQuery,
                 onChangeSearchQuery = onChangeSearchQuery,
                 placeholderText = stringResource(KMR.strings.action_search_for_source),
+                searchHistoryScope = tachiyomi.domain.history.model.SearchHistory.SCOPE_EXTENSION_MIGRATE,
                 modifier = Modifier
                     .background(MaterialTheme.colorScheme.background)
                     .padding(

@@ -15,6 +15,7 @@ import eu.kanade.presentation.components.AppBarTitle
 import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.main.MainActivity
+import tachiyomi.domain.history.model.SearchHistory
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -46,6 +47,7 @@ class ExtensionsScreen(private val searchSource: String? = null) : Screen() {
                     searchEnabled = searchEnabled,
                     searchQuery = if (searchEnabled) searchQuery else null,
                     onChangeSearchQuery = onChangeSearchQuery,
+                    searchHistoryScope = SearchHistory.SCOPE_EXTENSION_MIGRATE,
                     actions = { AppBarActions(extensionsTab.actions) },
                 )
             },

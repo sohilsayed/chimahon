@@ -30,6 +30,9 @@ import kotlinx.coroutines.launch
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+import tachiyomi.domain.history.interactor.UpsertSearchHistory
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -55,6 +58,7 @@ class BackupRestorer(
     // KMK <--
     // Chimahon -->
     private val novelRestorer: eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer = eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer(context),
+    private val upsertSearchHistory: UpsertSearchHistory = Injekt.get(),
     // Chimahon <--
 ) {
 
@@ -132,6 +136,9 @@ class BackupRestorer(
             if (backup.backupMangaStats.isNotEmpty()) restoreAmount += 1
             if (backup.backupAnkiStats.isNotEmpty()) restoreAmount += 1
         }
+        if (options.history && backup.backupSearchHistory.isNotEmpty()) {
+            restoreAmount += 1
+        }
         // Chimahon <--
 
         coroutineScope {
@@ -169,6 +176,9 @@ class BackupRestorer(
             // Chimahon -->
             if (options.novels) {
                 restoreNovels(backup.backupNovels, backup.backupNovelCategories)
+            }
+            if (options.history && backup.backupSearchHistory.isNotEmpty()) {
+                restoreSearchHistory(backup.backupSearchHistory)
             }
             // Chimahon <--
 
@@ -448,6 +458,29 @@ class BackupRestorer(
                 showRestoreProgress("Anki", restoreProgress, restoreAmount, isSync)
                     .show(Notifications.ID_RESTORE_PROGRESS)
             }
+        }
+    }
+
+    private fun CoroutineScope.restoreSearchHistory(
+        history: List<eu.kanade.tachiyomi.data.backup.models.BackupSearchHistory>,
+    ) = launch {
+        ensureActive()
+        history.forEach { item ->
+            try {
+                upsertSearchHistory.await(item.scope, item.query, item.lastSearchedAt)
+            } catch (e: Exception) {
+                errors.add(Date() to "Search History [${item.scope}]: ${e.message}")
+            }
+        }
+
+        restoreProgress += 1
+        with(notifier) {
+            showRestoreProgress(
+                context.stringResource(MR.strings.history),
+                restoreProgress,
+                restoreAmount,
+                isSync,
+            ).show(Notifications.ID_RESTORE_PROGRESS)
         }
     }
     // Chimahon <--

@@ -1,0 +1,42 @@
+CREATE TABLE search_history (
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL,
+    query TEXT NOT NULL,
+    last_searched_at INTEGER NOT NULL,
+    UNIQUE(scope, query) ON CONFLICT REPLACE
+);
+
+CREATE INDEX search_history_scope_time_idx ON search_history(scope, last_searched_at DESC, _id DESC);
+
+selectByScope:
+SELECT * FROM search_history 
+WHERE scope = :scope 
+ORDER BY last_searched_at DESC, _id DESC 
+LIMIT :limit;
+
+selectAll:
+SELECT * FROM search_history 
+ORDER BY last_searched_at DESC, _id DESC;
+
+upsertQuery:
+INSERT OR REPLACE INTO search_history (scope, query, last_searched_at)
+VALUES (:scope, :query, :lastSearchedAt);
+
+deleteByQuery:
+DELETE FROM search_history WHERE scope = :scope AND query = :query;
+
+clearByScope:
+DELETE FROM search_history WHERE scope = :scope;
+
+clearAll:
+DELETE FROM search_history;
+
+deleteOldEntries:
+DELETE FROM search_history 
+WHERE scope = :scope 
+  AND _id NOT IN (
+    SELECT _id FROM search_history 
+    WHERE scope = :scope 
+    ORDER BY last_searched_at DESC, _id DESC 
+    LIMIT :limit
+);

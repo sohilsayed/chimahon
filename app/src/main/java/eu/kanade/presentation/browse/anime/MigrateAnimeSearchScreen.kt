@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.AnimeSearchScreenModel
 import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.AnimeSourceFilter
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.history.model.SearchHistory
 import tachiyomi.presentation.core.components.material.Scaffold
 
 @Composable
@@ -37,6 +38,7 @@ fun MigrateAnimeSearchScreen(
                 onlyShowHasResults = state.onlyShowHasResults,
                 onToggleResults = onToggleResults,
                 scrollBehavior = scrollBehavior,
+                searchHistoryScope = SearchHistory.SCOPE_EXTENSION_MIGRATE,
             )
         },
     ) { paddingValues ->

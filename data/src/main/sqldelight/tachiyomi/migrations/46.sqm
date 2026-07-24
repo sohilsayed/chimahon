@@ -1,0 +1,9 @@
+CREATE TABLE search_history (
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL,
+    query TEXT NOT NULL,
+    last_searched_at INTEGER NOT NULL,
+    UNIQUE(scope, query) ON CONFLICT REPLACE
+);
+
+CREATE INDEX search_history_scope_time_idx ON search_history(scope, last_searched_at DESC, _id DESC);

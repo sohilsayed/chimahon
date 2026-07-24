@@ -54,7 +54,8 @@ data class Backup(
     // Global Popular/Latest feeds
     @ProtoNumber(610) var backupFeeds: List<BackupFeed> = emptyList(),
     // KMK <--
-    
+    @ProtoNumber(650) var backupSearchHistory: List<BackupSearchHistory> = emptyList(),
+
     // Chimahon -->
     @ProtoNumber(700) var backupNovels: List<BackupNovel> = emptyList(),
     @ProtoNumber(701) var backupNovelCategories: List<BackupNovelCategory> = emptyList(),
