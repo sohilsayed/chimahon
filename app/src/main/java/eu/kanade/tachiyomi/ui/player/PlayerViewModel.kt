@@ -3095,9 +3095,13 @@ class PlayerViewModel @JvmOverloads constructor(
         return runCatching {
             withIOContext {
                 output.delete()
-                val rawInput = MPVLib.getPropertyString("path")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: video.videoUrl
+
+                // For video-only streams (e.g. YouTube DASH), use the separate audio track URL
+                val audioSource = video.audioTracks.firstOrNull()?.url
+                val rawInput = audioSource
+                    ?: MPVLib.getPropertyString("path")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: video.videoUrl
                 val input = when {
                     video.videoUrl.startsWith("content://") -> Uri.parse(video.videoUrl).toFFmpegString(activity)
                     rawInput.startsWith("file://") -> Uri.parse(rawInput).path ?: rawInput
