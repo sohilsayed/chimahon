@@ -298,6 +298,8 @@ open class FeedScreenModel(
                         }
                     } catch (e: Exception) {
                         emptyList()
+                    } catch (e: LinkageError) {
+                        emptyList()
                     }
 
                     val result = withIOContext {
