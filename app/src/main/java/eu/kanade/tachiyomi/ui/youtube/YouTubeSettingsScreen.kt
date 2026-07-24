@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +46,7 @@ class YouTubeSettingsScreen : Screen {
         val context = LocalContext.current
         val preferences = remember { YouTubePreferences(context) }
         var selectedQuality by remember { mutableStateOf(preferences.preferredQuality) }
+        var addNewChannelsToLibrary by remember { mutableStateOf(preferences.addNewChannelsToLibrary) }
 
         Scaffold(
             topBar = {
@@ -67,6 +70,40 @@ class YouTubeSettingsScreen : Screen {
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             ) {
+                Text(
+                    text = "General",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = addNewChannelsToLibrary,
+                            onValueChange = {
+                                addNewChannelsToLibrary = it
+                                preferences.addNewChannelsToLibrary = it
+                            },
+                        )
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = addNewChannelsToLibrary,
+                        onCheckedChange = null
+                    )
+
+                    Text(
+                        text = "Add channels to library on first watch",
+                        modifier = Modifier.padding(start = 12.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Text(
                     text = "Preferred Quality",
                     style = MaterialTheme.typography.titleMedium,

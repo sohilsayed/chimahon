@@ -15,8 +15,13 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.StreamInfo
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.extractor.stream.VideoStream
 
-class YoutubeResolver {
+class YouTubeResolver {
 
     companion object {
         @Volatile
@@ -58,17 +63,15 @@ class YoutubeResolver {
             }
         }
 
-        suspend fun resolveAllStreams(
-            videoUrl: String,
-            preferredQuality: String = YouTubePreferences.DEFAULT_QUALITY,
-        ): List<Video> = resolveMutex.withLock {
+        // Returns streams + video metadata
+        suspend fun resolveVideo(videoId: String, preferredQuality: String = YouTubePreferences.DEFAULT_QUALITY):
+            YouTubeVideoMetadata = resolveMutex.withLock {
             withContext(Dispatchers.IO) {
                 ensureInitialized()
-                val videoId = extractVideoId(videoUrl)
-                    ?: throw IllegalArgumentException("Could not find YouTube video id")
                 val linkHandler = ServiceList.YouTube.getStreamLHFactory().fromId(videoId)
                 val extractor = ServiceList.YouTube.getStreamExtractor(linkHandler)
                 extractor.fetchPage()
+
                 val subtitleTracks = listOf(
                     runCatching { extractor.subtitlesDefault }.getOrDefault(emptyList()),
                     runCatching { extractor.getSubtitles(MediaFormat.VTT) }.getOrDefault(emptyList()),
@@ -92,7 +95,7 @@ class YoutubeResolver {
                     extractor.audioStreams
                         .filter { it.content.isNotBlank() }
                         .sortedWith(
-                            compareByDescending<org.schabi.newpipe.extractor.stream.AudioStream> {
+                            compareByDescending<AudioStream> {
                                 it.audioTrackName?.contains("original", ignoreCase = true) == true ||
                                     it.audioLocale?.displayName?.contains("original", ignoreCase = true) == true ||
                                     it.quality?.contains("original", ignoreCase = true) == true
@@ -114,7 +117,7 @@ class YoutubeResolver {
                     .filter { it.content.isNotBlank() }
                     .filter { !it.isVideoOnly() || audioTracks.isNotEmpty() }
                     .sortedWith(
-                        compareByDescending<org.schabi.newpipe.extractor.stream.VideoStream> {
+                        compareByDescending<VideoStream> {
                             parseResolution(it.getResolution().ifBlank { it.quality.orEmpty() })
                         }.thenBy { it.isVideoOnly() },
                     )
@@ -136,8 +139,9 @@ class YoutubeResolver {
                         subtitleTracks = subtitleTracks,
                         audioTracks = if (needsExternalAudio) audioTracks else emptyList(),
                         initialized = true,
-                        videoPageUrl = videoUrl,
+                        videoPageUrl = extractor.url,
                     ).withoutExternalSubtitleLookup()
+
                 }
 
                 val videos = streamVideos.distinctBy { it.videoTitle to it.videoUrl }
@@ -145,7 +149,117 @@ class YoutubeResolver {
                 videos.map { video ->
                     video.copy(preferred = video == preferred)
                 }
+
+                val streamInfo = StreamInfo.getInfo(extractor)
+                val streamType = streamInfo.streamType
+
+                val uploadTimestamp: Long = extractor.uploadDate
+                    ?.offsetDateTime()
+                    ?.toInstant()
+                    ?.toEpochMilli()
+                    ?: 0L
+
+                val channelId = extractor.uploaderUrl.substringAfterLast("/")
+
+                YouTubeVideoMetadata(
+                    videoId = extractor.id,
+                    videoName = extractor.name,
+                    videoUrl = YouTubeSource.WATCH_PREFIX + extractor.id,
+
+                    videoLength = extractor.length,
+                    videoUploadDate = uploadTimestamp,
+                    videoThumbnailUrl = runCatching {
+                        extractor.thumbnails?.maxByOrNull { it.width }!!.url
+                    }.getOrDefault(""),
+                    videoType = when (streamType) {
+                        StreamType.LIVE_STREAM,
+                        StreamType.POST_LIVE_STREAM -> "Livestream"
+                        StreamType.VIDEO_STREAM -> "Video"
+                        StreamType.AUDIO_STREAM -> "Audio"
+                        StreamType.AUDIO_LIVE_STREAM,
+                        StreamType.POST_LIVE_AUDIO_STREAM -> "Audio livestream"
+                        StreamType.NONE -> null
+                        else -> null
+                    },
+                    videoDescription = extractor.description.content,
+                    videoStreams = videos,
+
+                    channelId = channelId,
+                    channelName = extractor.uploaderName,
+                    channelUrl = YouTubeSource.CHANNEL_PREFIX + channelId,
+                )
             }
+        }
+
+        suspend fun resolveChannel(channelId: String): YouTubeChannelMetadata = resolveMutex.withLock {
+                withContext(Dispatchers.IO) {
+                    ensureInitialized()
+                    val linkHandler = ServiceList.YouTube.channelLHFactory.fromId(channelId)
+                    val extractor = ServiceList.YouTube.getChannelExtractor(linkHandler)
+                    extractor.fetchPage()
+
+                    YouTubeChannelMetadata(
+                        id = extractor.id,
+                        name = extractor.name,
+                        url = YouTubeSource.CHANNEL_PREFIX + extractor.id,
+
+                        description = extractor.description,
+                        avatarUrl = runCatching {
+                                extractor.avatars.maxByOrNull { it.width }?.url!!
+                            }.getOrDefault(""),
+                        bannerUrl = runCatching {
+                                extractor.banners.maxByOrNull { it.width }?.url!!
+                            }.getOrDefault(""),
+                    )
+                }
+            }
+
+        suspend fun resolveVideosFromTab(channelId: String, tab: String /* videos, shorts, livestreams */): List<YouTubeVideoItem> = resolveMutex.withLock {
+            withContext(Dispatchers.IO) {
+                ensureInitialized()
+                val extractor = ServiceList.YouTube.getChannelTabExtractorFromId(channelId, tab)
+                extractor.fetchPage()
+
+                extractor.initialPage.items
+                    .filterIsInstance<StreamInfoItem>()
+                    .map { item ->
+                        val uploadTimestamp: Long = item.uploadDate
+                            ?.offsetDateTime()
+                            ?.toInstant()
+                            ?.toEpochMilli()
+                            ?: 0L
+
+                        val videoId = getVideoId(item.url)
+
+                        YouTubeVideoItem(
+                            id = videoId,
+                            name = item.name,
+                            url = YouTubeSource.WATCH_PREFIX + videoId,
+
+                            duration = item.duration,
+                            uploadDate = uploadTimestamp,
+                            videoType = when (tab) {
+                                "videos" -> "Video"
+                                "shorts" -> "Short"
+                                "livestreams" -> "Livestream"
+                                else -> null
+                            },
+                            thumbnailUrl = runCatching {
+                                    item.thumbnails?.maxByOrNull { it.width }!!.url
+                                }.getOrDefault(""),
+                            viewCount = item.viewCount,
+                            shortDescription = item.shortDescription,
+                        )
+                    }
+            }
+        }
+
+        fun getVideoId(videoUrl: String): String
+        {
+            val videoId = extractVideoId(videoUrl)
+                ?: throw IllegalArgumentException("Could not find YouTube video id")
+
+            return videoId
         }
 
         private fun extractVideoId(input: String): String? {

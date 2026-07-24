@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.ui.youtube
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
@@ -24,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,8 +45,9 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.ui.player.PlayerActivity
+import tachiyomi.domain.source.anime.interactor.GetRemoteAnime
 
-class YouTubeBrowserScreen : Screen {
+class YouTubeBrowserScreen(var listingQuery: String? = null, var targetUrl: String? = null) : Screen {
 
     private companion object {
         private const val PLAYER_LAUNCH_DEBOUNCE_MS = 1_500L
@@ -97,6 +98,16 @@ class YouTubeBrowserScreen : Screen {
                             )
                         }
                     },
+                    actions = {
+                        IconButton(
+                            onClick = { navigator.pop() }
+                        ) {
+                            Icon(
+                                Icons.Outlined.Close,
+                                contentDescription = "Close",
+                            )
+                        }
+                    },
                 )
             },
         ) { padding ->
@@ -128,10 +139,7 @@ class YouTubeBrowserScreen : Screen {
                                 lastPlayerLaunchAt = now
 
                                 stopYoutubeWebViewPlayback(webView)
-                                val intent = PlayerActivity.newStandaloneIntent(context, Uri.parse(url), "YouTube")
-                                intent.putExtra("youtube_page_url", url)
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
+                                context.startActivity(PlayerActivity.newYoutubeIntent(context, url))
                             }
 
                             CookieManager.getInstance().setAcceptCookie(true)
@@ -241,7 +249,18 @@ class YouTubeBrowserScreen : Screen {
                                     "Android",
                                 )
 
-                                loadUrl("https://m.youtube.com/")
+                                if (targetUrl != null)
+                                {
+                                    loadUrl(YouTubeSource.baseUrl + targetUrl!!)
+                                }
+                                else if (listingQuery == GetRemoteAnime.QUERY_LATEST)
+                                {
+                                    loadUrl(YouTubeSource.baseUrl + YouTubeSource.SUBSCRIPTIONS_SUFFIX)
+                                }
+                                else
+                                {
+                                    loadUrl(YouTubeSource.baseUrl)
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxSize(),

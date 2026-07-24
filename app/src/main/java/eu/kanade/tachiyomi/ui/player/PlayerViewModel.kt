@@ -56,6 +56,7 @@ import eu.kanade.presentation.more.settings.screen.player.custombutton.getButton
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.ChapterType
 import eu.kanade.tachiyomi.animesource.model.Hoster
+import eu.kanade.tachiyomi.animesource.model.SerializableHoster.Companion.serialize
 import eu.kanade.tachiyomi.animesource.model.SerializableHoster.Companion.toHosterList
 import eu.kanade.tachiyomi.animesource.model.TimeStamp
 import eu.kanade.tachiyomi.animesource.model.Video
@@ -81,7 +82,7 @@ import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
 import eu.kanade.tachiyomi.ui.youtube.YouTubePreferences
-import eu.kanade.tachiyomi.ui.youtube.YoutubeResolver
+import eu.kanade.tachiyomi.ui.youtube.YouTubeResolver
 import eu.kanade.tachiyomi.ui.youtube.allowsExternalSubtitleLookup
 import eu.kanade.tachiyomi.ui.player.utils.AniSkipApi
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils.Companion.getStringRes
@@ -97,6 +98,8 @@ import eu.kanade.tachiyomi.ui.player.utils.guessJimakuMedia
 import eu.kanade.tachiyomi.ui.player.utils.matchedSrtFiles
 import eu.kanade.tachiyomi.ui.player.utils.selectBestJimakuEntry
 import eu.kanade.tachiyomi.ui.reader.SaveImageNotifier
+import eu.kanade.tachiyomi.ui.youtube.YouTubeSource
+import eu.kanade.tachiyomi.ui.youtube.YouTubeVideoMetadata
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.episode.filterDownloadedEpisodes
 import eu.kanade.tachiyomi.util.lang.byteSize
@@ -121,7 +124,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -129,7 +131,6 @@ import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
-import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
@@ -139,9 +140,11 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.custombuttons.interactor.GetCustomButtons
 import tachiyomi.domain.custombuttons.model.CustomButton
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.entries.anime.repository.AnimeRepository
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.EpisodeUpdate
+import tachiyomi.domain.episode.repository.EpisodeRepository
 import tachiyomi.domain.episode.service.getEpisodeSort
 import tachiyomi.domain.history.interactor.GetNextEpisodes
 import tachiyomi.domain.history.interactor.UpsertAnimeHistory
@@ -157,6 +160,7 @@ import java.io.InputStream
 import java.util.Locale
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.collections.first
 import kotlin.coroutines.cancellation.CancellationException
 
 private const val MAX_SUBTITLE_HISTORY = 120
@@ -173,6 +177,8 @@ class PlayerViewModel @JvmOverloads constructor(
     private val activity: PlayerActivity,
     private val savedState: SavedStateHandle,
     private val sourceManager: AnimeSourceManager = Injekt.get(),
+    private val animeRepository: AnimeRepository = Injekt.get(),
+    private val episodeRepository: EpisodeRepository = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
     private val imageSaver: ImageSaver = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
@@ -292,7 +298,7 @@ class PlayerViewModel @JvmOverloads constructor(
     val pos = _pos.asStateFlow()
 
     private var castProgressJob: Job? = null
-    private var standaloneYoutubeLoadJob: Job? = null
+    private var youtubeLoadJob: Job? = null
 
     val duration = MutableStateFlow(0f)
 
@@ -2353,20 +2359,6 @@ class PlayerViewModel @JvmOverloads constructor(
         updateIsLoadingHosters(false)
         isLoading.update { false }
 
-        when {
-            video.videoPageUrl.isNotEmpty() -> {
-                _jimakuState.update { JimakuState.Idle }
-                loadYoutubeStandalone(video)
-            }
-            else -> {
-                videoClickHandler = ::onSourceVideoClicked
-                loadNormalStandalone(video)
-            }
-        }
-    }
-
-    private fun loadNormalStandalone(video: Video) {
-        standaloneYoutubeLoadJob?.cancel()
         val title = video.videoTitle.ifBlank { video.videoUrl.substringAfterLast('/').substringBefore('?') }
         animeTitle.update { title }
         mediaTitle.update { title }
@@ -2375,52 +2367,47 @@ class PlayerViewModel @JvmOverloads constructor(
         activity.setVideo(video, position = 0L)
     }
 
-    private fun loadYoutubeStandalone(video: Video) {
-        videoClickHandler = ::onStandaloneYoutubeVideoClicked
-        updateIsLoadingHosters(true)
-        standaloneYoutubeLoadJob?.cancel()
-        standaloneYoutubeLoadJob = viewModelScope.launchIO {
+    fun loadYoutubeVideo(videoUrl: String)
+    {
+        youtubeLoadJob?.cancel()
+        youtubeLoadJob = viewModelScope.launchIO {
             try {
+                // Get all stream metadata, then get channel info
                 val prefs = YouTubePreferences(Injekt.get<Application>())
-                val streams = YoutubeResolver.resolveAllStreams(video.videoPageUrl, prefs.preferredQuality)
-                if (!isActive) return@launchIO
-                if (streams.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        updateIsLoadingHosters(false)
-                        activity.toast("No playable video streams found")
-                    }
-                    return@launchIO
-                }
+                val videoMetadata = YouTubeResolver.resolveVideo(YouTubeResolver.getVideoId(videoUrl), prefs.preferredQuality)
 
-                val hoster = Hoster(hosterName = "YouTube", videoList = streams)
-                _hosterList.update { listOf(hoster) }
-                _hosterState.update {
-                    listOf(
-                        HosterState.Ready(
-                            "YouTube",
-                            streams,
-                            List(streams.size) { Video.State.READY },
-                        ),
+                val episode = createYoutubeEpisode(videoMetadata, prefs)
+                    ?: throw IllegalStateException("Failed to create youtube episode")
+
+                val streams = videoMetadata.videoStreams
+                if (streams.isEmpty())
+                    throw IllegalStateException("No playable video streams found")
+
+                saveCurrentEpisodeWatchingProgress()
+                updateIsLoadingEpisode(true)
+                updateIsLoadingHosters(true)
+
+                val hoster = Hoster(hosterName = "YouTube", videoList = videoMetadata.videoStreams)
+                val selected = streams.firstOrNull { it.preferred }
+                    ?: selectYouTubeStream(streams, prefs.preferredQuality)
+                val vidIndex = streams.indexOf(selected)
+
+                val initResult = init(episode.animeId, episode.id, listOf(hoster).serialize(), 0, vidIndex)
+                if (!initResult.second.getOrDefault(false)) {
+                    val exception = initResult.second.exceptionOrNull() ?: IllegalStateException(
+                        "Unknown error",
                     )
-                }
-                _hosterExpandedList.update { listOf(true) }
-                _isEpisodeOnline.update { true }
 
-                val title = video.videoTitle.ifBlank { "YouTube" }
-                animeTitle.update { title }
-                mediaTitle.update { title }
-                MPVLib.setPropertyString("user-data/current-anime/anime-title", title)
-
-                withContext(Dispatchers.Main) {
-                    updateIsLoadingHosters(false)
-                    val selected = streams.firstOrNull { it.preferred }
-                        ?: selectYouTubeStream(streams, prefs.preferredQuality)
-                    val index = streams.indexOf(selected)
-                    _selectedHosterVideoIndex.update { Pair(0, index) }
-                    qualityIndex = Pair(0, index)
-                    _currentVideo.update { selected }
-                    activity.setVideo(selected, position = 0L)
+                    throw exception
                 }
+
+                updateIsLoadingHosters(false)
+                loadHosters(
+                    source = currentSource.value!!,
+                    hosterList = initResult.first.hosterList ?: emptyList(),
+                    hosterIndex = initResult.first.videoIndex.first,
+                    videoIndex = initResult.first.videoIndex.second,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -2432,11 +2419,71 @@ class PlayerViewModel @JvmOverloads constructor(
         }
     }
 
+    private suspend fun createYoutubeEpisode(videoMetadata: YouTubeVideoMetadata, prefs: YouTubePreferences) : tachiyomi.domain.episode.model.Episode?
+    {
+        suspend fun createAndAddEpisode(episodeId: Long, animeId: Long) : tachiyomi.domain.episode.model.Episode {
+            val episode = tachiyomi.domain.episode.model.Episode.create().copy(
+                id = episodeId, // Once inserted it will change so it doesnt matter
+                animeId = animeId,
+                url = videoMetadata.videoUrl,
+                name = videoMetadata.videoName,
+                totalSeconds = videoMetadata.videoLength,
+                dateFetch = System.currentTimeMillis(),
+                dateUpload = videoMetadata.videoUploadDate,
+                scanlator = videoMetadata.videoType,
+                previewUrl = videoMetadata.videoThumbnailUrl,
+                //summary = videoMetadata.videoDescription, removed because it looks ugly
+                episodeNumber = 0.0
+            )
+            val episodes = episodeRepository.addAll(listOf(episode))
+            return episodes.first()
+        }
+
+        val episodeId = videoMetadata.videoId.hashCode().toLong()
+
+        // Try to find existing anime entry, and add the current episode
+        val animeEntry = animeRepository.getAnimeByUrlAndSourceId(videoMetadata.channelUrl, YouTubeSource.id)
+        if (animeEntry != null)
+        {
+            val episode = episodeRepository.getEpisodeByUrlAndAnimeId(videoMetadata.videoUrl, animeEntry.id)
+            if (episode == null)
+                return createAndAddEpisode(episodeId, animeEntry.id)
+
+            return episode
+        }
+
+        val channelMetadata = YouTubeResolver.resolveChannel(videoMetadata.channelId)
+
+        // We create a new channel entry
+        val newChannelEntry = Anime.create().copy(
+            id = videoMetadata.channelId.hashCode().toLong(),
+            url = videoMetadata.channelUrl,
+            source = YouTubeSource.id,
+
+            ogTitle = videoMetadata.channelName,
+            ogDescription = channelMetadata?.description,
+            ogThumbnailUrl = channelMetadata?.avatarUrl,
+            backgroundUrl = channelMetadata?.bannerUrl,
+
+            dateAdded = System.currentTimeMillis(),
+            lastModifiedAt = System.currentTimeMillis(),
+            coverLastModified = System.currentTimeMillis(),
+            backgroundLastModified = System.currentTimeMillis(),
+
+            favorite = prefs.addNewChannelsToLibrary
+            )
+
+        val newAnimeId = animeRepository.insertAnime(newChannelEntry)
+            ?: return null
+
+        return createAndAddEpisode(episodeId, newAnimeId)
+    }
+
     private fun selectYouTubeStream(streams: List<Video>, targetQuality: String): Video {
-        val targetPixels = YoutubeResolver.parseResolution(targetQuality)
-        return streams.filter { YoutubeResolver.parseResolution(it.videoTitle) <= targetPixels }
-            .maxByOrNull { YoutubeResolver.parseResolution(it.videoTitle) }
-            ?: streams.minByOrNull { YoutubeResolver.parseResolution(it.videoTitle) }
+        val targetPixels = YouTubeResolver.parseResolution(targetQuality)
+        return streams.filter { YouTubeResolver.parseResolution(it.videoTitle) <= targetPixels }
+            .maxByOrNull { YouTubeResolver.parseResolution(it.videoTitle) }
+            ?: streams.minByOrNull { YouTubeResolver.parseResolution(it.videoTitle) }
             ?: streams.first()
     }
 
@@ -2767,31 +2814,6 @@ class PlayerViewModel @JvmOverloads constructor(
             } else {
                 updateIsLoadingEpisode(false)
             }
-        }
-    }
-
-    private fun onStandaloneYoutubeVideoClicked(hosterIndex: Int, videoIndex: Int) {
-        val hosterState = _hosterState.value[hosterIndex] as? HosterState.Ready
-        val video = hosterState?.videoList
-            ?.getOrNull(videoIndex)
-            ?: return
-
-        val videoState = hosterState.videoState
-            .getOrNull(videoIndex)
-            ?: return
-
-        if (videoState == Video.State.ERROR) {
-            return
-        }
-
-        updatePausedState()
-        pause()
-        _selectedHosterVideoIndex.update { Pair(hosterIndex, videoIndex) }
-        _currentVideo.update { video }
-        qualityIndex = Pair(hosterIndex, videoIndex)
-        activity.setVideo(video)
-        if (sheetShown.value == Sheets.QualityTracks) {
-            dismissSheet()
         }
     }
 

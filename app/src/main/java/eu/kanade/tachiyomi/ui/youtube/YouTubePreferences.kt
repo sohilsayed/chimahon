@@ -8,6 +8,10 @@ class YouTubePreferences(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("youtube_prefs", Context.MODE_PRIVATE)
 
+    var addNewChannelsToLibrary: Boolean
+        get() = prefs.getBoolean(KEY_ADD_NEW_CHANNELS_TO_LIBRARY, true)
+        set(value) = prefs.edit().putBoolean(KEY_ADD_NEW_CHANNELS_TO_LIBRARY, value).apply()
+
     var preferredQuality: String
         get() = prefs.getString(KEY_QUALITY, DEFAULT_QUALITY)
             ?.takeIf { it in QUALITIES }
@@ -16,6 +20,8 @@ class YouTubePreferences(context: Context) {
 
     companion object {
         const val KEY_QUALITY = "preferred_quality"
+        const val KEY_ADD_NEW_CHANNELS_TO_LIBRARY = "add_new_channels_to_library"
+
         const val QUALITY_2160P = "2160p"
         const val QUALITY_1440P = "1440p"
         const val QUALITY_1080P = "1080p"
