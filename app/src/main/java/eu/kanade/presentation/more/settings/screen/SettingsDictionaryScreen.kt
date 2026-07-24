@@ -666,6 +666,24 @@ object SettingsDictionaryScreen : SearchableSettings {
                     ),
                 )
             }
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.scrollBehavior(),
+                    entries = persistentListOf(
+                        DictionaryPreferences.SCROLL_SMOOTH to "Smooth",
+                        DictionaryPreferences.SCROLL_INSTANT to "Instant",
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = "Scroll behavior",
+                    subtitle = "Controls how floating navigation buttons scroll between entries",
+                ),
+            )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.volumeKeyNavigation(),
+                    title = "Volume key navigation",
+                    subtitle = "Use volume keys to scroll between dictionary entries",
+                ),
+            )
         }.toPersistentList() as kotlinx.collections.immutable.ImmutableList<Preference.PreferenceItem<out Any, out Any>>
 
         return listOf(

@@ -3054,10 +3054,10 @@
 
       if (groups[nextIndex]) {
         _isJumping = true;
-        const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
-        groups[nextIndex].scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'start' });
+        const scrollBehavior = document.documentElement.dataset.chimaScrollBehavior || 'smooth';
+        groups[nextIndex].scrollIntoView({ behavior: scrollBehavior, block: 'start' });
         
-        // Reset after the smooth scroll finishes
+        // Reset after the scroll finishes
         setTimeout(() => { 
           _isJumping = false; 
         }, 500);

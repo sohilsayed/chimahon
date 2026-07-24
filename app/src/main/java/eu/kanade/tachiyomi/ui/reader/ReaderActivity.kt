@@ -1250,7 +1250,9 @@ class ReaderActivity : BaseActivity() {
         // Chimahon: Redirect volume keys to the OCR popup if it's active
         if (ocrPopupVisible) {
             ocrPopupState?.let { popup ->
-                if (event.action == KeyEvent.ACTION_DOWN) {
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    Injekt.get<DictionaryPreferences>().volumeKeyNavigation().get()
+                ) {
                     when (event.keyCode) {
                         KeyEvent.KEYCODE_VOLUME_UP -> {
                             popup.webView.evaluateJavascript("window.DictionaryRenderer?.navigate(-1);", null)
