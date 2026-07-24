@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.dictionary
 
 import android.content.Context
 import chimahon.DictionaryStyle
+import chimahon.KanjiEntry
 import chimahon.LookupResult
 import chimahon.anki.AnkiProfile
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
@@ -245,7 +246,7 @@ internal fun getDictionaryTitle(context: Context, dirName: String): String {
 
         // 2. index.json title
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-        for (type in listOf("term", "frequency", "pitch")) {
+        for (type in listOf("term", "frequency", "pitch", "kanji")) {
             val indexFile = File(File(dictionariesDir, type), "$dirName/index.json")
             if (indexFile.exists()) {
                 try {
@@ -337,4 +338,32 @@ private inline fun <T> Array<T>.sortedByDictionaryPriority(
                 .thenBy { it.index },
         )
         .map { it.value }
+}
+
+internal fun buildKanjiEntryJson(character: String, entry: KanjiEntry): JsonObject = buildJsonObject {
+    put("matched", character)
+    put("deinflected", character)
+    put("kanji", buildJsonObject {
+        put("character", character)
+        put("dictName", entry.dictName)
+        putJsonArray("onyomi") {
+            for (reading in entry.onyomi.split(",").map { it.trim() }.filter { it.isNotEmpty() }) {
+                add(JsonPrimitive(reading))
+            }
+        }
+        putJsonArray("kunyomi") {
+            for (reading in entry.kunyomi.split(",").map { it.trim() }.filter { it.isNotEmpty() }) {
+                add(JsonPrimitive(reading))
+            }
+        }
+        put("tags", entry.tags)
+        putJsonArray("definitions") {
+            for (def in entry.definitions) {
+                add(JsonPrimitive(def))
+            }
+        }
+        put("stats", buildJsonObject {
+            for ((key, value) in entry.stats) put(key, value)
+        })
+    })
 }

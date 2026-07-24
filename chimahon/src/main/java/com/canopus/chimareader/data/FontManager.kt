@@ -9,6 +9,10 @@ import java.io.File
 object FontManager {
     val defaultFonts = listOf("System Serif", "System Sans-Serif")
 
+    const val KANJI_STROKE_FONT_NAME = "KanjiStrokeOrders"
+    const val KANJI_STROKE_FONT_FAMILY = "KanjiStrokeOrders"
+    const val KANJI_STROKE_FONT_URL = "https://drive.google.com/uc?export=download&id=1TELymEhF0YMK0Ma-fQlpHNmZLg9Xw3zx"
+
     fun isCustomFont(context: Context, fontName: String): Boolean {
         return !defaultFonts.contains(fontName) && getFontFile(context, fontName) != null
     }
@@ -55,6 +59,19 @@ object FontManager {
 
     fun deleteFont(context: Context, fontName: String) {
         getFontFile(context, fontName)?.delete()
+    }
+
+    fun getKanjiStrokeFontFile(context: Context): File {
+        return File(getFontsDir(context), "$KANJI_STROKE_FONT_NAME.ttf")
+    }
+
+    fun hasKanjiStrokeFont(context: Context): Boolean {
+        return getKanjiStrokeFontFile(context).exists()
+    }
+
+    fun getKanjiStrokeFontUri(context: Context): String? {
+        val file = getKanjiStrokeFontFile(context)
+        return if (file.exists()) Uri.fromFile(file).toString() else null
     }
 
     private fun getFileName(context: Context, uri: Uri): String? {

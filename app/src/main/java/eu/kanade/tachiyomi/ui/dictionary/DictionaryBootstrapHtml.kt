@@ -29,8 +29,23 @@ internal fun getDictionaryBootstrapHtml(
     val js = dictionaryRendererJs.getOrPut(Unit) {
         readTextAsset(context.applicationContext, "dictionary/renderer.js").replace("</script", "<\\/script")
     }
+    val kanjiJs = dictionaryKanjiRendererJs.getOrPut(Unit) {
+        readTextAsset(context.applicationContext, "dictionary/kanji-renderer.js")
+    }
 
     val fontUrl = FontManager.getFontUri(context, fontFamily)
+    val kanjiFontUrl = FontManager.getKanjiStrokeFontUri(context)
+    val kanjiFontFaceCss = if (kanjiFontUrl != null) {
+        """
+          <style>
+            @font-face {
+              font-family: '${FontManager.KANJI_STROKE_FONT_FAMILY}';
+              src: url('$kanjiFontUrl');
+            }
+          </style>
+        """.trimIndent()
+    } else ""
+
     val fontFaceCss = if (fontUrl != null) {
         """
           @font-face {
@@ -89,7 +104,7 @@ internal fun getDictionaryBootstrapHtml(
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-          <style>$css</style>$dynamicThemeCss
+          <style>$css</style>$kanjiFontFaceCss$dynamicThemeCss
           <style>$fontFaceCss</style>
           <style id="dictionary-styles"></style>
           <style id="chima-custom-css"></style>
@@ -121,6 +136,7 @@ internal fun getDictionaryBootstrapHtml(
         <body>
           <main id="entries" class="entries"></main>
           <script>$js</script>
+          <script>$kanjiJs</script>
         </body>
         </html>
     """.trimIndent()
@@ -134,6 +150,7 @@ private fun readTextAsset(context: Context, assetPath: String): String {
 
 private val dictionaryBaseCss = java.util.concurrent.ConcurrentHashMap<Unit, String>()
 private val dictionaryRendererJs = java.util.concurrent.ConcurrentHashMap<Unit, String>()
+private val dictionaryKanjiRendererJs = java.util.concurrent.ConcurrentHashMap<Unit, String>()
 
 fun getDictionaryColorScheme(
     isDark: Boolean,

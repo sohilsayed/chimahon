@@ -79,6 +79,7 @@ private data class TabLookupFrame(
     val styles: List<DictionaryStyle>,
     val mediaDataUris: Map<String, String>,
     val existingExpressions: Set<String>,
+    val entryJsons: List<String>? = null,
 )
 
 
@@ -104,6 +105,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
         "term" to File(dictionariesDir, "term"),
         "frequency" to File(dictionariesDir, "frequency"),
         "pitch" to File(dictionariesDir, "pitch"),
+        "kanji" to File(dictionariesDir, "kanji"),
     )
 
     val allDictNames = typeDirs.values.flatMap { dir ->
@@ -120,6 +122,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
             termPaths = allDictNames.filter { name -> File(typeDirs["term"]!!, name).isDirectory }.map { File(typeDirs["term"]!!, it).absolutePath }.sorted(),
             freqPaths = allDictNames.filter { name -> File(typeDirs["frequency"]!!, name).isDirectory }.map { File(typeDirs["frequency"]!!, it).absolutePath }.sorted(),
             pitchPaths = allDictNames.filter { name -> File(typeDirs["pitch"]!!, name).isDirectory }.map { File(typeDirs["pitch"]!!, it).absolutePath }.sorted(),
+            kanjiPaths = allDictNames.filter { name -> File(typeDirs["kanji"]!!, name).isDirectory }.map { File(typeDirs["kanji"]!!, it).absolutePath }.sorted(),
         )
     }
 
@@ -159,6 +162,7 @@ fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: 
         termPaths = pathsForType("term"),
         freqPaths = pathsForType("frequency"),
         pitchPaths = pathsForType("pitch"),
+        kanjiPaths = pathsForType("kanji"),
     )
     val currentProfileHash = activeProfile.hashCode()
 
@@ -234,47 +238,76 @@ data object DictionaryTab : Tab {
         val styles: List<DictionaryStyle> = currentFrame?.styles ?: emptyList()
         val mediaDataUris: Map<String, String> = currentFrame?.mediaDataUris ?: emptyMap()
         val existingExpressions: Set<String> = currentFrame?.existingExpressions ?: emptySet()
+        val entryJsons: List<String>? = currentFrame?.entryJsons
 
         fun buildTabs(): List<TabInfo> = lookupStack.mapIndexed { i, frame ->
             TabInfo(label = frame.query.take(16), active = i == activeTabIndex)
         }
 
         /** Push a lookup onto the stack; cancels any in-flight search first. */
-        fun stackLookup(rawQuery: String) {
+        fun stackLookup(rawQuery: String, type: String? = null) {
             searchJob?.cancel()
             shouldMountWebView = true
             searchJob = scope.launch {
                 isLoading = true
                 errorMessage = null
 
-                val lookupResult = performLookup(
-                    query = rawQuery,
-                    context = context,
-                    activeProfile = activeProfile,
-                    sessionManager = sessionManager,
-                )
+                val initialFrame: TabLookupFrame
+                val lookupError: String?
 
-                val initialFrame = TabLookupFrame(
-                    query = rawQuery,
-                    results = lookupResult.results,
-                    styles = lookupResult.styles,
-                    mediaDataUris = lookupResult.mediaDataUris,
-                    existingExpressions = emptySet(),
-                )
-                
+                if (type == "kanji") {
+                    val paths = getDictionaryPaths(context, activeProfile)
+                    if (paths.kanjiPaths.isEmpty()) {
+                        errorMessage = "No kanji dictionaries available"
+                        isLoading = false
+                        return@launch
+                    }
+                    sessionManager.warmUp(paths)
+                    val kanjiResult = sessionManager.queryKanji(rawQuery)
+                    val jsonStrings = kanjiResult?.entries?.map { e ->
+                        buildKanjiEntryJson(kanjiResult.character, e).toString()
+                    } ?: emptyList()
+
+                    initialFrame = TabLookupFrame(
+                        query = rawQuery,
+                        results = emptyList(),
+                        styles = emptyList(),
+                        mediaDataUris = emptyMap(),
+                        existingExpressions = emptySet(),
+                        entryJsons = jsonStrings,
+                    )
+                    lookupError = null
+                } else {
+                    val lookupResult = performLookup(
+                        query = rawQuery,
+                        context = context,
+                        activeProfile = activeProfile,
+                        sessionManager = sessionManager,
+                    )
+
+                    initialFrame = TabLookupFrame(
+                        query = rawQuery,
+                        results = lookupResult.results,
+                        styles = lookupResult.styles,
+                        mediaDataUris = lookupResult.mediaDataUris,
+                        existingExpressions = emptySet(),
+                    )
+                    lookupError = lookupResult.error
+                }
+
                 // Truncate forward history, then push initial results IMMEDIATELY
                 while (lookupStack.size > activeTabIndex + 1) lookupStack.removeAt(lookupStack.size - 1)
                 lookupStack.add(initialFrame)
                 activeTabIndex = lookupStack.size - 1
 
-                errorMessage = lookupResult.error
+                errorMessage = lookupError
                 hasSearched = true
                 isLoading = false
 
-                if (lookupResult.results.isNotEmpty()) {
+                if (initialFrame.results.isNotEmpty()) {
                     val frameIndex = activeTabIndex
                     val frameQuery = rawQuery
-                    val frameResults = lookupResult.results
+                    val frameResults = initialFrame.results
                     scope.launch(Dispatchers.IO) {
                         val media = sessionManager.loadMediaDataUris(frameResults)
                         if (media.isNotEmpty()) {
@@ -289,8 +322,8 @@ data object DictionaryTab : Tab {
                 }
 
                 // Now run Anki check in background without blocking the UI
-                if (ankiEnabled && lookupResult.results.isNotEmpty()) {
-                    val unique = lookupResult.results.map { it.term.expression }.distinct()
+                if (ankiEnabled && type != "kanji" && initialFrame.results.isNotEmpty()) {
+                    val unique = initialFrame.results.map { it.term.expression }.distinct()
                     scope.launch(Dispatchers.IO) {
                         val existing = AnkiCardCreator.checkExistingCards(
                             context = context,
@@ -566,7 +599,7 @@ data object DictionaryTab : Tab {
             when {
                 isLoading -> Text(text = "Searching...")
                 errorMessage != null -> Text(errorMessage.orEmpty())
-                results.isEmpty() && hasSearched -> Text(stringResource(MR.strings.no_results_found))
+                results.isEmpty() && hasSearched && entryJsons == null -> Text(stringResource(MR.strings.no_results_found))
             }
 
             if (shouldMountWebView) {
@@ -594,11 +627,12 @@ data object DictionaryTab : Tab {
                     fontSize = popupFontSizePref,
                     customCss = customCss,
                     wordAudioEnabled = wordAudioEnabled,
+                    entryJsons = entryJsons,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },
                     onAnkiLookup = onAnkiLookup,
-                    onRecursiveLookup = { word, _, _, _, _ -> stackLookup(word) },
+                    onRecursiveLookup = { word, _, _, _, _, type -> stackLookup(word, type) },
                     onTabSelect = { idx ->
                         if (idx in lookupStack.indices) activeTabIndex = idx
                     },
@@ -696,10 +730,19 @@ data object DictionaryTab : Tab {
                     termPaths = paths.termPaths.toTypedArray(),
                     freqPaths = paths.freqPaths.toTypedArray(),
                     pitchPaths = paths.pitchPaths.toTypedArray(),
+                    kanjiPaths = paths.kanjiPaths.toTypedArray(),
                 )
                 cachedStyles = HoshiDicts.getStyles(activeSession).toList()
                 configuredPaths = paths
             }
+        }
+
+        @Synchronized
+        fun queryKanji(char: String): chimahon.KanjiResult? {
+            val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
+            return try {
+                HoshiDicts.queryKanji(activeSession, char)
+            } catch (_: Exception) { null }
         }
 
         @Synchronized

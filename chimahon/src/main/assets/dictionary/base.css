@@ -181,6 +181,10 @@ body {
   margin-left: 0.2em;
 }
 
+.kanji-tappable {
+  cursor: pointer;
+}
+
 /* Remove unused .headword-reading - JS uses .headword-furigana */
 
 /* ── Tags ────────────────────────────────────────────── */
@@ -966,4 +970,68 @@ html[data-theme="dark"][data-chima-eink-mode="true"] .word-audio-btn:hover,
 html[data-theme="dark"][data-chima-eink-mode="true"] .anki-add-btn:hover,
 html[data-theme="dark"][data-chima-eink-mode="true"] .anki-open-btn:hover {
   background: transparent !important;
+}
+
+/* ── Kanji Entry ─────────────────────────────────────── */
+.kanji-glyph {
+  font-family: 'KanjiStrokeOrders', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 7em;
+  line-height: 1.1;
+  font-weight: 400;
+}
+.kanji-tag-list {
+  margin: 4px 0;
+}
+.kanji-section-header {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--secondary);
+  margin: 8px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kanji-gloss-list {
+  margin: 4px 0;
+  padding-left: 1.2em;
+}
+.kanji-gloss-item {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.kanji-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+}
+.kanji-readings-chinese,
+.kanji-readings-japanese {
+  display: inline;
+  font-size: 1em;
+}
+.kanji-readings-chinese .kanji-reading {
+  color: var(--accent);
+  font-weight: 600;
+}
+.kanji-readings-japanese .kanji-reading {
+  font-weight: 600;
+}
+.kanji-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 0.9em;
+}
+.kanji-info-table-item td {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+}
+.kanji-info-table-item-header {
+  font-weight: 600;
+  color: var(--secondary);
+  width: 40%;
+  white-space: nowrap;
+}
+.kanji-info-table-item-value {
+  color: var(--fg);
 }

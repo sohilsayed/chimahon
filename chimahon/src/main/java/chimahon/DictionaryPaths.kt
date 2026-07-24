@@ -4,4 +4,5 @@ data class DictionaryPaths(
     val termPaths: List<String> = emptyList(),
     val freqPaths: List<String> = emptyList(),
     val pitchPaths: List<String> = emptyList(),
+    val kanjiPaths: List<String> = emptyList(),
 )

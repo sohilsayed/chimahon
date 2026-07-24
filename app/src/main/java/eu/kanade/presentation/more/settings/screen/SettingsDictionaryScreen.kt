@@ -86,6 +86,8 @@ import chimahon.dictionary.readDictionaryIndex
 import com.canopus.chimareader.data.FontManager
 import com.hippo.unifile.UniFile
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.ProgressListener
 import eu.kanade.tachiyomi.data.dictionary.DictionaryUpdateJob
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryTitle
@@ -266,7 +268,7 @@ private fun loadDictionaryList(context: Context) {
     Log.d(TAG, "loadDictionaryList: called")
     val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
     val names = if (dictionariesDir.exists()) {
-        listOf("term", "frequency", "pitch")
+        listOf("term", "frequency", "pitch", "kanji")
             .flatMap { type ->
                 val typeDir = File(dictionariesDir, type)
                 if (!typeDir.isDirectory) emptyList()
@@ -1286,7 +1288,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         val dictTypes = remember(dictionaries) {
             val dir = File(context.getExternalFilesDir(null), "dictionaries")
             dictionaries.map { name ->
-                name to listOf("term", "frequency", "pitch").filter { type ->
+                name to listOf("term", "frequency", "pitch", "kanji").filter { type ->
                     File(dir, "$type/$name").isDirectory
                 }
             }.toMap()
@@ -1362,7 +1364,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                         onClick = {
                             Log.d(TAG, "deleting dictionary: $dictName")
                             val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-                            val typeSubdirs = listOf("term", "frequency", "pitch").map { File(dictionariesDir, it) }.filter { it.isDirectory }
+                            val typeSubdirs = listOf("term", "frequency", "pitch", "kanji").map { File(dictionariesDir, it) }.filter { it.isDirectory }
                             for (typeDir in typeSubdirs) {
                                 val dictDir = File(typeDir, dictName)
                                 if (dictDir.exists()) {
@@ -1604,7 +1606,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
-                                            listOf("term" to "term", "frequency" to "freq", "pitch" to "pitch").forEach { (typeVal, label) ->
+                                            listOf("term" to "term", "frequency" to "freq", "pitch" to "pitch", "kanji" to "kanji").forEach { (typeVal, label) ->
                                                 val isActive = typeFilter == typeVal
                                                 val chipColor = when (typeVal) {
                                                     "term" -> if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
@@ -2777,7 +2779,7 @@ private suspend fun importDictionaryFromStream(
                 zipPath = tempZip.absolutePath,
                 outputDir = tempImportDir.absolutePath,
             )
-            Log.d(TAG, "importDictionaryFromStream: HoshiDicts result: success=${result.success} terms=${result.termCount} freq=${result.freqCount} pitch=${result.pitchCount} media=${result.mediaCount}")
+            Log.d(TAG, "importDictionaryFromStream: HoshiDicts result: success=${result.success} terms=${result.termCount} freq=${result.freqCount} pitch=${result.pitchCount} kanji=${result.kanjiCount} media=${result.mediaCount}")
 
             if (!result.success) {
                 Log.e(TAG, "importDictionaryFromStream: import failed")
@@ -2798,10 +2800,11 @@ private suspend fun importDictionaryFromStream(
                 if (result.termCount > 0) add(CopyTarget("term", result.termCount))
                 if (result.freqCount > 0) add(CopyTarget("frequency", result.freqCount))
                 if (result.pitchCount > 0) add(CopyTarget("pitch", result.pitchCount))
+                if (result.kanjiCount > 0) add(CopyTarget("kanji", result.kanjiCount))
             }
 
             if (targets.isEmpty()) {
-                Log.e(TAG, "importDictionaryFromStream: no term/freq/pitch entries found")
+                Log.e(TAG, "importDictionaryFromStream: no entries found")
                 return@withContext Pair("Dictionary has no recognizable entries", false)
             }
 
@@ -2812,6 +2815,24 @@ private suspend fun importDictionaryFromStream(
                 if (destDir.exists()) destDir.deleteRecursively()
                 importedDir.copyRecursively(destDir, overwrite = true)
                 Log.d(TAG, "importDictionaryFromStream: copied to ${target.type}/$title")
+            }
+
+            // Auto-download kanji stroke font if any kanji dicts were imported
+            if (result.kanjiCount > 0 && !FontManager.hasKanjiStrokeFont(context)) {
+                try {
+                    val fontFile = FontManager.getKanjiStrokeFontFile(context)
+                    Log.d(TAG, "importDictionaryFromStream: downloading kanji stroke font to ${fontFile.absolutePath}")
+                    Injekt.get<NetworkHelper>().downloadFileWithResume(
+                        url = FontManager.KANJI_STROKE_FONT_URL,
+                        outputFile = fontFile,
+                        progressListener = object : ProgressListener {
+                            override fun update(bytesRead: Long, contentLength: Long, done: Boolean) {}
+                        },
+                    )
+                    Log.d(TAG, "importDictionaryFromStream: kanji stroke font downloaded successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "importDictionaryFromStream: failed to download kanji stroke font", e)
+                }
             }
 
             // Add to profile order once (dict name, no type prefix)
