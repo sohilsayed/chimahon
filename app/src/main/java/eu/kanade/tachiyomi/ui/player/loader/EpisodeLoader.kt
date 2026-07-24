@@ -66,8 +66,11 @@ class EpisodeLoader {
             // TODO(1.6): Remove else block when dropping support for ext lib <1.6
             return if (checkHasHosters(source)) {
                 source.getHosterList(episode.toSEpisode())
+                    .let { source.run { it.sortHosters() } }
             } else {
-                source.getVideoList(episode.toSEpisode()).toHosterList()
+                source.getVideoList(episode.toSEpisode())
+                    .let { source.run { it.sortVideos() } }
+                    .toHosterList()
             }
         }
 
@@ -154,8 +157,9 @@ class EpisodeLoader {
                 source is AnimeHttpSource -> getVideosOnHttp(source, hoster)
                 else -> error("source not supported")
             }
+
             return if (source is AnimeHttpSource) {
-                videos
+                source.run { videos.sortVideos() }
             } else {
                 videos
             }
