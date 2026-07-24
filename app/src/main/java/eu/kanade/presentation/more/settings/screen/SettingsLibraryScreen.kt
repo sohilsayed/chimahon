@@ -19,6 +19,7 @@ import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.TriStateListDialog
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
+import eu.kanade.tachiyomi.data.library.anime.AnimeLibraryUpdateJob
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.category.genre.SortTagScreen
 import kotlinx.collections.immutable.persistentListOf
@@ -26,10 +27,16 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.GetAnimeCategories
 import tachiyomi.domain.category.interactor.ResetCategoryFlags
+import tachiyomi.domain.category.model.AnimeCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.GroupLibraryMode
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.library.service.LibraryPreferences.Companion.ANIME_HAS_UNVIEWED
+import tachiyomi.domain.library.service.LibraryPreferences.Companion.ANIME_NON_COMPLETED
+import tachiyomi.domain.library.service.LibraryPreferences.Companion.ANIME_NON_VIEWED
+import tachiyomi.domain.library.service.LibraryPreferences.Companion.ANIME_OUTSIDE_RELEASE_PERIOD
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_NETWORK_NOT_METERED
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_ONLY_ON_WIFI
@@ -59,12 +66,15 @@ object SettingsLibraryScreen : SearchableSettings {
     @Composable
     override fun getPreferences(): List<Preference> {
         val getCategories = remember { Injekt.get<GetCategories>() }
+        val getAnimeCategories = remember { Injekt.get<GetAnimeCategories>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
         val allCategories by getCategories.subscribe().collectAsState(initial = emptyList())
+        val allAnimeCategories by getAnimeCategories.subscribe().collectAsState(initial = emptyList())
 
         return listOf(
             getCategoriesGroup(LocalNavigator.currentOrThrow, allCategories, libraryPreferences),
-            getGlobalUpdateGroup(allCategories, libraryPreferences),
+            getGlobalUpdateGroup(allCategories, allAnimeCategories, libraryPreferences),
+            getSeasonBehaviorGroup(libraryPreferences),
             getBehaviorGroup(libraryPreferences),
             // SY -->
             getSortingCategory(LocalNavigator.currentOrThrow, libraryPreferences),
@@ -123,6 +133,7 @@ object SettingsLibraryScreen : SearchableSettings {
     @Composable
     private fun getGlobalUpdateGroup(
         allCategories: List<Category>,
+        allAnimeCategories: List<AnimeCategory>,
         libraryPreferences: LibraryPreferences,
     ): Preference.PreferenceGroup {
         val context = LocalContext.current
@@ -130,16 +141,37 @@ object SettingsLibraryScreen : SearchableSettings {
         val autoUpdateIntervalPref = libraryPreferences.autoUpdateInterval()
         val autoUpdateCategoriesPref = libraryPreferences.updateCategories()
         val autoUpdateCategoriesExcludePref = libraryPreferences.updateCategoriesExclude()
+        val autoUpdateAnimeCategoriesPref = libraryPreferences.animeUpdateCategories()
+        val autoUpdateAnimeCategoriesExcludePref = libraryPreferences.animeUpdateCategoriesExclude()
 
         val autoUpdateInterval by autoUpdateIntervalPref.collectAsState()
 
         val included by autoUpdateCategoriesPref.collectAsState()
         val excluded by autoUpdateCategoriesExcludePref.collectAsState()
+        val includedAnime by autoUpdateAnimeCategoriesPref.collectAsState()
+        val excludedAnime by autoUpdateAnimeCategoriesExcludePref.collectAsState()
         var showCategoriesDialog by rememberSaveable { mutableStateOf(false) }
+        var showAnimeCategoriesDialog by rememberSaveable { mutableStateOf(false) }
+        if (showAnimeCategoriesDialog) {
+            TriStateListDialog(
+                title = stringResource(MR.strings.anime_categories),
+                message = stringResource(MR.strings.pref_anime_library_update_categories_details),
+                items = allAnimeCategories,
+                initialChecked = includedAnime.mapNotNull { id -> allAnimeCategories.find { it.id.toString() == id } },
+                initialInversed = excludedAnime.mapNotNull { id -> allAnimeCategories.find { it.id.toString() == id } },
+                itemLabel = { it.visualName },
+                onDismissRequest = { showAnimeCategoriesDialog = false },
+                onValueChanged = { newIncluded, newExcluded ->
+                    autoUpdateAnimeCategoriesPref.set(newIncluded.map { it.id.toString() }.toSet())
+                    autoUpdateAnimeCategoriesExcludePref.set(newExcluded.map { it.id.toString() }.toSet())
+                    showAnimeCategoriesDialog = false
+                },
+            )
+        }
         if (showCategoriesDialog) {
             TriStateListDialog(
-                title = stringResource(MR.strings.categories),
-                message = stringResource(MR.strings.pref_library_update_categories_details),
+                title = stringResource(MR.strings.manga_categories),
+                message = stringResource(MR.strings.pref_manga_library_update_categories_details),
                 items = allCategories,
                 initialChecked = included.mapNotNull { id -> allCategories.find { it.id.toString() == id } },
                 initialInversed = excluded.mapNotNull { id -> allCategories.find { it.id.toString() == id } },
@@ -169,6 +201,7 @@ object SettingsLibraryScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_library_update_interval),
                     onValueChanged = {
                         LibraryUpdateJob.setupTask(context, it)
+                        AnimeLibraryUpdateJob.setupTask(context, it)
                         true
                     },
                 ),
@@ -184,12 +217,24 @@ object SettingsLibraryScreen : SearchableSettings {
                     enabled = autoUpdateInterval > 0,
                     onValueChanged = {
                         // Post to event looper to allow the preference to be updated.
-                        ContextCompat.getMainExecutor(context).execute { LibraryUpdateJob.setupTask(context) }
+                        ContextCompat.getMainExecutor(context).execute {
+                            LibraryUpdateJob.setupTask(context)
+                            AnimeLibraryUpdateJob.setupTask(context)
+                        }
                         true
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = stringResource(MR.strings.categories),
+                    title = stringResource(MR.strings.anime_categories),
+                    subtitle = getAnimeCategoriesLabel(
+                        allCategories = allAnimeCategories,
+                        included = includedAnime,
+                        excluded = excludedAnime,
+                    ),
+                    onClick = { showAnimeCategoriesDialog = true },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.manga_categories),
                     subtitle = getCategoriesLabel(
                         allCategories = allCategories,
                         included = included,
@@ -224,6 +269,16 @@ object SettingsLibraryScreen : SearchableSettings {
                     ),
                     title = stringResource(MR.strings.pref_library_update_smart_update),
                 ),
+                Preference.PreferenceItem.MultiSelectListPreference(
+                    preference = libraryPreferences.autoUpdateAnimeRestrictions(),
+                    entries = persistentMapOf(
+                        ANIME_HAS_UNVIEWED to stringResource(MR.strings.pref_update_only_completely_seen),
+                        ANIME_NON_VIEWED to stringResource(MR.strings.pref_update_only_started),
+                        ANIME_NON_COMPLETED to stringResource(MR.strings.pref_update_only_non_completed),
+                        ANIME_OUTSIDE_RELEASE_PERIOD to stringResource(MR.strings.pref_update_only_in_release_period),
+                    ),
+                    title = stringResource(MR.strings.pref_anime_library_update_smart_update),
+                ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.newShowUpdatesCount(),
                     title = stringResource(MR.strings.pref_library_update_show_tab_badge),
@@ -234,6 +289,21 @@ object SettingsLibraryScreen : SearchableSettings {
                     title = stringResource(KMR.strings.pref_show_updating_progress_banner),
                 ),
                 // KMK <--
+            ),
+        )
+    }
+
+    @Composable
+    private fun getSeasonBehaviorGroup(
+        libraryPreferences: LibraryPreferences,
+    ): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_library_season),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = libraryPreferences.updateSeasonOnLibraryUpdate(),
+                    title = stringResource(MR.strings.pref_update_seasons_update),
+                ),
             ),
         )
     }

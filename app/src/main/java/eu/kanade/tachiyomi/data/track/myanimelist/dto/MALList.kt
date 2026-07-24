@@ -24,3 +24,25 @@ data class MALListItemStatus(
     @SerialName("finish_date")
     val finishDate: String?,
 )
+
+@Serializable
+data class MALAnimeListItem(
+    @SerialName("num_episodes")
+    val numEpisodes: Long,
+    @SerialName("my_list_status")
+    val myListStatus: MALAnimeListItemStatus?,
+)
+
+@Serializable
+data class MALAnimeListItemStatus(
+    @SerialName("is_rewatching")
+    val isRewatching: Boolean,
+    val status: String,
+    @SerialName("num_episodes_watched")
+    val numEpisodesWatched: Double,
+    val score: Int,
+    @SerialName("start_date")
+    val startDate: String?,
+    @SerialName("finish_date")
+    val finishDate: String?,
+)

@@ -105,6 +105,11 @@ internal fun GeneralPage(screenModel: ReaderSettingsScreenModel) {
     )
 
     CheckboxItem(
+        label = stringResource(MR.strings.pref_show_ocr_outlines),
+        pref = screenModel.preferences.ocrOutlineVisible(),
+    )
+
+    CheckboxItem(
         label = stringResource(MR.strings.pref_always_show_chapter_transition),
         pref = screenModel.preferences.alwaysShowChapterTransition(),
     )

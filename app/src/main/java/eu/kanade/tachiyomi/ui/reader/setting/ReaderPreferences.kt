@@ -31,6 +31,8 @@ class ReaderPreferences(
 
     fun flashColor() = preferenceStore.getEnum("pref_reader_flash_mode", FlashColor.BLACK)
 
+    fun eInkMode() = preferenceStore.getBoolean("pref_reader_eink_swipe", false)
+
     fun doubleTapAnimSpeed() = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
 
     fun showPageNumber() = preferenceStore.getBoolean("pref_show_page_number_key", true)
@@ -104,6 +106,16 @@ class ReaderPreferences(
     fun pagedDisableZoomIn() = preferenceStore.getBoolean("paged_disable_zoom_in", false)
     // KMK <--
 
+    // Chimahon -->
+    fun ocrOverlayEnabled() = preferenceStore.getBoolean("reader_ocr_overlay_enabled", false)
+
+    fun ocrOutlineVisible() = preferenceStore.getBoolean("reader_ocr_outline_visible", false)
+
+    fun ocrAutoOnDownload() = preferenceStore.getBoolean("ocr_auto_on_download", false)
+
+    fun readerStartupDelay() = preferenceStore.getBoolean("reader_startup_delay", false)
+    // Chimahon <--
+
     // endregion
 
     // region Split two page spread
@@ -152,9 +164,9 @@ class ReaderPreferences(
 
     fun readWithVolumeKeysInverted() = preferenceStore.getBoolean("reader_volume_keys_inverted", false)
 
-    fun navigationModePager() = preferenceStore.getInt("reader_navigation_mode_pager", 0)
+    fun navigationModePager() = preferenceStore.getInt("reader_navigation_mode_pager", 5)
 
-    fun navigationModeWebtoon() = preferenceStore.getInt("reader_navigation_mode_webtoon", 0)
+    fun navigationModeWebtoon() = preferenceStore.getInt("reader_navigation_mode_webtoon", 5)
 
     fun pagerNavInverted() = preferenceStore.getEnum("reader_tapping_inverted", TappingInvertMode.NONE)
 

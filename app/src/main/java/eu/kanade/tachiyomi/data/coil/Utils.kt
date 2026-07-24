@@ -84,3 +84,12 @@ fun Palette.getBestColor(): Int? {
     }?.rgb
 }
 // KMK <--
+
+fun ImageRequest.Builder.useBackground(enable: Boolean) = apply {
+    extras[useBackgroundKey] = enable
+}
+
+val Options.useBackground: Boolean
+    get() = getExtra(useBackgroundKey)
+
+private val useBackgroundKey = Extras.Key(default = false)

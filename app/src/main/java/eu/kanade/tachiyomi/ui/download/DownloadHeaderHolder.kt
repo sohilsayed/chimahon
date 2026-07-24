@@ -12,7 +12,7 @@ class DownloadHeaderHolder(view: View, adapter: FlexibleAdapter<*>) : Expandable
     private val binding = DownloadHeaderBinding.bind(view)
 
     @SuppressLint("SetTextI18n")
-    fun bind(item: DownloadHeaderItem) {
+    fun bind(item: DownloadQueueHeader) {
         setDragHandleView(binding.reorder)
         binding.title.text = "${item.name} (${item.size})"
     }

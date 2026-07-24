@@ -18,6 +18,7 @@ CREATE TABLE chapters(
     version INTEGER NOT NULL DEFAULT 0,
     is_syncing INTEGER NOT NULL DEFAULT 0,
     memo BLOB AS JsonObject NOT NULL DEFAULT (CAST('{}' AS BLOB)),
+    ocr_ready INTEGER AS Boolean NOT NULL DEFAULT 0,
     FOREIGN KEY(manga_id) REFERENCES mangas (_id)
     ON DELETE CASCADE
 );
@@ -145,8 +146,8 @@ SET is_syncing = 0
 WHERE is_syncing = 1;
 
 insert:
-INSERT INTO chapters(manga_id, url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload, last_modified_at, version, is_syncing, memo)
-VALUES (:mangaId, :url, :name, :scanlator, :read, :bookmark, :lastPageRead, :chapterNumber, :sourceOrder, :dateFetch, :dateUpload, 0, :version, 0, :memo);
+INSERT INTO chapters(manga_id, url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload, last_modified_at, version, is_syncing, memo, ocr_ready)
+VALUES (:mangaId, :url, :name, :scanlator, :read, :bookmark, :lastPageRead, :chapterNumber, :sourceOrder, :dateFetch, :dateUpload, 0, :version, 0, :memo, 0);
 
 update:
 UPDATE chapters
@@ -163,7 +164,8 @@ SET manga_id = coalesce(:mangaId, manga_id),
     date_upload = coalesce(:dateUpload, date_upload),
     version = coalesce(:version, version),
     is_syncing = coalesce(:isSyncing, is_syncing),
-    memo = coalesce(:memo, memo)
+    memo = coalesce(:memo, memo),
+    ocr_ready = coalesce(:ocrReady, ocr_ready)
 WHERE _id = :chapterId;
 
 selectLastInsertedRowId:

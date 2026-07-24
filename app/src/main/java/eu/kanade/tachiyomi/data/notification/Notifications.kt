@@ -23,6 +23,9 @@ object Notifications {
     const val CHANNEL_COMMON = "common_channel"
     const val ID_DOWNLOAD_IMAGE = 2
 
+    const val CHANNEL_TORRENT_SERVER = "torrent_server_channel"
+    const val ID_TORRENT_SERVER = -601
+
     /**
      * Notification channel and ids used by the library updater.
      */
@@ -45,6 +48,8 @@ object Notifications {
     // KMK -->
     const val ID_DOWNLOAD_CHAPTER_PAUSED = -203
     // KMK <--
+    const val ID_OCR_PROGRESS = -204
+    const val CHANNEL_OCR_MODEL_DOWNLOAD = "ocr_model_download_channel"
     const val CHANNEL_DOWNLOADER_ERROR = "downloader_error_channel"
     const val ID_DOWNLOAD_CHAPTER_ERROR = -202
 
@@ -52,8 +57,11 @@ object Notifications {
      * Notification channel and ids used by the library updater.
      */
     const val CHANNEL_NEW_CHAPTERS = "new_chapters_channel"
+    const val CHANNEL_NEW_EPISODES = "new_episodes_channel"
     const val ID_NEW_CHAPTERS = -301
+    const val ID_NEW_EPISODES = -302
     const val GROUP_NEW_CHAPTERS = "eu.kanade.tachiyomi.NEW_CHAPTERS"
+    const val GROUP_NEW_EPISODES = "eu.kanade.tachiyomi.NEW_EPISODES"
 
     /**
      * Notification channel and ids used by the backup/restore/sync system.
@@ -101,6 +109,25 @@ object Notifications {
     const val ID_UPDATES_TO_EXTS = -401
     const val ID_EXTENSION_INSTALLER = -402
 
+    const val CHANNEL_ANIME_EXTENSIONS_UPDATE = "anime_ext_apk_update_channel"
+    const val ID_UPDATES_TO_ANIME_EXTS = -904
+
+    private const val GROUP_ANIME_DOWNLOADER = "group_anime_downloader"
+    const val CHANNEL_ANIME_DOWNLOADER_PROGRESS = "anime_downloader_progress_channel"
+    const val CHANNEL_ANIME_DOWNLOADER_ERROR = "anime_downloader_error_channel"
+    const val ID_ANIME_DOWNLOAD_PROGRESS = -901
+    const val ID_ANIME_DOWNLOAD_PAUSED = -902
+    const val ID_ANIME_DOWNLOAD_ERROR = -903
+    /**
+     * Notification channel and ids used for dictionary auto-updates.
+     */
+    const val CHANNEL_DICTIONARY_UPDATE = "dictionary_update_channel"
+    const val ID_DICT_UPDATE_CHECKING = -600
+    const val ID_DICT_UPDATE_PROGRESS = -601
+    const val ID_DICT_UPDATE_COMPLETE = -602
+    const val ID_DICT_UPDATE_NO_UPDATES = -603
+    const val ID_DICT_UPDATE_RESULT = -604
+
     private val deprecatedChannels = listOf(
         "downloader_channel",
         "downloader_complete_channel",
@@ -139,6 +166,9 @@ object Notifications {
                 buildNotificationChannelGroup(GROUP_APK_UPDATES) {
                     setName(context.stringResource(MR.strings.label_recent_updates))
                 },
+                buildNotificationChannelGroup(GROUP_ANIME_DOWNLOADER) {
+                    setName(context.stringResource(MR.strings.download_notifier_downloader_title))
+                },
             ),
         )
 
@@ -146,6 +176,10 @@ object Notifications {
             listOf(
                 buildNotificationChannel(CHANNEL_COMMON, IMPORTANCE_LOW) {
                     setName(context.stringResource(MR.strings.channel_common))
+                },
+                buildNotificationChannel(CHANNEL_TORRENT_SERVER, IMPORTANCE_LOW) {
+                    setName("Torrent server")
+                    setShowBadge(false)
                 },
                 buildNotificationChannel(CHANNEL_LIBRARY_PROGRESS, IMPORTANCE_LOW) {
                     setName(context.stringResource(MR.strings.channel_progress))
@@ -159,6 +193,9 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_NEW_CHAPTERS, IMPORTANCE_DEFAULT) {
                     setName(context.stringResource(MR.strings.channel_new_chapters))
+                },
+                buildNotificationChannel(CHANNEL_NEW_EPISODES, IMPORTANCE_DEFAULT) {
+                    setName(context.stringResource(MR.strings.channel_new_episodes))
                 },
                 buildNotificationChannel(CHANNEL_DOWNLOADER_PROGRESS, IMPORTANCE_LOW) {
                     setName(context.stringResource(MR.strings.channel_progress))
@@ -197,6 +234,20 @@ object Notifications {
                     setGroup(GROUP_APK_UPDATES)
                     setName(context.stringResource(MR.strings.channel_ext_updates))
                 },
+                buildNotificationChannel(CHANNEL_ANIME_EXTENSIONS_UPDATE, IMPORTANCE_DEFAULT) {
+                    setGroup(GROUP_APK_UPDATES)
+                    setName(context.stringResource(MR.strings.channel_anime_ext_updates))
+                },
+                buildNotificationChannel(CHANNEL_ANIME_DOWNLOADER_PROGRESS, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_progress))
+                    setGroup(GROUP_ANIME_DOWNLOADER)
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_ANIME_DOWNLOADER_ERROR, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_errors))
+                    setGroup(GROUP_ANIME_DOWNLOADER)
+                    setShowBadge(false)
+                },
                 // AM (DISCORD) -->
                 buildNotificationChannel(CHANNEL_DISCORD_RPC, IMPORTANCE_LOW) {
                     setName(context.getString(R.string.pref_discord_rpc))
@@ -209,6 +260,14 @@ object Notifications {
                     setShowBadge(false)
                 },
                 // SY <--
+                buildNotificationChannel(CHANNEL_DICTIONARY_UPDATE, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.channel_dictionary_update))
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_OCR_MODEL_DOWNLOAD, IMPORTANCE_LOW) {
+                    setName("OCR model download")
+                    setShowBadge(false)
+                },
             ),
         )
     }

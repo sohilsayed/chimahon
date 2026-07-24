@@ -53,6 +53,9 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.ocr.OcrManager
+import eu.kanade.tachiyomi.data.ocr.OcrQueueItem
+import eu.kanade.tachiyomi.data.ocr.isActionable
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.mdlist.MdList
@@ -68,6 +71,7 @@ import eu.kanade.tachiyomi.ui.manga.RelatedManga.Companion.sorted
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.updateLocalCoverFromSourceFetch
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toast
 import exh.debug.DebugToggles
@@ -88,6 +92,7 @@ import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.CancellationException
+
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -225,6 +230,7 @@ class MangaScreenModel(
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
+    private val ocrManager: OcrManager = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     // KMK -->
     private val deleteLibraryUpdateErrors: DeleteLibraryUpdateErrors = Injekt.get(),
@@ -236,6 +242,8 @@ class MangaScreenModel(
 
     private val successState: State.Success?
         get() = state.value as? State.Success
+
+    private val ocrReindexCheckedChapterIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     // KMK -->
     val useNewSourceNavigation by uiPreferences.useNewSourceNavigation().asState(screenModelScope)
@@ -388,6 +396,7 @@ class MangaScreenModel(
                             // SY <--
                         )
                     }
+                    reindexDownloadedOcrStatus(manga, chapters, mergedData)
                 }
         }
 
@@ -428,6 +437,25 @@ class MangaScreenModel(
         }
 
         observeDownloads()
+
+        screenModelScope.launchIO {
+            ocrManager.queueState
+                .flowWithLifecycle(lifecycle)
+                .collectLatest { ocrQueue ->
+                    updateSuccessState { state ->
+                        val ocrRunningIds = ocrQueue
+                            .filter { it.manga.id == mangaId && it.status.isActionable() }
+                            .map { it.chapter.id }
+                            .toSet()
+
+                        state.copy(
+                            chapters = state.chapters.map { item ->
+                                item.copy(isOcrRunning = item.chapter.id in ocrRunningIds)
+                            },
+                        )
+                    }
+                }
+        }
 
         screenModelScope.launchIO {
             val manga = getMangaAndChapters.awaitManga(mangaId)
@@ -1116,7 +1144,59 @@ class MangaScreenModel(
                 sourceName = source?.getNameForMangaInfo(),
                 showScanlator = !isExhManga,
                 // SY <--
+                // Chimahon: OCR fields
+                isOcrReady = chapter.isOcrReady,
+                isOcrRunning = false,
             )
+        }
+    }
+
+    private suspend fun reindexDownloadedOcrStatus(
+        manga: Manga,
+        chapters: List<Chapter>,
+        mergedData: MergedMangaData?,
+    ) {
+        val pendingChapters = chapters
+            .filterNot { it.isOcrReady }
+            .filter { ocrReindexCheckedChapterIds.add(it.id) }
+        if (pendingChapters.isEmpty()) return
+
+        try {
+            val readyChapterIds = mutableSetOf<Long>()
+            val chaptersByManga = if (mergedData == null) {
+                mapOf(manga.id to pendingChapters)
+            } else {
+                pendingChapters.groupBy { it.mangaId }
+            }
+
+            chaptersByManga.forEach { (chapterMangaId, mangaChapters) ->
+                val chapterManga = mergedData?.manga?.get(chapterMangaId) ?: manga.takeIf { it.id == chapterMangaId } ?: return@forEach
+                val source = mergedData?.sources?.find { it.id == chapterManga.source } ?: sourceManager.getOrStub(chapterManga.source)
+                readyChapterIds += ocrManager.reindexDownloadedOcrStatus(chapterManga, source, mangaChapters)
+            }
+
+            if (readyChapterIds.isNotEmpty()) {
+                updateSuccessState { state ->
+                    state.copy(
+                        chapters = state.chapters.map { item ->
+                            if (item.chapter.id in readyChapterIds) {
+                                item.copy(
+                                    chapter = item.chapter.copy(isOcrReady = true),
+                                    isOcrReady = true,
+                                )
+                            } else {
+                                item
+                            }
+                        },
+                    )
+                }
+            }
+        } catch (e: CancellationException) {
+            ocrReindexCheckedChapterIds.removeAll(pendingChapters.map { it.id }.toSet())
+            throw e
+        } catch (e: Exception) {
+            ocrReindexCheckedChapterIds.removeAll(pendingChapters.map { it.id }.toSet())
+            logcat(LogPriority.WARN, e) { "Failed to reindex downloaded OCR status for manga ${manga.id}" }
         }
     }
 
@@ -1330,6 +1410,30 @@ class MangaScreenModel(
             }
             ChapterDownloadAction.DELETE -> {
                 deleteChapters(items.map { it.chapter })
+            }
+            ChapterDownloadAction.OCR -> {
+                runOcrAction(items)
+            }
+            ChapterDownloadAction.DELETE_OCR -> {
+                deleteOcrForChapters(items)
+            }
+        }
+    }
+
+    private fun runOcrAction(items: List<ChapterList.Item>) {
+        val state = successState ?: return
+        val chaptersToProcess = items.map { it.chapter }
+        logcat {
+            "MangaScreenModel: OCR requested chapters=${chaptersToProcess.joinToString { it.id.toString() }}"
+        }
+        downloadManager.downloadChaptersWithOcr(state.manga, chaptersToProcess)
+    }
+
+    private fun deleteOcrForChapters(items: List<ChapterList.Item>) {
+        val state = successState ?: return
+        screenModelScope.launchIO {
+            items.forEach { item ->
+                ocrManager.deleteOcrForChapter(state.manga, item.chapter)
             }
         }
     }
@@ -1905,6 +2009,8 @@ class MangaScreenModel(
         data object ClearManga : Dialog
         // KMK <--
 
+        data class SetDictionaryProfile(val manga: Manga) : Dialog
+
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
         data object FullCover : Dialog
@@ -1971,6 +2077,34 @@ class MangaScreenModel(
         updateSuccessState { it.copy(dialog = Dialog.ClearManga) }
     }
     // KMK <--
+
+    fun showSetDictionaryProfileDialog() {
+        updateSuccessState { it.copy(dialog = Dialog.SetDictionaryProfile(it.manga)) }
+    }
+
+    /**
+     * Persist (or clear) a manga-level dictionary profile override.
+     * [profileId] == null clears the override, falling back to source/language/global resolution.
+     */
+    fun setMangaDictionaryProfile(profileId: String?) {
+        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+        val key = chimahon.dictionary.DictionaryProfileResolver.mangaOverrideKey(mangaId)
+        if (profileId == null) {
+            prefs.rawProfileOverride(key).delete()
+        } else {
+            prefs.rawProfileOverride(key).set(profileId)
+        }
+        dismissDialog()
+    }
+
+    fun resolveAutoProfile(sourceId: Long): chimahon.anki.AnkiProfile {
+        val source = Injekt.get<SourceManager>().getOrStub(sourceId)
+        return Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>().profileResolver.resolve(
+            mangaId = 0L, // 0 to avoid hitting the manga override itself
+            sourceId = sourceId, // But DO check source override
+            sourceLang = source.lang,
+        )
+    }
 
     sealed interface State {
         @Immutable
@@ -2123,6 +2257,9 @@ sealed class ChapterList {
         val sourceName: String?,
         val showScanlator: Boolean,
         // SY <--
+        // Chimahon: OCR fields
+        val isOcrReady: Boolean = false,
+        val isOcrRunning: Boolean = false,
     ) : ChapterList() {
         val id = chapter.id
         val isDownloaded = downloadState == Download.State.DOWNLOADED

@@ -6,11 +6,14 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams
+import android.webkit.WebView
 import androidx.annotation.ColorInt
 import androidx.core.view.children
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.viewpager.widget.ViewPager
+import chimahon.DictionaryRepository
+import chimahon.MediaInfo
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
@@ -19,6 +22,7 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderItem
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
@@ -41,6 +45,33 @@ abstract class PagerViewer(
     val downloadManager: DownloadManager by injectLazy()
 
     val scope = MainScope()
+
+    var onShowOcrPopup: (
+        (
+            lookupString: String,
+            fullText: String,
+            charOffset: Int,
+            anchorX: Float,
+            anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+            isVertical: Boolean,
+            mediaInfo: chimahon.MediaInfo?,
+            sourcePage: ReaderPage?,
+        ) -> Unit
+    )? = null
+
+    var onDismissOcrPopup: (() -> Unit)? = null
+
+    var onShowOcrSelectionPanel: (
+        (
+            text: String,
+            anchorX: Float,
+            anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+        ) -> Unit
+    )? = null
 
     /**
      * View pager used by this viewer. It's abstract to implement L2R, R2L and vertical pagers on
@@ -117,7 +148,22 @@ abstract class PagerViewer(
         pager.id = R.id.reader_pager
         pager.adapter = adapter
         pager.addOnPageChangeListener(pagerListener)
-        pager.tapListener = { event ->
+        pager.tapListener = f@{ event ->
+            val rx = event.rawX
+            val ry = event.rawY
+            val isOcrTap = pager.children
+                .filterIsInstance<PagerPageHolder>()
+                .any { holder ->
+                    val loc = IntArray(2)
+                    holder.getLocationOnScreen(loc)
+                    val localX = rx - loc[0]
+                    val localY = ry - loc[1]
+                    localX >= 0 && localX <= holder.width &&
+                        localY >= 0 && localY <= holder.height &&
+                        holder.isPointOnOcrBlock(localX, localY)
+                }
+            if (isOcrTap) return@f
+
             val viewPosition = IntArray(2)
             pager.getLocationOnScreen(viewPosition)
             val viewPositionRelativeToWindow = IntArray(2)
@@ -135,6 +181,21 @@ abstract class PagerViewer(
             }
         }
         pager.longTapListener = f@{
+            val rx = it.rawX
+            val ry = it.rawY
+            val isOcrLongTap = pager.children
+                .filterIsInstance<PagerPageHolder>()
+                .any { holder ->
+                    val loc = IntArray(2)
+                    holder.getLocationOnScreen(loc)
+                    val localX = rx - loc[0]
+                    val localY = ry - loc[1]
+                    localX >= 0 && localX <= holder.width &&
+                        localY >= 0 && localY <= holder.height &&
+                        holder.isPointOnOcrBlock(localX, localY)
+                }
+            if (isOcrLongTap) return@f true
+
             if (activity.viewModel.state.value.menuVisible || config.longTapEnabled) {
                 val item = adapter.joinedItems.getOrNull(pager.currentItem)
                 val firstPage = item?.first as? ReaderPage
@@ -165,6 +226,11 @@ abstract class PagerViewer(
             val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
             activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
         }
+
+        config.eInkModeChangedListener = {
+            pager.eInkMode = it
+        }
+        pager.eInkMode = config.eInkMode
     }
 
     override fun destroy() {
@@ -328,7 +394,7 @@ abstract class PagerViewer(
         val position = adapter.joinedItems.indexOfFirst { it.first == page || it.second == page }
         if (position != -1) {
             val currentPosition = pager.currentItem
-            pager.setCurrentItem(position, true)
+            pager.setCurrentItem(position, config.usePageTransitions && !config.eInkMode)
             // manually call onPageChange since ViewPager listener is not triggered in this case
             if (currentPosition == position) {
                 onPageChange(position)
@@ -369,7 +435,7 @@ abstract class PagerViewer(
             if (holder != null && config.navigateToPan && holder.canPanRight()) {
                 holder.panRight()
             } else {
-                pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+                pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions && !config.eInkMode)
             }
         }
     }
@@ -383,7 +449,7 @@ abstract class PagerViewer(
             if (holder != null && config.navigateToPan && holder.canPanLeft()) {
                 holder.panLeft()
             } else {
-                pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+                pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions && !config.eInkMode)
             }
         }
     }
@@ -425,6 +491,38 @@ abstract class PagerViewer(
         adapter.refresh()
         pager.adapter = adapter
         pager.setCurrentItem(currentItem, false)
+    }
+
+    fun setOcrEnabled(enabled: Boolean) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrEnabled(enabled)
+            }
+    }
+
+    fun setOcrOutlineVisible(visible: Boolean) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrOutlineVisible(visible)
+            }
+    }
+
+    fun setOcrBoxScale(scaleX: Float, scaleY: Float) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrBoxScale(scaleX, scaleY)
+            }
+    }
+
+    fun setOcrBoxOpacity(opacity: Float) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyOcrBoxOpacity(opacity)
+            }
     }
 
     /**

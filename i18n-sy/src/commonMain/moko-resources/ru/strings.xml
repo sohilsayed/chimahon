@@ -224,7 +224,7 @@
     <string name="sync_on_chapter_open">Синхронизовать при открытии главы</string>
     <string name="sync_on_app_start">Синхронизовать при запуске приложения</string>
     <string name="sync_on_app_resume">Синхронизовать при возвращении в приложение</string>
-    <string name="sync_library">Синхронизировать библиотеку</string>
+    <string name="sync_library">Синхронизировать TTSU</string>
     <!-- Security settings -->
     <string name="biometric_lock_times">Биометрическое время блокировки</string>
     <string name="action_edit_biometric_lock_times">Изменить биометрическое время блокировки</string>
@@ -690,4 +690,6 @@
     <string name="final_chapter">Последняя глава</string>
     <string name="pref_include_chapter_url_hash">Включать URL-хэш главы</string>
     <string name="pref_include_chapter_url_hash_desc">Добавить первые шесть символов хеша MD5 из URL-адреса главы к имени файла или папки главы.</string>
+    <string name="stats_all_profiles">Все профили</string>
+    <string name="stats_profile_filter_label">Профиль: %1$s</string>
 </resources>

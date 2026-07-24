@@ -177,12 +177,21 @@
     <string name="pref_hide_updates_button">Show updates in the nav</string>
     <string name="pref_hide_history_button">Show history in the nav</string>
     <string name="pref_show_bottom_bar_labels">Always show nav labels</string>
+    <string name="pref_navigation_style">Navigation style</string>
+    <string name="pref_navigation_style_summary">Customize tab bar layout</string>
+    <string name="pref_nav_start_screen">Start screen</string>
+    <string name="pref_nav_section_navbar">Navigation bar</string>
+    <string name="pref_nav_section_more">More tab</string>
+    <string name="pref_nav_section_disabled">Disabled</string>
+    <string name="pref_nav_up_to_n_entries">Up to %d entries</string>
 
     <!-- Tracker settings -->
     <string name="pref_tracker_resolve_using_source_metadata">Select entries using source metadata</string>
     <string name="pref_tracker_resolve_using_source_metadata_summary">Automatically selects the matching title if the source provides links to trackers. Currently supported by MangaDex</string>
 
     <!-- Library settings -->
+    <string name="pref_consolidated_library">Consolidated library</string>
+    <string name="pref_consolidated_library_summary">Combine manga, anime, and novels into a single library tab with a mode selector</string>
     <string name="pref_sorting_settings">Sorting Settings</string>
     <string name="pref_skip_pre_migration_summary">Use last saved pre-migration preferences and sources to mass migrate</string>
     <string name="library_group_updates">Library dynamic category updates</string>
@@ -251,9 +260,10 @@
     <string name="pref_sync_options_summ">Can be used to set sync triggers</string>
     <string name="sync_on_chapter_read">Sync on Chapter Read</string>
     <string name="sync_on_chapter_open">Sync on Chapter Open</string>
+    <string name="sync_on_episode_seen">Sync on Episode Seen</string>
     <string name="sync_on_app_start">Sync on App Start</string>
     <string name="sync_on_app_resume">Sync on App Resume</string>
-    <string name="sync_library">Sync library</string>
+    <string name="sync_library">Sync TTSU</string>
 
     <!-- Security settings -->
     <string name="biometric_lock_times">Biometric lock times</string>
@@ -741,6 +751,21 @@
     <!-- Stats page -->
     <string name="include_all_read_entries">Include all read entries</string>
     <string name="ignore_non_library_entries">Ignore non-library entries</string>
+
+    <string name="stats_all_time">All time</string>
+    <string name="stats_today">Today</string>
+    <string name="stats_last_week">Last week</string>
+    <string name="stats_last_month">Last month</string>
+    <string name="stats_last_year">Last year</string>
+    <string name="stats_all">All</string>
+    <string name="stats_manga">Manga</string>
+    <string name="stats_novels">Novels</string>
+    <string name="stats_streak">Reading streak</string>
+    <string name="stats_characters_read">Characters read</string>
+    <string name="stats_avg_speed">Avg speed</string>
+    <string name="stats_reading_time">Reading time</string>
+    <string name="stats_all_profiles">All profiles</string>
+    <string name="stats_profile_filter_label">Profile: %1$s</string>
 
     <!-- Humanize time -->
     <string name="humanize_fallback">moments ago</string>

@@ -19,3 +19,16 @@ fun Category.visualName(context: Context): String =
         isSystemCategory -> context.stringResource(MR.strings.label_default)
         else -> name
     }
+
+val tachiyomi.domain.category.model.AnimeCategory.visualName: String
+    @Composable
+    get() = when {
+        isSystemCategory -> stringResource(MR.strings.label_default)
+        else -> name
+    }
+
+fun tachiyomi.domain.category.model.AnimeCategory.visualName(context: Context): String =
+    when {
+        isSystemCategory -> context.stringResource(MR.strings.label_default)
+        else -> name
+    }

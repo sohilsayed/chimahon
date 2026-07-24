@@ -3,6 +3,7 @@ package eu.kanade.domain.track.service
 import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.data.track.anilist.Anilist
+import eu.kanade.tachiyomi.data.track.mangabaka.MangaBaka
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
@@ -55,4 +56,8 @@ class TrackPreferences(
     // KMK -->
     fun autoSyncProgressFromTrackers() = preferenceStore.getBoolean("pref_auto_sync_progress_from_trackers_key", true)
     // KMK <--
+
+    fun mangabakaScoreType() = preferenceStore.getString("mangabaka_score_type", MangaBaka.STEP_10)
+
+    fun showNextEpisodeAiringTime() = preferenceStore.getBoolean("pref_show_next_episode_airing_time", true)
 }

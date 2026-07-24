@@ -14,7 +14,8 @@
       <!-- Permission to save cover into Pictures. It isn't required from API 29 -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="28"
+        tools:replace="android:maxSdkVersion" />
       <!-- For access custom cover on Android 12 & below (API 32) -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -26,6 +27,8 @@
 
     <!-- For background jobs -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -45,6 +48,13 @@
         tools:ignore="ProtectedPermissions" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- AnkiDroid -->
+    <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
+
+    <queries>
+        <package android:name="com.ichi2.anki" />
+    </queries>
 
     <application
         android:name=".App"
@@ -174,6 +184,67 @@
         </activity>
 
         <activity
+            android:name=".ui.library.novels.ChimaReaderActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Tachiyomi" />
+
+        <activity
+            android:name=".ui.player.PlayerActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:theme="@style/Theme.Tachiyomi"
+            android:supportsPictureInPicture="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/x-matroska" />
+                <data android:mimeType="application/vnd.apple.mpegurl" />
+                <data android:mimeType="application/x-mpegURL" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.player.cast.ExpandedControlsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Tachiyomi" />
+
+        <service
+            android:name=".data.torrentServer.service.TorrentServerService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="eu.kanade.tachiyomi.ui.player.cast.CastOptionsProvider" />
+
+        <activity
+            android:name=".ui.dictionary.ProcessTextLookupActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:finishOnTaskLaunch="true"
+            android:label="@string/app_name"
+            android:noHistory="true"
+            android:theme="@style/Theme.Tachiyomi.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.dictionary.ScreenLookupPermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Tachiyomi" />
+
+        <activity
             android:name=".ui.security.UnlockActivity"
             android:exported="false"
             android:theme="@style/Theme.Tachiyomi" />
@@ -200,11 +271,15 @@
 
                 <data android:scheme="komikku" />
                 <data android:scheme="mihon" />
+                <data android:scheme="aniyomi" />
+                <data android:scheme="chimahon" />
 
                 <data android:host="anilist-auth" />
                 <data android:host="bangumi-auth" />
+                <data android:host="mangabaka-auth" />
                 <data android:host="myanimelist-auth" />
                 <data android:host="shikimori-auth" />
+                <data android:host="simkl-auth" />
             </intent-filter>
         </activity>
         <activity
@@ -218,7 +293,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data
-                    android:scheme="eu.kanade.google.oauth" />
+                    android:scheme="app.chimahon.google.oauth" />
             </intent-filter>
         </activity>
 
@@ -233,6 +308,84 @@
             android:exported="false"
             android:foregroundServiceType="dataSync">
         </service>
+
+        <receiver
+            android:name=".glance.ScreenOcrReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/widget_description_screen_lookup">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/screen_ocr_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.SearchReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/widget_description_search">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/search_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.ReadingStatsReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/widget_description_reading_stats">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/reading_stats_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.RecentHistoryReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/widget_description_recent_history">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/recent_history_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.ContinueReadingReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/widget_description_continue_reading">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/continue_reading_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".glance.NovelProgressReceiver"
+            android:enabled="true"
+            android:exported="false"
+            android:label="@string/widget_description_novel_progress">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/novel_progress_widget_info" />
+        </receiver>
 
         <receiver
             android:name=".data.notification.NotificationReceiver"
@@ -253,6 +406,25 @@
             android:name=".extension.util.ExtensionInstallService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".ui.dictionary.ScreenLookupService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name=".ui.dictionary.ScreenLookupTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_chimahon"
+            android:label="@string/screen_lookup_title"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
 
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
@@ -397,6 +569,10 @@
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
             tools:remove="screenOrientation" />
+
+        <activity
+            android:name="com.canhub.cropper.CropImageActivity"
+            android:theme="@style/Base.Theme.AppCompat" />
     </application>
 
 </manifest>

@@ -1,0 +1,186 @@
+name: Release
+on:
+  push:
+    tags:
+      - v*
+      - '[0-9]+.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  get_tag:
+    name: Extract tag name
+    runs-on: 'ubuntu-24.04'
+    outputs:
+      tag: ${{ steps.extract.outputs.tag }}
+      version_name: ${{ steps.extract.outputs.version_name }}
+      version_code: ${{ steps.extract.outputs.version_code }}
+
+    steps:
+      - name: Get tag name
+        id: extract
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version_name="${tag#v}"
+
+          if [[ ! "$version_name" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Release tag must be semver-like (e.g. v1.2.3 or 1.2.3). Got: $tag"
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version_code=$((major * 10000 + minor * 100 + patch))
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build
+    runs-on: 'ubuntu-24.04'
+    needs: get_tag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Checkout submodules
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          if [ -n "$GH_PAT" ]; then
+            git config --global url."https://$GH_PAT@github.com/".insteadOf "https://github.com/"
+          fi
+          git submodule update --init --recursive
+
+      - name: Set up JDK
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+
+      - name: Write client_secrets.json
+        uses: DamianReeves/write-file-action@6929a9a6d1807689191dcc8bbe62b54d70a32b42 # v1.3
+        with:
+          path: app/src/main/assets/client_secrets.json
+          contents: ${{ secrets.GOOGLE_CLIENT_SECRETS_JSON }}
+          write-mode: overwrite
+
+      - name: Clean CMake cache
+        run: rm -rf app/.cxx chimahon/.cxx
+
+      - name: Build
+        run: ./gradlew assembleRelease -Penable-updater -PreleaseVersionName=${{ needs.get_tag.outputs.version_name }} -PreleaseVersionCode=${{ needs.get_tag.outputs.version_code }}
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: '35.0.1'
+
+      - name: Rename APK
+        run: |
+          set -e
+
+          mv app/build/outputs/apk/release/app-universal-release-unsigned-signed.apk chimahon-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-arm64-v8a-release-unsigned-signed.apk chimahon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned-signed.apk chimahon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-x86-release-unsigned-signed.apk chimahon-x86-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-x86_64-release-unsigned-signed.apk chimahon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: chimahon
+          path: |
+            chimahon-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-x86-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-24.04
+    needs: [get_tag, build]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          merge-multiple: true
+
+      - name: Generate release notes from CHANGELOG
+        run: |
+          set -e
+
+          version_name="${{ needs.get_tag.outputs.version_name }}"
+
+          changelog_section=$(awk -v v="$version_name" '
+            $0 ~ "^## \\\[(v?" v ")\\\]" { found = 1; next }
+            found && $0 ~ "^## \\\[" { exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [[ -z "$changelog_section" ]]; then
+            changelog_section=$(awk '
+              $0 ~ "^## \\\[Unreleased\\\]" { found = 1; next }
+              found && $0 ~ "^## \\\[" { exit }
+              found { print }
+            ' CHANGELOG.md)
+          fi
+
+          if [[ -n "$changelog_section" ]]; then
+            {
+              echo "$changelog_section"
+            } > release_notes.md
+          else
+            {
+              echo "Release ${{ needs.get_tag.outputs.tag }}"
+              echo
+              echo "No matching section found in CHANGELOG.md for version $version_name."
+            } > release_notes.md
+          fi
+          echo -e "\n<!-->" >> release_notes.md
+
+      - name: Delete all artifacts
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
+        with:
+          failOnError: false
+          name: chimahon
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ needs.get_tag.outputs.tag }}
+          name: Chimahon ${{ needs.get_tag.outputs.tag }}
+          body_path: release_notes.md
+          files: |
+            chimahon-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-x86-${{ needs.get_tag.outputs.tag }}.apk
+            chimahon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
+          draft: true
+          prerelease: false

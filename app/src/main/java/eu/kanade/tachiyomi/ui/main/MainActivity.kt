@@ -3,9 +3,11 @@ package eu.kanade.tachiyomi.ui.main
 import android.animation.ValueAnimator
 import android.app.SearchManager
 import android.app.assist.AssistContent
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
@@ -55,6 +57,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.connections.service.ConnectionsPreferences
 import eu.kanade.domain.source.interactor.GetIncognitoState
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.presentation.components.AppStateBanners
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
@@ -80,6 +83,7 @@ import eu.kanade.tachiyomi.data.coil.MangaCoverMetadata
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
+import eu.kanade.tachiyomi.data.library.anime.AnimeLibraryUpdateJob
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.data.updater.AppUpdateJob
@@ -94,6 +98,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.more.WhatsNewScreen
+import eu.kanade.tachiyomi.ui.player.PlayerActivity
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
 import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
@@ -513,6 +518,9 @@ class MainActivity : BaseActivity() {
                     if (!LibraryUpdateJob.isPeriodicUpdateScheduled(context)) {
                         LibraryUpdateJob.setupTask(context)
                     }
+                    if (!AnimeLibraryUpdateJob.isPeriodicUpdateScheduled(context)) {
+                        AnimeLibraryUpdateJob.setupTask(context)
+                    }
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                     withContext(Dispatchers.Main) {
@@ -660,6 +668,26 @@ class MainActivity : BaseActivity() {
                 navigator.popUntilRoot()
                 HomeScreen.Tab.More(toDownloads = true)
             }
+            Constants.SHORTCUT_STATS -> {
+                navigator.popUntilRoot()
+                HomeScreen.Tab.More(toDownloads = false, toStats = true)
+            }
+            Constants.SHORTCUT_ANIME -> {
+                navigator.popUntilRoot()
+                if (Injekt.get<UiPreferences>().useConsolidatedLibrary().get()) {
+                    HomeScreen.Tab.Library()
+                } else {
+                    HomeScreen.Tab.Anime
+                }
+            }
+            Constants.SHORTCUT_DICTIONARY -> {
+                navigator.popUntilRoot()
+                HomeScreen.Tab.Dictionary
+            }
+            Constants.SHORTCUT_NOVELS -> {
+                navigator.popUntilRoot()
+                HomeScreen.Tab.Novels
+            }
             // KMK -->
             Constants.SHORTCUT_LIBRARY_UPDATE_ERRORS -> {
                 navigator.popUntilRoot()
@@ -700,6 +728,12 @@ class MainActivity : BaseActivity() {
                         navigator.push(ExtensionStoresScreen(repoUrl))
                     }
                 }
+                // Some file managers match MainActivity's broad backup filter for videos.
+                // Forward those local video intents to the standalone anime player.
+                else if (openExternalVideoIntent(intent)) {
+                    ready = true
+                    return true
+                }
                 null
             }
             else -> return false
@@ -718,10 +752,70 @@ class MainActivity : BaseActivity() {
             (scheme == "mihon" && data?.host == "extension-store")
     }
 
+    private fun openExternalVideoIntent(intent: Intent): Boolean {
+        val uri = intent.data ?: return false
+        val mimeType = intent.type ?: runCatching { contentResolver.getType(uri) }.getOrNull()
+        if (!uri.looksLikeStandaloneVideo(mimeType)) return false
+
+        val playerIntent = PlayerActivity.newStandaloneIntent(this, uri).apply {
+            action = Intent.ACTION_VIEW
+            clipData = intent.clipData ?: ClipData.newUri(
+                contentResolver,
+                uri.lastPathSegment ?: "video",
+                uri,
+            )
+            addFlags(intent.flags and INTENT_URI_GRANT_FLAGS)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(playerIntent)
+        return true
+    }
+
+    private fun Uri.looksLikeStandaloneVideo(mimeType: String?): Boolean {
+        val normalizedMime = mimeType?.lowercase()
+        if (normalizedMime != null) {
+            if (normalizedMime.startsWith("video/")) return true
+            if (normalizedMime in STANDALONE_VIDEO_MIME_TYPES) return true
+        }
+
+        val normalizedUri = toString().substringBefore('?').lowercase()
+        return STANDALONE_VIDEO_EXTENSIONS.any { normalizedUri.endsWith(it) }
+    }
+
     companion object {
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
+
+        private val INTENT_URI_GRANT_FLAGS =
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+
+        private val STANDALONE_VIDEO_MIME_TYPES = setOf(
+            "application/octet-stream",
+            "application/vnd.apple.mpegurl",
+            "application/x-bittorrent",
+            "application/x-matroska",
+            "application/x-mpegurl",
+        )
+
+        private val STANDALONE_VIDEO_EXTENSIONS = setOf(
+            ".avi",
+            ".flv",
+            ".m2ts",
+            ".m4v",
+            ".mkv",
+            ".mov",
+            ".mp4",
+            ".mpeg",
+            ".mpg",
+            ".ogm",
+            ".ogv",
+            ".torrent",
+            ".ts",
+            ".webm",
+        )
     }
 }
 

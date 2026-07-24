@@ -1,16 +1,29 @@
 package eu.kanade.tachiyomi.ui.browse.source
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined._18UpRating
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -40,8 +53,102 @@ fun Screen.sourcesTab(
     smartSearchConfig: SmartSearchConfig? = null,
 ): TabContent {
     val navigator = LocalNavigator.currentOrThrow
+    val context = LocalContext.current
     val screenModel = rememberScreenModel { SourcesScreenModel(smartSearchConfig = smartSearchConfig) }
     val state by screenModel.state.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    var showImportDialog by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<PendingImportData?>(null) }
+
+    val mangaPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+        onResult = { uris ->
+            if (uris.isNotEmpty()) {
+                pendingImport = PendingImportData.Files(uris)
+            }
+        },
+    )
+
+    val mangaFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri != null) {
+                pendingImport = PendingImportData.Folder(uri)
+            }
+        },
+    )
+
+    val novelPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+        onResult = { uris ->
+            if (uris.isNotEmpty()) {
+                scope.launch { ImportHandler.importNovels(context, uris) }
+            }
+        },
+    )
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text(stringResource(MR.strings.action_add)) },
+            text = { Text("Import local files to library") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportDialog = false
+                        mangaFolderPicker.launch(null)
+                    },
+                ) {
+                    Text("Manga Folder")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            showImportDialog = false
+                            mangaPicker.launch(
+                                arrayOf(
+                                    "application/zip", "application/x-cbz",
+                                    "application/x-rar", "application/x-cbr",
+                                    "application/x-7z-compressed", "application/x-cb7",
+                                    "application/x-tar", "application/x-cbt",
+                                    "application/epub+zip", "application/json", "application/octet-stream"
+                                )
+                            )
+                        },
+                    ) {
+                        Text("Manga Files")
+                    }
+                    TextButton(
+                        onClick = {
+                            showImportDialog = false
+                            novelPicker.launch(arrayOf("application/epub+zip"))
+                        },
+                    ) {
+                        Text(stringResource(MR.strings.novel_singular))
+                    }
+                }
+            },
+        )
+    }
+
+    pendingImport?.let { data ->
+        DestinationFolderDialog(
+            pendingImportData = data,
+            onDismissRequest = { pendingImport = null },
+            onImport = { folderName ->
+                pendingImport = null
+                scope.launch {
+                    when (data) {
+                        is PendingImportData.Files -> ImportHandler.importMangaFiles(context, data.uris, folderName)
+                        is PendingImportData.Folder -> ImportHandler.importMangaFolder(context, data.uri, folderName)
+                    }
+                }
+            }
+        )
+    }
 
     return TabContent(
         // SY -->
@@ -49,21 +156,37 @@ fun Screen.sourcesTab(
             true -> MR.strings.label_sources
             false -> SYMR.strings.find_in_another_source
         },
-        actions = persistentListOf(
-            AppBar.Action(
-                title = stringResource(MR.strings.action_global_search),
-                icon = Icons.Outlined.TravelExplore,
-                onClick = { navigator.push(GlobalSearchScreen(smartSearchConfig?.origTitle ?: "")) },
-            ),
+        // SY <--
+        actions = persistentListOf<AppBar.Action>().let { actions ->
+            var updatedActions = actions
+            if (smartSearchConfig == null) {
+                updatedActions = updatedActions.add(
+                    AppBar.Action(
+                        title = stringResource(MR.strings.action_add),
+                        icon = Icons.Outlined.Add,
+                        onClick = { showImportDialog = true },
+                    ),
+                )
+            }
+            updatedActions.add(
+                AppBar.Action(
+                    title = stringResource(MR.strings.action_global_search),
+                    icon = Icons.Outlined.TravelExplore,
+                    onClick = { navigator.push(GlobalSearchScreen(smartSearchConfig?.origTitle ?: "")) },
+                ),
+            )
+        }.let {
             // KMK -->
-            AppBar.Action(
-                title = stringResource(KMR.strings.action_toggle_nsfw_only),
-                icon = Icons.Outlined._18UpRating,
-                iconTint = if (state.nsfwOnly) MaterialTheme.colorScheme.error else LocalContentColor.current,
-                onClick = { screenModel.toggleNsfwOnly() },
-            ),
+            it.add(
+                AppBar.Action(
+                    title = stringResource(KMR.strings.action_toggle_nsfw_only),
+                    icon = Icons.Outlined._18UpRating,
+                    iconTint = if (state.nsfwOnly) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                    onClick = { screenModel.toggleNsfwOnly() },
+                ),
+            )
             // KMK <--
-        ).let {
+        }.let {
             when (smartSearchConfig) {
                 null -> {
                     it.add(
@@ -74,11 +197,9 @@ fun Screen.sourcesTab(
                         ),
                     )
                 }
-                // Merge: find in another source
                 else -> it
             }
         },
-        // SY <--
         content = { contentPadding, snackbarHostState ->
             SourcesScreen(
                 state = state,

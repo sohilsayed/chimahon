@@ -2,7 +2,6 @@ package eu.kanade.presentation.more.settings.screen
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -15,9 +14,11 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
+import eu.kanade.presentation.more.settings.screen.browse.AnimeExtensionReposScreen
 import eu.kanade.tachiyomi.ui.category.sources.SourceCategoryScreen
 import eu.kanade.tachiyomi.util.system.AuthenticatorUtil.authenticate
 import kotlinx.collections.immutable.persistentListOf
+import mihon.domain.animeextensionrepo.interactor.GetAnimeExtensionRepoCount
 import mihon.domain.extension.interactor.GetExtensionStoreCountAsFlow
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
@@ -44,8 +45,10 @@ object SettingsBrowseScreen : SearchableSettings {
 
         val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
         val getExtensionStoreCountAsFlow = remember { Injekt.get<GetExtensionStoreCountAsFlow>() }
+        val getAnimeExtensionRepoCount = remember { Injekt.get<GetAnimeExtensionRepoCount>() }
 
         val reposCount by getExtensionStoreCountAsFlow().collectAsState(0)
+        val animeReposCount by getAnimeExtensionRepoCount.subscribe().collectAsState(0)
 
         // SY -->
         val scope = rememberCoroutineScope()
@@ -146,6 +149,13 @@ object SettingsBrowseScreen : SearchableSettings {
                         subtitle = pluralStringResource(MR.plurals.num_repos, reposCount.toInt(), reposCount),
                         onClick = {
                             navigator.push(ExtensionStoresScreen())
+                        },
+                    ),
+                    Preference.PreferenceItem.TextPreference(
+                        title = "${stringResource(MR.strings.label_anime)} ${stringResource(MR.strings.label_extension_repos)}",
+                        subtitle = pluralStringResource(MR.plurals.num_repos, animeReposCount, animeReposCount),
+                        onClick = {
+                            navigator.push(AnimeExtensionReposScreen())
                         },
                     ),
                 ),

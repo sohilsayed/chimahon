@@ -19,6 +19,7 @@ data class Chapter(
     val lastModifiedAt: Long,
     val version: Long,
     val memo: JsonObject,
+    val isOcrReady: Boolean,
 ) {
     val isRecognizedNumber: Boolean
         get() = chapterNumber >= 0f
@@ -50,6 +51,7 @@ data class Chapter(
             lastModifiedAt = 0,
             version = 1,
             memo = JsonObject.EMPTY,
+            isOcrReady = false,
         )
     }
 }

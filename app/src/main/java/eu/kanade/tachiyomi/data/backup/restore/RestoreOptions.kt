@@ -14,6 +14,10 @@ data class RestoreOptions(
     // SY -->
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // Chimahon -->
+    val novels: Boolean = true,
+    // Chimahon <--
+    val animeEntries: Boolean = true,
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -25,6 +29,10 @@ data class RestoreOptions(
         // SY -->
         savedSearchesFeeds,
         // SY <--
+        // Chimahon -->
+        novels,
+        // Chimahon <--
+        animeEntries,
     )
 
     fun canRestore() =
@@ -33,7 +41,9 @@ data class RestoreOptions(
             appSettings ||
             extensionStores ||
             sourceSettings /* SY --> */ ||
-            savedSearchesFeeds /* SY <-- */
+            savedSearchesFeeds /* SY <-- */ ||
+            novels ||
+            animeEntries
 
     companion object {
         val options = persistentListOf(
@@ -41,6 +51,11 @@ data class RestoreOptions(
                 label = MR.strings.label_library,
                 getter = RestoreOptions::libraryEntries,
                 setter = { options, enabled -> options.copy(libraryEntries = enabled) },
+            ),
+            Entry(
+                label = MR.strings.label_anime,
+                getter = RestoreOptions::animeEntries,
+                setter = { options, enabled -> options.copy(animeEntries = enabled) },
             ),
             Entry(
                 label = MR.strings.categories,
@@ -71,6 +86,13 @@ data class RestoreOptions(
                 setter = { options, enabled -> options.copy(savedSearchesFeeds = enabled) },
             ),
             // SY <--
+            // Chimahon -->
+            Entry(
+                label = MR.strings.backup_option_novels,
+                getter = RestoreOptions::novels,
+                setter = { options, enabled -> options.copy(novels = enabled) },
+            ),
+            // Chimahon <--
         )
 
         fun fromBooleanArray(array: BooleanArray) = RestoreOptions(
@@ -82,6 +104,10 @@ data class RestoreOptions(
             // SY -->
             savedSearchesFeeds = array[5],
             // SY <--
+            // Chimahon -->
+            novels = array.getOrElse(6) { true },
+            // Chimahon <--
+            animeEntries = array.getOrElse(7) { true },
         )
     }
 

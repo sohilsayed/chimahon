@@ -1,0 +1,73 @@
+import java.util.Date;
+
+CREATE TABLE animehistory(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    episode_id INTEGER NOT NULL UNIQUE,
+    last_seen INTEGER AS Date,
+    watch_duration INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(episode_id) REFERENCES episodes (_id)
+    ON DELETE CASCADE
+);
+
+CREATE INDEX animehistory_history_episode_id_index ON animehistory(episode_id);
+
+getHistoryByAnimeId:
+SELECT
+H._id,
+H.episode_id,
+H.last_seen,
+H.watch_duration
+FROM animehistory H
+JOIN episodes EP
+ON H.episode_id = EP._id
+WHERE EP.anime_id = :animeId AND EP._id = H.episode_id;
+
+getHistoryByEpisodeUrl:
+SELECT
+H._id,
+H.episode_id,
+H.last_seen,
+H.watch_duration
+FROM animehistory H
+JOIN episodes EP
+ON H.episode_id = EP._id
+WHERE EP.url = :episodeUrl AND EP._id = H.episode_id;
+
+resetAnimeHistoryById:
+UPDATE animehistory
+SET last_seen = 0
+WHERE _id = :historyId;
+
+resetHistoryByAnimeIds:
+UPDATE animehistory
+SET last_seen = 0
+WHERE _id IN (
+    SELECT H._id
+    FROM animes AN
+    INNER JOIN episodes EP
+    ON AN._id = EP.anime_id
+    INNER JOIN animehistory H
+    ON EP._id = H.episode_id
+    WHERE AN._id IN :animeIds
+);
+
+removeAllHistory:
+DELETE FROM animehistory;
+
+removeResettedHistory:
+DELETE FROM animehistory
+WHERE last_seen = 0;
+
+upsert:
+INSERT INTO animehistory(episode_id, last_seen, watch_duration)
+VALUES (:episodeId, :seenAt, :watchDuration)
+ON CONFLICT(episode_id)
+DO UPDATE
+SET
+    last_seen = :seenAt,
+    watch_duration = watch_duration + :watchDuration
+WHERE episode_id = :episodeId;
+
+getWatchDuration:
+SELECT coalesce(sum(watch_duration), 0)
+FROM animehistory;

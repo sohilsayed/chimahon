@@ -328,20 +328,58 @@ object SettingsAppearanceScreen : SearchableSettings {
 
     @Composable
     fun getNavbarGroup(uiPreferences: UiPreferences): Preference.PreferenceGroup {
+        val navigator = LocalNavigator.currentOrThrow
+        val navTabLayoutStr by uiPreferences.navTabLayout().collectAsState()
+
+        // Build dropdown entries from current navbar tabs
+        val navbarEntries = remember(navTabLayoutStr) {
+            val layout = eu.kanade.domain.ui.model.NavTabLayout.parse(navTabLayoutStr)
+            layout.getKeysForSection(eu.kanade.domain.ui.model.NavSection.NAVBAR)
+                .let { keys ->
+                    if (Injekt.get<UiPreferences>().useConsolidatedLibrary().get()) {
+                        keys.filter { it != eu.kanade.domain.ui.model.NavTabLayout.KEY_NOVELS && it != eu.kanade.domain.ui.model.NavTabLayout.KEY_ANIME }
+                    } else keys
+                }
+                .associateWith { key ->
+                    when (key) {
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_LIBRARY -> "Library"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_UPDATES -> "Updates"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_HISTORY -> "History"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_BROWSE -> "Browse"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_DICTIONARY -> "Dictionary"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_NOVELS -> "Novels"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_ANIME -> "Anime"
+                        else -> key
+                    }
+                }
+                .toImmutableMap()
+        }
+
         return Preference.PreferenceGroup(
             stringResource(SYMR.strings.pref_category_navbar),
             preferenceItems = persistentListOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = uiPreferences.showNavUpdates(),
-                    title = stringResource(SYMR.strings.pref_hide_updates_button),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = uiPreferences.showNavHistory(),
-                    title = stringResource(SYMR.strings.pref_hide_history_button),
+                Preference.PreferenceItem.ListPreference(
+                    preference = uiPreferences.navStartScreen(),
+                    entries = navbarEntries,
+                    title = stringResource(SYMR.strings.pref_nav_start_screen),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = uiPreferences.bottomBarLabels(),
                     title = stringResource(SYMR.strings.pref_show_bottom_bar_labels),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = uiPreferences.useConsolidatedLibrary(),
+                    title = stringResource(SYMR.strings.pref_consolidated_library),
+                    subtitle = stringResource(SYMR.strings.pref_consolidated_library_summary),
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(SYMR.strings.pref_navigation_style),
+                    subtitle = stringResource(SYMR.strings.pref_navigation_style_summary),
+                    onClick = {
+                        navigator.push(
+                            eu.kanade.presentation.more.settings.screen.appearance.NavigationStyleScreen(),
+                        )
+                    },
                 ),
             ),
         )

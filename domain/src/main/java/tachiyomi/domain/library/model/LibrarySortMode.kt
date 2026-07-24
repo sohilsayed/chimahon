@@ -1,5 +1,6 @@
 package tachiyomi.domain.library.model
 
+import tachiyomi.domain.category.model.AnimeCategory
 import tachiyomi.domain.category.model.Category
 
 data class LibrarySort(
@@ -147,4 +148,7 @@ data class LibrarySort(
 }
 
 val Category?.sort: LibrarySort
+    get() = LibrarySort.valueOf(this?.flags)
+
+val AnimeCategory?.sort: LibrarySort
     get() = LibrarySort.valueOf(this?.flags)

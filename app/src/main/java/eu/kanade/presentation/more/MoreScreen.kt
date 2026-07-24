@@ -13,16 +13,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NewReleases
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.QueryStats
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,14 +42,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import eu.kanade.domain.ui.model.NavTabLayout
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.more.DownloadQueueState
 import eu.kanade.tachiyomi.util.system.openInBrowser
-import exh.pref.DelegateSourcePreferences
-import exh.source.ExhPreferences
 import tachiyomi.core.common.Constants
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
@@ -64,28 +69,31 @@ fun MoreScreen(
     onDownloadedOnlyChange: (Boolean) -> Unit,
     incognitoMode: Boolean,
     onIncognitoModeChange: (Boolean) -> Unit,
+    screenLookupActive: Boolean,
+    onScreenLookupChange: (Boolean) -> Unit,
     // SY -->
-    showNavUpdates: Boolean,
-    showNavHistory: Boolean,
+    moreTabKeys: List<String>,
     // SY <--
     onClickDownloadQueue: () -> Unit,
     onClickCategories: () -> Unit,
     onClickStats: () -> Unit,
+    onClickAnimeUpdates: () -> Unit,
     onClickDataAndStorage: () -> Unit,
     onClickSettings: () -> Unit,
     onClickAbout: () -> Unit,
     onClickBatchAdd: () -> Unit,
     onClickUpdates: () -> Unit,
     onClickHistory: () -> Unit,
+    onClickLibrary: () -> Unit,
+    onClickBrowse: () -> Unit,
+    onClickDictionary: () -> Unit,
+    onClickNovels: () -> Unit,
+    onClickAnime: () -> Unit,
     // KMK -->
     onClickLibraryUpdateErrors: () -> Unit,
     // KMK <--
 ) {
     val uriHandler = LocalUriHandler.current
-    // SY -->
-    val exhPreferences = remember { Injekt.get<ExhPreferences>() }
-    val delegateSourcePreferences = remember { Injekt.get<DelegateSourcePreferences>() }
-    // SY <--
 
     Scaffold { contentPadding ->
         ScrollbarLazyColumn(
@@ -118,29 +126,17 @@ fun MoreScreen(
                     onCheckedChanged = onIncognitoModeChange,
                 )
             }
+            item {
+                SwitchPreferenceWidget(
+                    title = stringResource(MR.strings.screen_lookup_title),
+                    subtitle = stringResource(MR.strings.screen_lookup_more_summary),
+                    icon = Icons.Outlined.Search,
+                    checked = screenLookupActive,
+                    onCheckedChanged = onScreenLookupChange,
+                )
+            }
 
             item { HorizontalDivider() }
-
-            // SY -->
-            if (!showNavUpdates) {
-                item {
-                    TextPreferenceWidget(
-                        title = stringResource(MR.strings.label_recent_updates),
-                        icon = Icons.Outlined.NewReleases,
-                        onPreferenceClick = onClickUpdates,
-                    )
-                }
-            }
-            if (!showNavHistory) {
-                item {
-                    TextPreferenceWidget(
-                        title = stringResource(MR.strings.label_recent_manga),
-                        icon = Icons.Outlined.History,
-                        onPreferenceClick = onClickHistory,
-                    )
-                }
-            }
-            // SY <--
 
             item {
                 val downloadQueueState = downloadQueueStateProvider()
@@ -185,6 +181,13 @@ fun MoreScreen(
                     onPreferenceClick = onClickStats,
                 )
             }
+            item {
+                TextPreferenceWidget(
+                    title = stringResource(MR.strings.label_anime_updates),
+                    icon = Icons.Outlined.NewReleases,
+                    onPreferenceClick = onClickAnimeUpdates,
+                )
+            }
             // KMK -->
             item {
                 TextPreferenceWidget(
@@ -201,14 +204,47 @@ fun MoreScreen(
                     onPreferenceClick = onClickDataAndStorage,
                 )
             }
+
             // SY -->
-            if (exhPreferences.isHentaiEnabled().get() || delegateSourcePreferences.delegateSources().get()) {
+            moreTabKeys.forEach { key ->
                 item {
-                    TextPreferenceWidget(
-                        title = stringResource(SYMR.strings.eh_batch_add),
-                        icon = Icons.AutoMirrored.Outlined.PlaylistAdd,
-                        onPreferenceClick = onClickBatchAdd,
-                    )
+                    when (key) {
+                        NavTabLayout.KEY_LIBRARY -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_library),
+                            icon = Icons.Outlined.CollectionsBookmark,
+                            onPreferenceClick = onClickLibrary,
+                        )
+                        NavTabLayout.KEY_UPDATES -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_recent_updates),
+                            icon = Icons.Outlined.NewReleases,
+                            onPreferenceClick = onClickUpdates,
+                        )
+                        NavTabLayout.KEY_HISTORY -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_recent_manga),
+                            icon = Icons.Outlined.History,
+                            onPreferenceClick = onClickHistory,
+                        )
+                        NavTabLayout.KEY_BROWSE -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.browse),
+                            icon = Icons.Outlined.Public,
+                            onPreferenceClick = onClickBrowse,
+                        )
+                        NavTabLayout.KEY_DICTIONARY -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_dictionary),
+                            icon = Icons.Outlined.Search,
+                            onPreferenceClick = onClickDictionary,
+                        )
+                        NavTabLayout.KEY_NOVELS -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_novels),
+                            icon = Icons.Outlined.Book,
+                            onPreferenceClick = onClickNovels,
+                        )
+                        NavTabLayout.KEY_ANIME -> TextPreferenceWidget(
+                            title = stringResource(MR.strings.label_anime),
+                            icon = Icons.Outlined.VideoLibrary,
+                            onPreferenceClick = onClickAnime,
+                        )
+                    }
                 }
             }
             // SY <--
@@ -256,7 +292,7 @@ fun Sponsor() {
         horizontalArrangement = Arrangement.Center,
     ) {
         TextButton(
-            onClick = { context.openInBrowser(Constants.SPONSOR) },
+            onClick = { context.openInBrowser(Constants.GITHUB_PROJECT) },
             modifier = Modifier
                 .border(
                     width = 2.dp,
@@ -268,13 +304,13 @@ fun Sponsor() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Favorite,
-                    contentDescription = stringResource(KMR.strings.sponsor_me),
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = stringResource(KMR.strings.star_me),
                     tint = MaterialTheme.colorScheme.primary,
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = stringResource(KMR.strings.sponsor_me),
+                    text = stringResource(KMR.strings.star_me),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelLarge,
                 )
@@ -285,7 +321,7 @@ fun Sponsor() {
 
 @PreviewLightDark
 @Composable
-private fun SponsorPreview() {
+private fun StarPreview() {
     TachiyomiPreviewTheme {
         Surface(
             modifier = Modifier

@@ -93,6 +93,16 @@
     <!--== Default Theme ==-->
     <style name="Theme.Tachiyomi" parent="Base.Theme.Tachiyomi" />
 
+    <style name="Theme.Tachiyomi.Transparent" parent="Theme.Tachiyomi">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
+
     <!-- Monet theme only support S+ -->
     <style name="Theme.Tachiyomi.Monet" />
 

@@ -1,8 +1,6 @@
 package eu.kanade.tachiyomi.data.download
 
-import android.app.Application
 import android.content.Context
-import androidx.core.net.toUri
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
@@ -29,15 +27,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromByteArray
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encodeToByteArray
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import tachiyomi.core.common.storage.extension
@@ -545,22 +537,3 @@ private class MangaDirectory(
     var chapterDirs: MutableSet<String> = mutableSetOf(),
 )
 
-private object UniFileAsStringSerializer : KSerializer<UniFile?> {
-    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("UniFile", PrimitiveKind.STRING)
-
-    override fun serialize(encoder: Encoder, value: UniFile?) {
-        return if (value == null) {
-            encoder.encodeNull()
-        } else {
-            encoder.encodeString(value.uri.toString())
-        }
-    }
-
-    override fun deserialize(decoder: Decoder): UniFile? {
-        return if (decoder.decodeNotNullMark()) {
-            UniFile.fromUri(Injekt.get<Application>(), decoder.decodeString().toUri())
-        } else {
-            decoder.decodeNull()
-        }
-    }
-}

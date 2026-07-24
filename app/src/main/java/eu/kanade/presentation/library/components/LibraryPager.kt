@@ -42,9 +42,17 @@ fun LibraryPager(
     onClickManga: (Category, LibraryManga) -> Unit,
     onLongClickManga: (Category, LibraryManga) -> Unit,
     onClickContinueReading: ((LibraryManga) -> Unit)?,
+    boundarySwipeEnabled: Boolean,
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit,
 ) {
     HorizontalPager(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .libraryPagerBoundarySwipe(
+                state = state,
+                enabled = boundarySwipeEnabled,
+                onBoundarySwipe = onBoundarySwipe,
+            ),
         state = state,
         verticalAlignment = Alignment.Top,
     ) { page ->

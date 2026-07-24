@@ -69,3 +69,8 @@ fun Preference<Boolean>.toggle(): Boolean {
     set(!get())
     return get()
 }
+
+inline fun <reified T> Preference<T>.deleteAndGet(): T {
+    delete()
+    return get()
+}

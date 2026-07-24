@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Launch
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -82,6 +83,7 @@ fun ExtensionDetailsScreen(
     onClickUninstall: () -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
     onClickIncognito: (Boolean) -> Unit,
+    onSourceDictProfileClick: (sourceId: Long) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     val url = remember(state.extension) {
@@ -164,6 +166,7 @@ fun ExtensionDetailsScreen(
             onClickUninstall = onClickUninstall,
             onClickSource = onClickSource,
             onClickIncognito = onClickIncognito,
+            onSourceDictProfileClick = onSourceDictProfileClick,
         )
     }
 }
@@ -178,6 +181,7 @@ private fun ExtensionDetails(
     onClickUninstall: () -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
     onClickIncognito: (Boolean) -> Unit,
+    onSourceDictProfileClick: (sourceId: Long) -> Unit,
 ) {
     val context = LocalContext.current
     var showNsfwWarning by remember { mutableStateOf(false) }
@@ -226,6 +230,7 @@ private fun ExtensionDetails(
                 source = source,
                 onClickSourcePreferences = onClickSourcePreferences,
                 onClickSource = onClickSource,
+                onDictProfileClick = { onSourceDictProfileClick(source.source.id) },
             )
         }
     }
@@ -447,6 +452,7 @@ private fun SourceSwitchPreference(
     source: ExtensionSourceItem,
     onClickSourcePreferences: (sourceId: Long) -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
+    onDictProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -462,6 +468,7 @@ private fun SourceSwitchPreference(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Gear icon — only for configurable sources
                 if (source.source is ConfigurableSource) {
                     IconButton(onClick = { onClickSourcePreferences(source.source.id) }) {
                         Icon(
@@ -470,6 +477,15 @@ private fun SourceSwitchPreference(
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
+                }
+
+                // Dictionary profile override — shown for every source
+                IconButton(onClick = onDictProfileClick) {
+                    Icon(
+                        imageVector = Icons.Outlined.MenuBook,
+                        contentDescription = stringResource(MR.strings.pref_dict_profile_override_source),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
 
                 Switch(

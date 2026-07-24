@@ -11,6 +11,7 @@ import android.webkit.MimeTypeMap
 import androidx.annotation.RequiresApi
 import androidx.core.content.contentValuesOf
 import androidx.core.net.toUri
+import chimahon.util.ImageEncoder
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.storage.getUriCompat
@@ -164,9 +165,8 @@ sealed class Image(
             return when (this) {
                 is Cover -> {
                     {
-                        val baos = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, baos)
-                        ByteArrayInputStream(baos.toByteArray())
+                        val result = ImageEncoder.encode(bitmap)
+                        ByteArrayInputStream(result.bytes)
                     }
                 }
                 is Page -> inputStream

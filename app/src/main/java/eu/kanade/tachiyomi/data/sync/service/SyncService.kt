@@ -1,11 +1,19 @@
 package eu.kanade.tachiyomi.data.sync.service
 
 import android.content.Context
+import com.canopus.chimareader.data.NovelCategory
+import com.canopus.chimareader.data.md5Hex
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAnime
+import eu.kanade.tachiyomi.data.backup.models.BackupAnimeSource
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
+import eu.kanade.tachiyomi.data.backup.models.BackupEpisode
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
+import eu.kanade.tachiyomi.data.backup.models.BackupNovel
+import eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
@@ -38,6 +46,10 @@ abstract class SyncService(
     protected fun mergeSyncData(localSyncData: SyncData, remoteSyncData: SyncData): SyncData {
         val mergedCategoriesList =
             mergeCategoriesLists(localSyncData.backup?.backupCategories, remoteSyncData.backup?.backupCategories)
+        val mergedAnimeCategoriesList = mergeCategoriesLists(
+            localSyncData.backup?.backupAnimeCategories,
+            remoteSyncData.backup?.backupAnimeCategories,
+        )
 
         val mergedMangaList = mergeMangaLists(
             localSyncData.backup?.backupManga,
@@ -46,9 +58,28 @@ abstract class SyncService(
             remoteSyncData.backup?.backupCategories ?: emptyList(),
             mergedCategoriesList,
         )
+        val mergedAnimeList = mergeAnimeLists(
+            localSyncData.backup?.backupAnime,
+            remoteSyncData.backup?.backupAnime,
+            localSyncData.backup?.backupAnimeCategories ?: emptyList(),
+            remoteSyncData.backup?.backupAnimeCategories ?: emptyList(),
+            mergedAnimeCategoriesList,
+        )
 
         val mergedSourcesList =
             mergeSourcesLists(localSyncData.backup?.backupSources, remoteSyncData.backup?.backupSources)
+        val mergedAnimeSourcesList = mergeAnimeSourcesLists(
+            localSyncData.backup?.backupAnimeSources,
+            remoteSyncData.backup?.backupAnimeSources,
+        )
+        val mergedExtensionRepoList = mergeExtensionRepoLists(
+            localSyncData.backup?.backupExtensionRepo,
+            remoteSyncData.backup?.backupExtensionRepo,
+        )
+        val mergedAnimeExtensionRepoList = mergeExtensionRepoLists(
+            localSyncData.backup?.backupAnimeExtensionRepo,
+            remoteSyncData.backup?.backupAnimeExtensionRepo,
+        )
         val mergedPreferencesList =
             mergePreferencesLists(localSyncData.backup?.backupPreferences, remoteSyncData.backup?.backupPreferences)
         val mergedSourcePreferencesList = mergeSourcePreferencesLists(
@@ -63,17 +94,41 @@ abstract class SyncService(
         )
         // SY <--
 
+        // Chimahon -->
+        val mergedNovelCategoriesList = mergeNovelCategoriesLists(
+            localSyncData.backup?.backupNovelCategories,
+            remoteSyncData.backup?.backupNovelCategories,
+        )
+        val mergedNovelsList = mergeNovelLists(
+            localSyncData.backup?.backupNovels,
+            remoteSyncData.backup?.backupNovels,
+            localSyncData.backup?.backupNovelCategories ?: emptyList(),
+            remoteSyncData.backup?.backupNovelCategories ?: emptyList(),
+            mergedNovelCategoriesList,
+        )
+        // Chimahon <--
+
         // Create the merged Backup object
         val mergedBackup = Backup(
             backupManga = mergedMangaList,
             backupCategories = mergedCategoriesList,
             backupSources = mergedSourcesList,
+            backupExtensionRepo = mergedExtensionRepoList,
+            backupAnime = mergedAnimeList,
+            backupAnimeCategories = mergedAnimeCategoriesList,
+            backupAnimeSources = mergedAnimeSourcesList,
+            backupAnimeExtensionRepo = mergedAnimeExtensionRepoList,
             backupPreferences = mergedPreferencesList,
             backupSourcePreferences = mergedSourcePreferencesList,
 
             // SY -->
             backupSavedSearches = mergedSavedSearchesList,
             // SY <--
+
+            // Chimahon -->
+            backupNovels = mergedNovelsList,
+            backupNovelCategories = mergedNovelCategoriesList,
+            // Chimahon <--
         )
 
         // Create the merged SData object
@@ -264,6 +319,94 @@ abstract class SyncService(
         return mergedChapters
     }
 
+    private fun mergeAnimeLists(
+        localAnimeList: List<BackupAnime>?,
+        remoteAnimeList: List<BackupAnime>?,
+        localCategories: List<BackupCategory>,
+        remoteCategories: List<BackupCategory>,
+        mergedCategories: List<BackupCategory>,
+    ): List<BackupAnime> {
+        val localAnimeListSafe = localAnimeList.orEmpty()
+        val remoteAnimeListSafe = remoteAnimeList.orEmpty()
+
+        val localCategoriesMapByOrder = localCategories.associateBy { it.order }
+        val remoteCategoriesMapByOrder = remoteCategories.associateBy { it.order }
+        val mergedCategoriesMapByName = mergedCategories.associateBy { it.name }
+
+        fun animeCompositeKey(anime: BackupAnime): String {
+            return "${anime.source}|${anime.url}|${anime.title.lowercase().trim()}|${anime.author?.lowercase()?.trim()}"
+        }
+
+        fun updateCategories(anime: BackupAnime, sourceCategories: Map<Long, BackupCategory>): BackupAnime {
+            return anime.copy(
+                categories = anime.categories.mapNotNull {
+                    sourceCategories[it]?.let { category ->
+                        mergedCategoriesMapByName[category.name]?.order
+                    }
+                },
+            )
+        }
+
+        val localAnimeMap = localAnimeListSafe.associateBy { animeCompositeKey(it) }
+        val remoteAnimeMap = remoteAnimeListSafe.associateBy { animeCompositeKey(it) }
+
+        return (localAnimeMap.keys + remoteAnimeMap.keys).distinct().mapNotNull { compositeKey ->
+            val local = localAnimeMap[compositeKey]
+            val remote = remoteAnimeMap[compositeKey]
+
+            when {
+                local != null && remote == null -> updateCategories(local, localCategoriesMapByOrder)
+                local == null && remote != null -> updateCategories(remote, remoteCategoriesMapByOrder)
+                local != null && remote != null -> {
+                    val mergedEpisodes = mergeEpisodes(local.episodes, remote.episodes)
+                    val latest = if (local.version >= remote.version) local else remote
+                    val sourceCategories = if (local.version >= remote.version) {
+                        localCategoriesMapByOrder
+                    } else {
+                        remoteCategoriesMapByOrder
+                    }
+
+                    updateCategories(latest.copy(episodes = mergedEpisodes), sourceCategories)
+                }
+                else -> null
+            }
+        }
+    }
+
+    private fun mergeEpisodes(
+        localEpisodes: List<BackupEpisode>,
+        remoteEpisodes: List<BackupEpisode>,
+    ): List<BackupEpisode> {
+        fun episodeCompositeKey(episode: BackupEpisode): String {
+            return "${episode.url}|${episode.name}|${episode.episodeNumber}"
+        }
+
+        val localEpisodeMap = localEpisodes.associateBy { episodeCompositeKey(it) }
+        val remoteEpisodeMap = remoteEpisodes.associateBy { episodeCompositeKey(it) }
+
+        return (localEpisodeMap.keys + remoteEpisodeMap.keys).distinct().mapNotNull { compositeKey ->
+            val localEpisode = localEpisodeMap[compositeKey]
+            val remoteEpisode = remoteEpisodeMap[compositeKey]
+
+            when {
+                localEpisode != null && remoteEpisode == null -> localEpisode
+                localEpisode == null && remoteEpisode != null -> remoteEpisode
+                localEpisode != null && remoteEpisode != null -> {
+                    if (localEpisode.version >= remoteEpisode.version) {
+                        if (localEpisodes.size < remoteEpisodes.size) {
+                            localEpisode.copy(sourceOrder = remoteEpisode.sourceOrder)
+                        } else {
+                            localEpisode
+                        }
+                    } else {
+                        remoteEpisode
+                    }
+                }
+                else -> null
+            }
+        }
+    }
+
     /**
      * Merges two lists of SyncCategory objects, prioritizing the category with the most recent order value.
      *
@@ -351,6 +494,34 @@ abstract class SyncService(
         logcat(LogPriority.DEBUG, logTag) { "Source merge completed. Total merged sources: ${mergedSources.size}" }
 
         return mergedSources
+    }
+
+    private fun mergeAnimeSourcesLists(
+        localSources: List<BackupAnimeSource>?,
+        remoteSources: List<BackupAnimeSource>?,
+    ): List<BackupAnimeSource> {
+        val localSourceMap = localSources?.associateBy { it.sourceId } ?: emptyMap()
+        val remoteSourceMap = remoteSources?.associateBy { it.sourceId } ?: emptyMap()
+
+        return (localSourceMap.keys + remoteSourceMap.keys).distinct().mapNotNull { sourceId ->
+            val localSource = localSourceMap[sourceId]
+            val remoteSource = remoteSourceMap[sourceId]
+
+            when {
+                localSource != null && remoteSource == null -> localSource
+                localSource == null && remoteSource != null -> remoteSource
+                localSource != null && remoteSource != null -> localSource
+                else -> null
+            }
+        }
+    }
+
+    private fun mergeExtensionRepoLists(
+        localRepos: List<BackupExtensionRepos>?,
+        remoteRepos: List<BackupExtensionRepos>?,
+    ): List<BackupExtensionRepos> {
+        return (localRepos.orEmpty() + remoteRepos.orEmpty())
+            .distinctBy { it.baseUrl }
     }
 
     private fun mergePreferencesLists(
@@ -523,4 +694,146 @@ abstract class SyncService(
         return mergedSearches
     }
     // SY <--
+
+    // Chimahon -->
+    private fun mergeNovelLists(
+        localNovelList: List<BackupNovel>?,
+        remoteNovelList: List<BackupNovel>?,
+        localCategories: List<BackupNovelCategory>,
+        remoteCategories: List<BackupNovelCategory>,
+        mergedCategories: List<BackupNovelCategory>,
+    ): List<BackupNovel> {
+        val localNovelsSafe = localNovelList.orEmpty()
+        val remoteNovelsSafe = remoteNovelList.orEmpty()
+
+        val localCategoriesById = localCategories.associateBy { it.id }
+        val remoteCategoriesById = remoteCategories.associateBy { it.id }
+        val mergedCategoriesById = mergedCategories.associateBy { it.id }
+        val mergedCategoriesByName = mergedCategories.associateBy { categoryKey(it.name) }
+
+        fun updateCategories(novel: BackupNovel, sourceCategoriesById: Map<String, BackupNovelCategory>): BackupNovel {
+            val categoryIds = novel.categoryIds.mapNotNull { categoryId ->
+                when (categoryId) {
+                    NovelCategory.UNCATEGORIZED_ID -> NovelCategory.UNCATEGORIZED_ID
+                    else -> {
+                        val sourceCategory = sourceCategoriesById[categoryId]
+                        val mergedCategoryByName = sourceCategory?.let {
+                            mergedCategoriesByName[categoryKey(it.name)]
+                        }
+
+                        mergedCategoryByName?.id ?: mergedCategoriesById[categoryId]?.id
+                    }
+                }
+            }
+
+            return novel.copy(
+                id = stableNovelId(novel),
+                categoryIds = normalizeNovelCategoryIds(categoryIds),
+            )
+        }
+
+        fun canonicalNovelMap(
+            novels: List<BackupNovel>,
+            sourceCategoriesById: Map<String, BackupNovelCategory>,
+        ): Map<String, BackupNovel> {
+            return novels
+                .map { updateCategories(it, sourceCategoriesById) }
+                .groupBy { stableNovelId(it) }
+                .mapValues { (_, duplicates) ->
+                    duplicates.reduce { first, second -> mergeNovelData(first, second) }
+                }
+        }
+
+        val localNovelMap = canonicalNovelMap(localNovelsSafe, localCategoriesById)
+        val remoteNovelMap = canonicalNovelMap(remoteNovelsSafe, remoteCategoriesById)
+
+        val mergedList = (localNovelMap.keys + remoteNovelMap.keys).distinct().mapNotNull { id ->
+            val local = localNovelMap[id]
+            val remote = remoteNovelMap[id]
+
+            when {
+                local != null && remote == null -> local
+                local == null && remote != null -> remote
+                local != null && remote != null -> mergeNovelData(local, remote)
+                else -> null
+            }
+        }
+        return mergedList
+    }
+
+    private fun mergeNovelData(first: BackupNovel, second: BackupNovel): BackupNovel {
+        val firstStatsMap = first.stats.associateBy { it.dateKey }
+        val secondStatsMap = second.stats.associateBy { it.dateKey }
+        val mergedStats = (firstStatsMap.keys + secondStatsMap.keys).distinct().mapNotNull { dateKey ->
+            val firstStat = firstStatsMap[dateKey]
+            val secondStat = secondStatsMap[dateKey]
+            when {
+                firstStat != null && secondStat == null -> firstStat
+                firstStat == null && secondStat != null -> secondStat
+                firstStat != null && secondStat != null -> {
+                    if (firstStat.lastStatisticModified >= secondStat.lastStatisticModified) firstStat else secondStat
+                }
+                else -> null
+            }
+        }
+        val mergedCategoryIds = normalizeNovelCategoryIds(first.categoryIds + second.categoryIds)
+        val latest = if (first.lastModified >= second.lastModified) first else second
+
+        return latest.copy(
+            id = stableNovelId(latest),
+            stats = mergedStats,
+            categoryIds = mergedCategoryIds,
+        )
+    }
+
+    private fun mergeNovelCategoriesLists(
+        localCategories: List<BackupNovelCategory>?,
+        remoteCategories: List<BackupNovelCategory>?,
+    ): List<BackupNovelCategory> {
+        val categories = localCategories.orEmpty() + remoteCategories.orEmpty()
+        if (categories.isEmpty()) return emptyList()
+
+        val merged = mutableListOf<BackupNovelCategory>()
+
+        categories.forEach { cat ->
+            val existingIndex = merged.indexOfFirst {
+                it.id == cat.id || categoryKey(it.name) == categoryKey(cat.name)
+            }
+
+            if (existingIndex == -1) {
+                merged.add(cat)
+            } else if (cat.order > merged[existingIndex].order) {
+                merged[existingIndex] = cat
+            }
+        }
+
+        return merged
+    }
+
+    private fun stableNovelId(novel: BackupNovel): String {
+        val title = novel.title.trim().lowercase()
+        val author = novel.author?.trim()?.lowercase().orEmpty()
+        return if (title.isNotEmpty() || author.isNotEmpty()) {
+            md5Hex("$title|$author")
+        } else {
+            novel.id
+        }
+    }
+
+    private fun normalizeNovelCategoryIds(categoryIds: List<String>): List<String> {
+        val distinctIds = categoryIds
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        return if (distinctIds.any { it != NovelCategory.UNCATEGORIZED_ID }) {
+            distinctIds.filterNot { it == NovelCategory.UNCATEGORIZED_ID }
+        } else {
+            distinctIds
+        }
+    }
+
+    private fun categoryKey(name: String): String {
+        return name.trim().lowercase()
+    }
+    // Chimahon <--
 }

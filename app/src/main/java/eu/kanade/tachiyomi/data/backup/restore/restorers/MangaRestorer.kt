@@ -296,6 +296,7 @@ class MangaRestorer(
                     version = chapter.version,
                     isSyncing = 1,
                     memo = chapter.memo.let(MemoColumnAdapter::encode),
+                    ocrReady = null,
                 )
             }
         }

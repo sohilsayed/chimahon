@@ -98,15 +98,25 @@ class SyncManager(
             readEntries = syncOptions.readEntries,
             savedSearchesFeeds = syncOptions.savedSearchesFeeds,
             // SY <--
+            // Chimahon -->
+            novels = syncOptions.novels,
+            // Chimahon <--
+            animeEntries = syncOptions.animeEntries,
         )
 
         logcat(LogPriority.DEBUG) { "Begin create backup" }
         val backupManga = backupCreator.backupMangas(databaseManga, backupOptions)
+        val backupAnime = backupCreator.backupAnimes(backupOptions)
         val backup = Backup(
             backupManga = backupManga,
             backupCategories = backupCreator.backupCategories(backupOptions),
             backupSources = backupCreator.backupSources(backupManga),
+            backupAnime = backupAnime,
+            backupAnimeCategories = backupCreator.backupAnimeCategories(backupOptions),
+            backupAnimeSources = backupCreator.backupAnimeSources(backupAnime),
             backupPreferences = backupCreator.backupAppPreferences(backupOptions),
+            backupExtensionRepo = backupCreator.backupExtensionRepos(backupOptions),
+            backupAnimeExtensionRepo = backupCreator.backupAnimeExtensionRepos(backupOptions),
             backupSourcePreferences = backupCreator.backupSourcePreferences(backupOptions),
             backupExtensionStores = backupCreator.backupExtensionStores(backupOptions),
 
@@ -117,6 +127,10 @@ class SyncManager(
             // KMK -->
             backupFeeds = backupCreator.backupFeeds(backupOptions),
             // KMK <--
+            // Chimahon -->
+            backupNovels = backupCreator.backupNovels(backupOptions),
+            backupNovelCategories = backupCreator.backupNovelCategories(backupOptions),
+            // Chimahon <--
         )
         logcat(LogPriority.DEBUG) { "End create backup" }
 
@@ -161,7 +175,7 @@ class SyncManager(
             return
         }
 
-        if (remoteBackup === syncData.backup) {
+        if (remoteBackup == syncData.backup) {
             // nothing changed
             logcat(LogPriority.DEBUG) { "Skip restore due to remote was overwrite from local" }
             syncPreferences.lastSyncTimestamp().set(Date().time)
@@ -170,16 +184,11 @@ class SyncManager(
         }
 
         // Stop the sync early if the remote backup is null or empty
-        if (remoteBackup.backupManga.isEmpty()) {
+        if (remoteBackup.backupManga.isEmpty() &&
+            remoteBackup.backupAnime.isEmpty() &&
+            remoteBackup.backupNovels.isEmpty()
+        ) {
             notifier.showSyncError("No data found on remote server.")
-            return
-        }
-
-        // Check if it's first sync based on lastSyncTimestamp
-        if (syncPreferences.lastSyncTimestamp().get() == 0L && databaseManga.isNotEmpty()) {
-            // It's first sync no need to restore data. (just update remote data)
-            syncPreferences.lastSyncTimestamp().set(Date().time)
-            notifier.showSyncSuccess("Updated remote data successfully")
             return
         }
 
@@ -193,6 +202,11 @@ class SyncManager(
             backupPreferences = remoteBackup.backupPreferences,
             backupSourcePreferences = remoteBackup.backupSourcePreferences,
             backupExtensionStores = remoteBackup.backupExtensionStores,
+            backupExtensionRepo = remoteBackup.backupExtensionRepo,
+            backupAnime = remoteBackup.backupAnime,
+            backupAnimeCategories = remoteBackup.backupAnimeCategories,
+            backupAnimeSources = remoteBackup.backupAnimeSources,
+            backupAnimeExtensionRepo = remoteBackup.backupAnimeExtensionRepo,
 
             // SY -->
             backupSavedSearches = remoteBackup.backupSavedSearches,
@@ -201,10 +215,17 @@ class SyncManager(
             // KMK -->
             backupFeeds = remoteBackup.backupFeeds,
             // KMK <--
+            // Chimahon -->
+            backupNovels = remoteBackup.backupNovels,
+            backupNovelCategories = remoteBackup.backupNovelCategories,
+            // Chimahon <--
         )
 
         // It's local sync no need to restore data. (just update remote data)
-        if (filteredFavorites.isEmpty()) {
+        if (filteredFavorites.isEmpty() &&
+            remoteBackup.backupAnime.isEmpty() &&
+            remoteBackup.backupNovels.isEmpty()
+        ) {
             // update the sync timestamp
             syncPreferences.lastSyncTimestamp().set(Date().time)
             notifier.showSyncSuccess("Sync completed successfully")
@@ -223,6 +244,9 @@ class SyncManager(
                     sourceSettings = true,
                     libraryEntries = true,
                     extensionStores = true,
+                    extensionRepoSettings = true,
+                    novels = true,
+                    animeEntries = true,
                 ),
             )
 

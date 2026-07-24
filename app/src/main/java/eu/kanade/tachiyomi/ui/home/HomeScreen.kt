@@ -6,6 +6,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -13,6 +15,8 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -23,14 +27,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastForEach
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -39,12 +45,18 @@ import cafe.adriel.voyager.navigator.tab.TabNavigator
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.domain.ui.model.NavSection
+import eu.kanade.domain.ui.model.NavTabLayout
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryTab
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
+import eu.kanade.tachiyomi.ui.entries.anime.AnimeTab
 import eu.kanade.tachiyomi.ui.library.LibraryTab
+import eu.kanade.tachiyomi.ui.library.LibraryViewMode
+import eu.kanade.tachiyomi.ui.library.novels.NovelsTab
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.more.MoreTab
@@ -62,6 +74,8 @@ import tachiyomi.presentation.core.components.material.NavigationBar
 import tachiyomi.presentation.core.components.material.NavigationRail
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.pluralStringResource
+import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -75,12 +89,14 @@ object HomeScreen : Screen() {
     private const val TAB_FADE_DURATION = 200
     private const val TAB_NAVIGATOR_KEY = "HomeTabs"
 
-    private val TABS = listOf(
-        LibraryTab,
-        UpdatesTab,
-        HistoryTab,
-        BrowseTab,
-        MoreTab,
+    private val ALL_TABS_MAP = mapOf(
+        NavTabLayout.KEY_LIBRARY to LibraryTab,
+        NavTabLayout.KEY_NOVELS to NovelsTab,
+        NavTabLayout.KEY_ANIME to AnimeTab,
+        NavTabLayout.KEY_UPDATES to UpdatesTab,
+        NavTabLayout.KEY_HISTORY to HistoryTab,
+        NavTabLayout.KEY_BROWSE to BrowseTab,
+        NavTabLayout.KEY_DICTIONARY to DictionaryTab,
     )
 
     @Composable
@@ -89,13 +105,29 @@ object HomeScreen : Screen() {
 
         // SY -->
         val scope = rememberCoroutineScope()
+        val uiPreferences = remember { Injekt.get<UiPreferences>() }
         val alwaysShowLabel by remember {
-            Injekt.get<UiPreferences>().bottomBarLabels().asState(scope)
+            uiPreferences.bottomBarLabels().asState(scope)
+        }
+
+        val navTabLayoutStr by uiPreferences.navTabLayout().collectAsState()
+        val navStartScreenKey by uiPreferences.navStartScreen().collectAsState()
+        val useConsolidatedLibrary by uiPreferences.useConsolidatedLibrary().asState(scope)
+
+        val navbarTabs = remember(navTabLayoutStr, useConsolidatedLibrary) {
+            val layout = NavTabLayout.parse(navTabLayoutStr)
+            val navbarKeys = layout.getKeysForSection(NavSection.NAVBAR)
+                .filterNot { useConsolidatedLibrary && (it == NavTabLayout.KEY_NOVELS || it == NavTabLayout.KEY_ANIME) }
+            navbarKeys.mapNotNull { ALL_TABS_MAP[it] } + listOf(MoreTab)
+        }
+
+        val startTab = remember(navStartScreenKey, navbarTabs) {
+            ALL_TABS_MAP[navStartScreenKey]?.takeIf { it in navbarTabs } ?: navbarTabs.first()
         }
         // SY <--
 
         TabNavigator(
-            tab = LibraryTab,
+            tab = startTab,
             key = TAB_NAVIGATOR_KEY,
         ) { tabNavigator ->
             // Provide usable navigator to content screen
@@ -104,10 +136,7 @@ object HomeScreen : Screen() {
                     startBar = {
                         if (isTabletUi()) {
                             NavigationRail {
-                                TABS
-                                    // SY -->
-                                    .fastFilter { it.isEnabled() }
-                                    // SY <--
+                                navbarTabs
                                     .fastForEach {
                                         NavigationRailItem(it/* SY --> */, alwaysShowLabel/* SY <-- */)
                                     }
@@ -125,12 +154,13 @@ object HomeScreen : Screen() {
                                 exit = shrinkVertically(),
                             ) {
                                 NavigationBar {
-                                    TABS
-                                        // SY -->
-                                        .fastFilter { it.isEnabled() }
-                                        // SY <--
+                                    navbarTabs
                                         .fastForEach {
-                                            NavigationBarItem(it/* SY --> */, alwaysShowLabel/* SY <-- */)
+                                            NavigationBarItem(
+                                                it/* SY --> */,
+                                                alwaysShowLabel/* SY <-- */,
+                                                useConsolidatedLibrary,
+                                            )
                                         }
                                 }
                             }
@@ -163,16 +193,16 @@ object HomeScreen : Screen() {
                 }
             }
 
-            val goToLibraryTab = { tabNavigator.current = LibraryTab }
+            val goToStartTab = { tabNavigator.current = startTab }
             BackHandler(
-                enabled = tabNavigator.current != LibraryTab,
-                onBack = goToLibraryTab,
+                enabled = tabNavigator.current != startTab,
+                onBack = goToStartTab,
             )
 
             LaunchedEffect(Unit) {
                 launch {
                     librarySearchEvent.receiveAsFlow().collectLatest {
-                        goToLibraryTab()
+                        tabNavigator.current = LibraryTab
                         LibraryTab.search(it)
                     }
                 }
@@ -182,12 +212,15 @@ object HomeScreen : Screen() {
                             is Tab.Library -> LibraryTab
                             Tab.Updates -> UpdatesTab
                             Tab.History -> HistoryTab
+                            Tab.Novels -> NovelsTab
+                            Tab.Anime -> AnimeTab
                             is Tab.Browse -> {
                                 if (it.toExtensions) {
                                     BrowseTab.showExtension()
                                 }
                                 BrowseTab
                             }
+                            Tab.Dictionary -> DictionaryTab
                             is Tab.More -> MoreTab
                         }
 
@@ -197,10 +230,10 @@ object HomeScreen : Screen() {
                         if (it is Tab.More) {
                             if (it.toDownloads) {
                                 navigator.push(DownloadQueueScreen)
-                                // KMK -->
+                            } else if (it.toStats) {
+                                navigator.push(eu.kanade.tachiyomi.ui.stats.StatsScreen())
                             } else if (it.toLibraryUpdateErrors) {
                                 navigator.push(LibraryUpdateErrorScreen())
-                                // KMK <--
                             }
                         }
                     }
@@ -215,21 +248,36 @@ object HomeScreen : Screen() {
         // SY -->
         alwaysShowLabel: Boolean,
         // SY <--
+        useConsolidatedLibrary: Boolean,
     ) {
         val tabNavigator = LocalTabNavigator.current
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
         val selected = tabNavigator.current::class == tab::class
+        val onClickTab: () -> Unit = {
+            if (!selected) {
+                tabNavigator.current = tab
+            } else {
+                scope.launch { tab.onReselect(navigator) }
+            }
+            Unit
+        }
         NavigationBarItem(
             selected = selected,
-            onClick = {
-                if (!selected) {
-                    tabNavigator.current = tab
+            onClick = onClickTab,
+            icon = {
+                if (tab == LibraryTab && useConsolidatedLibrary) {
+                    LibraryNavigationIcon(
+                        onClick = onClickTab,
+                        onModeSelected = { mode ->
+                            if (!selected) tabNavigator.current = LibraryTab
+                            scope.launch { LibraryTab.selectLibraryMode(mode) }
+                        },
+                    )
                 } else {
-                    scope.launch { tab.onReselect(navigator) }
+                    NavigationIconItem(tab)
                 }
             },
-            icon = { NavigationIconItem(tab) },
             label = {
                 Text(
                     text = tab.options.title,
@@ -240,6 +288,50 @@ object HomeScreen : Screen() {
             },
             alwaysShowLabel = /* SY --> */alwaysShowLabel, /* SY <-- */
         )
+    }
+
+    @Composable
+    private fun LibraryNavigationIcon(
+        onClick: () -> Unit,
+        onModeSelected: (LibraryViewMode) -> Unit,
+    ) {
+        var expanded by remember { mutableStateOf(false) }
+        val interactionSource = remember { MutableInteractionSource() }
+        val selectedMode = LibraryViewMode.entries.getOrElse(
+            Injekt.get<LibraryPreferences>().lastUsedLibraryMode().get(),
+        ) { LibraryViewMode.Manga }
+
+        Box {
+            Box(
+                modifier = Modifier.combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                    onLongClick = { expanded = true },
+                ),
+            ) {
+                NavigationIconItem(LibraryTab)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                LibraryViewMode.entries.forEach { mode ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = stringResource(mode.labelRes),
+                                fontWeight = if (mode == selectedMode) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onModeSelected(mode)
+                        },
+                    )
+                }
+            }
+        }
     }
 
     @Composable
@@ -350,9 +442,13 @@ object HomeScreen : Screen() {
         data class Library(val mangaIdToOpen: Long? = null) : Tab
         data object Updates : Tab
         data object History : Tab
+        data object Novels : Tab
+        data object Anime : Tab
         data class Browse(val toExtensions: Boolean = false) : Tab
+        data object Dictionary : Tab
         data class More(
             val toDownloads: Boolean,
+            val toStats: Boolean = false,
             // KMK -->
             val toLibraryUpdateErrors: Boolean = false,
             // KMK <--

@@ -7,11 +7,18 @@ import eu.davidea.flexibleadapter.items.AbstractExpandableHeaderItem
 import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.R
 
+interface DownloadQueueHeader {
+    val id: Long
+    val name: String
+    val size: Int
+}
+
 data class DownloadHeaderItem(
-    val id: Long,
-    val name: String,
-    val size: Int,
-) : AbstractExpandableHeaderItem<DownloadHeaderHolder, DownloadItem>() {
+    override val id: Long,
+    override val name: String,
+    override val size: Int,
+) : AbstractExpandableHeaderItem<DownloadHeaderHolder, DownloadItem>(),
+    DownloadQueueHeader {
 
     override fun getLayoutRes(): Int {
         return R.layout.download_header

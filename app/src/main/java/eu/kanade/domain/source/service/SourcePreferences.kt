@@ -27,6 +27,8 @@ class SourcePreferences(
 
     fun incognitoExtensions() = preferenceStore.getStringSet("incognito_extensions", emptySet())
 
+    fun incognitoAnimeExtensions() = preferenceStore.getStringSet("incognito_anime_extensions", emptySet())
+
     fun pinnedSources() = preferenceStore.getStringSet(
         // KMK -->
         PINNED_SOURCES_PREF_KEY,
@@ -36,6 +38,11 @@ class SourcePreferences(
 
     fun lastUsedSource() = preferenceStore.getLong(
         Preference.appStateKey("last_catalogue_source"),
+        -1,
+    )
+
+    fun lastUsedAnimeSource() = preferenceStore.getLong(
+        Preference.appStateKey("last_anime_catalogue_source"),
         -1,
     )
 
@@ -50,6 +57,12 @@ class SourcePreferences(
 
     fun hideInLibraryItems() = preferenceStore.getBoolean("browse_hide_in_library_items", false)
 
+    fun hideInAnimeLibraryItems() = preferenceStore.getBoolean("browse_hide_in_anime_library_items", false)
+
+    fun disabledAnimeSources() = preferenceStore.getStringSet("hidden_anime_catalogues", emptySet())
+
+    fun pinnedAnimeSources() = preferenceStore.getStringSet("pinned_anime_catalogues", emptySet())
+
     // KMK -->
     fun hideInLibraryFeedItems() = preferenceStore.getBoolean("feed_hide_in_library_items", false)
     // KMK <--
@@ -58,6 +71,8 @@ class SourcePreferences(
     fun extensionRepos() = preferenceStore.getStringSet("extension_repos", emptySet())
 
     fun extensionUpdatesCount() = preferenceStore.getInt("ext_updates_count", 0)
+
+    fun animeExtensionUpdatesCount() = preferenceStore.getInt("anime_ext_updates_count", 0)
 
     fun trustedExtensions() = preferenceStore.getStringSet(
         Preference.appStateKey("trusted_extensions"),

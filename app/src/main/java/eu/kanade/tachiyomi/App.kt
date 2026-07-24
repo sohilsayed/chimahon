@@ -35,6 +35,7 @@ import com.elvishew.xlog.printer.Printer
 import com.elvishew.xlog.printer.file.backup.NeverBackupStrategy
 import com.elvishew.xlog.printer.file.naming.DateFileNameGenerator
 import dev.mihon.injekt.patchInjekt
+import eu.kanade.domain.AnimeDomainModule
 import eu.kanade.domain.DomainModule
 import eu.kanade.domain.KMKDomainModule
 import eu.kanade.domain.SYDomainModule
@@ -45,6 +46,9 @@ import eu.kanade.domain.ui.model.setAppCompatDelegateThemeMode
 import eu.kanade.tachiyomi.core.security.PrivacyPreferences
 import eu.kanade.tachiyomi.crash.CrashActivity
 import eu.kanade.tachiyomi.crash.GlobalExceptionHandler
+import eu.kanade.tachiyomi.data.coil.AnimeImageFetcher
+import eu.kanade.tachiyomi.data.coil.AnimeCoverKeyer
+import eu.kanade.tachiyomi.data.coil.AnimeKeyer
 import eu.kanade.tachiyomi.data.coil.BufferedSourceFetcher
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
 import eu.kanade.tachiyomi.data.coil.MangaCoverKeyer
@@ -98,6 +102,7 @@ import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.File
 import java.security.Security
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -139,6 +144,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         Injekt.importModule(PreferenceModule(this))
         Injekt.importModule(AppModule(this))
         Injekt.importModule(DomainModule())
+        Injekt.importModule(AnimeDomainModule())
         // KMK -->
         Injekt.importModule(KMKDomainModule())
         // KMK <--
@@ -180,7 +186,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                         setContentText(stringResource(MR.strings.notification_incognito_text))
                         setSmallIcon(R.drawable.ic_glasses_with_hat_24dp)
                         setColor(ContextCompat.getColor(applicationContext, R.color.ic_launcher))
-                        setLargeIcon(BitmapFactory.decodeResource(applicationContext.resources, R.drawable.komikku))
+                        setLargeIcon(BitmapFactory.decodeResource(applicationContext.resources, R.drawable.chimahon))
                         setOngoing(true)
 
                         val pendingIntent = PendingIntent.getBroadcast(
@@ -222,8 +228,8 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         MangaCoverMetadata.load()
         // KMK <--
 
-        // Updates widget update
         WidgetManager(Injekt.get(), Injekt.get()).apply { init(scope) }
+        eu.kanade.tachiyomi.glance.ChimahonWidgetManager.start(this)
 
         if (!WorkManager.isInitialized()) {
             WorkManager.initialize(this, Configuration.Builder().build())
@@ -235,6 +241,11 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         initializeMigrator()
+        
+        // Chimahon -->
+        com.canopus.chimareader.data.NovelMigration.migrateOldBooks(this)
+        chimahon.DictionaryRepository.migrateFlatDictionaries(File(getExternalFilesDir(null), "dictionaries"))
+        // Chimahon <--
     }
 
     private fun initializeMigrator() {
@@ -266,9 +277,13 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                 add(BufferedSourceFetcher.Factory())
                 add(MangaCoverFetcher.MangaCoverFactory(callFactoryLazy))
                 add(MangaCoverFetcher.MangaFactory(callFactoryLazy))
+                add(AnimeImageFetcher.AnimeCoverFactory(callFactoryLazy))
+                add(AnimeImageFetcher.AnimeFactory(callFactoryLazy))
                 // Keyer
                 add(MangaCoverKeyer())
+                add(AnimeCoverKeyer())
                 add(MangaKeyer())
+                add(AnimeKeyer())
                 // SY -->
                 add(PagePreviewKeyer())
                 add(PagePreviewFetcher.Factory(callFactoryLazy))
@@ -321,6 +336,8 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         // AM (DISCORD) -->
         DiscordRPCService.stop(applicationContext)
         // <-- AM (DISCORD)
+        
+        eu.kanade.tachiyomi.glance.ChimahonWidgetManager.updateAllWidgets(this)
     }
 
     override fun getPackageName(): String {

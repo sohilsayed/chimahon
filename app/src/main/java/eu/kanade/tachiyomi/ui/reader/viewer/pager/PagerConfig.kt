@@ -70,9 +70,6 @@ class PagerConfig(
         readerPreferences.pageLayout().get() == PageLayout.DOUBLE_PAGES && !readerPreferences.dualPageSplitPaged().get()
         set(value) {
             field = value
-            if (!value) {
-                shiftDoublePage = false
-            }
         }
 
     var invertDoublePages = false

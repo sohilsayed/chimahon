@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
+import eu.kanade.tachiyomi.data.backup.models.BackupAnime
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
@@ -13,6 +14,9 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeCategoriesRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeExtensionRepoRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.AnimeRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.FeedRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
@@ -37,15 +41,21 @@ class BackupRestorer(
     private val isSync: Boolean,
 
     private val categoriesRestorer: CategoriesRestorer = CategoriesRestorer(),
+    private val animeCategoriesRestorer: AnimeCategoriesRestorer = AnimeCategoriesRestorer(),
     private val preferenceRestorer: PreferenceRestorer = PreferenceRestorer(context),
     private val extensionStoreRestorer: ExtensionStoreRestorer = ExtensionStoreRestorer(),
+    private val animeExtensionRepoRestorer: AnimeExtensionRepoRestorer = AnimeExtensionRepoRestorer(),
     private val mangaRestorer: MangaRestorer = MangaRestorer(isSync),
+    private val animeRestorer: AnimeRestorer = AnimeRestorer(),
     // SY -->
     private val savedSearchRestorer: SavedSearchRestorer = SavedSearchRestorer(),
     // SY <--
     // KMK -->
     private val feedRestorer: FeedRestorer = FeedRestorer(),
     // KMK <--
+    // Chimahon -->
+    private val novelRestorer: eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer = eu.kanade.tachiyomi.data.backup.restore.restorers.NovelRestorer(context),
+    // Chimahon <--
 ) {
 
     private var restoreAmount = 0
@@ -56,6 +66,7 @@ class BackupRestorer(
      * Mapping of source ID to source name from backup data
      */
     private var sourceMapping: Map<Long, String> = emptyMap()
+    private var animeSourceMapping: Map<Long, String> = emptyMap()
 
     suspend fun restore(uri: Uri, options: RestoreOptions) {
         val startTime = System.currentTimeMillis()
@@ -81,12 +92,19 @@ class BackupRestorer(
         // Store source mapping for error messages
         val backupMaps = backup.backupSources
         sourceMapping = backupMaps.associate { it.sourceId to it.name }
+        animeSourceMapping = backup.backupAnimeSources.associate { it.sourceId to it.name }
 
         if (options.libraryEntries) {
             restoreAmount += backup.backupManga.size
         }
+        if (options.animeEntries) {
+            restoreAmount += backup.backupAnime.count { it.parentId == null }
+        }
         if (options.categories) {
             restoreAmount += 1
+            if (backup.backupAnimeCategories.isNotEmpty()) {
+                restoreAmount += 1
+            }
         }
         // SY -->
         if (options.savedSearchesFeeds) {
@@ -98,14 +116,28 @@ class BackupRestorer(
         }
         if (options.extensionStores) {
             restoreAmount += backup.backupExtensionStores.size
+            restoreAmount += backup.backupAnimeExtensionRepo.size
         }
         if (options.sourceSettings) {
             restoreAmount += 1
         }
+        // Chimahon -->
+        if (options.novels) {
+            restoreAmount += backup.backupNovels.size
+            if (backup.backupNovelCategories.isNotEmpty()) {
+                restoreAmount += 1
+            }
+        }
+        if (options.appSettings) {
+            if (backup.backupMangaStats.isNotEmpty()) restoreAmount += 1
+            if (backup.backupAnkiStats.isNotEmpty()) restoreAmount += 1
+        }
+        // Chimahon <--
 
         coroutineScope {
             if (options.categories) {
                 restoreCategories(backup.backupCategories)
+                restoreAnimeCategories(backup.backupAnimeCategories)
             }
             // SY -->
             if (options.savedSearchesFeeds) {
@@ -119,6 +151,7 @@ class BackupRestorer(
             // SY <--
             if (options.appSettings) {
                 restoreAppPreferences(backup.backupPreferences, backup.backupCategories.takeIf { options.categories })
+                restoreGlobalStats(backup.backupMangaStats, backup.backupAnkiStats)
             }
             if (options.sourceSettings) {
                 restoreSourcePreferences(backup.backupSourcePreferences)
@@ -128,7 +161,16 @@ class BackupRestorer(
             }
             if (options.extensionStores) {
                 restoreExtensionStores(backup.backupExtensionStores)
+                restoreAnimeExtensionRepos(backup.backupAnimeExtensionRepo)
             }
+            if (options.animeEntries) {
+                restoreAnime(backup.backupAnime, if (options.categories) backup.backupAnimeCategories else emptyList())
+            }
+            // Chimahon -->
+            if (options.novels) {
+                restoreNovels(backup.backupNovels, backup.backupNovelCategories)
+            }
+            // Chimahon <--
 
             // TODO: optionally trigger online library + tracker update
         }
@@ -150,6 +192,25 @@ class BackupRestorer(
                 // KMK -->
                 .show(Notifications.ID_RESTORE_PROGRESS)
             // KMK <--
+        }
+    }
+
+    context(scope: CoroutineScope)
+    private suspend fun restoreAnimeCategories(backupCategories: List<BackupCategory>) {
+        if (backupCategories.isEmpty()) return
+
+        scope.ensureActive()
+        animeCategoriesRestorer(backupCategories)
+
+        restoreProgress += 1
+        with(notifier) {
+            showRestoreProgress(
+                context.stringResource(MR.strings.categories),
+                restoreProgress,
+                restoreAmount,
+                isSync,
+            )
+                .show(Notifications.ID_RESTORE_PROGRESS)
         }
     }
 
@@ -202,6 +263,33 @@ class BackupRestorer(
                         // KMK -->
                         .show(Notifications.ID_RESTORE_PROGRESS)
                     // KMK <--
+                }
+            }
+    }
+
+    private fun CoroutineScope.restoreAnime(
+        backupAnimes: List<BackupAnime>,
+        backupCategories: List<BackupCategory>,
+    ) = launch {
+        val seasonsByParentBackupId = backupAnimes
+            .filter { it.parentId != null }
+            .groupBy { it.parentId }
+
+        animeRestorer.sortByNew(backupAnimes.filter { it.parentId == null })
+            .forEach {
+                ensureActive()
+
+                try {
+                    animeRestorer.restore(it, backupCategories, seasonsByParentBackupId[it.id].orEmpty())
+                } catch (e: Exception) {
+                    val sourceName = animeSourceMapping[it.source] ?: it.source.toString()
+                    errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
+                }
+
+                restoreProgress += 1
+                with(notifier) {
+                    showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
+                        .show(Notifications.ID_RESTORE_PROGRESS)
                 }
             }
     }
@@ -277,6 +365,94 @@ class BackupRestorer(
                 }
             }
     }
+
+    private fun CoroutineScope.restoreAnimeExtensionRepos(
+        backupExtensionRepo: List<BackupExtensionRepos>,
+    ) = launch {
+        backupExtensionRepo
+            .forEach {
+                ensureActive()
+
+                try {
+                    animeExtensionRepoRestorer(it)
+                } catch (e: Exception) {
+                    errors.add(Date() to "Error Adding Anime Repo: ${it.name} : ${e.message}")
+                }
+
+                restoreProgress += 1
+                with(notifier) {
+                    showRestoreProgress(
+                        context.stringResource(MR.strings.extensionRepo_settings),
+                        restoreProgress,
+                        restoreAmount,
+                        isSync,
+                    )
+                        .show(Notifications.ID_RESTORE_PROGRESS)
+                }
+            }
+    }
+
+    // Chimahon -->
+    private fun CoroutineScope.restoreNovels(
+        backupNovels: List<eu.kanade.tachiyomi.data.backup.models.BackupNovel>,
+        backupNovelCategories: List<eu.kanade.tachiyomi.data.backup.models.BackupNovelCategory>
+    ) = launch {
+        ensureActive()
+
+        val categoryIdMap = try {
+            novelRestorer.restoreCategories(backupNovelCategories)
+        } catch (e: Exception) {
+            errors.add(Date() to "Error Restoring Novel Categories: ${e.message}")
+            emptyMap()
+        }
+
+        if (backupNovelCategories.isNotEmpty()) {
+            restoreProgress += 1
+        }
+
+        backupNovels.forEach { backupNovel ->
+            ensureActive()
+
+            try {
+                novelRestorer.restoreNovel(backupNovel, categoryIdMap)
+            } catch (e: Exception) {
+                errors.add(Date() to "${backupNovel.title}: ${e.message}")
+            }
+
+            restoreProgress += 1
+            with(notifier) {
+                showRestoreProgress(
+                    backupNovel.title,
+                    restoreProgress,
+                    restoreAmount,
+                    isSync,
+                ).show(Notifications.ID_RESTORE_PROGRESS)
+            }
+        }
+    }
+
+    private fun CoroutineScope.restoreGlobalStats(
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
+        ankiStats: List<com.canopus.chimareader.data.AnkiStats>
+    ) = launch {
+        with(notifier) {
+            if (mangaStats.isNotEmpty()) {
+                ensureActive()
+                com.canopus.chimareader.data.MangaStatsStorage.merge(context, mangaStats)
+                restoreProgress += 1
+                showRestoreProgress(context.stringResource(MR.strings.manga_singular), restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
+            if (ankiStats.isNotEmpty()) {
+                ensureActive()
+                com.canopus.chimareader.data.AnkiStatsStorage.merge(context, ankiStats)
+                restoreProgress += 1
+                showRestoreProgress("Anki", restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
+        }
+    }
+    // Chimahon <--
 
     private fun writeErrorLog(): File {
         try {

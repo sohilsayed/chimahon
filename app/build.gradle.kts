@@ -13,7 +13,13 @@ plugins {
     id("com.github.ben-manes.versions")
 }
 
-if (Config.includeTelemetry) {
+val includeTelemetry = false
+val enableUpdater = Config.enableUpdater
+val hasLocalOcr = file("../chimahon-local-ocr/build.gradle.kts").exists()
+val releaseVersionName = providers.gradleProperty("releaseVersionName").orNull
+val releaseVersionCode = providers.gradleProperty("releaseVersionCode").orNull?.toIntOrNull()
+
+if (includeTelemetry) {
     pluginManager.apply {
         apply(libs.plugins.google.services.get().pluginId)
         apply(libs.plugins.firebase.crashlytics.get().pluginId)
@@ -26,16 +32,17 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.komikku"
+        applicationId = "app.chimahon"
 
-        versionCode = 81
-        versionName = "1.14.1"
+        versionCode = releaseVersionCode ?: 3
+        versionName = releaseVersionName ?: "1.1.0"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
-        buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
-        buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+        buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
+        buildConfigField("boolean", "HAS_LOCAL_OCR", hasLocalOcr.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,6 +52,8 @@ android {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-${getCommitCount()}"
             isPseudoLocalesEnabled = true
+            buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
         }
         val release by getting {
             isMinifyEnabled = Config.enableCodeShrink
@@ -53,6 +62,8 @@ android {
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = true)}\"")
+            buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
 
         val commonMatchingFallbacks = listOf(release.name)
@@ -72,6 +83,9 @@ android {
             applicationIdSuffix = ".foss"
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
+
+            buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
         create("preview") {
             initWith(release)
@@ -84,6 +98,8 @@ android {
             matchingFallbacks.addAll(commonMatchingFallbacks)
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
+            buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
         create("benchmark") {
             initWith(release)
@@ -96,6 +112,9 @@ android {
             signingConfig = debug.signingConfig
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
+
+            buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", enableUpdater.toString())
         }
     }
 
@@ -122,6 +141,16 @@ android {
                 "libimagedecoder",
                 "libquickjs",
                 "libsqlite3x",
+                "libmpv",
+                "libavcodec",
+                "libavformat",
+                "libswscale",
+                "libavutil",
+                "libswresample",
+                "libavfilter",
+                "libass",
+                "libdav1d",
+                "libplacebo",
             )
                 .map { "**/$it.so" }
         }
@@ -138,6 +167,7 @@ android {
                 "META-INF/LICENSE",
                 "META-INF/NOTICE",
                 "META-INF/README.md",
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
             )
         }
     }
@@ -184,7 +214,16 @@ kotlin {
 }
 
 dependencies {
+    implementation(projects.chimahon)
+
+    if (hasLocalOcr) {
+        implementation(project(":chimahon-local-ocr"))
+    }
+
     implementation(projects.i18n)
+    // ANK -->
+    implementation(projects.i18nAnk)
+    // ANK <--
     // KMK -->
     implementation(projects.i18nKmk)
     // KMK <--
@@ -209,9 +248,11 @@ dependencies {
     implementation(compose.material.icons)
     implementation(compose.animation)
     implementation(compose.animation.graphics)
+    implementation(compose.glance)
     debugImplementation(compose.ui.tooling)
     implementation(compose.ui.tooling.preview)
     implementation(compose.ui.util)
+    implementation(compose.constraintlayout)
 
     implementation(androidx.interpolator)
 
@@ -219,9 +260,7 @@ dependencies {
     implementation(androidx.paging.compose)
 
     implementation(libs.bundles.sqlite)
-    // SY -->
-    implementation(sylibs.sqlcipher)
-    // SY <--
+
 
     implementation(kotlinx.reflect)
     implementation(kotlinx.immutables)
@@ -277,6 +316,9 @@ dependencies {
     }
     implementation(libs.image.decoder)
 
+    // Image cropper
+    implementation(libs.android.image.cropper)
+
     // UI libraries
     implementation(libs.material)
     implementation(libs.flexible.adapter.core)
@@ -322,6 +364,18 @@ dependencies {
 
     testImplementation(kotlinx.coroutines.test)
 
+    // MPV player
+    implementation(libs.aniyomi.mpv)
+    implementation(libs.seeker)
+    implementation(libs.ffmpeg.kit)
+    implementation(libs.smart.exception.java)
+    implementation(libs.mediasession)
+    implementation(libs.truetypeparser)
+    implementation(libs.torrentserver)
+    implementation(libs.nanohttpd)
+    implementation(libs.media.router)
+    implementation(libs.cast.play.services)
+
     // SY -->
     // Better logging (EH)
     implementation(sylibs.xlog)
@@ -335,6 +389,11 @@ dependencies {
 
     // ZXing Android Embedded
     implementation(sylibs.zxing.android.embedded)
+
+    // NewPipe Extractor for YouTube stream resolution
+    implementation(libs.newpipe.extractor)
+    // Match NewPipe dev's protobuf patch while staying on the stable extractor release.
+    implementation(libs.protobuf.javalite)
 }
 
 androidComponents {

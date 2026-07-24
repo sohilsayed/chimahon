@@ -22,6 +22,7 @@ object ChapterMapper {
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
         memo: JsonObject,
+        ocrReady: Boolean = false,
     ): Chapter = Chapter(
         id = id,
         mangaId = mangaId,
@@ -38,5 +39,6 @@ object ChapterMapper {
         lastModifiedAt = lastModifiedAt,
         version = version,
         memo = memo,
+        isOcrReady = ocrReady,
     )
 }

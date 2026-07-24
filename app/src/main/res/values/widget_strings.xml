@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description_recent_history">Recent History</string>
+    <string name="widget_description_novel_progress">Novel Progress</string>
+    <string name="widget_description_continue_reading">Continue Reading</string>
+    <string name="widget_description_reading_stats">Reading Statistics</string>
+    <string name="widget_description_screen_lookup">System Lookup</string>
+    <string name="widget_description_search">Search</string>
+
+    <string name="widget_no_recent_history">No recent history</string>
+    <string name="widget_no_recent_novels">No recent novels</string>
+    <string name="widget_current_novel">Current novel</string>
+    <string name="widget_unknown_title">Unknown Title</string>
+    <string name="widget_chapter_unknown">Chapter -</string>
+    <string name="widget_search_dictionary_hint">Search dictionary...</string>
+    <string name="widget_system_lookup">System Lookup</string>
+    <string name="widget_stat_characters">Characters read</string>
+    <string name="widget_stat_reading_time">Reading time</string>
+    <string name="widget_stat_speed">Avg speed</string>
+    <string name="widget_stat_mined_cards">Added cards</string>
+    <string name="widget_continue_reading_title">Continue reading</string>
+
+    <string name="widget_preview_title_1">Lorem ipsum dolor</string>
+    <string name="widget_preview_title_2">Sit amet consectetur</string>
+    <string name="widget_preview_title_3">Adipiscing elit sed</string>
+    <string name="widget_preview_title_4">Eiusmod tempor</string>
+    <string name="widget_preview_chapter">Ch. 12</string>
+    <string name="widget_preview_chapter_long">Chapter 12</string>
+    <string name="widget_preview_percent">42%</string>
+    <string name="widget_preview_stat_chars">12,345</string>
+    <string name="widget_preview_stat_time">1h 23m</string>
+    <string name="widget_preview_stat_speed">6,789</string>
+    <string name="widget_preview_stat_cards">42</string>
+    <string name="widget_preview_badge">+3</string>
+    <string name="widget_preview_resume">Resume</string>
+    <string name="widget_preview_updates">Updates</string>
+    <string name="widget_preview_history">History</string>
+</resources>

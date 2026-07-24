@@ -48,6 +48,12 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.UpIcon
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsAdvancedScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsAudioScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsDecoderScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsGesturesScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsPlayerScreen
+import eu.kanade.presentation.more.settings.screen.player.PlayerSettingsSubtitleScreen
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.util.Screen
 import tachiyomi.i18n.MR
@@ -289,16 +295,24 @@ private val settingScreens = listOf(
     SettingsAppearanceScreen,
     SettingsLibraryScreen,
     SettingsReaderScreen,
+    PlayerSettingsPlayerScreen,
+    PlayerSettingsAudioScreen,
+    PlayerSettingsSubtitleScreen,
+    PlayerSettingsDecoderScreen,
+    PlayerSettingsGesturesScreen,
+    PlayerSettingsAdvancedScreen,
     SettingsDownloadScreen,
     SettingsTrackingScreen,
     // AM (CONNECTIONS) -->
     SettingsConnectionScreen,
     // <-- AM (CONNECTIONS)
     SettingsBrowseScreen,
+    SettingsDictionaryScreen,
+    SettingsDictionaryPopupScreen,
+    SettingsAnkiScreen,
     SettingsDataScreen,
     SettingsSecurityScreen,
     // SY -->
-    SettingsEhScreen,
     SettingsMangadexScreen,
     // SY <--
     SettingsAdvancedScreen,

@@ -11,10 +11,24 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 @Composable
 fun relativeDateText(
+    dateEpochMillis: Long,
+): String {
+    return relativeDateText(
+        localDate = LocalDate.ofInstant(
+            Instant.ofEpochMilli(dateEpochMillis),
+            ZoneId.systemDefault(),
+        )
+            .takeIf { dateEpochMillis != 0L },
+    )
+}
+
+@Composable
+fun relativeDateTimeText(
     dateEpochMillis: Long,
 ): String {
     return relativeDateText(

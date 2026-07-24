@@ -16,4 +16,8 @@ data class SyncSettings(
     val readEntries: Boolean = true,
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // Chimahon -->
+    val novels: Boolean = true,
+    // Chimahon <--
+    val animeEntries: Boolean = true,
 )

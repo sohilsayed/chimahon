@@ -123,6 +123,10 @@ private class SyncSettingsSelectorModel(
                 readEntries = syncSettings.readEntries,
                 savedSearchesFeeds = syncSettings.savedSearchesFeeds,
                 // SY <--
+                // Chimahon -->
+                novels = syncSettings.novels,
+                // Chimahon <--
+                animeEntries = syncSettings.animeEntries,
             )
         }
 
@@ -143,6 +147,10 @@ private class SyncSettingsSelectorModel(
                 readEntries = backupOptions.readEntries,
                 savedSearchesFeeds = backupOptions.savedSearchesFeeds,
                 // SY <--
+                // Chimahon -->
+                novels = backupOptions.novels,
+                // Chimahon <--
+                animeEntries = backupOptions.animeEntries,
             )
         }
     }

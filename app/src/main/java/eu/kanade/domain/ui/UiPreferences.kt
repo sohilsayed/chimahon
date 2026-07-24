@@ -80,9 +80,17 @@ class UiPreferences(
 
     fun bottomBarLabels() = preferenceStore.getBoolean("pref_show_bottom_bar_labels", true)
 
-    fun showNavUpdates() = preferenceStore.getBoolean("pref_show_updates_button", true)
+    fun showNavUpdates() = preferenceStore.getBoolean("pref_show_updates_button", false)
 
     fun showNavHistory() = preferenceStore.getBoolean("pref_show_history_button", true)
+
+    fun navTabLayout() = preferenceStore.getString("pref_nav_tab_layout", "")
+
+    fun navStartScreen() = preferenceStore.getString("pref_nav_start_screen", "Library")
+
+    fun lastUsedBrowseMode() = preferenceStore.getInt("browse_last_used_mode", 0)
+
+    fun useConsolidatedLibrary() = preferenceStore.getBoolean("use_consolidated_library", true)
 
     // SY <--
 

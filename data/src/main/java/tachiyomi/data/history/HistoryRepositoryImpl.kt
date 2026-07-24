@@ -8,6 +8,7 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.history.model.History
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.domain.history.model.ReadingSession
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.model.Manga
 
@@ -50,6 +51,10 @@ class HistoryRepositoryImpl(
 
     override suspend fun getTotalReadDuration(): Long {
         return handler.awaitOne { historyQueries.getReadDuration() }
+    }
+
+    override suspend fun getAllHistory(): List<History> {
+        return handler.awaitList { historyQueries.getAllHistory(HistoryMapper::mapHistory) }
     }
 
     override suspend fun getHistoryByMangaId(mangaId: Long): List<History> {
@@ -117,4 +122,34 @@ class HistoryRepositoryImpl(
         }
     }
     // SY <--
+
+    override suspend fun insertSession(session: ReadingSession) {
+        try {
+            handler.await {
+                reading_sessionsQueries.insertSession(
+                    session.chapterId,
+                    session.readAt,
+                    session.duration,
+                )
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, throwable = e)
+        }
+    }
+
+    override suspend fun getAllSessions(): List<ReadingSession> {
+        return handler.awaitList {
+            reading_sessionsQueries.getAllSessions { id, chapterId, readAt, duration ->
+                ReadingSession(id, chapterId, readAt, duration)
+            }
+        }
+    }
+
+    override suspend fun getLibrarySessions(): List<ReadingSession> {
+        return handler.awaitList {
+            reading_sessionsQueries.getLibrarySessions { id, chapterId, readAt, duration ->
+                ReadingSession(id, chapterId, readAt, duration)
+            }
+        }
+    }
 }

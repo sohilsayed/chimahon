@@ -49,12 +49,15 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 
     var doubleTapZoom = true
 
+    var eInkMode = false
+
     // KMK -->
     var pinchToZoom = true
     // KMK <--
 
     var tapListener: ((MotionEvent) -> Unit)? = null
     var longTapListener: ((MotionEvent) -> Boolean)? = null
+    var useConfirmedSingleTap = false
 
     private var isManuallyScrolling = false
     private var tapDuringManualScroll = false
@@ -99,6 +102,10 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         }
     }
 
+    override fun fling(velocityX: Int, velocityY: Int): Boolean {
+        return !eInkMode && super.fling(velocityX, velocityY)
+    }
+
     private fun getPositionX(positionX: Float): Float {
         if (currentScale < 1) {
             return 0f
@@ -123,6 +130,15 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         fromY: Float,
         toY: Float,
     ) {
+        if (eInkMode) {
+            isZooming = false
+            x = toX
+            y = toY
+            currentScale = toRate
+            setScaleRate(currentScale)
+            return
+        }
+
         isZooming = true
         val animatorSet = AnimatorSet()
         val translationXAnimator = ValueAnimator.ofFloat(fromX, toX)
@@ -147,6 +163,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
     }
 
     fun zoomFling(velocityX: Int, velocityY: Int): Boolean {
+        if (eInkMode) return false
         if (currentScale <= 1f) return false
 
         val distanceTimeFactor = 0.4f
@@ -241,8 +258,19 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 
     inner class GestureListener : GestureDetectorWithLongTap.Listener() {
 
+        override fun onDown(ev: MotionEvent): Boolean {
+            return true
+        }
+
+        override fun onSingleTapUp(ev: MotionEvent): Boolean {
+            if (!useConfirmedSingleTap && !tapDuringManualScroll) {
+                tapListener?.invoke(ev)
+            }
+            return false
+        }
+
         override fun onSingleTapConfirmed(ev: MotionEvent): Boolean {
-            if (!tapDuringManualScroll) {
+            if (useConfirmedSingleTap && !tapDuringManualScroll) {
                 tapListener?.invoke(ev)
             }
             return false

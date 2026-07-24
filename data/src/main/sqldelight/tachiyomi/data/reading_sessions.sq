@@ -1,0 +1,46 @@
+import java.util.Date;
+
+CREATE TABLE reading_sessions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    chapter_id INTEGER NOT NULL,
+    read_at INTEGER AS Date NOT NULL,
+    duration INTEGER NOT NULL,
+    characters_read INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(chapter_id) REFERENCES chapters (_id) ON DELETE CASCADE
+);
+
+insertSession:
+INSERT INTO reading_sessions(chapter_id, read_at, duration)
+VALUES (:chapterId, :readAt, :duration);
+
+getAllSessions:
+SELECT
+_id,
+chapter_id,
+read_at,
+duration
+FROM reading_sessions;
+
+getSessionsByChapterId:
+SELECT
+_id,
+chapter_id,
+read_at,
+duration
+FROM reading_sessions
+WHERE chapter_id = :chapterId;
+
+getTotalDuration:
+SELECT coalesce(sum(duration), 0)
+FROM reading_sessions;
+
+getLibrarySessions:
+SELECT
+rs._id,
+rs.chapter_id,
+rs.read_at,
+rs.duration
+FROM reading_sessions AS rs
+JOIN chapters AS c ON c._id = rs.chapter_id
+JOIN mangas AS m ON m._id = c.manga_id
+WHERE m.favorite = 1;

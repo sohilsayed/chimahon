@@ -1,5 +1,7 @@
 [versions]
 aboutlib_version = "13.2.1"
+newpipe-extractor = "v0.26.3"
+protobuf-javalite = "4.35.1"
 leakcanary = "2.14"
 moko = "0.26.4"
 okhttp_version = "5.3.2"
@@ -13,6 +15,14 @@ firebase-bom = "34.15.0"
 markdown = "0.39.2"
 junit = "6.0.3"
 materialKolor = "5.0.0-alpha07"
+image-cropper = "4.7.0"
+datastore = "1.1.2"
+media3 = "1.5.1"
+aniyomi-mpv-lib = "1.17.n"
+seeker = "1.2.2"
+media = "1.7.1"
+truetypeparser = "2.1.4"
+ffmpeg-kit = "1.17"
 
 [libraries]
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
@@ -28,10 +38,15 @@ okhttp-zstd = { module = "com.squareup.okhttp3:okhttp-zstd", version.ref = "okht
 okio = "com.squareup.okio:okio:3.17.0"
 
 conscrypt-android = "org.conscrypt:conscrypt-android:2.5.3"
+datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
 
 quickjs-android = { group = "com.github.zhanghai.quickjs-java", name = "quickjs-android", version = "547f5b1597" }
 
 jsoup = "org.jsoup:jsoup:1.22.2"
+
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe-extractor" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf-javalite" }
 
 disklrucache = "com.jakewharton:disklrucache:2.0.2"
 unifile = "com.github.komikku-app:UniFile:084a54140a"
@@ -52,7 +67,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp" }
 
 subsamplingscaleimageview = "com.github.tachiyomiorg:subsampling-scale-image-view:66e0db195d"
-image-decoder = "com.github.tachiyomiorg:image-decoder:41c059e540"
+image-decoder = "com.github.yomihon:image-decoder:da05c859ff"
 
 natural-comparator = "com.github.gpanther:java-nat-sort:natural-comparator-1.1"
 
@@ -62,12 +77,28 @@ material = "com.google.android.material:material:1.13.0"
 flexible-adapter-core = "com.github.arkon.FlexibleAdapter:flexible-adapter:c8013533"
 photoview = "com.github.chrisbanes:PhotoView:2.3.0"
 directionalviewpager = "com.github.tachiyomiorg:DirectionalViewPager:1.0.0"
+
+android-image-cropper = { module = "com.vanniktech:android-image-cropper", version.ref = "image-cropper" }
 compose-materialmotion = "io.github.fornewid:material-motion-compose-core:2.0.1"
 compose-webview = "io.github.kevinnzou:compose-webview:0.33.6"
 compose-grid = "io.woong.compose.grid:grid:1.2.2"
 reorderable = { module = "sh.calvin.reorderable:reorderable", version = "3.1.0" }
 palette-ktx = "androidx.palette:palette-ktx:1.0.0"
 haze = "dev.chrisbanes.haze:haze:1.7.2"
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+
+aniyomi-mpv = { module = "com.github.aniyomiorg:aniyomi-mpv-lib", version.ref = "aniyomi-mpv-lib" }
+seeker = { module = "io.github.2307vivek:seeker", version.ref = "seeker" }
+mediasession = { module = "androidx.media:media", version.ref = "media" }
+truetypeparser = { module = "io.github.yubyf:truetypeparser-light", version.ref = "truetypeparser" }
+torrentserver = "com.github.Diegopyl1209:torrentserver-aniyomi:c18f58e51b"
+media-router = "androidx.mediarouter:mediarouter:1.8.1"
+cast-play-services = "com.google.android.gms:play-services-cast-framework:22.1.0"
+ffmpeg-kit = { module = "com.github.jmir1:ffmpeg-kit", version.ref = "ffmpeg-kit" }
+smart-exception-java = "com.arthenica:smart-exception-java:0.2.1"
+nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "2.3.1" }
+
 
 swipe = "me.saket.swipe:swipe:1.3.0"
 
@@ -130,3 +161,4 @@ sqldelight = ["sqldelight-android-driver", "sqldelight-coroutines", "sqldelight-
 voyager = ["voyager-navigator", "voyager-screenmodel", "voyager-tab-navigator", "voyager-transitions"]
 test = ["junit-jupiter", "kotest-assertions", "mockk"]
 markdown = ["markdown-core", "markdown-coil"]
+media3 = ["media3-exoplayer", "media3-common"]

@@ -48,6 +48,9 @@ fun LibraryContent(
     getDisplayMode: (Int) -> PreferenceMutableState<LibraryDisplayMode>,
     getColumnsForOrientation: (Boolean) -> PreferenceMutableState<Int>,
     getItemsForCategory: (Category) -> List<LibraryItem>,
+    entryTarget: LibraryPagerBoundary? = null,
+    onEntryTargetConsumed: () -> Unit = {},
+    onBoundarySwipe: (LibraryPagerBoundary) -> Unit = {},
 ) {
     Column(
         modifier = Modifier.padding(
@@ -61,20 +64,30 @@ fun LibraryContent(
         val scope = rememberCoroutineScope()
         var isRefreshing by remember(pagerState.currentPage) { mutableStateOf(false) }
 
-        if (showPageTabs && categories.isNotEmpty() && (categories.size > 1 || !categories.first().isSystemCategory)) {
-            LaunchedEffect(categories) {
+        LaunchedEffect(categories, activeCategoryIndex, entryTarget) {
+            if (categories.isNotEmpty()) {
                 // KMK -->
-                val targetPage = when {
-                    categories.isEmpty() -> 0
-                    activeCategoryIndex != pagerState.currentPage -> activeCategoryIndex.coerceAtMost(categories.size - 1)
-                    pagerState.currentPage >= categories.size -> categories.size - 1
-                    else -> pagerState.currentPage
+                val targetPage = when (entryTarget) {
+                    LibraryPagerBoundary.Start -> 0
+                    LibraryPagerBoundary.End -> categories.lastIndex
+                    null -> when {
+                        activeCategoryIndex != pagerState.currentPage -> activeCategoryIndex.coerceAtMost(categories.lastIndex)
+                        pagerState.currentPage >= categories.size -> categories.lastIndex
+                        else -> pagerState.currentPage
+                    }
                 }
+                // KMK <--
                 if (targetPage != pagerState.currentPage) {
                     pagerState.scrollToPage(targetPage)
                 }
-                // KMK <--
+                if (entryTarget != null) {
+                    onChangeCurrentPage(targetPage)
+                    onEntryTargetConsumed()
+                }
             }
+        }
+
+        if (showPageTabs && categories.isNotEmpty() && (categories.size > 1 || !categories.first().isSystemCategory)) {
             LibraryTabs(
                 categories = categories,
                 pagerState = pagerState,
@@ -121,6 +134,8 @@ fun LibraryContent(
                 },
                 onLongClickManga = onToggleRangeSelection,
                 onClickContinueReading = onContinueReadingClicked,
+                boundarySwipeEnabled = selection.isEmpty(),
+                onBoundarySwipe = onBoundarySwipe,
             )
         }
 

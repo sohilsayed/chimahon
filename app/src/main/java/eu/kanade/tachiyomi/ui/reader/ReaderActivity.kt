@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -20,23 +21,41 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
+import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,18 +65,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
+import chimahon.MediaInfo
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.content.getSystemService
 import androidx.core.graphics.Insets
 import androidx.core.net.toUri
 import androidx.core.transition.doOnEnd
+import androidx.core.view.isVisible
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.transition.platform.MaterialContainerTransform
 import com.hippo.unifile.UniFile
@@ -87,6 +114,8 @@ import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.AddToLibraryFirst
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Error
@@ -95,15 +124,27 @@ import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import chimahon.ocr.OcrBitmapDecoder
+import chimahon.util.ImageEncoder
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import tachiyomi.core.common.util.lang.withUIContext
+import logcat.logcat
+import logcat.LogPriority
+import eu.kanade.presentation.reader.stats.MangaStatsSheet
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerConfig
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerPageHolder
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonPageHolder
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -127,7 +168,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
-import logcat.LogPriority
+import kotlinx.coroutines.withContext
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
@@ -145,6 +186,7 @@ import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 import java.io.ByteArrayOutputStream
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -152,6 +194,7 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 class ReaderActivity : BaseActivity() {
 
     companion object {
+        private val ocrProgressHudTopPadding = 124.dp
 
         fun newIntent(context: Context, mangaId: Long?, chapterId: Long?/* SY --> */, page: Int? = null/* SY <-- */): Intent {
             return Intent(context, ReaderActivity::class.java).apply {
@@ -198,6 +241,75 @@ class ReaderActivity : BaseActivity() {
 
     private var loadingIndicator: ReaderProgressIndicator? = null
 
+    private var ocrPopupState by mutableStateOf<OcrPopupState?>(null)
+    private var ocrPopupVisible by mutableStateOf(false)
+    private var ocrSelectionPanelState by mutableStateOf<OcrSelectionPanelState?>(null)
+
+    private val twoFingerTapSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+    private var twoFingerTapTracking = false
+    private var twoFingerTapStartTime = 0L
+    private var twoFingerTapStartX = 0f
+    private var twoFingerTapStartY = 0f
+    private var twoFingerTapStartSpan = 0f
+
+    private var pendingNoteId by mutableStateOf<Long?>(null)
+    private var pendingGlossaryIndex by mutableStateOf<Int?>(null)
+
+    private val cropImageLauncher = registerForActivityResult(
+        com.canhub.cropper.CropImageContract(),
+    ) { result ->
+        val noteId = pendingNoteId
+        val glossaryIndex = pendingGlossaryIndex
+        pendingNoteId = null
+        pendingGlossaryIndex = null
+
+        if (result.isSuccessful) {
+            val uri = result.uriContent
+            val bytes = uri?.let { uri ->
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }
+            if (bytes != null) {
+                lifecycleScope.launchIO {
+                    updateAnkiCardWithScreenshot(noteId, bytes, glossaryIndex)
+                }
+            } else {
+                toast(MR.strings.decode_image_error)
+            }
+        } else {
+            val error = result.error
+            if (error != null) {
+                logcat(LogPriority.ERROR, error) { "Image crop failed" }
+            } else {
+                logcat(LogPriority.DEBUG) { "Image crop cancelled" }
+            }
+        }
+    }
+
+    data class OcrPopupState(
+        val lookupString: String,
+        val fullText: String,
+        val charOffset: Int,
+        val webView: android.webkit.WebView,
+        val repository: chimahon.DictionaryRepository,
+        val anchorX: Float,
+        val anchorY: Float,
+        val anchorWidth: Float = 0f,
+        val anchorHeight: Float = 0f,
+        val isVertical: Boolean,
+        val activeProfile: chimahon.anki.AnkiProfile,
+        val mediaInfo: chimahon.MediaInfo? = null,
+        val sourcePage: ReaderPage? = null,
+        val deferredLookup: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
+    )
+
+    private data class OcrSelectionPanelState(
+        val text: String,
+        val anchorX: Float,
+        val anchorY: Float,
+        val anchorWidth: Float,
+        val anchorHeight: Float,
+    )
+
     var isScrollingThroughPages = false
         private set
 
@@ -225,9 +337,59 @@ class ReaderActivity : BaseActivity() {
 
         super.onCreate(savedInstanceState)
 
+        val shouldWarmOcrResources = viewModel.isOcrEnabled()
+        if (shouldWarmOcrResources) {
+            val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+
+            lifecycleScope.launchIO {
+                val manga = viewModel.manga
+                // Use manga.source (the raw Long ID) so local/stub sources don't return null.
+                // getSource() casts to HttpSource? and would give 0 for non-HTTP sources.
+                val sourceId = manga?.source ?: 0L
+                val sourceLang = if (sourceId != 0L) {
+                    sourceManager.getOrStub(sourceId).lang
+                } else {
+                    ""
+                }
+                val profile = prefs.profileResolver.resolve(
+                    mangaId = manga?.id ?: 0L,
+                    sourceId = sourceId,
+                    sourceLang = sourceLang,
+                )
+                val dictPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                cachedActiveProfile = profile
+                cachedTermPaths = dictPaths
+                dictionaryRepository.warmUp(dictPaths, profile.id)
+                DictionaryPopupWebViewWarmup.warm(this@ReaderActivity, profile.languageCode)
+            }
+
+            lifecycleScope.launch {
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    prefs.rawActiveProfileId().changes().collect {
+                        // Global profile changed — invalidate cache so next access re-resolves
+                        cachedActiveProfile = null
+                        cachedTermPaths = null
+                    }
+                }
+            }
+
+            lifecycleScope.launch {
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    prefs.rawProfiles().changes().collect {
+                        // Profile content changed — invalidate cache so next access re-resolves
+                        cachedActiveProfile = null
+                        cachedTermPaths = null
+                    }
+                }
+            }
+        }
+
         binding = ReaderActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.setComposeOverlay()
+        if (shouldWarmOcrResources) {
+            DictionaryPopupWebViewWarmup.warm(this)
+        }
 
         if (viewModel.needsInit()) {
             val manga = intent.extras?.getLong("manga", -1) ?: -1L
@@ -282,7 +444,10 @@ class ReaderActivity : BaseActivity() {
             .map { it.viewerChapters }
             .distinctUntilChanged()
             .filterNotNull()
-            .onEach(::setChapters)
+            .onEach { chapters ->
+                if (readerPreferences.readerStartupDelay().get()) delay(200)
+                setChapters(chapters)
+            }
             .launchIn(lifecycleScope)
 
         viewModel.eventFlow
@@ -293,6 +458,9 @@ class ReaderActivity : BaseActivity() {
                     }
                     ReaderViewModel.Event.PageChanged -> {
                         displayRefreshHost.flash()
+                    }
+                    ReaderViewModel.Event.InitializeOcrResources -> {
+                        DictionaryPopupWebViewWarmup.warm(this, cachedActiveProfile?.languageCode.orEmpty())
                     }
                     is ReaderViewModel.Event.SetOrientation -> {
                         setOrientation(event.orientation)
@@ -350,6 +518,31 @@ class ReaderActivity : BaseActivity() {
                 ContentOverlay(state = state)
 
                 AppBars(state = state)
+
+                OcrProgressHud(
+                    visible = state.menuVisible,
+                    progress = state.ocrScanProgress,
+                )
+
+                ocrSelectionPanelState?.let { selectionState ->
+                    OcrSelectionPanel(
+                        state = selectionState,
+                        onDismiss = ::dismissOcrSelectionPanel,
+                    )
+                }
+            }
+
+            if (viewModel.showMangaStats) {
+                MangaStatsSheet(
+                    context = context,
+                    mangaId = viewModel.manga!!.id,
+                    sessionCharacters = viewModel.mangaStatsSessionCharacters,
+                    sessionTimeMs = viewModel.mangaStatsSessionTimeMs,
+                    estimate = viewModel.mangaStatsEstimate,
+                    isTracking = viewModel.mangaStatsTracking,
+                    onToggleTracking = viewModel::toggleMangaStatsTracking,
+                    onDismiss = viewModel::closeMangaStatsSheet,
+                )
             }
 
             // KMK -->
@@ -515,6 +708,355 @@ class ReaderActivity : BaseActivity() {
                 null -> {}
             }
         }
+
+        BackHandler(enabled = ocrPopupVisible) {
+            ocrPopupVisible = false
+            // Also clear the visual highlight on whichever webtoon page has an active block.
+            val viewer = viewModel.state.value.viewer
+            if (viewer is WebtoonViewer) {
+                for (i in 0 until viewer.recycler.childCount) {
+                    val h = viewer.recycler.getChildViewHolder(
+                        viewer.recycler.getChildAt(i),
+                    ) as? WebtoonPageHolder
+                    if (h != null && h.hasActiveOcrBlock) {
+                        h.dismissActiveOcrBlock()
+                        break
+                    }
+                }
+            }
+        }
+
+        BackHandler(enabled = ocrSelectionPanelState != null) {
+            dismissOcrSelectionPanel()
+        }
+
+        // The popup WebView is warmed by DictionaryPopupWebViewWarmup without being
+        // attached to the reader root during startup.
+        val popupState = ocrPopupState
+        if (popupState != null || ocrPopupVisible) {
+            val defaultProfile = chimahon.anki.AnkiProfile.EMPTY
+            val defaultRepo = remember { dictionaryRepository }
+            val defaultWebView = remember { ocrWebView ?: createOcrWebView(this@ReaderActivity).also { ocrWebView = it } }
+
+            OcrLookupPopup(
+                visible = ocrPopupVisible,
+                lookupString = if (ocrPopupVisible && popupState != null) popupState.lookupString else "",
+                fullText = popupState?.fullText ?: "",
+                charOffset = popupState?.charOffset ?: 0,
+                onDismiss = {
+                    ocrPopupVisible = false
+                },
+                webView = popupState?.webView ?: defaultWebView,
+                repository = popupState?.repository ?: defaultRepo,
+                anchorX = popupState?.anchorX ?: 0f,
+                anchorY = popupState?.anchorY ?: 0f,
+                anchorWidth = popupState?.anchorWidth ?: 0f,
+                anchorHeight = popupState?.anchorHeight ?: 0f,
+                isVertical = popupState?.isVertical ?: false,
+                mediaInfo = popupState?.mediaInfo,
+                onRequestScreenshot = {
+                    captureCurrentVisibleBitmap()
+                },
+                onCropTriggered = { noteId, glossaryIndex ->
+                    pendingNoteId = noteId
+                    pendingGlossaryIndex = glossaryIndex
+                    launchImageCropper()
+                },
+                initialLookupDeferred = if (ocrPopupVisible) popupState?.deferredLookup else null,
+                usePopup = false,
+                activeProfile = popupState?.activeProfile ?: defaultProfile,
+                onTermMatched = { charCount, _ ->
+                    val viewer = viewModel.state.value.viewer
+                    val anchorRect: android.graphics.RectF? = if (viewer is WebtoonViewer) {
+                        var rect: android.graphics.RectF? = null
+                        for (i in 0 until viewer.recycler.childCount) {
+                            val h = viewer.recycler.getChildViewHolder(viewer.recycler.getChildAt(i)) as? WebtoonPageHolder
+                            if (h?.hasActiveOcrBlock == true) {
+                                rect = h.refineActiveOcrBlock(charCount)
+                                break
+                            }
+                        }
+                        rect
+                    } else if (viewer is PagerViewer) {
+                        var rect: android.graphics.RectF? = null
+                        for (i in 0 until viewer.pager.childCount) {
+                            val h = viewer.pager.getChildAt(i) as? PagerPageHolder
+                            if (h?.hasActiveOcrBlock == true) {
+                                rect = h.refineActiveOcrBlock(charCount)
+                                break
+                            }
+                        }
+                        rect
+                    } else {
+                        null
+                    }
+
+                    if (anchorRect != null) {
+                        ocrPopupState = ocrPopupState?.copy(
+                            anchorX = anchorRect.left,
+                            anchorY = anchorRect.top,
+                            anchorWidth = anchorRect.width(),
+                            anchorHeight = anchorRect.height(),
+                        )
+                    }
+                },
+                titleId = viewModel.state.value.manga?.id?.toString(),
+            )
+        }
+
+        // Set up OCR popup callback on the active reader viewer.
+        when (val viewer = viewModel.state.value.viewer) {
+            is PagerViewer -> {
+                if (viewer.onShowOcrPopup == null) {
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _, sourcePage ->
+                        val (activeProfile, deferredLookup) = preDeferLookup(lookupString)
+
+                        lifecycleScope.launch(Dispatchers.Default) {
+                            val result = try { deferredLookup.await() } catch (_: Exception) { null }
+                            val firstMatched = result?.results?.firstOrNull()?.matched
+                            val charCount = firstMatched?.codePointCount(0, firstMatched.length)
+
+                            val rect = withContext(Dispatchers.Main) {
+                                if (charCount != null) {
+                                    val pager = viewer.pager
+                                    for (i in 0 until pager.childCount) {
+                                        val h = pager.getChildAt(i) as? PagerPageHolder
+                                        if (h?.hasActiveOcrBlock == true) return@withContext h.refineActiveOcrBlock(charCount)
+                                    }
+                                }
+                                null as android.graphics.RectF?
+                            }
+
+                                withContext(Dispatchers.Main) {
+                                val state = viewModel.state.value
+                                val mediaInfo = if (state.manga != null && state.currentChapter != null) {
+                                    chimahon.MediaInfo(mangaTitle = state.manga!!.title, chapterName = state.currentChapter!!.chapter.name)
+                                } else null
+                                ensureOcrResources()
+                                ocrPopupState = OcrPopupState(
+                                    lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
+                                    rect?.left ?: anchorX, rect?.top ?: anchorY,
+                                    rect?.width() ?: anchorWidth, rect?.height() ?: anchorHeight,
+                                    isVertical, getOrRefreshLookupPaths().first, mediaInfo, sourcePage, null
+                                )
+                                ocrSelectionPanelState = null
+                                ocrPopupVisible = true
+                            }
+                        }
+                    }
+                }
+                if (viewer.onShowOcrSelectionPanel == null) {
+                    viewer.onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+                        runOnUiThread {
+                            ocrPopupVisible = false
+                            ocrSelectionPanelState = OcrSelectionPanelState(
+                                text = text,
+                                anchorX = anchorX,
+                                anchorY = anchorY,
+                                anchorWidth = anchorWidth,
+                                anchorHeight = anchorHeight,
+                            )
+                        }
+                    }
+                }
+                if (viewer.onDismissOcrPopup == null) {
+                    viewer.onDismissOcrPopup = {
+                        runOnUiThread { ocrPopupVisible = false }
+                    }
+                }
+            }
+            is WebtoonViewer -> {
+                if (viewer.onShowOcrPopup == null) {
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _, sourcePage ->
+                        val (activeProfile, deferredLookup) = preDeferLookup(lookupString)
+
+                        lifecycleScope.launch(Dispatchers.Default) {
+                            val result = try { deferredLookup.await() } catch (_: Exception) { null }
+                            val firstMatched = result?.results?.firstOrNull()?.matched
+                            val charCount = firstMatched?.codePointCount(0, firstMatched.length)
+
+                            val rect = withContext(Dispatchers.Main) {
+                                if (charCount != null) {
+                                    val recycler = viewer.recycler
+                                    for (i in 0 until recycler.childCount) {
+                                        val h = recycler.getChildViewHolder(recycler.getChildAt(i)) as? WebtoonPageHolder
+                                        if (h?.hasActiveOcrBlock == true) return@withContext h.refineActiveOcrBlock(charCount)
+                                    }
+                                }
+                                null as android.graphics.RectF?
+                            }
+
+                                withContext(Dispatchers.Main) {
+                                val state = viewModel.state.value
+                                val mediaInfo = if (state.manga != null && state.currentChapter != null) {
+                                    chimahon.MediaInfo(mangaTitle = state.manga!!.title, chapterName = state.currentChapter!!.chapter.name)
+                                } else null
+                                ensureOcrResources()
+                                ocrPopupState = OcrPopupState(
+                                    lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
+                                    rect?.left ?: anchorX, rect?.top ?: anchorY,
+                                    rect?.width() ?: anchorWidth, rect?.height() ?: anchorHeight,
+                                    isVertical, getOrRefreshLookupPaths().first, mediaInfo, sourcePage, null
+                                )
+                                ocrSelectionPanelState = null
+                                ocrPopupVisible = true
+                            }
+                        }
+                    }
+                }
+                if (viewer.onShowOcrSelectionPanel == null) {
+                    viewer.onShowOcrSelectionPanel = { text, anchorX, anchorY, anchorWidth, anchorHeight ->
+                        runOnUiThread {
+                            ocrPopupVisible = false
+                            ocrSelectionPanelState = OcrSelectionPanelState(
+                                text = text,
+                                anchorX = anchorX,
+                                anchorY = anchorY,
+                                anchorWidth = anchorWidth,
+                                anchorHeight = anchorHeight,
+                            )
+                        }
+                    }
+                }
+                if (viewer.onDismissOcrPopup == null) {
+                    viewer.onDismissOcrPopup = {
+                        runOnUiThread { ocrPopupVisible = false }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun BoxScope.OcrSelectionPanel(
+        state: OcrSelectionPanelState,
+        onDismiss: () -> Unit,
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(10f),
+        ) {
+            val density = LocalDensity.current
+            val rootView = LocalView.current
+            val rootLocation = remember { IntArray(2) }
+            rootView.getLocationOnScreen(rootLocation)
+
+            val margin = 16.dp
+            val availableWidth = (maxWidth - 32.dp).coerceAtLeast(1.dp)
+            val panelWidth = minOf(availableWidth, 360.dp)
+            val availableHeight = (maxHeight - 32.dp).coerceAtLeast(1.dp)
+            val panelMaxHeight = minOf(availableHeight, 280.dp)
+
+            val anchorCenterX = with(density) {
+                (state.anchorX + state.anchorWidth / 2f - rootLocation[0]).toDp()
+            }
+            val anchorTop = with(density) {
+                (state.anchorY - rootLocation[1]).toDp()
+            }
+            val anchorHeight = with(density) {
+                state.anchorHeight.toDp()
+            }
+
+            val xUpperBound = (maxWidth - panelWidth - margin).let {
+                if (it > margin) it else margin
+            }
+            val requestedX = anchorCenterX - panelWidth / 2
+            val panelX = requestedX.coerceIn(margin, xUpperBound)
+
+            val belowY = anchorTop + anchorHeight + 8.dp
+            val aboveY = anchorTop - panelMaxHeight - 8.dp
+            val fitsBelow = belowY + panelMaxHeight + margin <= maxHeight
+            val requestedY = if (fitsBelow) belowY else aboveY
+            val yUpperBound = (maxHeight - panelMaxHeight - margin).let {
+                if (it > margin) it else margin
+            }
+            val panelY = requestedY.coerceIn(margin, yUpperBound)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
+            )
+
+            val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+            val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f).toArgb()
+            val textPaddingPx = with(density) { 14.dp.toPx().toInt() }
+
+            Surface(
+                modifier = Modifier
+                    .offset(x = panelX, y = panelY)
+                    .width(panelWidth)
+                    .heightIn(max = panelMaxHeight),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shadowElevation = 8.dp,
+            ) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = panelMaxHeight),
+                    factory = { context ->
+                        TextView(context).apply {
+                            setTextIsSelectable(true)
+                            textSize = 18f
+                            setLineSpacing(0f, 1.12f)
+                            setPadding(textPaddingPx, textPaddingPx, textPaddingPx, textPaddingPx)
+                            setBackgroundColor(Color.TRANSPARENT)
+                            isFocusable = true
+                            isFocusableInTouchMode = true
+                        }
+                    },
+                    update = { textView ->
+                        if (textView.text.toString() != state.text) {
+                            textView.text = state.text
+                        }
+                        textView.setTextColor(textColor)
+                        textView.highlightColor = highlightColor
+                        textView.post {
+                            if (!textView.hasFocus()) {
+                                textView.requestFocus()
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    private fun dismissOcrSelectionPanel() {
+        ocrSelectionPanelState = null
+        clearActiveOcrBlock()
+    }
+
+    private fun clearActiveOcrBlock() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is PagerViewer -> {
+                for (i in 0 until viewer.pager.childCount) {
+                    val holder = viewer.pager.getChildAt(i) as? PagerPageHolder
+                    if (holder?.hasActiveOcrBlock == true) {
+                        holder.dismissActiveOcrBlock()
+                        break
+                    }
+                }
+            }
+            is WebtoonViewer -> {
+                for (i in 0 until viewer.recycler.childCount) {
+                    val holder = viewer.recycler.getChildViewHolder(
+                        viewer.recycler.getChildAt(i),
+                    ) as? WebtoonPageHolder
+                    if (holder?.hasActiveOcrBlock == true) {
+                        holder.dismissActiveOcrBlock()
+                        break
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -523,6 +1065,7 @@ class ReaderActivity : BaseActivity() {
     override fun onDestroy() {
         super.onDestroy()
         viewModel.state.value.viewer?.destroy()
+        releaseOcrResources()
         config = null
         menuToggleToast?.cancel()
         readingModeToast?.cancel()
@@ -571,6 +1114,101 @@ class ReaderActivity : BaseActivity() {
         assistUrl?.let { outContent.webUri = it.toUri() }
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        observeTwoFingerOcrTap(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun observeTwoFingerOcrTap(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                twoFingerTapTracking = false
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount == 2) {
+                    twoFingerTapTracking = true
+                    twoFingerTapStartTime = event.eventTime
+                    twoFingerTapStartX = event.twoFingerFocusX()
+                    twoFingerTapStartY = event.twoFingerFocusY()
+                    twoFingerTapStartSpan = event.twoFingerSpan()
+                } else {
+                    twoFingerTapTracking = false
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (twoFingerTapTracking && !event.isTwoFingerTapCandidate()) {
+                    twoFingerTapTracking = false
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (
+                    twoFingerTapTracking &&
+                    event.pointerCount == 2 &&
+                    event.eventTime - twoFingerTapStartTime <= ViewConfiguration.getDoubleTapTimeout().toLong() &&
+                    event.isTwoFingerTapCandidate()
+                ) {
+                    toggleOcrFromReader()
+                }
+                twoFingerTapTracking = false
+            }
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL,
+            -> {
+                twoFingerTapTracking = false
+            }
+        }
+    }
+
+    private fun MotionEvent.isTwoFingerTapCandidate(): Boolean {
+        if (pointerCount != 2) return false
+        return kotlin.math.abs(twoFingerFocusX() - twoFingerTapStartX) <= twoFingerTapSlop &&
+            kotlin.math.abs(twoFingerFocusY() - twoFingerTapStartY) <= twoFingerTapSlop &&
+            kotlin.math.abs(twoFingerSpan() - twoFingerTapStartSpan) <= twoFingerTapSlop
+    }
+
+    private fun MotionEvent.twoFingerFocusX(): Float {
+        return (getX(0) + getX(1)) / 2f
+    }
+
+    private fun MotionEvent.twoFingerFocusY(): Float {
+        return (getY(0) + getY(1)) / 2f
+    }
+
+    private fun MotionEvent.twoFingerSpan(): Float {
+        return kotlin.math.hypot(getX(0) - getX(1), getY(0) - getY(1))
+    }
+
+    private fun toggleOcrFromReader() {
+        val enabled = viewModel.toggleOcrEnabled()
+        if (enabled) {
+            DictionaryPopupWebViewWarmup.warm(this, cachedActiveProfile?.languageCode.orEmpty())
+            lifecycleScope.launchIO {
+                val prefs = Injekt.get<DictionaryPreferences>()
+                val manga = viewModel.manga
+                val sourceId = manga?.source ?: 0L
+                val sourceLang = if (sourceId != 0L) sourceManager.getOrStub(sourceId).lang else ""
+                val profile = prefs.profileResolver.resolve(
+                    mangaId = manga?.id ?: 0L,
+                    sourceId = sourceId,
+                    sourceLang = sourceLang,
+                )
+                val dictPaths = eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this@ReaderActivity, profile)
+                cachedActiveProfile = profile
+                cachedTermPaths = dictPaths
+                dictionaryRepository.warmUp(dictPaths, profile.id)
+                DictionaryPopupWebViewWarmup.warm(this@ReaderActivity, profile.languageCode)
+            }
+        }
+        when (val viewer = viewModel.state.value.viewer) {
+            is PagerViewer -> viewer.setOcrEnabled(enabled)
+            is WebtoonViewer -> viewer.setOcrEnabled(enabled)
+        }
+        menuToggleToast?.cancel()
+        menuToggleToast = toast(
+            if (enabled) MR.strings.action_enable_ocr else MR.strings.action_disable_ocr,
+        )
+    }
+
     /**
      * Called when the user clicks the back key or the button on the toolbar. The call is
      * delegated to the presenter.
@@ -605,6 +1243,28 @@ class ReaderActivity : BaseActivity() {
      * Dispatches a key event. If the viewer doesn't handle it, call the default implementation.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (ocrSelectionPanelState != null) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        // Chimahon: Redirect volume keys to the OCR popup if it's active
+        if (ocrPopupVisible) {
+            ocrPopupState?.let { popup ->
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    when (event.keyCode) {
+                        KeyEvent.KEYCODE_VOLUME_UP -> {
+                            popup.webView.evaluateJavascript("window.DictionaryRenderer?.navigate(-1);", null)
+                            return true
+                        }
+                        KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                            popup.webView.evaluateJavascript("window.DictionaryRenderer?.navigate(1);", null)
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+
         val handled = viewModel.state.value.viewer?.handleKeyEvent(event) ?: false
         return handled || super.dispatchKeyEvent(event)
     }
@@ -614,6 +1274,10 @@ class ReaderActivity : BaseActivity() {
      * implementation.
      */
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (ocrSelectionPanelState != null) {
+            return super.dispatchGenericMotionEvent(event)
+        }
+
         val handled = viewModel.state.value.viewer?.handleGenericMotionEvent(event) ?: false
         return handled || super.dispatchGenericMotionEvent(event)
     }
@@ -628,6 +1292,26 @@ class ReaderActivity : BaseActivity() {
         val colorOverlayBlendMode = remember(colorOverlayMode) {
             ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
         }
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val ocrOutlineVisible by readerPreferences.ocrOutlineVisible().collectAsState()
+        val ocrBoxScaleX by dictionaryPreferences.ocrBoxScaleX().collectAsState()
+        val ocrBoxScaleY by dictionaryPreferences.ocrBoxScaleY().collectAsState()
+        val ocrBoxOpacity by dictionaryPreferences.ocrBoxOpacity().collectAsState()
+
+        LaunchedEffect(state.viewer, ocrOutlineVisible, ocrBoxScaleX, ocrBoxScaleY, ocrBoxOpacity) {
+            when (val viewer = state.viewer) {
+                is PagerViewer -> {
+                    viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                    viewer.setOcrBoxScale(ocrBoxScaleX, ocrBoxScaleY)
+                    viewer.setOcrBoxOpacity(ocrBoxOpacity)
+                }
+                is WebtoonViewer -> {
+                    viewer.setOcrOutlineVisible(ocrOutlineVisible)
+                    viewer.setOcrBoxScale(ocrBoxScaleX, ocrBoxScaleY)
+                    viewer.setOcrBoxOpacity(ocrBoxOpacity)
+                }
+            }
+        }
 
         ReaderContentOverlay(
             brightness = state.brightnessOverlayValue,
@@ -637,6 +1321,43 @@ class ReaderActivity : BaseActivity() {
 
         if (flashOnPageChange) {
             DisplayRefreshHost(hostState = displayRefreshHost)
+        }
+    }
+
+    @Composable
+    private fun BoxScope.OcrProgressHud(
+        visible: Boolean,
+        progress: ReaderViewModel.OcrScanProgress?,
+    ) {
+        AnimatedVisibility(
+            visible = visible && progress != null,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = ocrProgressHudTopPadding, end = 12.dp),
+        ) {
+            val safeProgress = progress ?: return@AnimatedVisibility
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = "OCR ${safeProgress.completedPages}/${safeProgress.totalPages}",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
         }
     }
 
@@ -683,6 +1404,10 @@ class ReaderActivity : BaseActivity() {
         }
         // SY <--
 
+        // Chimahon: OCR overlay preference
+        val ocrOverlayEnabled by readerPreferences.ocrOverlayEnabled().collectAsState()
+        val ocrEnabled = ocrOverlayEnabled && viewModel.isOcrAllowedForCurrentManga()
+
         ReaderAppBars(
             visible = state.menuVisible,
 
@@ -722,7 +1447,11 @@ class ReaderActivity : BaseActivity() {
                 menuToggleToast?.cancel()
                 menuToggleToast = toast(if (enabled) MR.strings.on else MR.strings.off)
             },
+            ocrEnabled = ocrEnabled,
+            ocrLoading = state.ocrScanProgress != null,
+            onToggleOcr = ::toggleOcrFromReader,
             onClickSettings = viewModel::openSettingsDialog,
+            onClickMangaStats = viewModel::openMangaStatsSheet,
             // SY -->
             isExhToolsVisible = state.ehUtilsVisible,
             onSetExhUtilsVisibility = viewModel::showEhUtils,
@@ -791,7 +1520,9 @@ class ReaderActivity : BaseActivity() {
                                     when (v) {
                                         is PagerViewer -> v.moveToNext()
                                         is WebtoonViewer -> {
-                                            if (readerPreferences.smoothAutoScroll().get()) {
+                                            val smoothAutoScroll = readerPreferences.smoothAutoScroll().get() &&
+                                                !readerPreferences.eInkMode().get()
+                                            if (smoothAutoScroll) {
                                                 v.linearScroll(interval)
                                             } else {
                                                 v.scrollDown()
@@ -914,6 +1645,14 @@ class ReaderActivity : BaseActivity() {
         val viewer = viewModel.state.value.viewer as? PagerViewer ?: return
         viewer.config.let { config ->
             config.shiftDoublePage = !config.shiftDoublePage
+
+            viewModel.manga?.id?.let { mangaId ->
+                getSharedPreferences("reader_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("shift_doublepage$mangaId", config.shiftDoublePage)
+                    .apply()
+            }
+
             viewModel.state.value.viewerChapters?.let {
                 viewer.updateShifting()
                 viewer.setChaptersInternal(it)
@@ -971,7 +1710,12 @@ class ReaderActivity : BaseActivity() {
             if (readerPreferences.pageLayout().get() == PagerConfig.PageLayout.AUTOMATIC) {
                 setDoublePageMode(newViewer)
             }
-            viewModel.state.value.lastShiftDoubleState?.let { newViewer.config.shiftDoublePage = it }
+
+            val savedShift = viewModel.manga?.id?.let { mangaId ->
+                getSharedPreferences("reader_prefs", MODE_PRIVATE)
+                    .getBoolean("shift_doublepage$mangaId", false)
+            } ?: false
+            newViewer.config.shiftDoublePage = viewModel.state.value.lastShiftDoubleState ?: savedShift
         }
 
         val manga = viewModel.state.value.manga
@@ -1052,7 +1796,7 @@ class ReaderActivity : BaseActivity() {
      */
     @SuppressLint("RestrictedApi")
     private fun setChapters(viewerChapters: ViewerChapters) {
-        binding.readerContainer.removeView(loadingIndicator)
+        loadingIndicator?.isVisible = false
         // SY -->
         val state = viewModel.state.value
         if (state.indexChapterToShift != null && state.indexPageToShift != null) {
@@ -1551,4 +2295,192 @@ class ReaderActivity : BaseActivity() {
         }
     }
     // KMK <--
+
+    private fun captureCurrentVisibleBitmap(): Bitmap? {
+        return viewModel.getCurrentPageBitmap(ocrPopupState?.sourcePage)
+    }
+
+    private fun launchImageCropper() {
+        val bitmap = captureCurrentVisibleBitmap()
+        if (bitmap == null) {
+            toast(MR.strings.decode_image_error)
+            return
+        }
+
+        try {
+            val cacheDir = cacheDir
+            val file = java.io.File(cacheDir, "crop_temp_${System.currentTimeMillis()}.png")
+            file.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.provider",
+                file,
+            )
+
+            val cropOptions = com.canhub.cropper.CropImageOptions().apply {
+                cropShape = com.canhub.cropper.CropImageView.CropShape.RECTANGLE
+                initialCropWindowPaddingRatio = 0.25f
+                fixAspectRatio = false
+                aspectRatioX = 1
+                aspectRatioY = 1
+                outputCompressQuality = 70
+                outputCompressFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.graphics.Bitmap.CompressFormat.WEBP
+                }
+                showProgressBar = true
+                activityMenuIconColor = android.graphics.Color.WHITE
+                activityBackgroundColor = android.graphics.Color.BLACK
+                cropMenuCropButtonTitle = "Crop"
+            }
+
+            val options = com.canhub.cropper.CropImageContractOptions(
+                uri = uri,
+                cropImageOptions = cropOptions,
+            )
+            cropImageLauncher.launch(options)
+            bitmap.recycle()
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to launch image cropper: ${e.message}" }
+            toast(MR.strings.decode_image_error)
+        }
+    }
+
+    private suspend fun updateAnkiCardWithScreenshot(noteId: Long?, screenshotBytes: ByteArray?, glossaryIndex: Int?) {
+        if (noteId == null || screenshotBytes == null) {
+            logcat(LogPriority.WARN) { "updateAnkiCardWithScreenshot: noteId or screenshotBytes is null" }
+            return
+        }
+
+        logcat(LogPriority.DEBUG) { "updateAnkiCardWithScreenshot: noteId=$noteId, bytesSize=${screenshotBytes.size}" }
+
+        val processedBytes = try {
+            val bitmap = OcrBitmapDecoder.decode(screenshotBytes)
+            try {
+                val result = ImageEncoder.encode(bitmap)
+                result.bytes
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to re-encode screenshot, using original bytes" }
+            screenshotBytes
+        }
+
+        try {
+            val bridge = chimahon.anki.AnkiDroidBridge(this)
+            val hash = try {
+                java.security.MessageDigest.getInstance("SHA-1").digest(processedBytes).joinToString("") { "%02x".format(it) }.take(12)
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Failed to compute hash, using timestamp" }
+                "screenshot_${System.currentTimeMillis()}"
+            }
+            logcat(LogPriority.DEBUG) { "Storing media with filename: chimahon_$hash.webp" }
+
+            val filename = bridge.storeMedia(
+                filename = "chimahon_$hash.webp",
+                data = processedBytes,
+            )
+            logcat(LogPriority.DEBUG) { "Media stored, filename returned: $filename" }
+
+            val prefs = Injekt.get<DictionaryPreferences>()
+            // Use the already-resolved profile for this manga/source, not the raw global one.
+            val activeProfile = cachedActiveProfile ?: prefs.profileStore.getActiveProfile()
+            val fieldMapJson = activeProfile.ankiFieldMap
+            logcat(LogPriority.DEBUG) { "Field map JSON (Profile: ${activeProfile.name}): $fieldMapJson" }
+
+            val fieldMap = org.json.JSONObject(fieldMapJson)
+            val fields = mutableMapOf<String, String>()
+            val keyIterator = fieldMap.keys()
+            while (keyIterator.hasNext()) {
+                val key = keyIterator.next()
+                val value = fieldMap.getString(key)
+                logcat(LogPriority.DEBUG) { "Checking field: key=$key, value=$value, contains SCREENSHOT=${value.contains(chimahon.anki.Marker.SCREENSHOT)}" }
+                if (value.contains(chimahon.anki.Marker.SCREENSHOT)) {
+                    fields[key] = "<img src=\"$filename\">"
+                    logcat(LogPriority.DEBUG) { "Added screenshot field: key=$key, imgTag=<img src=\"$filename\">" }
+                }
+            }
+
+            logcat(LogPriority.DEBUG) { "Fields to update: $fields" }
+
+            if (fields.isNotEmpty()) {
+                logcat(LogPriority.DEBUG) { "Calling updateNoteFields for note $noteId" }
+                bridge.updateNoteFields(noteId, fields)
+                logcat(LogPriority.DEBUG) { "updateNoteFields completed" }
+                withUIContext {
+                    toast(MR.strings.anki_card_added)
+                }
+            } else {
+                logcat(LogPriority.WARN) { "No fields with screenshot marker found in field map" }
+                withUIContext {
+                    toast(MR.strings.anki_card_error)
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to update Anki card with screenshot: ${e.message}" }
+            withUIContext {
+                toast(MR.strings.anki_card_error)
+            }
+        }
+    }
+
+    // ==================== Dictionary Popup State ====================
+    private var ocrWebView: android.webkit.WebView? = null
+    private val dictionaryRepository: chimahon.DictionaryRepository by injectLazy()
+
+    private fun ensureOcrResources() {
+        ocrWebView ?: createOcrWebView(this).also { ocrWebView = it }
+    }
+
+    private fun releaseOcrResources() {
+        DictionaryPopupWebViewWarmup.recycle(this, ocrWebView)
+        ocrWebView = null
+    }
+
+    private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
+    private var cachedTermPaths: chimahon.DictionaryPaths? = null
+
+    private fun getOrRefreshLookupPaths(): Pair<chimahon.anki.AnkiProfile, chimahon.DictionaryPaths> {
+        val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
+        val profile = cachedActiveProfile ?: run {
+            val manga = viewModel.manga
+            val sourceId = manga?.source ?: 0L
+            val sourceLang = if (sourceId != 0L) sourceManager.getOrStub(sourceId).lang else ""
+            prefs.profileResolver.resolve(
+                mangaId = manga?.id ?: 0L,
+                sourceId = sourceId,
+                sourceLang = sourceLang,
+            ).also { cachedActiveProfile = it }
+        }
+        val paths = cachedTermPaths
+            ?: eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths(this, profile)
+                .also { cachedTermPaths = it }
+        return profile to paths
+    }
+
+    /**
+     * Start lookup work immediately. Session is warm, lookup is fast (~10-20ms),
+     * so we can run it synchronously to avoid coroutine overhead.
+     */
+    private fun preDeferLookup(
+        lookupString: String,
+    ): Pair<chimahon.anki.AnkiProfile, kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>> {
+        val (profile, termPaths) = getOrRefreshLookupPaths()
+        val deferred = lifecycleScope.async(Dispatchers.Default) {
+            dictionaryRepository.lookup(lookupString.trim(), termPaths, profile.languageCode)
+        }
+        return profile to deferred
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createOcrWebView(ctx: Context): android.webkit.WebView {
+        val profileLang = getOrRefreshLookupPaths().first.languageCode
+        return DictionaryPopupWebViewWarmup.acquire(ctx, profileLang)
+    }
 }

@@ -70,6 +70,10 @@ class SyncPreferences(
             readEntries = preferenceStore.getBoolean("sync_readEntries", true).get(),
             savedSearchesFeeds = preferenceStore.getBoolean("sync_savedSearchesFeeds", true).get(),
             // SY <--
+            // Chimahon -->
+            novels = preferenceStore.getBoolean("sync_novels", true).get(),
+            // Chimahon <--
+            animeEntries = preferenceStore.getBoolean("anime_entries", true).get(),
         )
     }
 
@@ -89,12 +93,17 @@ class SyncPreferences(
         preferenceStore.getBoolean("sync_readEntries", true).set(syncSettings.readEntries)
         preferenceStore.getBoolean("sync_savedSearchesFeeds", true).set(syncSettings.savedSearchesFeeds)
         // SY <--
+        // Chimahon -->
+        preferenceStore.getBoolean("sync_novels", true).set(syncSettings.novels)
+        // Chimahon <--
+        preferenceStore.getBoolean("anime_entries", true).set(syncSettings.animeEntries)
     }
 
     fun getSyncTriggerOptions(): SyncTriggerOptions {
         return SyncTriggerOptions(
             syncOnChapterRead = preferenceStore.getBoolean("sync_on_chapter_read", false).get(),
             syncOnChapterOpen = preferenceStore.getBoolean("sync_on_chapter_open", false).get(),
+            syncOnEpisodeSeen = preferenceStore.getBoolean("sync_on_episode_seen", false).get(),
             syncOnAppStart = preferenceStore.getBoolean("sync_on_app_start", false).get(),
             syncOnAppResume = preferenceStore.getBoolean("sync_on_app_resume", false).get(),
         )
@@ -105,6 +114,8 @@ class SyncPreferences(
             .set(syncTriggerOptions.syncOnChapterRead)
         preferenceStore.getBoolean("sync_on_chapter_open", false)
             .set(syncTriggerOptions.syncOnChapterOpen)
+        preferenceStore.getBoolean("sync_on_episode_seen", false)
+            .set(syncTriggerOptions.syncOnEpisodeSeen)
         preferenceStore.getBoolean("sync_on_app_start", false)
             .set(syncTriggerOptions.syncOnAppStart)
         preferenceStore.getBoolean("sync_on_app_resume", false)

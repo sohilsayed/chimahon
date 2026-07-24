@@ -24,7 +24,7 @@ internal class AppUpdateNotifier(private val context: Context) {
 
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_APP_UPDATE) {
         setColor(ContextCompat.getColor(context, R.color.ic_launcher))
-        setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.komikku))
+        setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.chimahon))
     }
 
     /**
@@ -164,6 +164,7 @@ internal class AppUpdateNotifier(private val context: Context) {
      * @param url web location of apk to download.
      */
     fun onDownloadError(
+        title: String,
         url: String,
         // KMK -->
         error: String? = null,
@@ -184,7 +185,7 @@ internal class AppUpdateNotifier(private val context: Context) {
             addAction(
                 R.drawable.ic_refresh_24dp,
                 context.stringResource(MR.strings.action_retry),
-                NotificationReceiver.downloadAppUpdatePendingBroadcast(context, url),
+                NotificationReceiver.downloadAppUpdatePendingBroadcast(context, url, title),
             )
             addAction(
                 R.drawable.ic_close_24dp,
@@ -228,7 +229,7 @@ internal class AppUpdateNotifier(private val context: Context) {
         with(notificationBuilder) {
             setContentTitle(context.stringResource(KMR.strings.update_completed))
             setContentText(context.stringResource(MR.strings.updated_version, BuildConfig.VERSION_NAME))
-            setSmallIcon(R.drawable.ic_komikku)
+            setSmallIcon(R.drawable.ic_chimahon)
             setAutoCancel(true)
             setOngoing(false)
             setProgress(0, 0, false)

@@ -160,6 +160,11 @@ import kotlin.random.Random
                 var failed = false
                 client.newCachelessCallWithProgress(request, progressListener).execute().use { response ->
                     if (response.isSuccessful || response.code == 206) { // 206 indicates partial content
+                        if (response.code == 200 && downloadedBytes > 0) {
+                            // Server ignored range request; delete partial file and start fresh
+                            outputFile.delete()
+                            downloadedBytes = 0
+                        }
                         saveResponseToFile(response, outputFile, downloadedBytes)
                         if (response.isSuccessful) {
                             return

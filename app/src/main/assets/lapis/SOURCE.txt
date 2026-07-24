@@ -1,0 +1,9 @@
+Bundled Lapis Anki note type assets.
+
+Source: https://github.com/donkuri/lapis
+License: GPL-3.0, included in LICENSE.
+
+Files copied from the upstream src directory:
+- front.html
+- back.html
+- styling.css

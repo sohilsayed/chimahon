@@ -29,6 +29,8 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.i18n.MR
 import java.io.File
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 class StorageManager(
     private val context: Context,
@@ -52,6 +54,7 @@ class StorageManager(
                 baseDir?.let { parent ->
                     parent.createDirectory(AUTOMATIC_BACKUPS_PATH)
                     parent.createDirectory(LOCAL_SOURCE_PATH)
+                    parent.createDirectory(LOCAL_ANIMESOURCE_PATH)
                     parent.createDirectory(DOWNLOADS_PATH).also {
                         DiskUtil.createNoMediaFile(it, context)
                     }
@@ -62,12 +65,63 @@ class StorageManager(
     }
 
     private fun getBaseDir(uri: String): UniFile? {
-        return UniFile.fromUri(context, uri.toUri())
-            .takeIf {
-                // KMK -->
-                it?.isAccessibleDirectory == true
-                // KMK <--
+        val parsedUri = uri.toUri()
+        var resolvedFile: File? = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            if ("content" == parsedUri.scheme && "com.android.externalstorage.documents" == parsedUri.authority) {
+                try {
+                    val docId = android.provider.DocumentsContract.getDocumentId(parsedUri)
+                    val split = docId.split(":")
+                    if (split.size >= 2) {
+                        val type = split[0]
+                        val relativePath = split[1]
+                        val rawPath = if ("primary".equals(type, ignoreCase = true)) {
+                            Environment.getExternalStorageDirectory().toString() + "/" + relativePath
+                        } else {
+                            "/storage/" + type + "/" + relativePath
+                        }
+                        val validatedPath = validatePath(rawPath)
+                        if (validatedPath != null) {
+                            resolvedFile = File(validatedPath)
+                            logcat(LogPriority.DEBUG) { "Bypassing SAF: resolved raw file path $validatedPath" }
+                        }
+                    }
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "Failed to resolve raw path from SAF URI: $uri" }
+                }
             }
+        }
+
+        val uniFile = if (resolvedFile != null) {
+            UniFile.fromFile(resolvedFile)
+        } else {
+            UniFile.fromUri(context, parsedUri)
+        }
+
+        return uniFile.takeIf {
+            // KMK -->
+            it?.isAccessibleDirectory == true
+            // KMK <--
+        }
+    }
+
+    private fun validatePath(path: String?): String? {
+        if (path.isNullOrBlank()) return null
+        try {
+            val file = File(path)
+            val canonicalPath = file.canonicalPath
+
+            // Path Traversal Mitigation: Ensure the path is not pointing to the app's internal sandbox
+            val internalDir = context.filesDir.parentFile?.canonicalPath
+            if (internalDir != null && canonicalPath.startsWith(internalDir)) {
+                logcat(LogPriority.ERROR) { "Security Exception: Blocked access to internal app sandbox directory: $canonicalPath" }
+                return null
+            }
+            return canonicalPath
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to validate path: $path" }
+            return null
+        }
     }
 
     fun getAutomaticBackupsDirectory(): UniFile? {
@@ -80,6 +134,26 @@ class StorageManager(
 
     fun getLocalSourceDirectory(): UniFile? {
         return baseDir?.createDirectory(LOCAL_SOURCE_PATH)
+    }
+
+    fun getAnimeDownloadsDirectory(): UniFile? {
+        return baseDir?.createDirectory(ANIME_DOWNLOADS_PATH)
+    }
+
+    fun getLocalAnimeSourceDirectory(): UniFile? {
+        return baseDir?.createDirectory(LOCAL_ANIMESOURCE_PATH)
+    }
+
+    fun getMPVConfigDirectory(): UniFile? {
+        return baseDir?.createDirectory(MPV_CONFIG_PATH)
+    }
+
+    fun getScriptsDirectory(): UniFile? {
+        return baseDir?.createDirectory("$MPV_CONFIG_PATH/$SCRIPTS_PATH")
+    }
+
+    fun getScriptOptsDirectory(): UniFile? {
+        return baseDir?.createDirectory("$MPV_CONFIG_PATH/$SCRIPT_OPTS_PATH")
     }
 
     // SY -->
@@ -221,8 +295,14 @@ class StorageManager(
 
 private const val AUTOMATIC_BACKUPS_PATH = "autobackup"
 private const val DOWNLOADS_PATH = "downloads"
+private const val ANIME_DOWNLOADS_PATH = "downloads"
 private const val LOCAL_SOURCE_PATH = "local"
+private const val LOCAL_ANIMESOURCE_PATH = "localanime"
 
 // SY -->
 private const val LOGS_PATH = "logs"
 // SY <--
+
+const val SCRIPTS_PATH = "scripts"
+const val SCRIPT_OPTS_PATH = "script-opts"
+private const val MPV_CONFIG_PATH = "mpv"

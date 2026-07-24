@@ -1,0 +1,78 @@
+package tachiyomi.data.entries.anime
+
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.library.model.LibraryAnime
+
+object AnimeLibraryMapper {
+
+    fun mapLibraryAnime(
+        id: Long,
+        source: Long,
+        url: String,
+        artist: String?,
+        author: String?,
+        description: String?,
+        genre: List<String>?,
+        title: String,
+        status: Long,
+        thumbnailUrl: String?,
+        favorite: Boolean,
+        lastUpdate: Long?,
+        nextUpdate: Long?,
+        initialized: Boolean,
+        viewerFlags: Long,
+        episodeFlags: Long,
+        coverLastModified: Long,
+        dateAdded: Long,
+        updateStrategy: UpdateStrategy,
+        calculateInterval: Long,
+        lastModifiedAt: Long,
+        favoriteModifiedAt: Long?,
+        version: Long,
+        @Suppress("UNUSED_PARAMETER")
+        isSyncing: Long,
+        totalCount: Long,
+        seenCount: Double,
+        latestUpload: Long,
+        episodeFetchedAt: Long,
+        lastSeen: Long,
+        bookmarkCount: Double,
+        fillermarkCount: Double,
+        categories: String,
+    ): LibraryAnime = LibraryAnime(
+        anime = Anime(
+            id = id,
+            source = source,
+            favorite = favorite,
+            lastUpdate = lastUpdate ?: 0,
+            nextUpdate = nextUpdate ?: 0,
+            fetchInterval = calculateInterval.toInt(),
+            dateAdded = dateAdded,
+            viewerFlags = viewerFlags,
+            episodeFlags = episodeFlags,
+            coverLastModified = coverLastModified,
+            url = url,
+            ogTitle = title,
+            ogArtist = artist,
+            ogAuthor = author,
+            ogThumbnailUrl = thumbnailUrl,
+            ogDescription = description,
+            ogGenre = genre,
+            ogStatus = status,
+            updateStrategy = updateStrategy,
+            initialized = initialized,
+            lastModifiedAt = lastModifiedAt,
+            favoriteModifiedAt = favoriteModifiedAt,
+            version = version,
+        ),
+        categories = categories.split(",").mapNotNull { it.trim().toLongOrNull() },
+        totalEpisodes = totalCount,
+        seenCount = seenCount.toLong(),
+        bookmarkCount = bookmarkCount.toLong(),
+        fillermarkCount = fillermarkCount.toLong(),
+        latestUpload = latestUpload,
+        episodeFetchedAt = episodeFetchedAt,
+        lastSeen = lastSeen,
+    )
+}

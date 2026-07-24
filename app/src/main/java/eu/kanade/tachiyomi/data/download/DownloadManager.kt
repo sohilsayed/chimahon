@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.download
 import android.content.Context
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.data.ocr.OcrManager
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import exh.log.xLogE
@@ -23,6 +24,8 @@ import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -43,12 +46,15 @@ class DownloadManager(
     private val getCategories: GetCategories = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
+    private val chapterRepository: ChapterRepository = Injekt.get(),
 ) {
 
     /**
      * Downloader whose only task is to download chapters.
      */
     private val downloader = Downloader(context, provider, cache)
+    private val ocrManager: OcrManager by lazy { Injekt.get() }
+    private val animeDownloadManager: eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager by lazy { Injekt.get() }
 
     val isRunning: Boolean
         get() = downloader.isRunning
@@ -93,6 +99,7 @@ class DownloadManager(
      * Empties the download queue.
      */
     fun clearQueue() {
+        ocrManager.clearPendingChapters(queueState.value.map { it.chapter.id })
         downloader.clearQueue()
         downloader.stop()
     }
@@ -137,6 +144,31 @@ class DownloadManager(
      */
     fun downloadChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean = true) {
         downloader.queueChapters(manga, chapters, autoStart)
+    }
+
+    fun downloadChaptersWithOcr(manga: Manga, chapters: List<Chapter>) {
+        val uniqueChapters = chapters.distinctBy { it.id }
+        if (uniqueChapters.isEmpty()) return
+
+        val (notDownloaded, downloaded) = uniqueChapters.partition { chapter ->
+            !isChapterDownloaded(
+                chapterName = chapter.name,
+                chapterScanlator = chapter.scanlator,
+                chapterUrl = chapter.url,
+                mangaTitle = manga.title,
+                sourceId = manga.source,
+            )
+        }
+
+        if (notDownloaded.isNotEmpty()) {
+            ocrManager.queueChapters(manga, notDownloaded, waitForDownload = true)
+            downloader.queueChapters(manga, notDownloaded, autoStart = true)
+            startDownloads()
+        }
+
+        if (downloaded.isNotEmpty()) {
+            ocrManager.queueChapters(manga, downloaded, waitForDownload = false)
+        }
     }
 
     /**
@@ -221,6 +253,7 @@ class DownloadManager(
     }
 
     fun cancelQueuedDownloads(downloads: List<Download>) {
+        ocrManager.clearPendingChapters(downloads.map { it.chapter.id })
         removeFromDownloadQueue(downloads.map { it.chapter })
     }
 
@@ -252,11 +285,23 @@ class DownloadManager(
                 return@launchIO
             }
 
+            ocrManager.clearPendingChapters(filteredChapters.map { it.id })
             removeFromDownloadQueue(filteredChapters)
 
             val (mangaDir, chapterDirs) = provider.findChapterDirs(filteredChapters, manga, source)
-            chapterDirs.forEach { it.delete() }
+            chapterDirs.forEach { chapterDir ->
+                // Delete OCR sidecar files for CBZ
+                if (chapterDir.name?.endsWith(".cbz") == true) {
+                    chapterDir.parentFile?.findFile("${chapterDir.name}.ocr.json")?.delete()
+                }
+                chapterDir.delete()
+            }
             cache.removeChapters(filteredChapters, manga)
+
+            // Update chapter OCR status
+            filteredChapters.forEach { chapter ->
+                chapterRepository.update(ChapterUpdate(id = chapter.id, isOcrReady = false))
+            }
 
             // Delete manga directory if empty
             if (mangaDir?.listFiles()?.isEmpty() == true) {
@@ -275,6 +320,11 @@ class DownloadManager(
     fun deleteManga(manga: Manga, source: Source, removeQueued: Boolean = true) {
         launchIO {
             if (removeQueued) {
+                ocrManager.clearPendingChapters(
+                    queueState.value
+                        .filter { it.manga.id == manga.id }
+                        .map { it.chapter.id },
+                )
                 downloader.removeFromQueue(manga)
             }
             provider.findMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source)?.delete()
@@ -539,6 +589,54 @@ class DownloadManager(
                 queueState.value.filter { download -> download.status == Download.State.DOWNLOADING }.asFlow(),
             )
         }
+
+    // Anime download methods delegated to AnimeDownloadManager
+    fun isEpisodeDownloaded(
+        episodeName: String,
+        episodeScanlator: String?,
+        animeTitle: String,
+        sourceId: Long,
+        skipCache: Boolean = false,
+    ): Boolean {
+        return if (skipCache) {
+            val cache: eu.kanade.tachiyomi.data.animedownload.AnimeDownloadCache = Injekt.get()
+            cache.isEpisodeDownloaded(episodeName, episodeScanlator, animeTitle, sourceId, true)
+        } else {
+            animeDownloadManager.isEpisodeDownloaded(episodeName, episodeScanlator, animeTitle, sourceId)
+        }
+    }
+
+    fun downloadEpisodes(
+        anime: tachiyomi.domain.entries.anime.model.Anime,
+        episodes: List<tachiyomi.domain.episode.model.Episode>,
+    ) {
+        animeDownloadManager.downloadEpisodes(anime, episodes, autoStart = false)
+    }
+
+    fun enqueueEpisodesToDelete(
+        episodes: List<tachiyomi.domain.episode.model.Episode>,
+        anime: tachiyomi.domain.entries.anime.model.Anime,
+    ) {
+        tachiyomi.core.common.util.lang.launchIO {
+            animeDownloadManager.enqueueEpisodesToDelete(episodes, anime)
+        }
+    }
+
+    fun deletePendingEpisodes() {
+        animeDownloadManager.deletePendingEpisodes()
+    }
+
+    fun buildVideo(
+        source: eu.kanade.tachiyomi.source.Source,
+        anime: tachiyomi.domain.entries.anime.model.Anime,
+        episode: tachiyomi.domain.episode.model.Episode,
+    ): eu.kanade.tachiyomi.animesource.model.Video? {
+        return try {
+            animeDownloadManager.buildVideo(source as eu.kanade.tachiyomi.animesource.AnimeSource, anime, episode)
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     fun progressFlow(): Flow<Download> = queueState
         .flatMapLatest { downloads ->

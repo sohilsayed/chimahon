@@ -16,9 +16,13 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
 
     var navigationModeChangedListener: (() -> Unit)? = null
 
+    var eInkModeChangedListener: ((Boolean) -> Unit)? = null
+
     var tappingInverted = ReaderPreferences.TappingInvertMode.NONE
     var longTapEnabled = true
     var doubleTapAnimDuration = 500
+    var eInkMode = readerPreferences.eInkMode().get()
+        private set
     var volumeKeysEnabled = false
     var volumeKeysInverted = false
     var alwaysShowChapterTransition = true
@@ -50,6 +54,15 @@ abstract class ViewerConfig(readerPreferences: ReaderPreferences, private val sc
 
         readerPreferences.doubleTapAnimSpeed()
             .register({ doubleTapAnimDuration = it })
+
+        readerPreferences.eInkMode()
+            .register(
+                { eInkMode = it },
+                {
+                    eInkModeChangedListener?.invoke(it)
+                    imagePropertyChangedListener?.invoke()
+                },
+            )
 
         readerPreferences.readWithVolumeKeys()
             .register({ volumeKeysEnabled = it })

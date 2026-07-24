@@ -1,0 +1,1037 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1f1f1f;
+  --secondary: #757575;
+  --accent: #2ecc71;
+  --on-accent: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+
+  --font-size-no-units: 14;
+  --font-size: calc(1px * var(--font-size-no-units));
+  --line-height: 1.4;
+  --lookup-tabs-height: 0px;
+
+  --headword-font-size: 1.6em;
+  --tag-font-size: 0.75em;
+  --thin-border-size: 1px;
+
+  /* Tag Category Colors */
+  --tag-default-background-color: #8a8a91;
+  --tag-name-background-color: #b6327a;
+  --tag-expression-background-color: #f0ad4e;
+  --tag-popular-background-color: #0275d8;
+  --tag-frequent-background-color: #5bc0de;
+  --tag-archaism-background-color: #d9534f;
+  --tag-dictionary-background-color: #aa66cc;
+  --tag-part-of-speech-background-color: #565656;
+  --tag-search-background-color: #8a8a91;
+  --tag-pronunciation-dictionary-background-color: #6640be;
+  --tag-dialect-background-color: #2b70b4;
+  --tag-style-background-color: #69696e;
+
+  /* Yomichan/Themoeway Variable Aliases */
+  --background-color: var(--bg);
+  --text-color: var(--fg);
+  --entry-vertical-padding: 0.5em;
+  --entry-horizontal-padding: 0.5em;
+  --compact-list-separator: ' | ';
+}
+
+:root[data-theme="dark"] {
+  /* Colors are injected dynamically by the WebView in DictionaryEntryWebView.kt */
+}
+
+html {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  width: 100%;
+  overflow-x: hidden;
+  overflow-anchor: none;
+  scroll-padding-top: var(--lookup-tabs-height);
+  position: relative;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: var(--line-height);
+  font-size: calc(1px * var(--font-size-no-units));
+  overflow-x: hidden;
+  overflow-anchor: none;
+  width: 100%;
+  position: relative;
+}
+
+#entries,
+.entry,
+.dictionary-group,
+.definition-list,
+.definition-item,
+.definition-item-content,
+.gloss-content,
+.gloss-plain-text,
+.structured-content {
+  font-family: inherit !important;
+  color: inherit;
+}
+
+.definition-list,
+.definition-item,
+.definition-item-content,
+.gloss-content,
+.gloss-plain-text,
+.structured-content {
+  font-size: 1em;
+}
+
+.entries {
+  padding: 4px 12px 4px 4px;
+  overflow-anchor: none;
+}
+
+.definition-list *,
+.structured-content * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Re-apply sane list indentation with :where() (zero specificity) so
+   dictionary CSS can still override these if needed. */
+:where(.definition-list) ul,
+:where(.definition-list) ol,
+:where(.structured-content) ul,
+:where(.structured-content) ol {
+  padding-left: 1.2em;
+  margin: 0.15em 0;
+}
+
+:where(.definition-list) li,
+:where(.structured-content) li {
+  margin: 0.1em 0;
+}
+
+/* Tables inside structured content */
+:where(.structured-content) table {
+  border-collapse: collapse;
+}
+
+:where(.structured-content) th,
+:where(.structured-content) td {
+  border: 1px solid currentColor;
+  padding: 0.25em;
+  vertical-align: top;
+}
+
+.entry {
+  padding: 10px 0 8px;
+}
+
+.entry + .entry {
+  border-top: 2px solid var(--border);
+  margin-top: 2px;
+}
+
+/* ── Headword ────────────────────────────────────────── */
+.entry-headword-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+
+/* Icon group sits after headword — never shrinks, never wraps, never clips */
+.entry-icon-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: min-content;
+  gap: 2px;
+  margin-left: auto; /* pushes icons to the right edge */
+}
+
+.headword {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.headword-term {
+  font-size: var(--headword-font-size);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.headword-term.popular { color: var(--accent); }
+.headword-term.rare { color: var(--secondary); opacity: 0.7; }
+
+.headword-furigana {
+  font-size: 0.55em;
+  opacity: 0.9;
+  margin-left: 0.2em;
+}
+
+.kanji-tappable {
+  cursor: pointer;
+}
+
+/* Remove unused .headword-reading - JS uses .headword-furigana */
+
+/* ── Tags ────────────────────────────────────────────── */
+.tag {
+  --tag-color: var(--tag-default-background-color);
+  display: inline-flex;
+  font-size: var(--tag-font-size);
+  margin-right: 3px;
+  margin-bottom: 3px;
+  vertical-align: middle;
+}
+
+.tag-label {
+  background-color: var(--tag-color);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag-body {
+  background-color: color-mix(in srgb, var(--tag-color) 80%, black);
+  border-radius: 0 3px 3px 0;
+  padding: 1px 5px;
+  color: #fff;
+  font-weight: 600;
+  margin-left: 1px;
+}
+
+.tag[data-category="name"]       { --tag-color: var(--tag-name-background-color); }
+.tag[data-category="popular"]    { --tag-color: var(--tag-popular-background-color); }
+.tag[data-category="dictionary"] { --tag-color: var(--tag-dictionary-background-color); }
+.tag[data-category="frequency"]  { --tag-color: var(--secondary); }
+
+.tag[data-category="frequency"] .tag-label {
+  background-color: color-mix(in srgb, var(--secondary) 10%, var(--bg));
+  color: var(--secondary);
+}
+
+.tag[data-category="frequency"] .tag-body {
+  background-color: color-mix(in srgb, var(--secondary) 15%, var(--bg));
+  color: var(--secondary);
+}
+
+.tag[data-category="frequency"] .tag-label-content,
+.tag[data-category="frequency"] .tag-body-content {
+  color: inherit;
+}
+
+.frequency-top-section,
+.frequency-top-section .tag,
+.frequency-top-section .tag-label,
+.frequency-top-section .tag-body,
+.frequency-group-item,
+.frequency-group-item .tag-label,
+.frequency-group-item .tag-body {
+  color: #fff !important;
+}
+
+.frequency-top-section .tag[data-category="frequency"] .tag-label,
+.frequency-group-item[data-category="frequency"] .tag-label {
+  background-color: color-mix(in srgb, var(--secondary) 10%, var(--bg));
+  color: var(--secondary) !important;
+}
+
+.frequency-top-section .tag[data-category="frequency"] .tag-body,
+.frequency-group-item[data-category="frequency"] .tag-body {
+  background-color: color-mix(in srgb, var(--secondary) 15%, var(--bg));
+  color: var(--secondary) !important;
+}
+
+.tag.selected .tag-label {
+  box-shadow: 0 0 0 2px var(--accent);
+  opacity: 1;
+}
+
+.tag.selected {
+  filter: brightness(1.2);
+}
+
+/* ── Collapsible Dictionary Header ───────────────────── */
+.dictionary-group {
+  margin-top: 4px;
+  padding-top: 2px;
+}
+
+.dictionary-group:first-of-type {
+  margin-top: 2px;
+  padding-top: 0;
+}
+
+.dictionary-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0 4px 8px;
+  margin-left: -8px;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--secondary);
+  border-left: 4px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.dictionary-header:hover {
+  color: var(--fg);
+  border-left-color: var(--border);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.dictionary-header.selected {
+  color: var(--accent);
+  background-color: var(--hover-bg);
+  border-left-color: var(--accent);
+}
+
+.dictionary-header.selected .dict-name-label {
+  font-weight: 700;
+}
+
+.dict-arrow {
+  display: flex;
+  align-items: center;
+  margin-right: 3px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.dictionary-group[data-collapsed="true"] .dict-arrow {
+  transform: rotate(-90deg);
+}
+
+.dictionary-group[data-collapsed="true"] .definition-list {
+  display: none;
+}
+
+/* ── Deinflection Row ────────────────────────────────── */
+.entry-deinflection-row {
+  font-size: 0.85em;
+  opacity: 0.6;
+  margin-top: -2px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deinflection-chain {
+  font-family: inherit;
+}
+
+.inflection-details {
+  margin: 4px 0 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inflection-rules-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+/* Each deinflection step is its own card */
+.inflection-step-card {
+  background: var(--hover-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.88em;
+}
+
+.inflection-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+/* Numbered circle */
+.inflection-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent, #7c8cf8);
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.inflection-step-name {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.inflection-step-desc {
+  margin: 0;
+  color: var(--secondary);
+  line-height: 1.4;
+}
+
+.dict-name-label {
+  flex: 1;
+}
+
+/* ── Definitions ─────────────────────────────────────── */
+.definition-list {
+  margin: 4px 0;
+  padding-left: 1em;
+  list-style-type: none;
+}
+
+.definition-list[data-count='1'] {
+  padding-left: 0;
+  list-style-type: none;
+}
+
+.definition-item {
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+/* ── Pitch Accent ────────────────────────────────────────────── */
+
+:root {
+  --pronunciation-annotation-color: var(--fg);
+}
+
+.pitches-section {
+  margin: 4px 0 8px 0;
+  color: var(--fg);
+}
+
+.pitches-section[data-compact="true"] .pitch-entry {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+
+.pitches-section[data-compact="true"] .pitch-group-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.pronunciation-group-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  row-gap: 8px;
+}
+
+.pronunciation-downstep-notation-container {
+  display: none;
+}
+.pronunciation-downstep-notation { display: inline; }
+.pronunciation-downstep-notation-prefix,
+.pronunciation-downstep-notation-number,
+.pronunciation-downstep-notation-suffix { display: inline; }
+
+.pronunciation-text { display: inline; font-size: 0.9em; }
+.pronunciation-mora { display: inline-block; position: relative; }
+.pronunciation-mora-line { border-color: var(--pronunciation-annotation-color); }
+.pronunciation-mora[data-pitch=high] > .pronunciation-mora-line {
+  display: block; user-select: none; pointer-events: none; position: absolute;
+  top: 0.1em; left: 0; right: 0; height: 0; border-top-width: 0.1em; border-top-style: solid;
+}
+.pronunciation-mora[data-pitch=high][data-pitch-next=low] > .pronunciation-mora-line {
+  right: -0.1em; height: 0.4em; border-right-width: 0.1em; border-right-style: solid;
+}
+.pronunciation-mora[data-pitch=high][data-pitch-next=low] {
+  padding-right: 0.1em; margin-right: 0.1em;
+}
+
+.pronunciation-character { display: inline; }
+.pronunciation-character-group { display: inline-block; position: relative; }
+
+.pronunciation-devoice-indicator {
+  display: block; position: absolute; left: 50%; top: 50%; width: 1.125em; height: 1.125em;
+  border-radius: 50%; box-sizing: border-box; z-index: 1; transform: translate(-50%, -50%); border: 1.5px dotted #c83c28;
+}
+
+.pronunciation-nasal-indicator {
+  display: block; position: absolute; right: -0.125em; top: 0.125em; width: 0.375em; height: 0.375em;
+  border-radius: 50%; box-sizing: border-box; z-index: 1; border: 1.5px solid #c83c28;
+}
+.pronunciation-nasal-diacritic { position: absolute; width: 0; height: 0; opacity: 0; }
+
+.pronunciation-graph {
+  display: inline-block; vertical-align: middle; height: 1.2em; overflow: visible; color: inherit;
+}
+.pronunciation-graph-line, .pronunciation-graph-line-tail {
+  fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5;
+}
+.pronunciation-graph-line-tail { stroke-dasharray: 5 5; }
+.pronunciation-graph-dot { fill: var(--pronunciation-annotation-color); stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
+.pronunciation-graph-dot-downstep1 { fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
+.pronunciation-graph-dot-downstep2 { fill: var(--pronunciation-annotation-color); }
+.pronunciation-graph-triangle { fill: none; stroke: var(--pronunciation-annotation-color); stroke-width: 5; }
+
+/* ── Structured content: tables & images ─────────────── */
+.structured-content div,
+.structured-content p,
+.structured-content ul,
+.structured-content ol {
+  margin: 4px 0;
+}
+
+.glossary-list {
+  margin: 4px 0;
+  padding-left: 1.2em;
+}
+
+/* Ensure list markers in dict content aren't clipped or overlapping */
+#entries .gloss-sc-ol,
+#entries .gloss-sc-ul {
+  padding-left: 1.2em;
+  margin: 0.3em 0;
+}
+
+#entries .gloss-sc-ol li,
+#entries .gloss-sc-ul li {
+  margin: 0.15em 0;
+}
+
+.gloss-sc-th, .gloss-sc-td, th, td {
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+  line-height: 1.2;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.gloss-link { color: inherit; }
+
+.recursive-lookup-highlight {
+  position: absolute;
+  z-index: 20;
+  height: 2px;
+  pointer-events: none;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.gloss-image-link {
+  color: inherit; text-decoration: none; display: inline-block; max-width: 100%;
+  vertical-align: middle;
+  align-self: center;
+  line-height: 1;
+}
+
+.gloss-image-container {
+  position: relative; display: inline-block; max-width: 100%; font-size: calc(1em / var(--font-size-no-units, 14)); overflow: hidden;
+  vertical-align: top;
+  line-height: 0;
+}
+
+.gloss-image-container-overlay {
+  position: absolute; inset: 0;
+  font-size: calc(1em * var(--font-size-no-units, 14));
+  line-height: var(--line-height);
+  display: table;
+  table-layout: fixed;
+  white-space: normal;
+  color: var(--text-color-light3);
+}
+
+.gloss-image-link[data-size-units=em] .gloss-image-container {
+  font-size: 1em;
+}
+
+.gloss-image-link[data-size-units=em] .gloss-image-container-overlay {
+  font-size: 1em;
+}
+
+.gloss-image-link[data-size-units=em]:not([data-appearance=monochrome]) .gloss-image-background {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.gloss-image-sizer { display: inline-block; width: 0; vertical-align: top; font-size: 0; }
+
+.gloss-image-link[data-image-rendering=pixelated] .gloss-image {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.gloss-image-link[data-image-rendering=crisp-edges] .gloss-image {
+  image-rendering: crisp-edges;
+}
+
+.gloss-image-background {
+  position: absolute; inset: 0; background-color: var(--border); background-image: var(--image);
+  background-position: center; background-repeat: no-repeat; background-size: contain;
+}
+
+.gloss-image-link[data-appearance=monochrome] .gloss-image-background {
+  background-color: currentColor;
+  background-image: none;
+  -webkit-mask-image: var(--image);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  mask-image: var(--image);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+.gloss-image {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+}
+
+.gloss-image-link[data-background="false"] .gloss-image-background { display: none; }
+.gloss-image-link[data-appearance=monochrome] .gloss-image { opacity: 0; }
+
+/* ── Icons & Buttons ─────────────────────────────────── */
+.word-audio-btn, .anki-add-btn, .anki-open-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: var(--secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+}
+.word-audio-btn:hover, .anki-add-btn:hover, .anki-open-btn:hover {
+  background: var(--hover-bg);
+  color: var(--fg);
+}
+.anki-open-btn { order: 0; }
+.anki-add-btn { order: 1; }
+.word-audio-btn { order: 2; }
+.anki-add-btn.anki-added { color: #4CAF50; }
+
+.anki-open-btn {
+  margin-left: 4px;
+}
+
+/* Only constrain SVGs inside icon buttons, not pitch diagrams */
+.word-audio-btn svg, .anki-add-btn svg, .anki-open-btn svg, .dict-arrow svg {
+  display: block; flex-shrink: 0;
+  width: 20px; height: 20px;
+  fill: currentColor;
+}
+
+
+
+/* Floating Navigation */
+.floating-nav-container {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 2000;
+}
+
+.floating-nav-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s, background 0.2s, transform 0.1s;
+  padding: 0;
+}
+
+.floating-nav-btn:hover {
+  opacity: 0.9;
+}
+
+.floating-nav-btn:active {
+  transform: scale(0.95);
+}
+
+.floating-nav-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.lookup-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-anchor: none;
+}
+
+.lookup-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+
+.lookup-tab {
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  font-size: 0.85em;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  flex: 0 0 auto;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lookup-tab.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.lookup-tab.stack-button {
+  background: var(--bg);
+  border-color: var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lookup-tab:active {
+  transform: scale(0.96);
+}
+
+.chima-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--secondary);
+  font-style: italic;
+}
+
+/* ── E-Ink Mode ────────────────────────────────────────── */
+/* Activated by data-chima-eink-mode="true" on <html>      */
+
+html[data-chima-eink-mode="true"],
+html[data-chima-eink-mode="true"] body {
+  --bg: #fff;
+  --fg: #000;
+  --secondary: #000;
+  --border: #000;
+  --hover-bg: #fff;
+  --tab-bg: #fff;
+  --accent: #000;
+  --on-accent: #fff;
+  --pronunciation-annotation-color: #000;
+  color-scheme: light;
+}
+
+html[data-chima-eink-mode="true"] body {
+  border: 1px solid #000 !important;
+}
+
+html[data-chima-eink-mode="true"] *,
+html[data-chima-eink-mode="true"] *::before,
+html[data-chima-eink-mode="true"] *::after {
+  transition: none !important;
+  animation-duration: 0s !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+html[data-chima-eink-mode="true"] :active {
+  transform: none !important;
+}
+
+html[data-chima-eink-mode="true"] .tag-label,
+html[data-chima-eink-mode="true"] .tag-body {
+  border-radius: 0 !important;
+  border: 1px solid #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .tag-label {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .tag-body {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .dictionary-header {
+  border-radius: 0 !important;
+  transition: none !important;
+}
+
+html[data-chima-eink-mode="true"] .dictionary-header.selected {
+  background: #000 !important;
+  color: #fff !important;
+  border-left-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .dict-arrow {
+  transition: none !important;
+}
+
+html[data-chima-eink-mode="true"] .word-audio-btn,
+html[data-chima-eink-mode="true"] .anki-add-btn,
+html[data-chima-eink-mode="true"] .anki-open-btn {
+  border-radius: 0 !important;
+}
+
+html[data-chima-eink-mode="true"] .word-audio-btn:hover,
+html[data-chima-eink-mode="true"] .anki-add-btn:hover,
+html[data-chima-eink-mode="true"] .anki-open-btn:hover {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tab {
+  border-radius: 0 !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tab.active {
+  background: #000 !important;
+  color: #fff !important;
+  border-color: #000 !important;
+  box-shadow: none !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tab:active {
+  transform: none !important;
+}
+
+html[data-chima-eink-mode="true"] .floating-nav-btn {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html[data-chima-eink-mode="true"] .inflection-step-card {
+  border-radius: 0 !important;
+}
+
+html[data-chima-eink-mode="true"] .inflection-step-index {
+  border-radius: 0 !important;
+  background: #000 !important;
+  color: #fff !important;
+}
+
+html[data-chima-eink-mode="true"] .dictionary-header:hover {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+html[data-chima-eink-mode="true"] .dictionary-header.selected:hover {
+  background: #000 !important;
+  color: #fff !important;
+  border-left-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tabs {
+  border-bottom-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .entry + .entry {
+  border-top-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .gloss-sc-th,
+html[data-chima-eink-mode="true"] .gloss-sc-td,
+html[data-chima-eink-mode="true"] th,
+html[data-chima-eink-mode="true"] td {
+  border-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .anki-add-btn.anki-added {
+  color: #000 !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"],
+html[data-theme="dark"][data-chima-eink-mode="true"] body {
+  --bg: #000;
+  --fg: #fff;
+  --secondary: #fff;
+  --border: #fff;
+  --hover-bg: #000;
+  --tab-bg: #000;
+  --accent: #fff;
+  --on-accent: #000;
+  --pronunciation-annotation-color: #fff;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] body {
+  border: 1px solid #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-label,
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-body {
+  border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-label {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-body {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab.active {
+  background: #fff !important;
+  color: #000 !important;
+  border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .dictionary-header.selected {
+  background: #fff !important;
+  color: #000 !important;
+  border-left-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .dictionary-header.selected:hover {
+  background: #fff !important;
+  color: #000 !important;
+  border-left-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab {
+  border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .inflection-step-index {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tabs {
+  border-bottom-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .entry + .entry {
+  border-top-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .word-audio-btn:hover,
+html[data-theme="dark"][data-chima-eink-mode="true"] .anki-add-btn:hover,
+html[data-theme="dark"][data-chima-eink-mode="true"] .anki-open-btn:hover {
+  background: transparent !important;
+}
+
+/* ── Kanji Entry ─────────────────────────────────────── */
+.kanji-glyph {
+  font-family: 'KanjiStrokeOrders', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 7em;
+  line-height: 1.1;
+  font-weight: 400;
+}
+.kanji-tag-list {
+  margin: 4px 0;
+}
+.kanji-section-header {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--secondary);
+  margin: 8px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kanji-gloss-list {
+  margin: 4px 0;
+  padding-left: 1.2em;
+}
+.kanji-gloss-item {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.kanji-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+}
+.kanji-readings-chinese,
+.kanji-readings-japanese {
+  display: inline;
+  font-size: 1em;
+}
+.kanji-readings-chinese .kanji-reading {
+  color: var(--accent);
+  font-weight: 600;
+}
+.kanji-readings-japanese .kanji-reading {
+  font-weight: 600;
+}
+.kanji-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 0.9em;
+}
+.kanji-info-table-item td {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+}
+.kanji-info-table-item-header {
+  font-weight: 600;
+  color: var(--secondary);
+  width: 40%;
+  white-space: nowrap;
+}
+.kanji-info-table-item-value {
+  color: var(--fg);
+}

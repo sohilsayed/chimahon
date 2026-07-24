@@ -5,6 +5,7 @@
 
 package eu.kanade.tachiyomi.data.connections.discord
 
+import android.R.attr.action
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -149,7 +150,7 @@ class DiscordRPCService : Service() {
         val builder = context.notificationBuilder(Notifications.CHANNEL_DISCORD_RPC) {
             setSmallIcon(R.drawable.ic_discord_24dp)
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
-            setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.komikku))
+            setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.chimahon))
             setContentText(context.getString(R.string.pref_discord_rpc))
             // KMK -->
             setContentTitle(context.getString(R.string.app_name))

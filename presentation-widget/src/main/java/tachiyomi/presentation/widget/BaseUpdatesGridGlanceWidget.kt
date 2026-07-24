@@ -4,10 +4,9 @@ import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
@@ -23,10 +22,10 @@ import androidx.glance.layout.padding
 import androidx.glance.unit.ColorProvider
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asDrawable
-import coil3.executeBlocking
 import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import coil3.request.transformations
 import coil3.size.Precision
 import coil3.size.Scale
@@ -34,18 +33,20 @@ import coil3.transform.RoundedCornersTransformation
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.util.system.dpToPx
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
-import tachiyomi.presentation.widget.components.CoverHeight
-import tachiyomi.presentation.widget.components.CoverWidth
 import tachiyomi.presentation.widget.components.LockedWidget
+import tachiyomi.presentation.widget.components.UpdatesGridLimit
 import tachiyomi.presentation.widget.components.UpdatesWidget
+import tachiyomi.presentation.widget.components.UpdatesWidgetItem
 import tachiyomi.presentation.widget.util.appWidgetBackgroundRadius
-import tachiyomi.presentation.widget.util.calculateRowAndColumnCount
+import tachiyomi.presentation.widget.util.columnCountForWidth
+import tachiyomi.presentation.widget.util.coverSizeForGrid
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -64,6 +65,8 @@ abstract class BaseUpdatesGridGlanceWidget(
     abstract val topPadding: Dp
     abstract val bottomPadding: Dp
 
+    open val showHeader: Boolean = true
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val locked = preferences.useAuthenticator().get()
         val containerModifier = GlanceModifier
@@ -74,53 +77,62 @@ abstract class BaseUpdatesGridGlanceWidget(
             .appWidgetBackgroundRadius()
 
         val manager = GlanceAppWidgetManager(context)
-        val ids = manager.getGlanceIds(javaClass)
-        val (rowCount, columnCount) = ids
+        val sizes = manager.getGlanceIds(javaClass)
             .flatMap { manager.getAppWidgetSizes(it) }
-            .maxBy { it.height.value * it.width.value }
-            .calculateRowAndColumnCount(topPadding, bottomPadding)
+        // maxBy on empty list crashes provideGlance → "Can't show content"
+        val widgetSize = sizes.maxByOrNull { it.height.value * it.width.value }
+            ?: DpSize(180.dp, 110.dp)
+        val columnCount = widgetSize.columnCountForWidth()
+        val (coverWidthDp, coverHeightDp) = widgetSize.coverSizeForGrid(columnCount)
+
+        val data: ImmutableList<UpdatesWidgetItem>? = if (locked) {
+            null
+        } else {
+            runCatching {
+                getUpdates
+                    .subscribe(read = false, after = DateLimit.toEpochMilli())
+                    .first()
+                    .prepareData(
+                        limit = UpdatesGridLimit,
+                        coverWidthPx = coverWidthDp.value.toInt().dpToPx,
+                        coverHeightPx = coverHeightDp.value.toInt().dpToPx,
+                    )
+            }.getOrElse { persistentListOf() }
+        }
 
         provideContent {
-            // If app lock enabled, don't do anything
             if (locked) {
                 LockedWidget(
                     foreground = foreground,
                     modifier = containerModifier,
                 )
-                return@provideContent
+            } else {
+                UpdatesWidget(
+                    data = data,
+                    contentColor = foreground,
+                    topPadding = topPadding,
+                    bottomPadding = bottomPadding,
+                    modifier = containerModifier,
+                    showHeader = showHeader,
+                )
             }
-
-            val flow = remember {
-                getUpdates
-                    .subscribe(false, DateLimit.toEpochMilli())
-                    .map { rawData ->
-                        rawData.prepareData(rowCount, columnCount)
-                    }
-            }
-            val data by flow.collectAsState(initial = null)
-            UpdatesWidget(
-                data = data,
-                contentColor = foreground,
-                topPadding = topPadding,
-                bottomPadding = bottomPadding,
-                modifier = containerModifier,
-            )
         }
     }
 
     @OptIn(ExperimentalCoilApi::class)
     private suspend fun List<UpdatesWithRelations>.prepareData(
-        rowCount: Int,
-        columnCount: Int,
-    ): ImmutableList<Pair<Long, Bitmap?>> {
-        // Resize to cover size
-        val widthPx = CoverWidth.value.toInt().dpToPx
-        val heightPx = CoverHeight.value.toInt().dpToPx
+        limit: Int,
+        coverWidthPx: Int,
+        coverHeightPx: Int,
+    ): ImmutableList<UpdatesWidgetItem> {
+        val widthPx = coverWidthPx.coerceAtLeast(1)
+        val heightPx = coverHeightPx.coerceAtLeast(1)
         val roundPx = context.resources.getDimension(R.dimen.appwidget_inner_radius)
+        val unreadByManga = groupingBy { it.mangaId }.eachCount()
         return withIOContext {
             this@prepareData
                 .distinctBy { it.mangaId }
-                .take(rowCount * columnCount)
+                .take(limit)
                 .map { updatesView ->
                     val request = ImageRequest.Builder(context)
                         .data(
@@ -136,19 +148,40 @@ abstract class BaseUpdatesGridGlanceWidget(
                         .precision(Precision.EXACT)
                         .size(widthPx, heightPx)
                         .scale(Scale.FILL)
+                        .allowHardware(false)
                         .let {
                             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                                 it.transformations(RoundedCornersTransformation(roundPx))
                             } else {
-                                it // Handled by system
+                                it
                             }
                         }
                         .build()
-                    val bitmap = context.imageLoader.executeBlocking(request)
-                        .image
-                        ?.asDrawable(context.resources)
-                        ?.toBitmap()
-                    Pair(updatesView.mangaId, bitmap)
+                    val bitmap = try {
+                        context.imageLoader.execute(request)
+                            .image
+                            ?.asDrawable(context.resources)
+                            ?.toBitmap()
+                            ?.let { bmp ->
+                                if (
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                                    bmp.config == Bitmap.Config.HARDWARE
+                                ) {
+                                    bmp.copy(Bitmap.Config.ARGB_8888, false)?.also {
+                                        if (!bmp.isRecycled) bmp.recycle()
+                                    }
+                                } else {
+                                    bmp
+                                }
+                            }
+                    } catch (_: Exception) {
+                        null
+                    }
+                    UpdatesWidgetItem(
+                        mangaId = updatesView.mangaId,
+                        cover = bitmap,
+                        unreadCount = unreadByManga[updatesView.mangaId] ?: 1,
+                    )
                 }
                 .toImmutableList()
         }

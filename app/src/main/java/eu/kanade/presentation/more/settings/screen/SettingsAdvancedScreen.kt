@@ -31,19 +31,23 @@ import androidx.core.net.toUri
 import androidx.core.text.HtmlCompat
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import chimahon.dictionary.ko.KoreanParserMode
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.source.service.SourcePreferences.DataSaver
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.screen.advanced.ClearAnimeDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.download.DownloadCache
+import eu.kanade.tachiyomi.data.ocr.ModelDownloader
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.library.MetadataUpdateJob
+import eu.kanade.tachiyomi.data.library.anime.AnimeMetadataUpdateJob
 import eu.kanade.tachiyomi.data.updater.AppUpdateJob
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.NetworkPreferences
@@ -60,6 +64,7 @@ import eu.kanade.tachiyomi.network.PREF_DOH_QUAD101
 import eu.kanade.tachiyomi.network.PREF_DOH_QUAD9
 import eu.kanade.tachiyomi.network.PREF_DOH_SHECAN
 import eu.kanade.tachiyomi.source.AndroidSourceManager
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.util.CrashLogUtil
 import eu.kanade.tachiyomi.util.storage.DiskUtil
@@ -122,6 +127,7 @@ object SettingsAdvancedScreen : SearchableSettings {
         val basePreferences = remember { Injekt.get<BasePreferences>() }
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         // SY -->
         val downloadPreferences = remember { Injekt.get<DownloadPreferences>() }
         val exhPreferences = remember { Injekt.get<ExhPreferences>() }
@@ -180,9 +186,30 @@ object SettingsAdvancedScreen : SearchableSettings {
                     true
                 },
             ),
+            kotlin.run {
+                val importLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) {
+                        scope.launch {
+                            val result = Injekt.get<ModelDownloader>().importFromUri(uri)
+                            context.toast(
+                                if (result.isSuccess) "OCR models imported"
+                                else "Import failed: ${result.exceptionOrNull()?.message}"
+                            )
+                        }
+                    }
+                }
+                Preference.PreferenceItem.TextPreference(
+                    title = "Import OCR Models",
+                    subtitle = "Import models.zip from device storage",
+                    onClick = { importLauncher.launch(arrayOf("application/zip")) },
+                )
+            },
             // KMK <--
             getBackgroundActivityGroup(),
             getDataGroup(),
+            getDictionaryGroup(dictionaryPreferences = dictionaryPreferences),
             getNetworkGroup(networkPreferences = networkPreferences),
             getLibraryGroup(libraryPreferences = libraryPreferences),
             // SY -->
@@ -195,6 +222,26 @@ object SettingsAdvancedScreen : SearchableSettings {
             getDataSaverGroup(),
             getDeveloperToolsGroup(),
             // SY <--
+        )
+    }
+
+    @Composable
+    private fun getDictionaryGroup(
+        dictionaryPreferences: DictionaryPreferences,
+    ): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_category_dictionary),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.koreanParserMode(),
+                    entries = persistentMapOf(
+                        KoreanParserMode.Legacy to stringResource(MR.strings.pref_dict_korean_parser_legacy),
+                        KoreanParserMode.Analyzer to stringResource(MR.strings.pref_dict_korean_parser_analyzer),
+                    ),
+                    title = stringResource(MR.strings.pref_dict_korean_parser),
+                    subtitle = stringResource(MR.strings.pref_dict_korean_parser_summary),
+                ),
+            ),
         )
     }
 
@@ -257,6 +304,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_clear_database),
                     subtitle = stringResource(MR.strings.pref_clear_database_summary),
                     onClick = { navigator.push(ClearDatabaseScreen()) },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_clear_anime_database),
+                    subtitle = stringResource(MR.strings.pref_clear_anime_database_summary),
+                    onClick = { navigator.push(ClearAnimeDatabaseScreen()) },
                 ),
             ),
         )
@@ -369,7 +421,10 @@ object SettingsAdvancedScreen : SearchableSettings {
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_refresh_library_covers),
-                    onClick = { MetadataUpdateJob.startNow(context) },
+                    onClick = {
+                        MetadataUpdateJob.startNow(context)
+                        AnimeMetadataUpdateJob.startNow(context)
+                    },
                 ),
                 // KMK -->
                 Preference.PreferenceItem.SwitchPreference(
@@ -774,14 +829,6 @@ object SettingsAdvancedScreen : SearchableSettings {
             title = stringResource(SYMR.strings.developer_tools),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = exhPreferences.isHentaiEnabled(),
-                    title = stringResource(SYMR.strings.toggle_hentai_features),
-                    subtitle = stringResource(SYMR.strings.toggle_hentai_features_summary),
-                    onValueChanged = {
-                        true
-                    },
-                ),
-                Preference.PreferenceItem.SwitchPreference(
                     preference = sourcePreferences.enableSourceBlacklist(),
                     title = stringResource(SYMR.strings.enable_source_blacklist),
                     subtitle = stringResource(
@@ -795,7 +842,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                     subtitle = stringResource(
                         SYMR.strings.toggle_delegated_sources_summary,
                         stringResource(MR.strings.app_name),
-                        AndroidSourceManager.DELEGATED_SOURCES.map { it.sourceName }.distinct()
+                        AndroidSourceManager.DELEGATED_SOURCES.values
+                            .filter { it.sourceName !in listOf("Pururin", "Tsumino", "HBrowse", "8Muses", "NHentai") }
+                            .map { it.sourceName }.distinct()
                             .joinToString(),
                     ),
                 ),

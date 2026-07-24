@@ -1,3 +1,4 @@
+-- Komikku: EH favorites table
 CREATE TABLE IF NOT EXISTS eh_favorites (
     _id INTEGER NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
@@ -5,3 +6,6 @@ CREATE TABLE IF NOT EXISTS eh_favorites (
     token TEXT NOT NULL,
     category INTEGER NOT NULL
 );
+
+-- Chimahon: Add OCR ready column to chapters
+ALTER TABLE chapters ADD COLUMN ocr_ready INTEGER NOT NULL DEFAULT 0;

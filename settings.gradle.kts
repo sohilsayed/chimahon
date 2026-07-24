@@ -41,6 +41,8 @@ dependencyResolutionManagement {
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 rootProject.name = "Komikku"
+include(":chimahon")
+project(":chimahon").projectDir = file("chimahon")
 include(":app")
 include(":core-metadata")
 include(":core:archive")
@@ -48,6 +50,9 @@ include(":core:common")
 include(":data")
 include(":domain")
 include(":i18n")
+// ANK -->
+include(":i18n-ank")
+// ANK <--
 // KMK -->
 include(":i18n-kmk")
 include(":flagkit")
@@ -61,3 +66,8 @@ include(":presentation-widget")
 include(":source-api")
 include(":source-local")
 include(":telemetry")
+
+val hasLocalOcr = file("chimahon-local-ocr/build.gradle.kts").exists()
+if (hasLocalOcr) {
+    include(":chimahon-local-ocr")
+}

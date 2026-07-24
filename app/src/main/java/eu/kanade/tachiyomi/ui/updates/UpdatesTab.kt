@@ -62,16 +62,6 @@ data object UpdatesTab : Tab {
         navigator.push(DownloadQueueScreen)
     }
 
-    // SY -->
-    @Composable
-    override fun isEnabled(): Boolean {
-        val scope = rememberCoroutineScope()
-        return remember {
-            Injekt.get<UiPreferences>().showNavUpdates().asState(scope)
-        }.value
-    }
-    // SY <--
-
     @Composable
     override fun Content() {
         val context = LocalContext.current

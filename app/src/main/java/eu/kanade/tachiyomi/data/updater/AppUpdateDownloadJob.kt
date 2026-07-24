@@ -169,7 +169,15 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
 
         try {
             // File where the apk will be saved.
-            val apkFile = File(context.externalCacheDir, "update.apk")
+            // KMK -->
+            val filename = if (title.isNotEmpty()) "update-${title.replace(" ", "_")}.apk" else "update.apk"
+            val apkFile = File(context.externalCacheDir, filename)
+
+            // Clean up old update files
+            context.externalCacheDir?.listFiles { file ->
+                file.name.startsWith("update") && file.name.endsWith(".apk") && file.name != filename
+            }?.forEach { it.delete() }
+            // KMK <--
 
             // KMK -->
             network.downloadFileWithResume(url, apkFile, progressListener)
@@ -196,6 +204,7 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
                 notifier.cancel()
             } else {
                 notifier.onDownloadError(
+                    title,
                     url,
                     // KMK -->
                     e.message,
