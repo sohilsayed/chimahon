@@ -21,7 +21,7 @@ private data class RemoteIndex(
     val downloadUrl: String? = null,
 )
 
-private val DICT_TYPE_SUBDIRS = listOf("term", "frequency", "pitch")
+private val DICT_TYPE_SUBDIRS = listOf("term", "frequency", "pitch", "kanji")
 
 fun checkDictionaryUpdates(dictionariesDir: File): List<DictionaryUpdateInfo> {
     if (!dictionariesDir.isDirectory) return emptyList()

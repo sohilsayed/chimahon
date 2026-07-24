@@ -135,6 +135,17 @@ class DictionaryRepository(
     }
 
     @Synchronized
+    fun queryKanji(char: String): KanjiResult? {
+        val activeSession = session ?: return null
+        return try {
+            HoshiDicts.queryKanji(activeSession, char)
+        } catch (e: Exception) {
+            Log.e("DictionaryRepo", "queryKanji failed for '$char'", e)
+            null
+        }
+    }
+
+    @Synchronized
     fun close() {
         session?.let(HoshiDicts::destroyLookupObject)
         session = null

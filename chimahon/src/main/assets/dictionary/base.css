@@ -181,6 +181,10 @@ body {
   margin-left: 0.2em;
 }
 
+.kanji-tappable {
+  cursor: pointer;
+}
+
 /* Remove unused .headword-reading - JS uses .headword-furigana */
 
 /* ── Tags ────────────────────────────────────────────── */

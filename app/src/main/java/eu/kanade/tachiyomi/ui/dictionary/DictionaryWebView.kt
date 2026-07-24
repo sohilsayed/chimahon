@@ -59,7 +59,7 @@ internal fun prepareDictionaryWebViewShell(
         addJavascriptInterface(state.readyBridge, "DictionaryReadyBridge")
         addJavascriptInterface(state.payloadBridge, "PayloadBridge")
         addJavascriptInterface(state.ankiJsBridge, "AnkiJsBridge")
-        addJavascriptInterface(state.kanjiPayloadBridge, "KanjiPayloadBridge")
+
 
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -89,7 +89,7 @@ internal fun prepareDictionaryWebViewShell(
                             val sentenceOffset = url.getQueryParameter("offset")?.toIntOrNull()
                             val x = url.getQueryParameter("x")?.toFloatOrNull()
                             val y = url.getQueryParameter("y")?.toFloatOrNull()
-                            if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q, sentence, sentenceOffset, x, y)
+                            if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q, sentence, sentenceOffset, x, y, null)
                             return true
                         }
                         CHIMA_HOST_TAB -> {
@@ -102,8 +102,8 @@ internal fun prepareDictionaryWebViewShell(
                             return true
                         }
                         CHIMA_HOST_KANJI -> {
-                            val char = url.getQueryParameter("char") ?: return true
-                            s?.onKanjiLookup?.invoke(char)
+                            val q = url.getQueryParameter("q") ?: return true
+                            if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q, null, null, null, null, "kanji")
                             return true
                         }
                     }
@@ -129,16 +129,14 @@ internal class DictionaryWebViewState(
     val readyBridge: DictionaryReadyBridge = DictionaryReadyBridge(webViewProvider) { this }
     val payloadBridge: PayloadBridge = PayloadBridge()
     val ankiJsBridge: AnkiJsBridge = AnkiJsBridge(webViewProvider)
-    val kanjiPayloadBridge: KanjiPayloadBridge = KanjiPayloadBridge()
     var pageReady: Boolean = false
     var fontSize: Int = 16
     @Volatile var contentReadyGeneration: Long = 0
     @Volatile var nextContentReadyRequestId: Long = 0
     var onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null
-    var onRecursiveLookup: ((String, String?, Int?, Float?, Float?) -> Unit)? = null
+    var onRecursiveLookup: ((String, String?, Int?, Float?, Float?, String?) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
-    var onKanjiLookup: ((String) -> Unit)? = null
     var onContentInvalidated: (() -> Unit)? = null
     var onContentReady: (() -> Unit)? = null
     var lastPayload: String? = null
@@ -189,9 +187,10 @@ internal class DictionaryWebViewState(
         payloadBridge.rawPayloadJson = ""
         payloadBridge.rawEntryJsons = emptyList()
         webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.clear();", null)
-        // Reset state so that a subsequent flush() with the same data references
-        // does not take the "patch existing render" early-return path (which
-        // skips re-rendering and leaves the WebView blank).
+        resetState()
+    }
+
+    private fun resetState() {
         lastPayload = null
         lastResults = null
         lastExistingExpressions = null

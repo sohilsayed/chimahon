@@ -54,17 +54,6 @@ internal class DictionaryReadyBridge(
 }
 
 /**
- * Bridge for passing kanji lookup results to the JS side.
- * Set via evaluateJavascript("KanjiPayloadBridge.getKanjiResult()") or read
- * by the kanji-renderer.js when KanjiRenderer.render is called.
- */
-internal class KanjiPayloadBridge {
-    @Volatile var rawKanjiJson: String = ""
-
-    @JavascriptInterface fun getKanjiResult(): String = rawKanjiJson
-}
-
-/**
  * JavaScript bridge for passing large payloads (JSON, HTML) from Kotlin to JS without
  * embedding them in evaluateJavascript() strings. The JS side calls
  * PayloadBridge.getPayloadJson() or PayloadBridge.getEntry(index) to pull

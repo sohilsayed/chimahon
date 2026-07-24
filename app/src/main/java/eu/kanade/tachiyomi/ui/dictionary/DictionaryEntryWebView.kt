@@ -51,13 +51,13 @@ fun DictionaryEntryWebView(
     renderRecursiveChrome: Boolean = true,
     wordAudioEnabled: Boolean = true,
     wordAudioAutoplayOverride: Boolean? = null,
+    entryJsons: List<String>? = null,
     customCss: String = "",
     groupPitches: Boolean = false,
     modifier: Modifier = Modifier,
     webViewProvider: ((android.content.Context) -> WebView)? = null,
     onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null,
-    onRecursiveLookup: ((String, String?, Int?, Float?, Float?) -> Unit)? = null,
-    onKanjiLookup: ((String) -> Unit)? = null,
+    onRecursiveLookup: ((String, String?, Int?, Float?, Float?, String?) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     onContentReadyChange: ((Boolean) -> Unit)? = null,
@@ -103,7 +103,7 @@ fun DictionaryEntryWebView(
         showPitchDiagram, showPitchNumber, showPitchText,
         activeProfile, tabs, recursiveNavMode, wordAudioEnabled,
         effectiveWordAudioAutoplay, showNavigationButtons, groupPitches,
-        renderRecursiveChrome,
+        renderRecursiveChrome, entryJsons,
     ) {
         DictionaryRenderSignature(
             results = results, styles = styles, placeholder = placeholder, isDark = isDark,
@@ -125,7 +125,7 @@ fun DictionaryEntryWebView(
     val currentEntryJsons = entryJsonsPair
     LaunchedEffect(renderSignature) {
         val buildStart = SystemClock.elapsedRealtime()
-        val (configJson, entryJsons) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val (configJson, builtEntryJsons) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val config = buildConfigPayload(
                 context, styles, emptyMap(), placeholder, isDark,
                 showFrequencyHarmonic, showFrequencyAverage, groupTerms,
@@ -136,7 +136,7 @@ fun DictionaryEntryWebView(
                 showNavigationButtons = showNavigationButtons,
                 groupPitches = groupPitches,
             )
-            val entries = buildResultEntryJsonStrings(results, activeProfile, context, groupPitches)
+            val entries = entryJsons ?: buildResultEntryJsonStrings(results, activeProfile, context, groupPitches)
             config.toString() to entries
         }
         Log.i(
@@ -144,7 +144,7 @@ fun DictionaryEntryWebView(
             "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size} tabs=${tabs.size}",
         )
         configPayloadPair = configJson to renderSignature
-        entryJsonsPair = entryJsons to renderSignature
+        entryJsonsPair = builtEntryJsons to renderSignature
     }
 
     val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, paginatedScrolling, activeProfile.languageCode) {
@@ -212,9 +212,8 @@ fun DictionaryEntryWebView(
                 }
                 state.onAnkiLookup = onAnkiLookup
                 state.ankiJsBridge.onAnkiLookup = onAnkiLookup
-                state.onRecursiveLookup = onRecursiveLookup
-                state.onKanjiLookup = onKanjiLookup
-                state.onTabSelect = onTabSelect
+state.onRecursiveLookup = onRecursiveLookup
+                    state.onTabSelect = onTabSelect
                 state.onBack = onBack
                 state.customCss = customCss
                 state.fontSize = fontSize
@@ -238,17 +237,17 @@ fun DictionaryEntryWebView(
                         state.clear(webView)
                     } else {
                         val (configPayload, configSig) = currentConfigPayload ?: (null to null)
-                        val (entryJsons, entriesSig) = currentEntryJsons ?: (null to null)
-                        if (configPayload != null && entryJsons != null && configSig == renderSignature && entriesSig == renderSignature) {
-                            state.flush(webView, results, existingExpressions, mediaDataUris, renderSignature, configPayload, entryJsons)
+                        val (builtEntryJsons, entriesSig) = currentEntryJsons ?: (null to null)
+                        if (configPayload != null && builtEntryJsons != null && configSig == renderSignature && entriesSig == renderSignature) {
+                            state.flush(webView, results, existingExpressions, mediaDataUris, renderSignature, configPayload, builtEntryJsons)
                         }
                     }
                 } else {
                     val (configPayloadVal, configPayloadSig) = currentConfigPayload ?: (null to null)
-                    val (entryJsonsVal, entryJsonsSig) = currentEntryJsons ?: (null to null)
-                    if (configPayloadVal != null && entryJsonsVal != null && configPayloadSig == renderSignature && entryJsonsSig == renderSignature) {
+                    val (builtEntryJsonsVal, entryJsonsSig) = currentEntryJsons ?: (null to null)
+                    if (configPayloadVal != null && builtEntryJsonsVal != null && configPayloadSig == renderSignature && entryJsonsSig == renderSignature) {
                         state.pendingPayload = configPayloadVal
-                        state.pendingEntryJsons = entryJsonsVal
+                        state.pendingEntryJsons = builtEntryJsonsVal
                         state.pendingResults = results
                         state.pendingExistingExpressions = existingExpressions
                         state.pendingMediaDataUris = mediaDataUris
