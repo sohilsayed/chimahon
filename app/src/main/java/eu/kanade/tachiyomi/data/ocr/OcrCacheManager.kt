@@ -445,7 +445,7 @@ class OcrCacheManager(
         val cacheFile = getInternalCacheFile(manga, chapter, source)
 
         val chapterData = if (cacheFile.exists()) {
-            readOcrData(cacheFile) ?: return
+            readOcrData(com.hippo.unifile.UniFile.fromFile(cacheFile) ?: return) ?: return
         } else {
             OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
         }

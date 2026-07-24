@@ -11,6 +11,8 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
+import tachiyomi.domain.storage.service.StorageManager
+import tachiyomi.source.local.isLocal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -425,7 +427,7 @@ class OcrManager(
         logcat { "OcrManager: processing chapter ${chapter.name}" }
 
         try {
-            val source = sourceManager.get(manga.source) as? HttpSource
+            val source = sourceManager.get(manga.source)
             if (source == null) {
                 logcat(LogPriority.WARN) { "OcrManager: source not found for manga ${manga.id}" }
                 chapterRepository.update(ChapterUpdate(id = chapterId, isOcrReady = false))
@@ -433,14 +435,17 @@ class OcrManager(
                 return OcrTaskResult.ERROR
             }
 
+            val isLocalSource = source.isLocal()
+            val sourceLang = if (isLocalSource) "other" else (source as? HttpSource)?.lang ?: "other"
+
             val dictPrefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
             val profile = dictPrefs.profileResolver.resolve(
                 mangaId = manga.id,
                 sourceId = manga.source,
-                sourceLang = source.lang,
+                sourceLang = sourceLang,
             )
-            if (!isOcrAllowedForLanguage(source.lang, profile.languageCode)) {
-                logcat { "OcrManager: skipping OCR for source language ${source.lang} and profile language ${profile.languageCode}" }
+            if (!isOcrAllowedForLanguage(sourceLang, profile.languageCode)) {
+                logcat { "OcrManager: skipping OCR for source language $sourceLang and profile language ${profile.languageCode}" }
                 chapterRepository.update(ChapterUpdate(id = chapterId, isOcrReady = false))
                 updateStoredTask(chapterId) { it.copy(status = OcrQueueStatus.COMPLETED) }
                 return OcrTaskResult.SUCCESS
@@ -451,7 +456,7 @@ class OcrManager(
             if (stopRequested()) return OcrTaskResult.STOPPED
             if (ocrStore.get(chapterId) == null) return OcrTaskResult.CANCELLED
 
-            val isDownloaded = downloadManager.isChapterDownloaded(
+            val isDownloaded = isLocalSource || downloadManager.isChapterDownloaded(
                 chapter.name,
                 chapter.scanlator,
                 chapter.url,
@@ -466,7 +471,11 @@ class OcrManager(
                 return OcrTaskResult.ERROR
             }
 
-            val imageProvider = getChapterImageProvider(manga, chapter, source)
+            val imageProvider = if (isLocalSource) {
+                getLocalChapterImageProvider(manga, chapter)
+            } else {
+                getChapterImageProvider(manga, chapter, source)
+            }
             if (imageProvider == null) {
                 logcat(LogPriority.WARN) { "OcrManager: no images found in downloaded chapter" }
                 chapterRepository.update(ChapterUpdate(id = chapterId, isOcrReady = false))
@@ -684,6 +693,25 @@ class OcrManager(
             chapterDir == null -> null
             chapterDir.isDirectory -> DirectoryImageProvider(chapterDir)
             chapterDir.name?.endsWith(".cbz") == true -> CbzImageProvider(context, chapterDir)
+            else -> null
+        }
+    }
+
+    private fun getLocalChapterImageProvider(
+        manga: Manga,
+        chapter: Chapter,
+    ): ChapterImageProvider? {
+        val splitUrl = chapter.url.split('/', limit = 2)
+        if (splitUrl.size < 2) return null
+        val (mangaDirName, chapterDirName) = splitUrl
+        val storageManager: StorageManager = Injekt.get()
+        val chapterFile = storageManager.getLocalSourceDirectory()
+            ?.findFile(mangaDirName)
+            ?.findFile(chapterDirName)
+            ?: return null
+        return when {
+            chapterFile.isDirectory -> DirectoryImageProvider(chapterFile)
+            chapterFile.name?.endsWith(".cbz") == true -> CbzImageProvider(context, chapterFile)
             else -> null
         }
     }
