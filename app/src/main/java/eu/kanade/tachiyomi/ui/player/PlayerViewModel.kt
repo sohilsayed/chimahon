@@ -1327,6 +1327,13 @@ class PlayerViewModel @JvmOverloads constructor(
             return
         }
 
+        // Reuse existing cue if same text appears again (e.g. after rewind)
+        if (existing != null) {
+            _activeSubtitleCueIndex.update { existing.index }
+            lastSubtitleHistoryText = text
+            return
+        }
+
         lastSubtitleHistoryText = text
         val cue = SubtitleCue(
             index = nextSubtitleCueIndex++,
@@ -1345,6 +1352,13 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun seekToAdjacentSubtitle(forward: Boolean) {
+        // When no parsed subtitle cues are available, use mpv's native sub-seek
+        // which is reliable regardless of playback position
+        if (showingParsedSubtitleTrackId == null) {
+            MPVLib.command(arrayOf("sub-seek", if (forward) "1" else "-1", "primary"))
+            return
+        }
+
         val delaySeconds = currentPrimarySubtitleDelaySeconds()
         val speed = currentSubtitleSpeed()
         val positionSeconds = pos.value.toDouble()
@@ -3081,9 +3095,13 @@ class PlayerViewModel @JvmOverloads constructor(
         return runCatching {
             withIOContext {
                 output.delete()
-                val rawInput = MPVLib.getPropertyString("path")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: video.videoUrl
+
+                // For video-only streams (e.g. YouTube DASH), use the separate audio track URL
+                val audioSource = video.audioTracks.firstOrNull()?.url
+                val rawInput = audioSource
+                    ?: MPVLib.getPropertyString("path")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: video.videoUrl
                 val input = when {
                     video.videoUrl.startsWith("content://") -> Uri.parse(video.videoUrl).toFFmpegString(activity)
                     rawInput.startsWith("file://") -> Uri.parse(rawInput).path ?: rawInput

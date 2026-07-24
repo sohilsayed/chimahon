@@ -202,11 +202,11 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
     protected open fun videoListParse(response: Response): List<Video> =
         throw UnsupportedOperationException("Not used")
 
-    protected open fun List<Hoster>.sortHosters(): List<Hoster> {
+    open fun List<Hoster>.sortHosters(): List<Hoster> {
         return this
     }
 
-    protected open fun List<Video>.sortVideos(): List<Video> {
+    open fun List<Video>.sortVideos(): List<Video> {
         return this
     }
 

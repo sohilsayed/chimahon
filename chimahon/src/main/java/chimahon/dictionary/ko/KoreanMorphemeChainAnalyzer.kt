@@ -260,16 +260,31 @@ object KoreanMorphemeChainAnalyzer {
                 scoreBonus = finiteRule.score,
             )
 
-            for (prefinal in prefinalRules) {
-                if (!beforeFinite.endsWith(prefinal.surfaceJamo)) continue
-                val beforePrefinal = beforeFinite.dropLast(prefinal.surfaceJamo.length)
-                emitLexeme(beforePrefinal, finiteRule, finiteSegments + prefinal.toSegment(), scoreBonus = finiteRule.score + prefinal.score)
+            fun processPrefinals(
+                stem: String,
+                accumulatedSegments: List<KoreanMorphemeSegment>,
+                accumulatedScore: Int,
+                depth: Int = 0,
+            ) {
+                if (depth > 3) return
+                emitLexeme(stem, finiteRule, accumulatedSegments, accumulatedScore)
                 emitAuxiliaryChains(
-                    restoredStemJamo = beforePrefinal,
-                    segmentsReversed = finiteSegments + prefinal.toSegment(),
-                    scoreBonus = finiteRule.score + prefinal.score,
+                    restoredStemJamo = stem,
+                    segmentsReversed = accumulatedSegments,
+                    scoreBonus = accumulatedScore,
                 )
+                for (prefinal in prefinalRules) {
+                    if (!stem.endsWith(prefinal.surfaceJamo)) continue
+                    val beforePrefinal = stem.dropLast(prefinal.surfaceJamo.length)
+                    processPrefinals(
+                        stem = beforePrefinal,
+                        accumulatedSegments = accumulatedSegments + prefinal.toSegment(),
+                        accumulatedScore = accumulatedScore + prefinal.score,
+                        depth = depth + 1,
+                    )
+                }
             }
+            processPrefinals(beforeFinite, finiteSegments, finiteRule.score)
 
             for (contraction in contractedPastRules) {
                 if (!beforeFinite.endsWith(contraction.surfaceJamo)) continue
@@ -282,21 +297,31 @@ object KoreanMorphemeChainAnalyzer {
                     segmentsReversed = contractedSegments,
                     scoreBonus = scoreBonus,
                 )
-                for (prefinal in prefinalRules) {
-                    if (!restoredStem.endsWith(prefinal.surfaceJamo)) continue
-                    val beforePrefinal = restoredStem.dropLast(prefinal.surfaceJamo.length)
-                    emitLexeme(
-                        beforePrefinal,
-                        finiteRule,
-                        contractedSegments + prefinal.toSegment(),
-                        scoreBonus = scoreBonus + prefinal.score,
-                    )
+                fun processContractPrefinals(
+                    stem: String,
+                    accSegments: List<KoreanMorphemeSegment>,
+                    accScore: Int,
+                    depth: Int = 0,
+                ) {
+                    if (depth > 3) return
+                    emitLexeme(stem, finiteRule, accSegments, accScore)
                     emitAuxiliaryChains(
-                        restoredStemJamo = beforePrefinal,
-                        segmentsReversed = contractedSegments + prefinal.toSegment(),
-                        scoreBonus = scoreBonus + prefinal.score,
+                        restoredStemJamo = stem,
+                        segmentsReversed = accSegments,
+                        scoreBonus = accScore,
                     )
+                    for (prefinal in prefinalRules) {
+                        if (!stem.endsWith(prefinal.surfaceJamo)) continue
+                        val beforePrefinal = stem.dropLast(prefinal.surfaceJamo.length)
+                        processContractPrefinals(
+                            stem = beforePrefinal,
+                            accSegments = accSegments + prefinal.toSegment(),
+                            accScore = accScore + prefinal.score,
+                            depth = depth + 1,
+                        )
+                    }
                 }
+                processContractPrefinals(restoredStem, contractedSegments, scoreBonus)
             }
 
             for (contraction in contractedInformalRules) {
@@ -837,6 +862,10 @@ object KoreanMorphemeChainAnalyzer {
         contractedEnding("ㄹㅓㅅㅓ", "", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", 40),
         contractedEnding("ㅐㅅㅓ", "ㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", 42),
         contractedEnding("ㅓㅅㅓ", "ㅜ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", 40),
+        contractedEnding("ㄲㅗㅂ", "ㄱㅗㅅㅣㅍ", KoreanMorphemeTag.ConnectiveEnding, "aux_꼽다", "-꼽-", 40),
+        // 러 irregular: extra ㄹ insertion for 르 stems (노르다 → 노르러서, 이르다 → 이르러서)
+        contractedEnding("ㄹㅓ", "", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", 36),
+        contractedEnding("ㄹㅏ", "", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", 36),
     ).sortedByDescending { it.surfaceJamo.length }
 
     private val auxiliaryVerbRules = listOf(
@@ -855,6 +884,8 @@ object KoreanMorphemeChainAnalyzer {
         auxiliaryVerb("나", "나다", "aux_나다", setOf("verb_고")),
         auxiliaryVerb("않", "않다", "aux_않다", setOf("verb_지")),
         auxiliaryVerb("지", "지다", "aux_지다"),
+        auxiliaryVerb("나가", "나가다", "aux_나가다"),
+        auxiliaryVerb("나오", "나오다", "aux_나오다"),
     ).sortedByDescending { it.stemJamo.length }
 
     private val predicatePartsOfSpeech = setOf(
@@ -896,9 +927,23 @@ object KoreanMorphemeChainAnalyzer {
         ruleWithBases("ㄴㄷㅏㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_는다고_ㄴ다고_다고_라고", "-ㄴ다고", listOf(base("ㄷㅏ"), base("ㄹㄷㅏ", RIEUL_DROP)), true, 65),
         rule("ㄷㅏㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_다고", "-다고", "ㄷㅏ", false, 55),
         rule("ㄴㅑㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_냐고", "-냐고", "ㄷㅏ", true, 55),
+        // Older interrogative quotative for verbs (느냐고 vs 냐고 for adjectives)
+        ruleWithBases("ㄴㅡㄴㅑㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_느냐고", "-느냐고", listOf(base("ㄷㅏ"), base("ㄹㄷㅏ", RIEUL_DROP)), false, 50),
         rule("ㅈㅏㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_자고", "-자고", "ㄷㅏ", true, 55),
         rule("ㅇㅡㄹㅏㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_으라고_라고", "-으라고", "ㄷㅏ", true, 55),
         rule("ㄹㅏㄱㅗ", KoreanMorphemeTag.QuotationEnding, "verb_라고", "-라고", "ㄷㅏ", true, 50),
+
+        // Quotative contractions (-대, -래, -재, -냬): shortened forms of -다고/라고/자고/냐고 하다
+        rule("ㄴㅡㄴㄷㅐ", KoreanMorphemeTag.QuotationEnding, "verb_는대_ㄴ대_대", "-는대", "ㄷㅏ", true, 52),
+        ruleWithBases("ㄴㄷㅐ", KoreanMorphemeTag.QuotationEnding, "verb_는대_ㄴ대_대", "-ㄴ대", listOf(base("ㄷㅏ"), base("ㄹㄷㅏ", RIEUL_DROP)), true, 52),
+        rule("ㄷㅐ", KoreanMorphemeTag.QuotationEnding, "verb_대", "-대", "ㄷㅏ", false, 48),
+        ruleWithBases("ㄹㅐ", KoreanMorphemeTag.QuotationEnding, "verb_래_으래", "-래", listOf(base("ㄷㅏ"), base("ㄹㄷㅏ", RIEUL_DROP)), true, 52),
+        rule("ㅇㅡㄹㅐ", KoreanMorphemeTag.QuotationEnding, "verb_으래", "-으래", "ㄷㅏ", true, 52),
+        rule("ㅈㅐ", KoreanMorphemeTag.QuotationEnding, "verb_재", "-재", "ㄷㅏ", true, 48),
+        rule("ㄴㅒ", KoreanMorphemeTag.QuotationEnding, "verb_냬", "-냬", "ㄷㅏ", true, 48),
+        // Colloquial intentional -(으)ㄹ래 (< -(으)려고 하다 + -아/어)
+        ruleWithBases("ㅇㅡㄹㄹㅐ", KoreanMorphemeTag.FinalEnding, "verb_을래_ㄹ래", "-(으)ㄹ래", listOf(base("ㄷㅏ"), base("ㄷㄷㅏ", DIGEUT_IRREGULAR_VOWEL), base("ㅅㄷㅏ", SIOT_IRREGULAR_VOWEL), base("ㅂㄷㅏ", BIEUP_IRREGULAR_VOWEL)), false, 40),
+        ruleWithBases("ㄹㄹㅐ", KoreanMorphemeTag.FinalEnding, "verb_을래_ㄹ래", "-ㄹ래", listOf(base("ㄷㅏ"), base("ㄹㄷㅏ", RIEUL_DROP)), false, 40),
         rule("ㅅㅡㅂㄴㅣㄷㅏ", KoreanMorphemeTag.FinalEnding, "verb_습니다_ㅂ니다", "-(스)ㅂ니다", "ㄷㅏ", false, 55),
         ruleWithBases("ㅂㄴㅣㄷㅏ", KoreanMorphemeTag.FinalEnding, "verb_습니다_ㅂ니다", "-(스)ㅂ니다", listOf(base("ㄷㅏ"), base("ㄹㄷㅏ", RIEUL_DROP)), false, 55),
         rule("ㅅㅡㅂㄴㅣㄲㅏ", KoreanMorphemeTag.FinalEnding, "verb_습니까_ㅂ니까", "-(스)ㅂ니까", "ㄷㅏ", false, 55),
@@ -979,6 +1024,8 @@ object KoreanMorphemeChainAnalyzer {
         rule("ㄷㅓ", KoreanMorphemeTag.PreFinalEnding, "verb_더", "-더", score = 20),
         rule("ㅇㅡㅅㅣ", KoreanMorphemeTag.PreFinalEnding, "verb_시_으시", "-(으)시", score = 20),
         rule("ㅅㅣ", KoreanMorphemeTag.PreFinalEnding, "verb_시_으시", "-시", score = 20),
+        rule("ㅇㅡㄹㅣ", KoreanMorphemeTag.PreFinalEnding, "verb_으리", "-(으)리", score = 20),
+        rule("ㄹㅣ", KoreanMorphemeTag.PreFinalEnding, "verb_리", "-리", score = 20),
     ).sortedByDescending { it.surfaceJamo.length }
 
     private val connectiveRules = listOf(
@@ -996,7 +1043,7 @@ object KoreanMorphemeChainAnalyzer {
         ruleWithBases("ㅇㅓㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㄷㅏ"), base("ㅅㄷㅏ", SIOT_IRREGULAR_VOWEL)), true, 50),
         ruleWithBases("ㅏㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㄷㅏ"), base("ㅏㄷㅏ"), base("ㅡㄷㅏ", EU_IRREGULAR_VOWEL)), true, 45),
         ruleWithBases("ㅓㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㄷㅏ"), base("ㅓㄷㅏ"), base("ㅡㄷㅏ", EU_IRREGULAR_VOWEL), base("ㅜㄷㅏ", EU_IRREGULAR_VOWEL)), true, 45),
-        ruleWithBases("ㅐㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㅣㄷㅏ"), base("ㅏㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL), base("ㅓㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
+        ruleWithBases("ㅐㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㅣㄷㅏ"), base("ㅓㄷㅏ"), base("ㅏㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL), base("ㅓㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
         ruleWithBases("ㅔㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㅓㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
         ruleWithBases("ㅖㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㅇㅕㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
         ruleWithBases("ㅒㅅㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아서_어서_해서", "-아/어서", listOf(base("ㅇㅑㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
@@ -1035,7 +1082,7 @@ object KoreanMorphemeChainAnalyzer {
         ruleWithBases("ㅇㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", listOf(base("ㄷㅏ"), base("ㅅㄷㅏ", SIOT_IRREGULAR_VOWEL)), true, 50),
         ruleWithBases("ㅏ", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", listOf(base("ㄷㅏ"), base("ㅏㄷㅏ"), base("ㅡㄷㅏ", EU_IRREGULAR_VOWEL)), true, 45),
         ruleWithBases("ㅓ", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", listOf(base("ㄷㅏ"), base("ㅓㄷㅏ"), base("ㅡㄷㅏ", EU_IRREGULAR_VOWEL)), true, 45),
-        ruleWithBases("ㅐ", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", listOf(base("ㅣㄷㅏ"), base("ㅏㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL), base("ㅓㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
+        ruleWithBases("ㅐ", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", listOf(base("ㅣㄷㅏ"), base("ㅓㄷㅏ"), base("ㅏㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL), base("ㅓㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
         ruleWithBases("ㅔ", KoreanMorphemeTag.ConnectiveEnding, "verb_아_어_해", "-아/어", listOf(base("ㅓㅎㄷㅏ", HIEUT_IRREGULAR_VOWEL)), true, 45),
     ).sortedByDescending { it.surfaceJamo.length }
 

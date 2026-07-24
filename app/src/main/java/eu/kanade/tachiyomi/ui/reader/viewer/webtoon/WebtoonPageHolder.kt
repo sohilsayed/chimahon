@@ -349,7 +349,22 @@ class WebtoonPageHolder(
                 return
             }
 
-            // ── Case 1: Split and Merge (Webtoon special) ───────────────────────────────
+            // ── Case 1a: Rotation remap (dualPageRotateToFit) ──────────────────────────
+            if (viewer.config.dualPageRotateToFit) {
+                val streamFn = targetPage.stream
+                if (streamFn != null) {
+                    val isWide = withIOContext {
+                        streamFn().use { ImageUtil.isWideImage(okio.Buffer().readFrom(it)) }
+                    }
+                    if (isWide) {
+                        val clockwise = !viewer.config.dualPageRotateToFitInvert
+                        blocks = OcrCoordinateMapper.mapToRotated(blocks, clockwise)
+                        logcat { "OCR rotate remap (webtoon): ${blocks.size} blocks after remap" }
+                    }
+                }
+            }
+
+            // ── Case 1b: Split and Merge (Webtoon special) ─────────────────────────────
             if (dualSplitEnabled && !viewer.config.dualPageRotateToFit) {
                 val streamFn = targetPage.stream
                 if (streamFn != null) {

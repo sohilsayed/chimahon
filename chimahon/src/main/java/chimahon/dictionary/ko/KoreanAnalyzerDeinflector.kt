@@ -14,12 +14,19 @@ object KoreanAnalyzerDeinflector : Deinflector {
         languageCode: String,
     ): List<DeinflectionResult> {
         val surface = KoreanTextProcessors.assemble(text)
+        val parses = KoreanMorphemeChainAnalyzer.analyze(surface, maxResults = MAX_ANALYZER_RESULTS)
         val candidates = buildList {
             add(surface)
-            addAll(
-                KoreanMorphemeChainAnalyzer.analyze(surface, maxResults = MAX_ANALYZER_RESULTS)
-                    .flatMap { it.lemmaCandidates },
-            )
+            addAll(parses.flatMap { it.lemmaCandidates })
+            for (result in parses) {
+                for (i in 1 until result.segments.size) {
+                    val segment = result.segments[i]
+                    if (segment.tag != KoreanMorphemeTag.Unknown) {
+                        add(result.segments.take(i).joinToString("") { it.surface })
+                        add(segment.surface)
+                    }
+                }
+            }
         }
 
         return candidates

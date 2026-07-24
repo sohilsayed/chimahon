@@ -611,7 +611,7 @@ fun OcrLookupPopup(
             }
         } else {
             miningScope.launch {
-                val encoding = if (screenshotFieldMapped) {
+                val encoding = if (screenshotFieldMapped && cropMode != "no_screenshot") {
                     onRequestScreenshot?.invoke()?.let { ImageEncoder.encode(it) }
                 } else {
                     null

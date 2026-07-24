@@ -45,8 +45,58 @@ class OcrCacheManager(
     companion object {
         private const val OCR_CACHE_FILE = ".ocr_cache.json"
         private const val OCR_SIDECAR_SUFFIX = ".ocr.json"
+        private const val TMP_SUFFIX = ".tmp"
         private const val CURRENT_VERSION = 2
         private const val INTERNAL_OCR_DIR = "ocr_cache"
+    }
+
+    /**
+     * Atomically write JSON to a file by writing to a temp file first, then renaming.
+     * If interrupted mid-write, only the .tmp file is corrupted; the original is preserved.
+     */
+    private fun atomicWrite(targetFile: UniFile, jsonString: String) {
+        val tmpFile = targetFile.parentFile?.createFile("${targetFile.name}$TMP_SUFFIX")
+            ?: run {
+                logcat(LogPriority.ERROR) { "OcrCache: Failed to create temp file for atomic write" }
+                return
+            }
+        try {
+            tmpFile.openOutputStream().bufferedWriter().use {
+                it.write(jsonString)
+                it.flush()
+            }
+            targetFile.delete()
+            if (!tmpFile.renameTo(targetFile.name ?: return)) {
+                logcat(LogPriority.WARN) { "OcrCache: rename failed, trying fallback" }
+                // Fallback: write directly (some storage backends don't support rename)
+                targetFile.openOutputStream().bufferedWriter().use {
+                    it.write(jsonString)
+                    it.flush()
+                }
+                tmpFile.delete()
+            }
+        } catch (e: Exception) {
+            tmpFile.delete()
+            logcat(LogPriority.ERROR, e) { "OcrCache: atomic write failed" }
+            throw e
+        }
+    }
+
+    /**
+     * Read and parse OCR data from a file, returning null if the file is corrupt.
+     */
+    private fun readOcrData(cacheFile: UniFile): OcrChapterData? {
+        return try {
+            val content = cacheFile.openInputStream().bufferedReader().use { it.readText() }
+            if (content.isBlank()) {
+                OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
+            } else {
+                json.decodeFromString<OcrChapterData>(content)
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "OcrCache: corrupt cache file, skipping write to avoid data loss" }
+            null
+        }
     }
 
     /**
@@ -265,16 +315,7 @@ class OcrCacheManager(
             return
         }
 
-        val chapterData = try {
-            val content = cacheFile.openInputStream().bufferedReader().use { it.readText() }
-            if (content.isBlank()) {
-                OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
-            } else {
-                json.decodeFromString<OcrChapterData>(content)
-            }
-        } catch (e: Exception) {
-            OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
-        }
+        val chapterData = readOcrData(cacheFile) ?: return
 
         val updatedPages = chapterData.pages.toMutableMap()
         updatedPages[pageIndex] = OcrPageData(
@@ -284,9 +325,7 @@ class OcrCacheManager(
         )
 
         val newData = chapterData.copy(pages = updatedPages)
-        cacheFile.openOutputStream().bufferedWriter().use {
-            it.write(json.encodeToString(newData))
-        }
+        atomicWrite(cacheFile, json.encodeToString(newData))
     }
 
     /**
@@ -334,16 +373,7 @@ class OcrCacheManager(
             return
         }
 
-        val chapterData = try {
-            val content = sidecarFile.openInputStream().bufferedReader().use { it.readText() }
-            if (content.isBlank()) {
-                OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
-            } else {
-                json.decodeFromString<OcrChapterData>(content)
-            }
-        } catch (e: Exception) {
-            OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
-        }
+        val chapterData = readOcrData(sidecarFile) ?: return
 
         val updatedPages = chapterData.pages.toMutableMap()
         updatedPages[pageIndex] = OcrPageData(
@@ -353,9 +383,7 @@ class OcrCacheManager(
         )
 
         val newData = chapterData.copy(pages = updatedPages)
-        sidecarFile.openOutputStream().bufferedWriter().use {
-            it.write(json.encodeToString(newData))
-        }
+        atomicWrite(sidecarFile, json.encodeToString(newData))
     }
 
     /**
@@ -416,18 +444,9 @@ class OcrCacheManager(
     ) {
         val cacheFile = getInternalCacheFile(manga, chapter, source)
 
-        val chapterData = try {
-            if (cacheFile.exists()) {
-                val content = cacheFile.readText()
-                if (content.isBlank()) {
-                    OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
-                } else {
-                    json.decodeFromString<OcrChapterData>(content)
-                }
-            } else {
-                OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
-            }
-        } catch (e: Exception) {
+        val chapterData = if (cacheFile.exists()) {
+            readOcrData(com.hippo.unifile.UniFile.fromFile(cacheFile) ?: return) ?: return
+        } else {
             OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
         }
 

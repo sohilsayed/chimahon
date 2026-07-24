@@ -64,6 +64,7 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
+import tachiyomi.source.local.isLocal
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.BulkFavoriteScreenModel
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreen
@@ -467,6 +468,11 @@ class MangaScreen(
             onClickDictionaryProfile = { screenModel.showSetDictionaryProfileDialog() }
                 .takeIf { successState.manga.favorite },
             onClickMangaStats = { showMangaStats = true },
+            onClickPreOcr = { screenModel.runOcrForLocalManga() }
+                .takeIf {
+                    successState.source.isLocal() &&
+                        successState.processedChapters.any { !it.chapter.isOcrReady }
+                },
             // KMK <--
         )
 

@@ -410,6 +410,8 @@
     <string name="pref_dict_ocr_box_opacity">OCR box opacity</string>
     <string name="pref_ocr_cache_size">OCR cache size</string>
     <string name="pref_ocr_clear_cache">Clear OCR cache</string>
+    <string name="pref_ocr_two_finger_gesture">OCR two-finger gesture</string>
+    <string name="pref_ocr_two_finger_gesture_summary">Allow two-finger tap to toggle OCR overlay</string>
     <string name="ocr_ready">OCR ready</string>
     <string name="ocr_not_ready">OCR not ready</string>
     <string name="ocr_running">OCR running…</string>
@@ -417,6 +419,7 @@
     <string name="action_run_ocr">Run OCR</string>
     <string name="action_delete_ocr">Delete OCR data</string>
     <string name="action_ocr">OCR</string>
+    <string name="action_pre_ocr">Pre-OCR chapters</string>
     <string name="ocr_processing">OCR processing</string>
     <string name="ocr_waiting_download">Waiting for download…</string>
     <string name="ocr_status_pending">Pending</string>
@@ -1761,4 +1764,6 @@
     <string name="invalid_repo_name">Invalid repo name</string>
     <string name="error_repo_exists">Repo already exists</string>
     <string name="extensionRepo_settings">Extension repo</string>
+    <string name="pref_disable_long_press_screenshot">Disable long-press screenshot</string>
+    <string name="pref_single_tap_to_pause">Single tap to pause</string>
 </resources>

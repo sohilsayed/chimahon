@@ -210,6 +210,7 @@ fun MangaScreen(
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickPreOcr: (() -> Unit)?,
     onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
@@ -281,6 +282,7 @@ fun MangaScreen(
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
             onClickDictionaryProfile = onClickDictionaryProfile,
+            onClickPreOcr = onClickPreOcr,
             onClickMangaStats = onClickMangaStats,
             // KMK <--
         )
@@ -345,6 +347,7 @@ fun MangaScreen(
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
             onClickDictionaryProfile = onClickDictionaryProfile,
+            onClickPreOcr = onClickPreOcr,
             onClickMangaStats = onClickMangaStats,
             // KMK <--
         )
@@ -426,6 +429,7 @@ private fun MangaScreenSmallImpl(
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickPreOcr: (() -> Unit)?,
     onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
@@ -521,6 +525,7 @@ private fun MangaScreenSmallImpl(
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
                 onClickDictionaryProfile = onClickDictionaryProfile,
+                onClickPreOcr = onClickPreOcr,
                 onClickMangaStats = onClickMangaStats,
                 // KMK <--
             )
@@ -894,6 +899,7 @@ private fun MangaScreenLargeImpl(
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
     onClickDictionaryProfile: (() -> Unit)?,
+    onClickPreOcr: (() -> Unit)?,
     onClickMangaStats: (() -> Unit)?,
     // KMK <--
 ) {
@@ -980,6 +986,7 @@ private fun MangaScreenLargeImpl(
                 // KMK -->
                 onPaletteScreenClick = onPaletteScreenClick,
                 onClickDictionaryProfile = onClickDictionaryProfile,
+                onClickPreOcr = onClickPreOcr,
                 onClickMangaStats = onClickMangaStats,
                 // KMK <--
             )

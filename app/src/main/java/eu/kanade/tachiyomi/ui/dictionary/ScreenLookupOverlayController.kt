@@ -43,14 +43,16 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import chimahon.DictionaryRepository
 import chimahon.MediaInfo
+import chimahon.ocr.CropPresets
 import chimahon.ocr.OcrLanguage
 import eu.kanade.tachiyomi.data.ocr.recognizePage
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
-import eu.kanade.tachiyomi.ui.reader.viewer.extractOcrLookupString
 import eu.kanade.tachiyomi.ui.reader.viewer.displayText
+import eu.kanade.tachiyomi.ui.reader.viewer.extractOcrLookupString
 import eu.kanade.tachiyomi.ui.reader.viewer.fullText
 import eu.kanade.tachiyomi.ui.reader.viewer.isLookupStartChar
+import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -384,7 +386,28 @@ internal fun ScreenLookupOverlay(
         )
 
         val selected = selection
+        val cropMode = activeProfile.ankiCropMode
+        val cropPresetKey = activeProfile.ankiCropPreset
+        val cropPreset = chimahon.ocr.CropPresets.aspectByKey(cropPresetKey)
+
         if (selected != null) {
+            val (popupScreenshot, popupOnRequestScreenshot) = if (cropMode == "no_screenshot") {
+                null to null
+            } else if (cropPreset != null) {
+                val cropped = cropAroundAnchor(
+                    bitmap = screenshot,
+                    anchorX = selected.anchorX,
+                    anchorY = selected.anchorY,
+                    anchorWidth = selected.anchorWidth,
+                    anchorHeight = selected.anchorHeight,
+                    aspectX = cropPreset.x,
+                    aspectY = cropPreset.y,
+                )
+                cropped to { cropped }
+            } else {
+                screenshot to { screenshot }
+            }
+
             key(selected.lookupString, lookupNonce) {
                 OcrLookupPopup(
                     visible = true,
@@ -402,8 +425,8 @@ internal fun ScreenLookupOverlay(
                     activeProfile = activeProfile,
                     type = type,
                     mediaInfo = mediaInfo,
-                    screenshot = screenshot,
-                    onRequestScreenshot = { screenshot },
+                    screenshot = popupScreenshot,
+                    onRequestScreenshot = popupOnRequestScreenshot,
                     onRequestSentenceAudio = onRequestSentenceAudio,
                     usePopup = false,
                     titleId = titleId,

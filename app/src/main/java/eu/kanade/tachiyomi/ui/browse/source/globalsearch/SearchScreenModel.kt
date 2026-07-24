@@ -198,6 +198,10 @@ abstract class SearchScreenModel(
                         if (isActive) {
                             updateItem(source, SearchItemResult.Error(e))
                         }
+                    } catch (e: LinkageError) {
+                        if (isActive) {
+                            updateItem(source, SearchItemResult.Error(e))
+                        }
                     }
                 }
             }

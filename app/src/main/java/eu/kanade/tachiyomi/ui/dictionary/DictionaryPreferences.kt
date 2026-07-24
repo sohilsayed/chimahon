@@ -90,6 +90,15 @@ class DictionaryPreferences(
 
     fun paginatedScrolling() = preferenceStore.getBoolean("pref_dictionary_paginated_scrolling", false)
 
+    /** Paginated scroll step size as percentage of viewport height (50-100, default 90). */
+    fun paginatedScrollStepSize() = preferenceStore.getInt("pref_dictionary_paginated_scroll_step_size", 90)
+
+    /** Scroll behavior for floating navigation buttons: "smooth" (default) or "instant". */
+    fun scrollBehavior() = preferenceStore.getString("pref_dictionary_scroll_behavior", SCROLL_SMOOTH)
+
+    /** Whether volume keys can be used to navigate between dictionary entries. */
+    fun volumeKeyNavigation() = preferenceStore.getBoolean("pref_dictionary_volume_key_navigation", true)
+
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
     // -------------------------------------------------------------------------
@@ -274,6 +283,9 @@ class DictionaryPreferences(
         const val PITCH_DIAGRAM = "diagram"
         const val PITCH_NUMBER = "number"
         const val PITCH_TEXT = "text"
+
+        const val SCROLL_SMOOTH = "smooth"
+        const val SCROLL_INSTANT = "instant"
     }
 
     // -------------------------------------------------------------------------

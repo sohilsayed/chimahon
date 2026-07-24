@@ -27,6 +27,7 @@ data class AnkiProfile(
     val ankiDupScope: String = "deck",
     val ankiDupAction: String = "prevent",
     val ankiCropMode: String = "full",
+    val ankiCropPreset: String = "full",
     val ankiSyncOnCreate: Boolean = false,
     // Dictionary configuration
     val dictionaryOrder: List<String> = emptyList(),
@@ -55,6 +56,7 @@ data class AnkiProfile(
         put("ankiDupScope", ankiDupScope)
         put("ankiDupAction", ankiDupAction)
         put("ankiCropMode", ankiCropMode)
+        put("ankiCropPreset", ankiCropPreset)
         put("ankiSyncOnCreate", ankiSyncOnCreate)
         put("dictionaryOrder", JSONArray(dictionaryOrder))
         put("enabledDictionaries", JSONArray(enabledDictionaries.toList()))
@@ -93,6 +95,7 @@ data class AnkiProfile(
             ankiDupScope = json.optString("ankiDupScope", "deck"),
             ankiDupAction = json.optString("ankiDupAction", "prevent"),
             ankiCropMode = json.optString("ankiCropMode", "full"),
+            ankiCropPreset = json.optString("ankiCropPreset", "full"),
             ankiSyncOnCreate = json.optBoolean("ankiSyncOnCreate", false),
             dictionaryOrder = json.optJSONArray("dictionaryOrder")
                 ?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }
@@ -131,6 +134,7 @@ data class AnkiProfile(
             ankiDupScope: String = "deck",
             ankiDupAction: String = "prevent",
             ankiCropMode: String = "full",
+            ankiCropPreset: String = "full",
             ankiSyncOnCreate: Boolean = false,
             dictionaryOrder: List<String> = emptyList(),
         ): AnkiProfile = AnkiProfile(
@@ -149,6 +153,7 @@ data class AnkiProfile(
             ankiDupScope = ankiDupScope,
             ankiDupAction = ankiDupAction,
             ankiCropMode = ankiCropMode,
+            ankiCropPreset = ankiCropPreset,
             ankiSyncOnCreate = ankiSyncOnCreate,
             dictionaryOrder = dictionaryOrder,
             enabledDictionaries = emptySet(),

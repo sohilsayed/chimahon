@@ -96,6 +96,8 @@ fun DictionaryEntryWebView(
     val showNavigationButtons by prefs.showNavigationButtons().collectAsState()
     val eInkMode by prefs.eInkMode().collectAsState()
     val paginatedScrolling by prefs.paginatedScrolling().collectAsState()
+    val paginatedScrollStepSize by prefs.paginatedScrollStepSize().collectAsState()
+    val scrollBehavior by prefs.scrollBehavior().collectAsState()
 
     val renderSignature = remember(
         results, styles, placeholder, isDark,
@@ -147,11 +149,11 @@ fun DictionaryEntryWebView(
         entryJsonsPair = builtEntryJsons to renderSignature
     }
 
-    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, paginatedScrolling, activeProfile.languageCode) {
+    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, paginatedScrolling, paginatedScrollStepSize, scrollBehavior, activeProfile.languageCode) {
         getDictionaryBootstrapHtml(
             context = context, colorScheme = colorScheme, isDark = isDark,
             isAmoled = isAmoled, seedColor = seedColor, fontFamily = fontFamily,
-            eInkMode = eInkMode, paginatedScrolling = paginatedScrolling, languageCode = activeProfile.languageCode,
+            eInkMode = eInkMode, paginatedScrolling = paginatedScrolling, paginatedScrollStepSize = paginatedScrollStepSize, scrollBehavior = scrollBehavior, languageCode = activeProfile.languageCode,
         )
     }
 
@@ -187,8 +189,9 @@ fun DictionaryEntryWebView(
                     webView.requestFocus()
                 }
                 webView.setOnLongClickListener { false }
+                val dictPrefs = Injekt.get<DictionaryPreferences>()
                 webView.setOnKeyListener { v, keyCode, event ->
-                    if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    if (event.action == android.view.KeyEvent.ACTION_DOWN && dictPrefs.volumeKeyNavigation().get()) {
                         when (keyCode) {
                             android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
                                 (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(-1);", null)

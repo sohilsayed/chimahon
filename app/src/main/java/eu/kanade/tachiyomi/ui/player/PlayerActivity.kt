@@ -86,6 +86,7 @@ import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils
 import eu.kanade.tachiyomi.ui.player.utils.ChapterUtils.Companion.getStringRes
 import eu.kanade.tachiyomi.ui.player.utils.safeResumePositionMillis
+import eu.kanade.tachiyomi.util.system.powerManager
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import `is`.xyz.mpv.MPVLib
@@ -522,7 +523,9 @@ class PlayerActivity : BaseActivity() {
         }
 
         if (isInPictureInPictureMode) {
-            finishAndRemoveTask()
+            if (powerManager?.isInteractive == true) {
+                viewModel.deletePendingEpisodes()
+            }
         }
 
         super.onStop()
@@ -599,11 +602,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun loadPlayableUrl(url: String) {
-        if (player.surfaceReady) {
-            MPVLib.command(arrayOf("loadfile", url))
-        } else {
-            player.playFile(url)
-        }
+        MPVLib.command(arrayOf("loadfile", url, "replace"))
     }
 
     private fun setupPlayerMPV() {

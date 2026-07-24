@@ -1438,6 +1438,15 @@ class MangaScreenModel(
         }
     }
 
+    fun runOcrForLocalManga() {
+        val state = successState ?: return
+        val chaptersToProcess = (state.processedChapters)
+            .filter { !it.chapter.isOcrReady }
+            .map { it.chapter }
+        if (chaptersToProcess.isEmpty()) return
+        ocrManager.queueChapters(state.manga, chaptersToProcess, waitForDownload = false)
+    }
+
     fun runDownloadAction(action: DownloadAction) {
         val chaptersToDownload = when (action) {
             DownloadAction.NEXT_1_CHAPTER -> getUnreadChaptersSorted().take(1)

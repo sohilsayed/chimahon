@@ -116,6 +116,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.cropAroundAnchor
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.AddToLibraryFirst
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Error
@@ -125,6 +126,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import chimahon.ocr.CropPresets
 import chimahon.ocr.OcrBitmapDecoder
 import chimahon.util.ImageEncoder
 import uy.kohesive.injekt.Injekt
@@ -755,7 +757,26 @@ class ReaderActivity : BaseActivity() {
                 isVertical = popupState?.isVertical ?: false,
                 mediaInfo = popupState?.mediaInfo,
                 onRequestScreenshot = {
-                    captureCurrentVisibleBitmap()
+                    val bitmap = captureCurrentVisibleBitmap()
+                    val profile = popupState?.activeProfile ?: defaultProfile
+                    if (bitmap != null && profile.ankiCropMode == "full") {
+                        val preset = CropPresets.aspectByKey(profile.ankiCropPreset)
+                        if (preset != null) {
+                            cropAroundAnchor(
+                                bitmap = bitmap,
+                                anchorX = popupState?.anchorX ?: 0f,
+                                anchorY = popupState?.anchorY ?: 0f,
+                                anchorWidth = popupState?.anchorWidth ?: 0f,
+                                anchorHeight = popupState?.anchorHeight ?: 0f,
+                                aspectX = preset.x,
+                                aspectY = preset.y,
+                            )
+                        } else {
+                            bitmap
+                        }
+                    } else {
+                        bitmap
+                    }
                 },
                 onCropTriggered = { noteId, glossaryIndex ->
                     pendingNoteId = noteId
@@ -1115,7 +1136,9 @@ class ReaderActivity : BaseActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        observeTwoFingerOcrTap(ev)
+        if (readerPreferences.ocrTwoFingerGestureEnabled().get()) {
+            observeTwoFingerOcrTap(ev)
+        }
         return super.dispatchTouchEvent(ev)
     }
 
@@ -1250,7 +1273,9 @@ class ReaderActivity : BaseActivity() {
         // Chimahon: Redirect volume keys to the OCR popup if it's active
         if (ocrPopupVisible) {
             ocrPopupState?.let { popup ->
-                if (event.action == KeyEvent.ACTION_DOWN) {
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    Injekt.get<DictionaryPreferences>().volumeKeyNavigation().get()
+                ) {
                     when (event.keyCode) {
                         KeyEvent.KEYCODE_VOLUME_UP -> {
                             popup.webView.evaluateJavascript("window.DictionaryRenderer?.navigate(-1);", null)
