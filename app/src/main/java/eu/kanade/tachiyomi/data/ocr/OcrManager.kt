@@ -715,7 +715,7 @@ interface ChapterImageProvider : AutoCloseable {
 class DirectoryImageProvider(private val chapterDir: UniFile) : ChapterImageProvider {
     private val imageFiles: List<UniFile> = chapterDir.listFiles()
         ?.filter { it.isFile && ImageUtil.isImage(it.name) { it.openInputStream() } }
-        ?.sortedBy { it.name }
+        ?.sortedWith { f1, f2 -> f1.name.orEmpty().compareToCaseInsensitiveNaturalOrder(f2.name.orEmpty()) }
         ?: emptyList()
 
     override val pageCount: Int = imageFiles.size
