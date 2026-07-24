@@ -28,9 +28,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import eu.kanade.presentation.components.SearchHistoryRow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -62,6 +64,10 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.domain.history.interactor.DeleteSearchHistory
+import tachiyomi.domain.history.interactor.GetSearchHistory
+import tachiyomi.domain.history.interactor.UpsertSearchHistory
+import tachiyomi.domain.history.model.SearchHistory
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -197,6 +203,13 @@ data object DictionaryTab : Tab {
         val focusManager = LocalFocusManager.current
         val focusRequester = remember { FocusRequester() }
 
+        val getSearchHistory: GetSearchHistory = remember { Injekt.get() }
+        val upsertSearchHistory: UpsertSearchHistory = remember { Injekt.get() }
+        val deleteSearchHistory: DeleteSearchHistory = remember { Injekt.get() }
+        val searchHistoryList by produceState<List<SearchHistory>>(initialValue = emptyList()) {
+            getSearchHistory.subscribe(SearchHistory.SCOPE_DICTIONARY).collect { value = it }
+        }
+
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
         val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
@@ -305,6 +318,15 @@ data object DictionaryTab : Tab {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        fun saveDictionaryHistory(targetQuery: String) {
+            val trimmed = targetQuery.trim()
+            if (trimmed.isNotBlank()) {
+                scope.launch(Dispatchers.IO) {
+                    upsertSearchHistory.await(SearchHistory.SCOPE_DICTIONARY, trimmed)
                 }
             }
         }
@@ -485,6 +507,7 @@ data object DictionaryTab : Tab {
                         onSearch = {
                             val trimmed = query.trim()
                             if (trimmed.isNotEmpty()) {
+                                saveDictionaryHistory(trimmed)
                                 lookupStack.clear()
                                 activeTabIndex = 0
                                 stackLookup(trimmed)
@@ -503,6 +526,7 @@ data object DictionaryTab : Tab {
                             errorMessage = null
                             hasSearched = true
                         } else {
+                            saveDictionaryHistory(trimmedQuery)
                             lookupStack.clear()
                             activeTabIndex = 0
                             stackLookup(trimmedQuery)
@@ -560,6 +584,34 @@ data object DictionaryTab : Tab {
                         }
                     }
                 }
+            }
+
+            // Search history chips
+            if (searchHistoryList.isNotEmpty()) {
+                SearchHistoryRow(
+                    historyList = searchHistoryList,
+                    onSelectQuery = { selectedQuery ->
+                        saveDictionaryHistory(selectedQuery)
+                        textFieldValue = TextFieldValue(
+                            text = selectedQuery,
+                            selection = TextRange(selectedQuery.length),
+                        )
+                        lookupStack.clear()
+                        activeTabIndex = 0
+                        stackLookup(selectedQuery)
+                        focusManager.clearFocus()
+                    },
+                    onDeleteQuery = { queryToDelete ->
+                        scope.launch {
+                            deleteSearchHistory.await(SearchHistory.SCOPE_DICTIONARY, queryToDelete)
+                        }
+                    },
+                    onClearAll = {
+                        scope.launch {
+                            deleteSearchHistory.clearScope(SearchHistory.SCOPE_DICTIONARY)
+                        }
+                    },
+                )
             }
 
             // Status / body

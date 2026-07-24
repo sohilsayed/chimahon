@@ -32,6 +32,7 @@ import eu.kanade.tachiyomi.ui.history.HistoryScreenModel
 import eu.kanade.tachiyomi.ui.history.HistoryScreenModel.HistorySelectionOptions
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.domain.history.model.SearchHistory
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.ListGroupHeader
@@ -81,6 +82,7 @@ fun HistoryScreen(
                     titleContent = { AppBarTitle(stringResource(MR.strings.history)) },
                     searchQuery = state.searchQuery,
                     onChangeSearchQuery = onSearchQueryChange,
+                    searchHistoryScope = SearchHistory.SCOPE_ANIME_MANGA,
                     actions = {
                         AppBarActions(
                             persistentListOf(

@@ -125,6 +125,7 @@
     <string name="action_stop">Stop</string>
     <string name="action_open_settings">Open settings</string>
     <string name="action_delete">Delete</string>
+    <string name="action_clear_all">Clear all</string>
     <string name="action_update_library">Update library</string>
     <string name="action_enable_all">Enable all</string>
     <string name="action_disable_all">Disable all</string>

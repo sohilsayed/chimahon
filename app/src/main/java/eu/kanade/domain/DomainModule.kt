@@ -59,6 +59,7 @@ import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.AnimeHistoryRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
+import tachiyomi.data.history.SearchHistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.release.ReleaseServiceImpl
 import tachiyomi.data.source.SourceRepositoryImpl
@@ -88,17 +89,22 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.history.interactor.ClearSearchHistory
+import tachiyomi.domain.history.interactor.DeleteSearchHistory
 import tachiyomi.domain.history.interactor.GetAnimeHistory
 import tachiyomi.domain.history.interactor.GetAllHistory
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
+import tachiyomi.domain.history.interactor.GetSearchHistory
 import tachiyomi.domain.history.interactor.GetTotalReadDuration
 import tachiyomi.domain.history.interactor.RemoveAnimeHistory
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertAnimeHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
+import tachiyomi.domain.history.interactor.UpsertSearchHistory
 import tachiyomi.domain.history.repository.AnimeHistoryRepository
 import tachiyomi.domain.history.repository.HistoryRepository
+import tachiyomi.domain.history.repository.SearchHistoryRepository
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFavorites
@@ -218,6 +224,12 @@ class DomainModule : InjektModule {
         addFactory { GetAnimeHistory(get()) }
         addFactory { UpsertAnimeHistory(get()) }
         addFactory { RemoveAnimeHistory(get()) }
+
+        addSingletonFactory<SearchHistoryRepository> { SearchHistoryRepositoryImpl(get()) }
+        addFactory { GetSearchHistory(get()) }
+        addFactory { UpsertSearchHistory(get()) }
+        addFactory { DeleteSearchHistory(get()) }
+        addFactory { ClearSearchHistory(get()) }
 
         addFactory { DeleteDownload(get(), get()) }
         addFactory { DeleteAnimeDownload(get(), get()) }
