@@ -96,6 +96,7 @@ fun DictionaryEntryWebView(
     val showNavigationButtons by prefs.showNavigationButtons().collectAsState()
     val eInkMode by prefs.eInkMode().collectAsState()
     val paginatedScrolling by prefs.paginatedScrolling().collectAsState()
+    val paginatedScrollStepSize by prefs.paginatedScrollStepSize().collectAsState()
 
     val renderSignature = remember(
         results, styles, placeholder, isDark,
@@ -147,11 +148,11 @@ fun DictionaryEntryWebView(
         entryJsonsPair = builtEntryJsons to renderSignature
     }
 
-    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, paginatedScrolling, activeProfile.languageCode) {
+    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, paginatedScrolling, paginatedScrollStepSize, activeProfile.languageCode) {
         getDictionaryBootstrapHtml(
             context = context, colorScheme = colorScheme, isDark = isDark,
             isAmoled = isAmoled, seedColor = seedColor, fontFamily = fontFamily,
-            eInkMode = eInkMode, paginatedScrolling = paginatedScrolling, languageCode = activeProfile.languageCode,
+            eInkMode = eInkMode, paginatedScrolling = paginatedScrolling, paginatedScrollStepSize = paginatedScrollStepSize, languageCode = activeProfile.languageCode,
         )
     }
 

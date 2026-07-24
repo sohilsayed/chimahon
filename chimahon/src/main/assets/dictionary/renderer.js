@@ -3118,10 +3118,17 @@
   // ── Reduced motion scrolling (paginated scrolling) ──────────────────────
   const _isPaginatedScrolling = () => document.documentElement.dataset.chimaPaginatedScrolling === 'true';
 
+  const _getPaginatedStep = () => {
+    const raw = document.documentElement.dataset.chimaPaginatedStep;
+    const val = parseInt(raw, 10);
+    return isNaN(val) ? 90 : Math.max(50, Math.min(100, val));
+  };
+
   const _scrollByPopupHeight = (direction) => {
     const popupHeight = window.innerHeight;
     const maxScroll = Math.max(0, document.documentElement.scrollHeight - popupHeight);
-    const overlap = Math.round(popupHeight * 0.1);
+    const pct = _getPaginatedStep() / 100;
+    const overlap = Math.round(popupHeight * (1 - pct));
     const step = popupHeight - overlap;
     const target = Math.min(Math.max(0, window.scrollY + step * direction), maxScroll);
 

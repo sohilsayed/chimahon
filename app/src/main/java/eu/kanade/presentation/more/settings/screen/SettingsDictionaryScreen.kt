@@ -547,6 +547,10 @@ object SettingsDictionaryScreen : SearchableSettings {
         val popupSwipeThreshold by popupSwipeThresholdPref.collectAsState()
         val popupSwipeToDismiss by dictionaryPreferences.popupSwipeToDismiss().collectAsState()
 
+        val paginatedScrolling by dictionaryPreferences.paginatedScrolling().collectAsState()
+        val paginatedScrollStepSizePref = dictionaryPreferences.paginatedScrollStepSize()
+        val paginatedScrollStepSize by paginatedScrollStepSizePref.collectAsState()
+
         val fontSizePref = dictionaryPreferences.fontSize()
         val fontSize by fontSizePref.collectAsState()
 
@@ -647,6 +651,18 @@ object SettingsDictionaryScreen : SearchableSettings {
                         valueRange = 20..100,
                         steps = 79,
                         onValueChanged = { popupSwipeThresholdPref.set(it) },
+                    ),
+                )
+            }
+            if (paginatedScrolling) {
+                add(
+                    Preference.PreferenceItem.SliderPreference(
+                        value = paginatedScrollStepSize,
+                        title = "Paginated scroll step",
+                        subtitle = "${paginatedScrollStepSize}% of viewport height",
+                        valueRange = 50..100,
+                        steps = 50,
+                        onValueChanged = { paginatedScrollStepSizePref.set(it) },
                     ),
                 )
             }

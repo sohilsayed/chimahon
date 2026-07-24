@@ -90,6 +90,9 @@ class DictionaryPreferences(
 
     fun paginatedScrolling() = preferenceStore.getBoolean("pref_dictionary_paginated_scrolling", false)
 
+    /** Paginated scroll step size as percentage of viewport height (50-100, default 90). */
+    fun paginatedScrollStepSize() = preferenceStore.getInt("pref_dictionary_paginated_scroll_step_size", 90)
+
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
     // -------------------------------------------------------------------------

@@ -108,6 +108,7 @@ internal object DictionaryPopupWebViewWarmup {
             fontFamily = dictionaryPreferences.fontFamily().get(),
             eInkMode = dictionaryPreferences.eInkMode().get(),
             paginatedScrolling = dictionaryPreferences.paginatedScrolling().get(),
+            paginatedScrollStepSize = dictionaryPreferences.paginatedScrollStepSize().get(),
             languageCode = languageCode,
         )
 
