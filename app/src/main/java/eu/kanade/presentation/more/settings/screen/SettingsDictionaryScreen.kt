@@ -83,6 +83,7 @@ import chimahon.anki.AnkiProfile
 import chimahon.anki.LapisPreset
 import chimahon.anki.Marker
 import chimahon.dictionary.readDictionaryIndex
+import chimahon.ocr.CropPresets
 import com.canopus.chimareader.data.FontManager
 import com.hippo.unifile.UniFile
 import eu.kanade.presentation.more.settings.Preference
@@ -1850,6 +1851,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         val dupAction = activeProfile.ankiDupAction
         val tags = activeProfile.ankiTags
         val cropMode = activeProfile.ankiCropMode
+        val cropPreset = activeProfile.ankiCropPreset
         val enabled = activeProfile.ankiEnabled
 
         var decks by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -2004,9 +2006,14 @@ object SettingsDictionaryScreen : SearchableSettings {
             "overwrite" to stringResource(MR.strings.pref_anki_duplicate_overwrite),
         ).associate { it.first to it.second }.toPersistentMap()
         val cropModeEntries = persistentListOf(
-            "full" to "Full Image",
-            "crop" to "Crop Selection",
+            "full" to "Screenshot",
+            "crop" to "Crop Overlay",
+            "no_screenshot" to "No Screenshot",
         ).associate { it.first to it.second }.toPersistentMap()
+        val cropPresetEntries = persistentListOf(
+            "full" to "Full",
+        ) + CropPresets.ASPECT_RATIO_PRESETS.map { it.key to it.label }
+        val cropPresetMap = cropPresetEntries.associate { it.first to it.second }.toPersistentMap()
 
         val preferenceItems = buildList<Preference.PreferenceItem<*, *>> {
             add(
@@ -2278,12 +2285,23 @@ object SettingsDictionaryScreen : SearchableSettings {
 
                 add(
                     Preference.PreferenceItem.BasicListPreference(
-                        value = if (cropMode == "crop") "crop" else "full",
+                        value = cropMode.takeIf { it in cropModeEntries } ?: "full",
                         entries = cropModeEntries,
                         title = "Screenshot mode",
                         onValueChanged = { updateProfile { copy(ankiCropMode = it) } },
                     ),
                 )
+
+                if (cropMode != "no_screenshot") {
+                    add(
+                        Preference.PreferenceItem.BasicListPreference(
+                            value = cropPreset.takeIf { it in cropPresetMap } ?: "full",
+                            entries = cropPresetMap,
+                            title = "Crop preset",
+                            onValueChanged = { updateProfile { copy(ankiCropPreset = it) } },
+                        ),
+                    )
+                }
 
                 add(
                     Preference.PreferenceItem.CustomPreference(
