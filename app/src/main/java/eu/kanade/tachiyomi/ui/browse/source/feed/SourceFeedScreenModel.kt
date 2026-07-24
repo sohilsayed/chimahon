@@ -250,6 +250,8 @@ open class SourceFeedScreenModel(
                         }.mangas
                     } catch (e: Exception) {
                         emptyList()
+                    } catch (e: LinkageError) {
+                        emptyList()
                     }
 
                     val titles = withIOContext {
