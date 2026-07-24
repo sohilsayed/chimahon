@@ -54,6 +54,7 @@ import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeSourcePreferencesScreen
+import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourceScreenProvider
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.entries.anime.AnimeScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
@@ -124,13 +125,26 @@ data class BrowseAnimeSourceScreen(
 
         val onHelpClick = { uriHandler.openUri(LocalAnimeSource.HELP_URL) }
         val onWebViewClick = f@{
-            val source = screenModel.source as? AnimeHttpSource ?: return@f
+            val source = screenModel.source ?: return@f
+
+            val animeHttpSource = source as? AnimeHttpSource
+            val animeSourceScreenProvider = source as? AnimeSourceScreenProvider
+            if (animeHttpSource == null && animeSourceScreenProvider == null)
+                return@f
+
             navigator.push(
-                WebViewScreen(
-                    url = source.baseUrl,
-                    initialTitle = source.name,
-                    sourceId = source.id,
-                ),
+                if (animeSourceScreenProvider != null)
+                {
+                    animeSourceScreenProvider.createBrowseScreen(null, null)
+                }
+                else
+                {
+                    WebViewScreen(
+                        url = animeHttpSource!!.baseUrl,
+                        initialTitle = animeHttpSource!!.name,
+                        sourceId = animeHttpSource!!.id,
+                    )
+                }
             )
         }
 

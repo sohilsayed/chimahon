@@ -53,6 +53,7 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.ui.browse.animesource.AnimeSourceScreenProvider
 import eu.kanade.tachiyomi.ui.browse.animesource.browse.BrowseAnimeSourceScreen
 import eu.kanade.tachiyomi.ui.browse.animesource.globalsearch.GlobalAnimeSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -112,6 +113,7 @@ class AnimeScreen(
 
         val successState = state as AnimeScreenModel.State.Success
         val isAnimeHttpSource = remember { successState.source is AnimeHttpSource }
+        val isAnimeSourceScreenProvider = remember { successState.source is AnimeSourceScreenProvider }
         var showScanlatorFilterDialog by rememberSaveable { mutableStateOf(false) }
 
         LaunchedEffect(successState.anime, screenModel.source) {
@@ -158,7 +160,7 @@ class AnimeScreen(
                         screenModel.anime,
                         screenModel.source,
                     )
-                }.takeIf { isAnimeHttpSource },
+                }.takeIf { isAnimeHttpSource || isAnimeSourceScreenProvider },
                 onWebViewLongClicked = {
                     copyAnimeUrl(
                         context,
@@ -467,12 +469,20 @@ class AnimeScreen(
 
     private fun openAnimeInWebView(navigator: Navigator, anime_: Anime?, source_: AnimeSource?) {
         getAnimeUrl(anime_, source_)?.let { url ->
+            val animeSourceScreenProvider = source_ as? AnimeSourceScreenProvider
             navigator.push(
-                WebViewScreen(
-                    url = url,
-                    initialTitle = anime_?.title,
-                    sourceId = source_?.id,
-                ),
+                if (animeSourceScreenProvider != null)
+                {
+                    animeSourceScreenProvider.createBrowseScreen(null, anime_?.url)
+                }
+                else
+                {
+                    WebViewScreen(
+                        url = url,
+                        initialTitle = anime_?.title,
+                        sourceId = source_?.id,
+                    )
+                }
             )
         }
     }

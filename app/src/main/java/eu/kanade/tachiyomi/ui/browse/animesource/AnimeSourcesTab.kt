@@ -79,5 +79,5 @@ fun Screen.animeSourcesTab(): TabContent {
 }
 
 private fun AnimeCatalogueSource.createBrowseScreen(listingQuery: String?) =
-    (this as? AnimeSourceScreenProvider)?.createBrowseScreen(listingQuery)
+    (this as? AnimeSourceScreenProvider)?.createBrowseScreen(listingQuery, null)
         ?: BrowseAnimeSourceScreen(id, listingQuery)
