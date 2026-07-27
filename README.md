@@ -19,6 +19,7 @@ Chimahon is a specialized Android reader designed for language learners and imme
   <img src="./.github/readme-images/novel.png" width="32%" />
   <img src="./.github/readme-images/popup-manga.png" width="32%" />
   <img src="./.github/readme-images/dict-tab.png" width="32%" />
+  <img src="./.github/readme-images/anime.jpg" width="64%" />
 </p>
 
 ## 🚀 Key Immersion Features
@@ -48,6 +49,9 @@ Chimahon is a specialized Android reader designed for language learners and imme
 
 ### 🎬 Anime & Video Player
 - **Video Player**: Full MPV player with subtitle lookup and frame-accurate OCR for vocabulary mining.
+- **Jimaku Support**: Seamless integration for searching, fetching, and syncing Japanese subtitles.
+- **Video Frame OCR**: Look up any on-screen text, signs, or hardsubs directly from the video, even if it's not present in the subtitle file.
+- **Built-in YouTube Extension**: Stream and mine content directly from YouTube inside the app.
 - **Anime Library**: Browse, track, and organize your anime with source extensions and external tracker sync.
 
 ---
