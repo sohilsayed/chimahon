@@ -647,11 +647,12 @@ class PlayerActivity : BaseActivity() {
 
     private fun setupPlayerMPV() {
         val logLevel = if (networkPreferences.verboseLogging().get()) "info" else "warn"
+        val internalConfigDir = applicationContext.filesDir.path
 
         val configDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
             storageManager.getMPVConfigDirectory()!!.filePath!!
         } else {
-            applicationContext.filesDir.path
+            internalConfigDir
         }
 
         val mpvConfFile = File("$configDir/mpv.conf")
@@ -660,7 +661,11 @@ class PlayerActivity : BaseActivity() {
         advancedPlayerPreferences.mpvInput().get().let { mpvInputFile.writeText(it) }
 
         copyScripts()
-        copyAssets(configDir)
+        copyAssets(configDir, "subfont.ttf")
+        copyAssets(internalConfigDir, "cacert.pem")
+        if (configDir != internalConfigDir) {
+            removeUnmodifiedAssetCopy(configDir, "cacert.pem")
+        }
         setupFontsDirectory()
 
         MPVLib.setOptionString("sub-ass-force-margins", "yes")
@@ -716,9 +721,8 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
-    private fun copyAssets(configDir: String) {
+    private fun copyAssets(configDir: String, vararg files: String) {
         val assetManager = this.assets
-        val files = arrayOf("subfont.ttf", "cacert.pem")
         for (filename in files) {
             var ins: InputStream? = null
             var out: OutputStream? = null
@@ -740,6 +744,24 @@ class PlayerActivity : BaseActivity() {
                 ins?.close()
                 out?.close()
             }
+        }
+    }
+
+    private fun removeUnmodifiedAssetCopy(configDir: String, filename: String) {
+        val file = File(configDir, filename)
+        if (!file.isFile) return
+
+        try {
+            val isBundledAsset = assets.open(filename).use { asset ->
+                file.inputStream().use { copiedAsset ->
+                    copiedAsset.readBytes().contentEquals(asset.readBytes())
+                }
+            }
+            if (isBundledAsset && !file.delete()) {
+                logcat(LogPriority.WARN) { "Failed to remove unused asset file: $filename" }
+            }
+        } catch (e: IOException) {
+            logcat(LogPriority.ERROR, e) { "Failed to remove unused asset file: $filename" }
         }
     }
 
