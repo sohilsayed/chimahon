@@ -28,17 +28,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -52,9 +56,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.player.PlayerViewModel.JimakuState
 import eu.kanade.tachiyomi.ui.player.PlayerViewModel.VideoTrack
@@ -64,6 +72,8 @@ import kotlinx.collections.immutable.ImmutableList
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+
+private const val JIMAKU_ACCOUNT_URL = "https://jimaku.cc/account"
 
 @Composable
 fun SubtitlesSheet(
@@ -75,6 +85,7 @@ fun SubtitlesSheet(
     onSelect: (Int) -> Unit,
     onAddSubtitle: () -> Unit,
     onSearchJimaku: () -> Unit,
+    onSaveJimakuApiKeyAndSearch: (String) -> Unit,
     onSelectJimakuEntry: (JimakuEntry) -> Unit,
     onSelectJimakuFile: (JimakuFile) -> Unit,
     onDismissJimaku: () -> Unit,
@@ -176,6 +187,7 @@ fun SubtitlesSheet(
     JimakuDialog(
         state = jimakuState,
         onDismissRequest = onDismissJimaku,
+        onSaveJimakuApiKeyAndSearch = onSaveJimakuApiKeyAndSearch,
         onSelectEntry = onSelectJimakuEntry,
         onSelectFile = onSelectJimakuFile,
     )
@@ -290,14 +302,86 @@ private fun JimakuTitleDialog(
 }
 
 @Composable
+private fun JimakuApiKeyDialog(
+    onDismissRequest: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val uriHandler = LocalUriHandler.current
+    var apiKey by remember { mutableStateOf(TextFieldValue()) }
+    var hideApiKey by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("Add Jimaku API key") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small)) {
+                Text(
+                    text = "Paste your API key to continue searching. It will also be saved in player subtitle settings.",
+                )
+                TextButton(onClick = { uriHandler.openUri(JIMAKU_ACCOUNT_URL) }) {
+                    Text("Get an API key at jimaku.cc/account")
+                }
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    label = { Text("Jimaku API key") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(onClick = { hideApiKey = !hideApiKey }) {
+                            Icon(
+                                imageVector = if (hideApiKey) {
+                                    Icons.Filled.Visibility
+                                } else {
+                                    Icons.Filled.VisibilityOff
+                                },
+                                contentDescription = if (hideApiKey) {
+                                    "Show API key"
+                                } else {
+                                    "Hide API key"
+                                },
+                            )
+                        }
+                    },
+                    visualTransformation = if (hideApiKey) {
+                        PasswordVisualTransformation()
+                    } else {
+                        VisualTransformation.None
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = apiKey.text.isNotBlank(),
+                onClick = { onConfirm(apiKey.text) },
+            ) {
+                Text("Save and search")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(stringResource(MR.strings.action_cancel))
+            }
+        },
+    )
+}
+
+@Composable
 private fun JimakuDialog(
     state: JimakuState,
     onDismissRequest: () -> Unit,
+    onSaveJimakuApiKeyAndSearch: (String) -> Unit,
     onSelectEntry: (JimakuEntry) -> Unit,
     onSelectFile: (JimakuFile) -> Unit,
 ) {
     when (state) {
         JimakuState.Idle -> Unit
+        JimakuState.ApiKeyRequired -> JimakuApiKeyDialog(
+            onDismissRequest = onDismissRequest,
+            onConfirm = onSaveJimakuApiKeyAndSearch,
+        )
         is JimakuState.Searching -> JimakuProgressDialog(
             title = "Jimaku",
             message = "Searching for ${state.title}",
