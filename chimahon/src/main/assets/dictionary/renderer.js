@@ -904,6 +904,9 @@
       container.insertBefore(el, container.firstChild);
     }
     const tabsHeight = el.offsetHeight || 40;
+    // The tab bar is fixed and therefore removed from normal layout flow.
+    // Reserve its measured height so the first result is never rendered beneath it.
+    container.style.paddingTop = tabsHeight + 'px';
     document.documentElement.style.setProperty('--lookup-tabs-height', tabsHeight + 'px');
 
     if (activeIndex >= 0) {
@@ -2787,6 +2790,9 @@
       _tabsEl.remove();
     }
     _tabsEl = null;
+    if (container) {
+      container.style.paddingTop = '';
+    }
     document.documentElement.style.setProperty('--lookup-tabs-height', '0px');
   }
 
