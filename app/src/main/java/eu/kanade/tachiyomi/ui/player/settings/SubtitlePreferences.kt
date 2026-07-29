@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitlesBorderStyle
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 
@@ -18,7 +19,7 @@ class SubtitlePreferences(
     fun preferredSubLanguages() = preferenceStore.getString("pref_subtitle_lang", "")
     fun subtitleWhitelist() = preferenceStore.getString("pref_subtitle_whitelist", "")
     fun subtitleBlacklist() = preferenceStore.getString("pref_subtitle_blacklist", "")
-    fun jimakuApiKey() = preferenceStore.getString("pref_jimaku_api_key", "")
+    fun jimakuApiKey() = preferenceStore.getString(Preference.privateKey(JIMAKU_API_KEY), "")
     fun jimakuTitle() = preferenceStore.getString("pref_jimaku_title", "")
     fun subtitleRegexRemoveSpeakerNames() = preferenceStore.getBoolean(
         "pref_subtitle_regex_remove_speaker_names",
@@ -94,6 +95,10 @@ class SubtitlePreferences(
             )
         }
         ?: subtitlesSecondaryDelay()
+
+    private companion object {
+        const val JIMAKU_API_KEY = "pref_jimaku_api_key"
+    }
 }
 
 enum class SubtitleJustification(

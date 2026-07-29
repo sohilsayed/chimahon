@@ -19,6 +19,7 @@ import eu.kanade.tachiyomi.source.sourcePreferences
 import exh.EXHMigrations
 import exh.log.xLogE
 import tachiyomi.core.common.preference.AndroidPreferenceStore
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.plusAssign
 import tachiyomi.domain.category.interactor.GetCategories
@@ -93,7 +94,10 @@ class PreferenceRestorer(
                         }
                     }
                     is StringPreferenceValue -> {
-                        if (prefs[key] is String?) {
+                        // Older backups stored this key publicly; restore either form into the private key.
+                        if (key == JIMAKU_API_KEY || key == privateJimakuApiKey) {
+                            preferenceStore.getString(privateJimakuApiKey).set(value.value)
+                        } else if (prefs[key] is String?) {
                             preferenceStore.getString(key).set(value.value)
                         }
                     }
@@ -167,5 +171,10 @@ class PreferenceRestorer(
 
         val valueToSet = EXHMigrations.migrateSourceIds(value)
         preferenceStore.getStringSet(key).set(valueToSet)
+    }
+
+    private companion object {
+        const val JIMAKU_API_KEY = "pref_jimaku_api_key"
+        val privateJimakuApiKey = Preference.privateKey(JIMAKU_API_KEY)
     }
 }
