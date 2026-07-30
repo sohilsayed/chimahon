@@ -37,8 +37,8 @@ class ReaderOcrSourceTest {
 
     @Test
     fun `local source is only offered when available`() {
-        assertEquals(ReaderOcrSource.entries, ReaderOcrSource.availableSources(localOcrAvailable = true))
-        assertFalse(ReaderOcrSource.LOCAL in ReaderOcrSource.availableSources(localOcrAvailable = false))
+        assertEquals(ReaderOcrSource.entries, ReaderOcrSource.availableSources(localOcrAvailable = true, mokuroAvailable = true))
+        assertFalse(ReaderOcrSource.LOCAL in ReaderOcrSource.availableSources(localOcrAvailable = false, mokuroAvailable = true))
     }
 
     @Test

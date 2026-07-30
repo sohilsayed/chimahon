@@ -384,16 +384,23 @@ object AnkiCardCreator {
                     ownedPreparedFiles += screenshotPreparation.animation
                 }
 
+                var sentenceAudioGenerationFailed = false
+                var sentenceAudioStorageFailed = false
                 val sentenceAudioSource = if (hasSentenceAudioMarker) {
-                    val lazySource = try {
-                        mediaRequest?.sentenceAudioProvider?.prepare()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        android.util.Log.w(TAG, "addToAnki: failed to prepare sentence audio", e)
+                    val provider = mediaRequest?.sentenceAudioProvider
+                    val lazySource = if (provider != null) {
+                        try {
+                            provider.prepare()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            android.util.Log.w(TAG, "addToAnki: failed to prepare sentence audio", e)
+                            null
+                        }
+                    } else {
                         null
                     }
-                    lazySource ?: sentenceAudioBytes?.let { bytes ->
+                    val eagerSource = sentenceAudioBytes?.let { bytes ->
                         val filename = generateSentenceAudioFilename(bytes, sentenceAudioExtension)
                         AnkiMediaSource.Bytes(
                             data = bytes,
@@ -401,6 +408,10 @@ object AnkiCardCreator {
                             extension = AnkiMediaNaming.safeExtension(filename, "m4a"),
                         )
                     }
+                    if (provider != null && lazySource == null && eagerSource == null) {
+                        sentenceAudioGenerationFailed = true
+                    }
+                    lazySource ?: eagerSource
                 } else {
                     null
                 }
@@ -472,6 +483,9 @@ object AnkiCardCreator {
                         sentenceAudioSource,
                         "sentence audio",
                     )
+                    if (sentenceAudioSource != null && sentenceAudioFilename == null) {
+                        sentenceAudioStorageFailed = true
+                    }
                     val fieldsWithDictionaryMedia = resolveDictionaryMediaPlaceholders(
                         fieldsWithPlaceholders,
                         exportMedia,
@@ -515,7 +529,15 @@ object AnkiCardCreator {
                         titleId = titleId,
                     )
                     if (syncOnCreate) bridge.triggerSync()
-                    AnkiResult.Success(noteId, screenshotResult.warnings)
+                    AnkiResult.Success(
+                        noteId,
+                        screenshotResult.warnings + listOfNotNull(
+                            AnkiMediaWarning.SentenceAudioGenerationFailed
+                                .takeIf { sentenceAudioGenerationFailed },
+                            AnkiMediaWarning.SentenceAudioStorageFailed
+                                .takeIf { sentenceAudioStorageFailed },
+                        ),
+                    )
                 }
             }
         } catch (e: CancellationException) {

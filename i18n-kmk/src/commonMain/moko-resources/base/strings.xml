@@ -259,6 +259,8 @@
     <string name="anki_scene_fallback_generation">The animated scene could not be created. Chimahon used the captured still screenshot when available.</string>
     <string name="anki_scene_fallback_storage">AnkiDroid could not store the animated scene. Chimahon used the captured still screenshot when available.</string>
     <string name="anki_scene_still_storage_failed">The screenshot could not be stored. The card was created without it.</string>
+    <string name="anki_sentence_audio_generation_failed">Sentence audio could not be exported from this video source. The card was created without it.</string>
+    <string name="anki_sentence_audio_storage_failed">AnkiDroid could not store the sentence audio. The card was created without it.</string>
     <string name="pref_settings_section_media">Media</string>
     <string name="pref_settings_section_learning">Learning</string>
     <string name="pref_settings_section_sync">Sync</string>

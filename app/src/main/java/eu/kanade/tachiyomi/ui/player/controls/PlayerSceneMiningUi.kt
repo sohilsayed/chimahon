@@ -47,6 +47,8 @@ internal fun Context.showPlayerAnkiMediaWarnings(warnings: List<AnkiMediaWarning
                 AnkiMediaWarning.SceneGenerationFailed -> KMR.strings.anki_scene_fallback_generation
                 AnkiMediaWarning.AnimatedStorageFailed -> KMR.strings.anki_scene_fallback_storage
                 AnkiMediaWarning.StillStorageFailed -> KMR.strings.anki_scene_still_storage_failed
+                AnkiMediaWarning.SentenceAudioGenerationFailed -> KMR.strings.anki_sentence_audio_generation_failed
+                AnkiMediaWarning.SentenceAudioStorageFailed -> KMR.strings.anki_sentence_audio_storage_failed
             },
         )
     }

@@ -99,6 +99,31 @@ class SceneCaptureRequestTest {
         request.close()
     }
 
+    @Test
+    fun `single selected audio without a frozen ffmpeg index uses the only audio stream`() = runTest {
+        val bitmap = mockBitmap()
+        val factory = SceneCaptureRequestFactory(
+            SceneMpvSnapshotReader(
+                SequencePropertyReader(
+                    listOf(
+                        snapshotWithSingleAudioWithoutFfmpegIndex(),
+                        snapshotWithSingleAudioWithoutFfmpegIndex(),
+                    ),
+                ),
+            ),
+        )
+
+        val request = factory.captureSubtitle(
+            videoSnapshot = { inputSnapshot() },
+            parsedSubtitleCandidates = emptyList(),
+            captureFallback = { bitmap },
+        )
+
+        assertNotNull(request)
+        assertNotNull(request!!.sentenceAudioInput)
+        request.close()
+    }
+
     private fun mockBitmap(): Bitmap {
         return mockk<Bitmap>(relaxed = true).also {
             every { it.isRecycled } returns false
@@ -146,6 +171,37 @@ class SceneCaptureRequestTest {
                 "track-list/count" to 1,
                 "track-list/0/id" to 1,
                 "track-list/0/ff-index" to 0,
+            ),
+        )
+    }
+
+    private fun snapshotWithSingleAudioWithoutFfmpegIndex(): SnapshotValues {
+        return SnapshotValues(
+            doubles = mapOf(
+                "time-pos" to 5.0,
+                "duration" to 60.0,
+                "sub-start/full" to 4.0,
+                "sub-end/full" to 6.0,
+                "sub-speed" to 1.0,
+                "sub-delay" to 0.0,
+            ),
+            strings = mapOf(
+                "path" to "https://media.example/video.mp4",
+                "aid" to "2",
+                "track-list/0/type" to "video",
+                "track-list/1/type" to "audio",
+            ),
+            booleans = mapOf(
+                "track-list/0/selected" to true,
+                "track-list/0/external" to false,
+                "track-list/1/external" to false,
+                "seekable" to true,
+            ),
+            ints = mapOf(
+                "track-list/count" to 2,
+                "track-list/0/id" to 1,
+                "track-list/0/ff-index" to 0,
+                "track-list/1/id" to 2,
             ),
         )
     }

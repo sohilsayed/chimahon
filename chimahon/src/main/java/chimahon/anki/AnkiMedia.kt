@@ -48,6 +48,8 @@ sealed interface AnkiMediaWarning {
     data object SceneGenerationFailed : AnkiMediaWarning
     data object AnimatedStorageFailed : AnkiMediaWarning
     data object StillStorageFailed : AnkiMediaWarning
+    data object SentenceAudioGenerationFailed : AnkiMediaWarning
+    data object SentenceAudioStorageFailed : AnkiMediaWarning
 }
 
 sealed interface AnkiScreenshotPreparation {

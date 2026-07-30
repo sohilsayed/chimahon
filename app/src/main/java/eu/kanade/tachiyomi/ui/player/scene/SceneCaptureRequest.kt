@@ -143,6 +143,7 @@ internal data class SceneMpvSnapshot(
     val selectedAudioId: Int?,
     val selectedExternalAudioValue: String?,
     val selectedAudioIsExternal: Boolean,
+    val audioTrackCount: Int,
     val seekable: Boolean?,
     val selectedAudioFfmpegIndex: Int? = null,
 )
@@ -182,6 +183,7 @@ internal class SceneMpvSnapshotReader(
             selectedAudioId = selectedAudio.id,
             selectedExternalAudioValue = selectedAudio.externalValue,
             selectedAudioIsExternal = selectedAudio.isExternal,
+            audioTrackCount = selectedAudio.trackCount,
             seekable = properties.boolean("seekable"),
             selectedAudioFfmpegIndex = selectedAudio.ffmpegIndex,
         )
@@ -203,15 +205,18 @@ internal class SceneMpvSnapshotReader(
     }
 
     private fun selectedAudio(): SelectedAudioSnapshot {
+        val trackCount = properties.int("track-list/count")
+            ?: return SelectedAudioSnapshot()
+        val audioTrackCount = (0 until trackCount).count { index ->
+            properties.string("track-list/$index/type") == "audio"
+        }
         val selectedAudioId = properties.string("aid")?.toIntOrNull()
             ?: properties.int("aid")
-            ?: return SelectedAudioSnapshot()
-        val trackCount = properties.int("track-list/count")
-            ?: return SelectedAudioSnapshot(id = selectedAudioId)
+            ?: return SelectedAudioSnapshot(trackCount = audioTrackCount)
         val index = (0 until trackCount).firstOrNull { index ->
             properties.string("track-list/$index/type") == "audio" &&
                 properties.int("track-list/$index/id") == selectedAudioId
-        } ?: return SelectedAudioSnapshot(id = selectedAudioId)
+        } ?: return SelectedAudioSnapshot(id = selectedAudioId, trackCount = audioTrackCount)
         val externalValue = properties.string("track-list/$index/external-filename")
             ?.takeIf(String::isNotBlank)
         return SelectedAudioSnapshot(
@@ -219,6 +224,7 @@ internal class SceneMpvSnapshotReader(
             externalValue = externalValue,
             isExternal = properties.boolean("track-list/$index/external") == true ||
                 externalValue != null,
+            trackCount = audioTrackCount,
             ffmpegIndex = properties.int("track-list/$index/ff-index")
                 ?.takeIf { it >= 0 },
         )
@@ -228,6 +234,7 @@ internal class SceneMpvSnapshotReader(
         val id: Int? = null,
         val externalValue: String? = null,
         val isExternal: Boolean = false,
+        val trackCount: Int = 0,
         val ffmpegIndex: Int? = null,
     )
 
@@ -308,7 +315,8 @@ internal class SceneCaptureRequestFactory(
                     SceneVideoInputResolver.resolve(beforeVideo.sentenceAudio)
                 }
                 beforeMpv.selectedAudioId != null &&
-                    beforeMpv.selectedAudioFfmpegIndex == null -> null
+                    beforeMpv.selectedAudioFfmpegIndex == null &&
+                    beforeMpv.audioTrackCount != 1 -> null
                 else -> videoInput
             }
             val request = SceneCaptureRequest(
@@ -337,6 +345,7 @@ internal class SceneCaptureRequestFactory(
             before.selectedAudioId == after.selectedAudioId &&
             before.selectedExternalAudioValue == after.selectedExternalAudioValue &&
             before.selectedAudioIsExternal == after.selectedAudioIsExternal &&
+            before.audioTrackCount == after.audioTrackCount &&
             before.seekable == after.seekable &&
             before.selectedAudioFfmpegIndex == after.selectedAudioFfmpegIndex
     }

@@ -26,12 +26,11 @@ internal class FrozenSceneSentenceAudioService private constructor(
     )
 
     override suspend fun prepare(request: SceneCaptureRequest): AnkiMediaSource? {
-        val videoInput = request.videoInput ?: return null
         val input = request.sentenceAudioInput ?: return null
         val range = request.resolvedTiming?.audioRange ?: return null
         return withTimeoutOrNull(AUDIO_TIMEOUT_MILLIS) {
             withContext(Dispatchers.IO) {
-                if (!isVideoSafe(videoInput) || !isAudioSafe(input)) {
+                if (!isAudioSafe(input)) {
                     return@withContext null
                 }
                 val lease = inputAcquirer.acquire(input) ?: return@withContext null
@@ -70,20 +69,6 @@ internal class FrozenSceneSentenceAudioService private constructor(
                     outputCleanup.release()
                 }
             }
-        }
-    }
-
-    private suspend fun isVideoSafe(input: SceneVideoInputSpec): Boolean {
-        val lease = inputAcquirer.acquire(input) ?: return false
-        val cleanup = SceneNativeCleanup(lease::close)
-        return try {
-            val probe = commandExecutor.executeFfprobe(
-                SceneFfmpegArguments.videoProbe(input, lease.ffmpegValue, lease.tlsCaFile),
-                cleanup::nativeFinished,
-            )
-            probe is SceneCommandResult.Success && SceneMediaProbe.inspect(probe.output)
-        } finally {
-            cleanup.release()
         }
     }
 
