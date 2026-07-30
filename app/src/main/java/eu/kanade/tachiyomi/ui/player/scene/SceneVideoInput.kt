@@ -248,6 +248,25 @@ internal object SceneFfmpegArguments {
         }.toTypedArray()
     }
 
+    fun allAudioProbe(
+        input: SceneVideoInputSpec,
+        acquiredInputValue: String,
+        tlsCaFile: String? = null,
+    ): Array<String> {
+        return buildList {
+            addInputOptions(input, tlsCaFile)
+            add("-v")
+            add("error")
+            add("-select_streams")
+            add("a")
+            add("-show_entries")
+            add("stream=index,codec_type,codec_name:stream_side_data")
+            add("-of")
+            add("default=noprint_wrappers=0")
+            add(acquiredInputValue)
+        }.toTypedArray()
+    }
+
     fun sentenceAudio(
         input: SceneVideoInputSpec,
         acquiredInputValue: String,

@@ -264,6 +264,9 @@
     <string name="anki_sentence_audio_source_unavailable">The selected video source could not be read for sentence audio. The card was created without it.</string>
     <string name="anki_sentence_audio_timing_unavailable">The subtitle timing was unavailable. Sentence audio was not added.</string>
     <string name="anki_sentence_audio_probe_failed">The selected audio stream could not be inspected. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_stream_index_unavailable">The audio track selected in the player was not found in this video. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_stream_not_audio">The track selected as audio did not resolve to an audio stream in this video. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_stream_protected">The selected audio stream is protected and cannot be exported. The card was created without sentence audio.</string>
     <string name="anki_sentence_audio_stream_unreadable">No readable audio stream was found in this video. The card was created without sentence audio.</string>
     <string name="anki_sentence_audio_extraction_failed">Sentence audio extraction failed for this video. The card was created without it.</string>
     <string name="anki_sentence_audio_extraction_timed_out">Sentence audio extraction timed out. The card was created without it.</string>

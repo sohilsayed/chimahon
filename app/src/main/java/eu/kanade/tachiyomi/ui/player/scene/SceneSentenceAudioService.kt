@@ -35,8 +35,11 @@ internal class FrozenSceneSentenceAudioService internal constructor(
             ?: return unavailable(AnkiSentenceAudioFailure.TIMING_UNAVAILABLE)
         return withTimeoutOrNull(timeoutMillis) {
             withContext(Dispatchers.IO) {
-                inspectAudio(input)?.let { return@withContext unavailable(it) }
-                val lease = inputAcquirer.acquire(input)
+                val resolvedInput = when (val resolution = resolveAudioInput(input)) {
+                    is AudioInputResolution.Ready -> resolution.input
+                    is AudioInputResolution.Unavailable -> return@withContext unavailable(resolution.failure)
+                }
+                val lease = inputAcquirer.acquire(resolvedInput)
                     ?: return@withContext unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE)
                 val output = File(cacheDirectory, "chimahon_sentence_audio_${UUID.randomUUID()}.m4a")
                 val inputCleanup = SceneNativeCleanup(lease::close)
@@ -45,7 +48,7 @@ internal class FrozenSceneSentenceAudioService internal constructor(
                     output.delete()
                     val result = commandExecutor.executeFfmpeg(
                         SceneFfmpegArguments.sentenceAudio(
-                            input = input,
+                            input = resolvedInput,
                             acquiredInputValue = lease.ffmpegValue,
                             range = range,
                             outputFile = output.absolutePath,
@@ -78,31 +81,119 @@ internal class FrozenSceneSentenceAudioService internal constructor(
         } ?: unavailable(AnkiSentenceAudioFailure.EXTRACTION_TIMED_OUT)
     }
 
-    private suspend fun inspectAudio(input: SceneVideoInputSpec): AnkiSentenceAudioFailure? {
-        val lease = inputAcquirer.acquire(input) ?: return AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE
+    private suspend fun resolveAudioInput(input: SceneVideoInputSpec): AudioInputResolution {
+        return when (val probe = executeAudioProbe(input, allAudioStreams = false)) {
+            AudioProbeResult.SourceUnavailable -> {
+                AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE)
+            }
+            AudioProbeResult.ExecutionFailed -> {
+                AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED)
+            }
+            is AudioProbeResult.Success -> {
+                when (val inspection = SceneMediaProbe.inspectSelectedAudio(probe.output)) {
+                    SceneMediaProbe.AudioInspection.Readable -> AudioInputResolution.Ready(input)
+                    SceneMediaProbe.AudioInspection.Protected -> {
+                        AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAM_PROTECTED)
+                    }
+                    SceneMediaProbe.AudioInspection.StreamMissing,
+                    SceneMediaProbe.AudioInspection.NotAudio -> {
+                        resolveFallbackAudioInput(input, inspection)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun resolveFallbackAudioInput(
+        input: SceneVideoInputSpec,
+        selectedInspection: SceneMediaProbe.AudioInspection,
+    ): AudioInputResolution {
+        return when (val probe = executeAudioProbe(input, allAudioStreams = true)) {
+            AudioProbeResult.SourceUnavailable -> {
+                AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE)
+            }
+            AudioProbeResult.ExecutionFailed -> {
+                AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED)
+            }
+            is AudioProbeResult.Success -> {
+                val streams = SceneMediaProbe.audioStreams(probe.output)
+                val onlyStream = streams.singleOrNull()
+                when {
+                    onlyStream?.index != null && !onlyStream.protected -> {
+                        AudioInputResolution.Ready(input.copy(audioStreamIndex = onlyStream.index))
+                    }
+                    streams.size > 1 -> {
+                        AudioInputResolution.Unavailable(
+                            AnkiSentenceAudioFailure.TRACK_MAPPING_UNAVAILABLE,
+                        )
+                    }
+                    onlyStream?.protected == true -> {
+                        AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAM_PROTECTED)
+                    }
+                    onlyStream != null -> {
+                        AudioInputResolution.Unavailable(
+                            AnkiSentenceAudioFailure.TRACK_MAPPING_UNAVAILABLE,
+                        )
+                    }
+                    selectedInspection is SceneMediaProbe.AudioInspection.StreamMissing -> {
+                        AudioInputResolution.Unavailable(
+                            AnkiSentenceAudioFailure.AUDIO_STREAM_INDEX_UNAVAILABLE,
+                        )
+                    }
+                    else -> {
+                        AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAM_NOT_AUDIO)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun executeAudioProbe(
+        input: SceneVideoInputSpec,
+        allAudioStreams: Boolean,
+    ): AudioProbeResult {
+        val lease = inputAcquirer.acquire(input) ?: return AudioProbeResult.SourceUnavailable
         val cleanup = SceneNativeCleanup(lease::close)
         return try {
             val probe = commandExecutor.executeFfprobe(
-                SceneFfmpegArguments.audioProbe(input, lease.ffmpegValue, lease.tlsCaFile),
+                if (allAudioStreams) {
+                    SceneFfmpegArguments.allAudioProbe(input, lease.ffmpegValue, lease.tlsCaFile)
+                } else {
+                    SceneFfmpegArguments.audioProbe(input, lease.ffmpegValue, lease.tlsCaFile)
+                },
                 cleanup::nativeFinished,
             )
             when (probe) {
-                SceneCommandResult.Failed -> AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED
-                is SceneCommandResult.Success -> {
-                    if (SceneMediaProbe.inspectAudio(probe.output)) {
-                        null
-                    } else {
-                        AnkiSentenceAudioFailure.AUDIO_STREAM_UNREADABLE
-                    }
-                }
+                SceneCommandResult.Failed -> AudioProbeResult.ExecutionFailed
+                is SceneCommandResult.Success -> AudioProbeResult.Success(probe.output)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED
+            AudioProbeResult.ExecutionFailed
         } finally {
             cleanup.release()
         }
+    }
+
+    private sealed interface AudioInputResolution {
+        data class Ready(
+            val input: SceneVideoInputSpec,
+        ) : AudioInputResolution
+
+        data class Unavailable(
+            val failure: AnkiSentenceAudioFailure,
+        ) : AudioInputResolution
+    }
+
+    private sealed interface AudioProbeResult {
+        data object SourceUnavailable : AudioProbeResult
+
+        data object ExecutionFailed : AudioProbeResult
+
+        data class Success(
+            val output: String,
+        ) : AudioProbeResult
     }
 
     private fun unavailable(failure: AnkiSentenceAudioFailure) =

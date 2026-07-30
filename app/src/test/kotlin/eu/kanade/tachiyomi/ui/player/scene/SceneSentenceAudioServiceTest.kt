@@ -53,16 +53,163 @@ class SceneSentenceAudioServiceTest {
     }
 
     @Test
-    fun `reports unreadable stream when FFprobe finds no audio`() = runBlocking {
+    fun `reports selected non-audio stream when FFprobe finds no audio`() = runBlocking {
         val request = request()
 
         try {
             val result = service(
-                RecordingExecutor(audioProbeResult = SceneCommandResult.Success("codec_type=video")),
+                RecordingExecutor(
+                    audioProbeResults = mapOf(
+                        "a:0" to SceneCommandResult.Success("codec_type=video"),
+                        "a" to SceneCommandResult.Success(),
+                    ),
+                ),
             ).prepare(request)
 
             assertEquals(
-                AnkiSentenceAudioPreparation.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAM_UNREADABLE),
+                AnkiSentenceAudioPreparation.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAM_NOT_AUDIO),
+                result,
+            )
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
+    fun `normalizes a wrong MPV stream index when exactly one audio stream is readable`() = runBlocking {
+        val executor = RecordingExecutor(
+            audioProbeResults = mapOf(
+                "0" to SceneCommandResult.Success("index=0\ncodec_type=video"),
+                "a" to SceneCommandResult.Success(
+                    """
+                    [STREAM]
+                    index=1
+                    codec_type=audio
+                    codec_name=aac
+                    [/STREAM]
+                    """.trimIndent(),
+                ),
+            ),
+        )
+        val request = request(audioInput(audioStreamIndex = 0))
+
+        try {
+            val result = service(executor).prepare(request)
+
+            assertNotNull((result as? AnkiSentenceAudioPreparation.Ready)?.source)
+            assertEquals(listOf("0", "a"), executor.ffprobeSelectors)
+            assertEquals(listOf("0:1"), executor.ffmpegAudioMaps)
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
+    fun `reports missing selected stream when no audio stream can be resolved`() = runBlocking {
+        val request = request(audioInput(audioStreamIndex = 4))
+
+        try {
+            val result = service(
+                RecordingExecutor(
+                    audioProbeResults = mapOf(
+                        "4" to SceneCommandResult.Success(),
+                        "a" to SceneCommandResult.Success(),
+                    ),
+                ),
+            ).prepare(request)
+
+            assertEquals(
+                AnkiSentenceAudioPreparation.Unavailable(
+                    AnkiSentenceAudioFailure.AUDIO_STREAM_INDEX_UNAVAILABLE,
+                ),
+                result,
+            )
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
+    fun `reports selected non-audio stream when no audio stream can be resolved`() = runBlocking {
+        val request = request(audioInput(audioStreamIndex = 0))
+
+        try {
+            val result = service(
+                RecordingExecutor(
+                    audioProbeResults = mapOf(
+                        "0" to SceneCommandResult.Success("index=0\ncodec_type=video"),
+                        "a" to SceneCommandResult.Success(),
+                    ),
+                ),
+            ).prepare(request)
+
+            assertEquals(
+                AnkiSentenceAudioPreparation.Unavailable(
+                    AnkiSentenceAudioFailure.AUDIO_STREAM_NOT_AUDIO,
+                ),
+                result,
+            )
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
+    fun `reports protected selected audio stream without remapping it`() = runBlocking {
+        val executor = RecordingExecutor(
+            audioProbeResults = mapOf(
+                "0" to SceneCommandResult.Success(
+                    "index=0\ncodec_type=audio\nside_data_type=Encryption info",
+                ),
+            ),
+        )
+        val request = request(audioInput(audioStreamIndex = 0))
+
+        try {
+            val result = service(executor).prepare(request)
+
+            assertEquals(
+                AnkiSentenceAudioPreparation.Unavailable(
+                    AnkiSentenceAudioFailure.AUDIO_STREAM_PROTECTED,
+                ),
+                result,
+            )
+            assertEquals(listOf("0"), executor.ffprobeSelectors)
+            assertEquals(0, executor.ffmpegCalls)
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
+    fun `refuses to replace a wrong MPV stream index when multiple audio streams exist`() = runBlocking {
+        val request = request(audioInput(audioStreamIndex = 0))
+
+        try {
+            val result = service(
+                RecordingExecutor(
+                    audioProbeResults = mapOf(
+                        "0" to SceneCommandResult.Success("index=0\ncodec_type=video"),
+                        "a" to SceneCommandResult.Success(
+                            """
+                            [STREAM]
+                            index=1
+                            codec_type=audio
+                            [/STREAM]
+                            [STREAM]
+                            index=2
+                            codec_type=audio
+                            [/STREAM]
+                            """.trimIndent(),
+                        ),
+                    ),
+                ),
+            ).prepare(request)
+
+            assertEquals(
+                AnkiSentenceAudioPreparation.Unavailable(
+                    AnkiSentenceAudioFailure.TRACK_MAPPING_UNAVAILABLE,
+                ),
                 result,
             )
         } finally {
@@ -76,7 +223,7 @@ class SceneSentenceAudioServiceTest {
 
         try {
             val result = service(
-                RecordingExecutor(audioProbeResult = SceneCommandResult.Failed),
+                RecordingExecutor(audioProbeResults = mapOf("a:0" to SceneCommandResult.Failed)),
             ).prepare(request)
 
             assertEquals(
@@ -163,23 +310,25 @@ class SceneSentenceAudioServiceTest {
         )
     }
 
-    private fun audioInput(): SceneVideoInputSpec {
+    private fun audioInput(audioStreamIndex: Int? = null): SceneVideoInputSpec {
         return SceneVideoInputSpec(
             value = "https://media.example/audio.m4a",
             kind = SceneVideoInputKind.REMOTE_HTTP,
             headers = emptyList(),
+            audioStreamIndex = audioStreamIndex,
         )
     }
 
     private class RecordingExecutor(
-        private val audioProbeResult: SceneCommandResult = SceneCommandResult.Success(
-            "codec_type=audio\ncodec_name=aac",
+        private val audioProbeResults: Map<String, SceneCommandResult> = mapOf(
+            "a:0" to SceneCommandResult.Success("codec_type=audio\ncodec_name=aac"),
         ),
         private val ffmpegResult: SceneCommandResult = SceneCommandResult.Success(),
         private val ffmpegDelayMillis: Long = 0,
     ) : SceneCommandExecutor {
         var ffmpegCalls = 0
         val ffprobeSelectors = mutableListOf<String>()
+        val ffmpegAudioMaps = mutableListOf<String>()
 
         override suspend fun executeFfmpeg(
             arguments: Array<String>,
@@ -187,6 +336,7 @@ class SceneSentenceAudioServiceTest {
         ): SceneCommandResult {
             return try {
                 ffmpegCalls++
+                ffmpegAudioMaps += arguments[arguments.indexOf("-map") + 1]
                 if (ffmpegDelayMillis > 0) delay(ffmpegDelayMillis)
                 if (ffmpegResult is SceneCommandResult.Success) {
                     val output = File(arguments.last())
@@ -209,8 +359,8 @@ class SceneSentenceAudioServiceTest {
                     "v:0" -> SceneCommandResult.Success(
                         "pix_fmt=yuv420p10le\ncolor_transfer=smpte2084\nbits_per_raw_sample=10",
                     )
-                    "a:0" -> audioProbeResult
-                    else -> error("Unexpected stream selector: $selector")
+                    else -> audioProbeResults[selector]
+                        ?: error("Unexpected stream selector: $selector")
                 }
             } finally {
                 onNativeFinished()

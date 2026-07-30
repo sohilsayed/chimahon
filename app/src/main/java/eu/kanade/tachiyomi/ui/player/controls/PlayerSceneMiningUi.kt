@@ -61,6 +61,15 @@ internal fun Context.showPlayerAnkiMediaWarnings(warnings: List<AnkiMediaWarning
                     AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED -> {
                         KMR.strings.anki_sentence_audio_probe_failed
                     }
+                    AnkiSentenceAudioFailure.AUDIO_STREAM_INDEX_UNAVAILABLE -> {
+                        KMR.strings.anki_sentence_audio_stream_index_unavailable
+                    }
+                    AnkiSentenceAudioFailure.AUDIO_STREAM_NOT_AUDIO -> {
+                        KMR.strings.anki_sentence_audio_stream_not_audio
+                    }
+                    AnkiSentenceAudioFailure.AUDIO_STREAM_PROTECTED -> {
+                        KMR.strings.anki_sentence_audio_stream_protected
+                    }
                     AnkiSentenceAudioFailure.AUDIO_STREAM_UNREADABLE -> {
                         KMR.strings.anki_sentence_audio_stream_unreadable
                     }
