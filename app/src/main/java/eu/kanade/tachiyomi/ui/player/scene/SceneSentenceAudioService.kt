@@ -37,7 +37,9 @@ internal class FrozenSceneSentenceAudioService internal constructor(
             ?: return unavailable(AnkiSentenceAudioFailure.TIMING_UNAVAILABLE)
         return withTimeoutOrNull(timeoutMillis) {
             withContext(Dispatchers.IO) {
-                val resolvedInput = when (val resolution = resolveAudioInput(input)) {
+                val resolvedInput = when (
+                    val resolution = resolveAudioInput(input, request.sentenceAudioFallbackInput)
+                ) {
                     is AudioInputResolution.Ready -> resolution.input
                     is AudioInputResolution.Unavailable -> {
                         return@withContext unavailable(resolution.failure, resolution.diagnostic)
@@ -85,7 +87,24 @@ internal class FrozenSceneSentenceAudioService internal constructor(
         } ?: unavailable(AnkiSentenceAudioFailure.EXTRACTION_TIMED_OUT)
     }
 
-    private suspend fun resolveAudioInput(input: SceneVideoInputSpec): AudioInputResolution {
+    private suspend fun resolveAudioInput(
+        input: SceneVideoInputSpec,
+        fallbackInput: SceneVideoInputSpec?,
+    ): AudioInputResolution {
+        val resolution = resolveSingleAudioInput(input)
+        if (
+            resolution !is AudioInputResolution.Unavailable ||
+            resolution.failure != AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND ||
+            input.origin != SceneVideoInputOrigin.ORIGINAL_VIDEO
+        ) {
+            return resolution
+        }
+        val playableFallback = fallbackInput ?: return resolution
+        if (playableFallback.origin != SceneVideoInputOrigin.PLAYABLE_VIDEO) return resolution
+        return resolveSingleAudioInput(playableFallback)
+    }
+
+    private suspend fun resolveSingleAudioInput(input: SceneVideoInputSpec): AudioInputResolution {
         return when (val probe = executeAudioProbe(input, AudioProbeMode.SELECTED_RESTRICTED)) {
             AudioProbeResult.SourceUnavailable -> {
                 AudioInputResolution.Unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE)

@@ -85,6 +85,22 @@ class SceneVideoInputTest {
     }
 
     @Test
+    fun `playable resolution keeps MPV source separate from an original video source`() {
+        val input = snapshot(
+            value = "https://media.example/original.m3u8",
+            playableValue = "https://media.example/playable.m3u8",
+        )
+
+        val original = requireNotNull(resolve(input))
+        val playable = requireNotNull(SceneVideoInputResolver.resolvePlayable(input))
+
+        assertEquals("https://media.example/original.m3u8", original.value)
+        assertEquals(SceneVideoInputOrigin.ORIGINAL_VIDEO, original.origin)
+        assertEquals("https://media.example/playable.m3u8", playable.value)
+        assertEquals(SceneVideoInputOrigin.PLAYABLE_VIDEO, playable.origin)
+    }
+
+    @Test
     fun `AVIF command has the single bounded native recipe`() {
         val input = supportedInput()
         val arguments = SceneFfmpegArguments.animatedAvif(

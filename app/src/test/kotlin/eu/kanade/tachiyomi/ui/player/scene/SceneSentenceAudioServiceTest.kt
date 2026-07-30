@@ -84,6 +84,78 @@ class SceneSentenceAudioServiceTest {
     }
 
     @Test
+    fun `exports audio from MPV playable input when original source has no audio`() = runBlocking {
+        val original = audioInput(value = "https://media.example/original.m3u8")
+        val playable = audioInput(
+            value = "https://media.example/playable.m3u8",
+            audioStreamIndex = 1,
+            origin = SceneVideoInputOrigin.PLAYABLE_VIDEO,
+        )
+        val request = request(
+            sentenceAudioInput = original,
+            sentenceAudioFallbackInput = playable,
+        )
+        val executor = RecordingExecutor(
+            audioProbeResults = mapOf(
+                "a:0" to SceneCommandResult.Success("codec_type=video"),
+                "a" to SceneCommandResult.Success(),
+                "1" to SceneCommandResult.Success("codec_type=audio\ncodec_name=aac"),
+            ),
+            unrestrictedAudioProbeResult = SceneCommandResult.Success(),
+        )
+
+        try {
+            val result = service(executor).prepare(request)
+
+            assertNotNull((result as? AnkiSentenceAudioPreparation.Ready)?.source)
+            assertEquals(listOf("a:0", "a", "a", "1"), executor.ffprobeSelectors)
+            assertEquals(listOf(playable.value), executor.ffmpegInputs)
+            assertEquals(listOf("0:1"), executor.ffmpegAudioMaps)
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
+    fun `reports MPV playable input when fallback also has no audio`() = runBlocking {
+        val original = audioInput(value = "https://media.example/original.m3u8")
+        val playable = audioInput(
+            value = "https://media.example/playable.m3u8",
+            audioStreamIndex = 1,
+            origin = SceneVideoInputOrigin.PLAYABLE_VIDEO,
+        )
+        val request = request(
+            sentenceAudioInput = original,
+            sentenceAudioFallbackInput = playable,
+        )
+
+        try {
+            val result = service(
+                RecordingExecutor(
+                    audioProbeResults = mapOf(
+                        "a:0" to SceneCommandResult.Success("codec_type=video"),
+                        "a" to SceneCommandResult.Success(),
+                        "1" to SceneCommandResult.Success("codec_type=video"),
+                    ),
+                    unrestrictedAudioProbeResult = SceneCommandResult.Success(),
+                ),
+            ).prepare(request)
+
+            assertEquals(
+                AnkiSentenceAudioPreparation.Unavailable(
+                    failure = AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND,
+                    diagnostic = AnkiSentenceAudioDiagnostic(
+                        inputSource = AnkiSentenceAudioInputSource.MPV_PLAYABLE_VIDEO,
+                    ),
+                ),
+                result,
+            )
+        } finally {
+            request.close()
+        }
+    }
+
+    @Test
     fun `normalizes a wrong MPV stream index when exactly one audio stream is readable`() = runBlocking {
         val executor = RecordingExecutor(
             audioProbeResults = mapOf(
@@ -325,7 +397,10 @@ class SceneSentenceAudioServiceTest {
         )
     }
 
-    private fun request(sentenceAudioInput: SceneVideoInputSpec? = audioInput()): SceneCaptureRequest {
+    private fun request(
+        sentenceAudioInput: SceneVideoInputSpec? = audioInput(),
+        sentenceAudioFallbackInput: SceneVideoInputSpec? = null,
+    ): SceneCaptureRequest {
         val video = SceneVideoInputSpec(
             value = "https://media.example/video.mkv",
             kind = SceneVideoInputKind.REMOTE_HTTP,
@@ -336,6 +411,7 @@ class SceneSentenceAudioServiceTest {
         return SceneCaptureRequest(
             videoInput = video,
             sentenceAudioInput = sentenceAudioInput,
+            sentenceAudioFallbackInput = sentenceAudioFallbackInput,
             resolvedTiming = SceneResolvedTiming(
                 animationRange = SceneTimeRange(1.25, 4.25),
                 audioRange = SceneTimeRange(1.25, 4.25),
@@ -345,11 +421,12 @@ class SceneSentenceAudioServiceTest {
     }
 
     private fun audioInput(
+        value: String = "https://media.example/audio.m4a",
         audioStreamIndex: Int? = null,
         origin: SceneVideoInputOrigin = SceneVideoInputOrigin.ORIGINAL_VIDEO,
     ): SceneVideoInputSpec {
         return SceneVideoInputSpec(
-            value = "https://media.example/audio.m4a",
+            value = value,
             kind = SceneVideoInputKind.REMOTE_HTTP,
             headers = emptyList(),
             audioStreamIndex = audioStreamIndex,
@@ -369,6 +446,7 @@ class SceneSentenceAudioServiceTest {
         val ffprobeSelectors = mutableListOf<String>()
         val unrestrictedFfprobeSelectors = mutableListOf<String>()
         val ffmpegAudioMaps = mutableListOf<String>()
+        val ffmpegInputs = mutableListOf<String>()
 
         override suspend fun executeFfmpeg(
             arguments: Array<String>,
@@ -376,6 +454,7 @@ class SceneSentenceAudioServiceTest {
         ): SceneCommandResult {
             return try {
                 ffmpegCalls++
+                ffmpegInputs += arguments[arguments.indexOf("-i") + 1]
                 ffmpegAudioMaps += arguments[arguments.indexOf("-map") + 1]
                 if (ffmpegDelayMillis > 0) delay(ffmpegDelayMillis)
                 if (ffmpegResult is SceneCommandResult.Success) {

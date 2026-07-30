@@ -82,6 +82,11 @@ internal object SceneVideoInputResolver {
         )
     }
 
+    fun resolvePlayable(snapshot: SceneVideoInputSnapshot): SceneVideoInputSpec? {
+        if (snapshot.isExternalAudio) return null
+        return resolve(snapshot.copy(originalVideoValue = ""))
+    }
+
     private fun validateRemoteInput(
         value: String,
         headers: List<Pair<String, String>>,

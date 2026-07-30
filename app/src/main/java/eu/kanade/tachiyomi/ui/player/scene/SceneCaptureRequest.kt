@@ -94,6 +94,7 @@ internal class SceneCaptureRequest(
     val sentenceAudioInput: SceneVideoInputSpec?,
     val sentenceAudioFailure: AnkiSentenceAudioFailure? = null,
     val resolvedTiming: SceneResolvedTiming?,
+    val sentenceAudioFallbackInput: SceneVideoInputSpec? = null,
     private val stillFallback: OwnedBitmap,
 ) : Closeable {
     fun fallbackBitmapOrNull(): Bitmap? = stillFallback.bitmapOrNull()
@@ -333,11 +334,21 @@ internal class SceneCaptureRequestFactory(
                     failure = AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE.takeIf { videoInput == null },
                 )
             }
+            val sentenceAudioFallbackInput = sentenceAudio.input
+                ?.takeIf {
+                    beforeVideo.sentenceAudio == null &&
+                        it.origin == SceneVideoInputOrigin.ORIGINAL_VIDEO
+                }
+                ?.let { originalInput ->
+                    SceneVideoInputResolver.resolvePlayable(beforeVideo.video)
+                        ?.takeIf { it.value != originalInput.value }
+                }
             val request = SceneCaptureRequest(
                 videoInput = videoInput,
                 sentenceAudioInput = sentenceAudio.input,
                 sentenceAudioFailure = sentenceAudio.failure,
                 resolvedTiming = resolveTiming(beforeMpv),
+                sentenceAudioFallbackInput = sentenceAudioFallbackInput,
                 stillFallback = OwnedBitmap(fallback),
             )
             transferred = true

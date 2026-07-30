@@ -130,6 +130,35 @@ class SceneCaptureRequestTest {
         request.close()
     }
 
+    @Test
+    fun `original sentence audio input keeps a different MPV playable source as fallback`() = runTest {
+        val bitmap = mockBitmap()
+        val factory = SceneCaptureRequestFactory(
+            SceneMpvSnapshotReader(SequencePropertyReader(listOf(snapshot(), snapshot()))),
+        )
+
+        val request = factory.captureSubtitle(
+            videoSnapshot = {
+                inputSnapshot(
+                    originalVideoValue = "https://media.example/original.m3u8",
+                    playableValue = "https://media.example/playable.m3u8",
+                )
+            },
+            parsedSubtitleCandidates = emptyList(),
+            captureFallback = { bitmap },
+        )
+
+        assertNotNull(request)
+        val capturedRequest = requireNotNull(request)
+        val originalInput = requireNotNull(capturedRequest.sentenceAudioInput)
+        val playableInput = requireNotNull(capturedRequest.sentenceAudioFallbackInput)
+        assertEquals("https://media.example/original.m3u8", originalInput.value)
+        assertEquals(SceneVideoInputOrigin.ORIGINAL_VIDEO, originalInput.origin)
+        assertEquals("https://media.example/playable.m3u8", playableInput.value)
+        assertEquals(SceneVideoInputOrigin.PLAYABLE_VIDEO, playableInput.origin)
+        capturedRequest.close()
+    }
+
     private fun mockBitmap(): Bitmap {
         return mockk<Bitmap>(relaxed = true).also {
             every { it.isRecycled } returns false
@@ -137,11 +166,13 @@ class SceneCaptureRequestTest {
     }
 
     private fun inputSnapshot(
+        originalVideoValue: String = "https://media.example/video.mp4",
+        playableValue: String = originalVideoValue,
         headers: List<Pair<String, String>> = emptyList(),
     ): SceneCaptureInputSnapshot {
         val video = SceneVideoInputSnapshot(
-            originalVideoValue = "https://media.example/video.mp4",
-            playableValue = "https://media.example/video.mp4",
+            originalVideoValue = originalVideoValue,
+            playableValue = playableValue,
             headers = headers,
             ffmpegStreamArgs = emptyList(),
             ffmpegVideoArgs = emptyList(),
