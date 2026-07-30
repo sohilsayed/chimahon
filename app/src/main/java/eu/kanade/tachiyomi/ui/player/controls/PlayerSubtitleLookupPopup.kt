@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import chimahon.DictionaryRepository
 import chimahon.MediaInfo
+import chimahon.anki.AnkiProfile
 import chimahon.anki.AnkiScreenshotMode
+import chimahon.anki.Marker
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
@@ -22,6 +24,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
@@ -52,6 +55,7 @@ internal data class SubtitleLookupRequest(
 internal fun PlayerSubtitleLookupPopup(
     viewModel: PlayerViewModel,
     request: SubtitleLookupRequest?,
+    sceneCapturePending: Boolean,
     onDismiss: () -> Unit,
     onTermMatched: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -63,11 +67,13 @@ internal fun PlayerSubtitleLookupPopup(
     val episode by viewModel.currentEpisode.collectAsState()
     val source by viewModel.currentSource.collectAsState()
     val miningProgress by viewModel.sceneMiningProgress.collectAsState()
-    val activeProfile = remember(anime?.id, source?.id, source?.lang) {
-        dictionaryPreferences.profileResolver.resolve(
-            sourceId = source?.id ?: 0L,
-            sourceLang = source?.lang.orEmpty(),
-        )
+    val profileResolutionKey = DictionaryProfileResolutionKey(
+        animeId = anime?.id,
+        sourceId = source?.id,
+        sourceLang = source?.lang,
+    )
+    val activeProfile = remember(profileResolutionKey) {
+        dictionaryPreferences.profileResolver.resolveForPlayer(profileResolutionKey)
     }
     val webView: WebView = remember(activeProfile.languageCode) {
         DictionaryPopupWebViewWarmup.acquire(context, activeProfile.languageCode)
@@ -120,7 +126,7 @@ internal fun PlayerSubtitleLookupPopup(
             chapterName = episode?.name.orEmpty(),
         ),
         mediaRequest = mediaRequest,
-        miningBusy = miningProgress.isBusy,
+        miningBusy = sceneCapturePending || miningProgress.isBusy,
         launchMiningJob = launchMiningJob,
         onMiningBusy = {
             context.toast(KMR.strings.anki_scene_busy)
@@ -131,4 +137,23 @@ internal fun PlayerSubtitleLookupPopup(
         modifier = modifier,
         titleId = anime?.id?.toString(),
     )
+}
+
+/**
+ * Capturing a scene touches MPV and is unnecessary for a dictionary-only lookup.
+ */
+internal fun AnkiProfile.requiresSceneMediaCapture(): Boolean {
+    if (!ankiEnabled) return false
+
+    return runCatching {
+        val fieldMap = JSONObject(ankiFieldMap)
+        val fieldValues = fieldMap.keys().asSequence()
+            .map { key -> fieldMap.optString(key) }
+            .toList()
+        val capturesScreenshot =
+            AnkiScreenshotMode.fromStorageValue(ankiCropMode) != AnkiScreenshotMode.NONE &&
+                fieldValues.any { it.contains(Marker.SCREENSHOT) }
+        val capturesSentenceAudio = fieldValues.any { it.contains(Marker.SENTENCE_AUDIO) }
+        capturesScreenshot || capturesSentenceAudio
+    }.getOrDefault(false)
 }

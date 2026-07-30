@@ -59,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -87,6 +88,7 @@ import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
 import eu.kanade.presentation.more.settings.screen.player.custombutton.getButtons
 import eu.kanade.presentation.theme.playerRippleConfiguration
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.player.CastManager
 import eu.kanade.tachiyomi.ui.player.Dialogs
 import eu.kanade.tachiyomi.ui.player.Panels
@@ -106,6 +108,7 @@ import eu.kanade.tachiyomi.ui.player.controls.components.panels.SubtitlesBorderS
 import eu.kanade.tachiyomi.ui.player.controls.components.panels.toColorHexString
 import eu.kanade.tachiyomi.ui.player.controls.components.sheets.toFixed
 import eu.kanade.tachiyomi.ui.player.scene.SceneClockDomain
+import eu.kanade.tachiyomi.ui.player.scene.SceneCaptureRequest
 import eu.kanade.tachiyomi.ui.player.scene.SceneRangeCandidate
 import eu.kanade.tachiyomi.ui.player.scene.SceneRangeProvenance
 import eu.kanade.tachiyomi.ui.player.settings.AudioPreferences
@@ -147,6 +150,7 @@ fun PlayerControls(
     val gesturePreferences = remember { Injekt.get<GesturePreferences>() }
     val audioPreferences = remember { Injekt.get<AudioPreferences>() }
     val subtitlePreferences = remember { Injekt.get<SubtitlePreferences>() }
+    val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
     val interactionSource = remember { MutableInteractionSource() }
     val controlsShown by viewModel.controlsShown.collectAsState()
     val areControlsLocked by viewModel.areControlsLocked.collectAsState()
@@ -167,7 +171,17 @@ fun PlayerControls(
     val subtitleCues by viewModel.subtitleHistory.collectAsState()
     val activeSubtitleCueIndex by viewModel.activeSubtitleCueIndex.collectAsState()
     val sceneMiningProgress by viewModel.sceneMiningProgress.collectAsState()
+    val anime by viewModel.currentAnime.collectAsState()
+    val source by viewModel.currentSource.collectAsState()
     val panel by viewModel.panelShown.collectAsState()
+    val dictionaryProfileKey = DictionaryProfileResolutionKey(
+        animeId = anime?.id,
+        sourceId = source?.id,
+        sourceLang = source?.lang,
+    )
+    val dictionaryProfile = remember(dictionaryProfileKey) {
+        dictionaryPreferences.profileResolver.resolveForPlayer(dictionaryProfileKey)
+    }
     val activeSubtitleCue = remember(subtitleCues, activeSubtitleCueIndex) {
         subtitleCues.firstOrNull { it.index == activeSubtitleCueIndex }
     }
@@ -177,6 +191,8 @@ fun PlayerControls(
     var resetControls by remember { mutableStateOf(true) }
     var subtitleLookupRequest by remember { mutableStateOf<SubtitleLookupRequest?>(null) }
     var subtitleLookupCaptureJob by remember { mutableStateOf<Job?>(null) }
+    var subtitleLookupSceneCapturePending by remember { mutableStateOf(false) }
+    var subtitleLookupCaptureGeneration by remember { mutableStateOf(0) }
     var wasPlayerAlreadyPause by remember { mutableStateOf(false) }
     val subtitleLookupScope = rememberCoroutineScope()
     val customButtons by viewModel.customButtons.collectAsState()
@@ -207,26 +223,39 @@ fun PlayerControls(
         subtitleLookupRequest = null
     }
 
-    fun dismissSubtitleLookup() {
+    fun cancelSubtitleLookupSceneCapture() {
+        subtitleLookupCaptureGeneration += 1
         subtitleLookupCaptureJob?.cancel()
         subtitleLookupCaptureJob = null
+        subtitleLookupSceneCapturePending = false
+    }
+
+    fun dismissSubtitleLookup() {
+        cancelSubtitleLookupSceneCapture()
         releaseSubtitleLookupRequest()
         if (!wasPlayerAlreadyPause) viewModel.unpause()
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            subtitleLookupCaptureJob?.cancel()
+            cancelSubtitleLookupSceneCapture()
             releaseSubtitleLookupRequest()
         }
     }
 
     val openSubtitleLookup: (SubtitleLookupSelection) -> Unit = openSubtitleLookup@{ subtitleLookup ->
-        if (subtitleLookupRequest?.matchesTap(subtitleLookup) == true) {
+        val tapTransition = subtitleLookupTapTransition(
+            matchesCurrentTap = subtitleLookupRequest?.matchesTap(subtitleLookup) == true,
+            hasOpenLookup = subtitleLookupRequest != null,
+            hasActiveCapture = subtitleLookupCaptureJob?.isActive == true,
+        )
+        if (tapTransition.action == SubtitleLookupTapAction.Dismiss) {
             dismissSubtitleLookup()
             return@openSubtitleLookup
         }
-        if (subtitleLookupCaptureJob?.isActive == true) return@openSubtitleLookup
+        if (tapTransition.cancelActiveCapture) {
+            cancelSubtitleLookupSceneCapture()
+        }
         val currentPanel = viewModel.panelShown.value
         if (
             viewModel.sheetShown.value != Sheets.None ||
@@ -235,8 +264,14 @@ fun PlayerControls(
         ) {
             return@openSubtitleLookup
         }
-        wasPlayerAlreadyPause = viewModel.paused.value
-        viewModel.pause()
+        wasPlayerAlreadyPause = subtitleLookupPauseStateAfterTap(
+            wasPlayerAlreadyPaused = wasPlayerAlreadyPause,
+            playerWasPausedAtTap = viewModel.paused.value,
+            pausePlayer = tapTransition.pausePlayer,
+        )
+        if (tapTransition.pausePlayer) {
+            viewModel.pause()
+        }
         releaseSubtitleLookupRequest()
         val baseRequest = SubtitleLookupRequest(
             lookupString = subtitleLookup.lookupString,
@@ -255,17 +290,43 @@ fun PlayerControls(
             lineWidth = subtitleLookup.lineWidth,
             lineHeight = subtitleLookup.lineHeight,
         )
+        subtitleLookupRequest = baseRequest
+        if (!dictionaryProfile.requiresSceneMediaCapture()) {
+            return@openSubtitleLookup
+        }
+
+        subtitleLookupSceneCapturePending = true
+        val captureGeneration = subtitleLookupCaptureGeneration + 1
+        subtitleLookupCaptureGeneration = captureGeneration
         subtitleLookupCaptureJob = subtitleLookupScope.launch {
-            var sceneRequest = viewModel.captureSubtitleSceneRequest(
-                parsedSubtitleCandidate = subtitleLookup.parsedSubtitleCandidate,
-            )
-            if (!isActive) {
+            var sceneRequest: SceneCaptureRequest? = null
+            try {
+                // Render the dictionary shell before any potentially slow MPV screenshot work.
+                withFrameNanos { }
+                withFrameNanos { }
+                sceneRequest = viewModel.captureSubtitleSceneRequest(
+                    parsedSubtitleCandidate = subtitleLookup.parsedSubtitleCandidate,
+                )
+                if (
+                    subtitleLookupCaptureResultAction(
+                        captureIsActive = isActive,
+                        captureGeneration = captureGeneration,
+                        currentGeneration = subtitleLookupCaptureGeneration,
+                        hasOpenLookup = subtitleLookupRequest != null,
+                    ) == SubtitleLookupCaptureResultAction.Apply
+                ) {
+                    subtitleLookupRequest = subtitleLookupRequest?.copy(
+                        sceneCaptureRequest = sceneRequest,
+                    )
+                    sceneRequest = null
+                }
+            } finally {
                 sceneRequest?.let(viewModel::releaseSceneRequest)
-                return@launch
+                if (subtitleLookupCaptureGeneration == captureGeneration) {
+                    subtitleLookupSceneCapturePending = false
+                    subtitleLookupCaptureJob = null
+                }
             }
-            subtitleLookupRequest = baseRequest.copy(sceneCaptureRequest = sceneRequest)
-            sceneRequest = null
-            subtitleLookupCaptureJob = null
         }
     }
     val togglePanel: (Panels) -> Unit = { panel ->
@@ -741,7 +802,6 @@ fun PlayerControls(
         val subtitles by viewModel.subtitleTracks.collectAsState()
         val selectedSubtitles by viewModel.selectedSubtitles.collectAsState()
         val jimakuState by viewModel.jimakuState.collectAsState()
-        val anime by viewModel.currentAnime.collectAsState()
         val jimakuTitle by subtitlePreferences.jimakuTitleForAnime(anime?.id).collectAsState()
         val audioTracks by viewModel.audioTracks.collectAsState()
         val selectedAudio by viewModel.selectedAudio.collectAsState()
@@ -848,6 +908,7 @@ fun PlayerControls(
         PlayerSubtitleLookupPopup(
             viewModel = viewModel,
             request = subtitleLookupRequest,
+            sceneCapturePending = subtitleLookupSceneCapturePending,
             onDismiss = ::dismissSubtitleLookup,
             onTermMatched = { count, offset ->
                 subtitleLookupRequest = subtitleLookupRequest?.copy(
