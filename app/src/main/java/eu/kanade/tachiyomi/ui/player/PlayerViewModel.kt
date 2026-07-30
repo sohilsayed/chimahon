@@ -3281,6 +3281,7 @@ class PlayerViewModel @JvmOverloads internal constructor(
                 ffmpegVideoArgs = emptyList(),
                 seekable = mpv.seekable ?: stableLocalFile,
                 audioStreamIndex = null,
+                isExternalAudio = true,
             )
         } else {
             null

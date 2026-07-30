@@ -11,12 +11,19 @@ internal enum class SceneVideoInputKind {
     REMOTE_HTTP,
 }
 
+internal enum class SceneVideoInputOrigin {
+    ORIGINAL_VIDEO,
+    PLAYABLE_VIDEO,
+    EXTERNAL_AUDIO,
+}
+
 internal data class SceneVideoInputSpec(
     val value: String,
     val kind: SceneVideoInputKind,
     val headers: List<Pair<String, String>>,
     val videoStreamIndex: Int? = null,
     val audioStreamIndex: Int? = null,
+    val origin: SceneVideoInputOrigin = SceneVideoInputOrigin.ORIGINAL_VIDEO,
 )
 
 internal data class SceneVideoInputSnapshot(
@@ -28,6 +35,7 @@ internal data class SceneVideoInputSnapshot(
     val seekable: Boolean?,
     val videoStreamIndex: Int? = null,
     val audioStreamIndex: Int? = null,
+    val isExternalAudio: Boolean = false,
 )
 
 internal object SceneVideoInputResolver {
@@ -43,12 +51,18 @@ internal object SceneVideoInputResolver {
 
         val original = snapshot.originalVideoValue.takeIf(String::isNotBlank)
         if (original != null && isTransient(original)) return null
-        val normalized = original?.let(::normalizeInput)
+        val normalizedOriginal = original?.let(::normalizeInput)
+        val normalized = normalizedOriginal
             ?: snapshot.playableValue?.takeIf(String::isNotBlank)?.let { playable ->
                 if (isTransient(playable)) return null
                 normalizeInput(playable)
             }
             ?: return null
+        val origin = when {
+            snapshot.isExternalAudio -> SceneVideoInputOrigin.EXTERNAL_AUDIO
+            normalizedOriginal != null -> SceneVideoInputOrigin.ORIGINAL_VIDEO
+            else -> SceneVideoInputOrigin.PLAYABLE_VIDEO
+        }
 
         val headers = when (normalized.second) {
             SceneVideoInputKind.REMOTE_HTTP -> validateRemoteInput(normalized.first, snapshot.headers)
@@ -64,6 +78,7 @@ internal object SceneVideoInputResolver {
             headers = headers,
             videoStreamIndex = snapshot.videoStreamIndex?.takeIf { it >= 0 },
             audioStreamIndex = snapshot.audioStreamIndex?.takeIf { it >= 0 },
+            origin = origin,
         )
     }
 
@@ -267,6 +282,25 @@ internal object SceneFfmpegArguments {
         }.toTypedArray()
     }
 
+    fun audioDiscoveryProbe(
+        input: SceneVideoInputSpec,
+        acquiredInputValue: String,
+        tlsCaFile: String? = null,
+    ): Array<String> {
+        return buildList {
+            addInputOptions(input, tlsCaFile, restrictDecoders = false)
+            add("-v")
+            add("error")
+            add("-select_streams")
+            add("a")
+            add("-show_entries")
+            add("stream=index,codec_type,codec_name:stream_side_data")
+            add("-of")
+            add("default=noprint_wrappers=0")
+            add(acquiredInputValue)
+        }.toTypedArray()
+    }
+
     fun sentenceAudio(
         input: SceneVideoInputSpec,
         acquiredInputValue: String,
@@ -299,9 +333,12 @@ internal object SceneFfmpegArguments {
     private fun MutableList<String>.addInputOptions(
         input: SceneVideoInputSpec,
         tlsCaFile: String?,
+        restrictDecoders: Boolean = true,
     ) {
-        add("-codec_whitelist")
-        add(ALLOWED_INPUT_DECODERS)
+        if (restrictDecoders) {
+            add("-codec_whitelist")
+            add(ALLOWED_INPUT_DECODERS)
+        }
         if (input.kind == SceneVideoInputKind.REMOTE_HTTP) {
             require(!tlsCaFile.isNullOrBlank()) { "Remote scene input requires a CA bundle" }
             add("-tls_verify")

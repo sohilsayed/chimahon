@@ -62,6 +62,29 @@ class SceneVideoInputTest {
     }
 
     @Test
+    fun `resolved inputs retain whether export uses original playable or external audio`() {
+        val original = requireNotNull(
+            resolve(snapshot("/video/original.mkv", playableValue = "/video/playable.mkv")),
+        )
+        val playable = requireNotNull(
+            resolve(snapshot("", playableValue = "/video/playable.mkv")),
+        )
+        val externalAudio = requireNotNull(
+            resolve(
+                snapshot(
+                    "/audio/episode.m4a",
+                    playableValue = "/audio/episode.m4a",
+                    isExternalAudio = true,
+                ),
+            ),
+        )
+
+        assertEquals(SceneVideoInputOrigin.ORIGINAL_VIDEO, original.origin)
+        assertEquals(SceneVideoInputOrigin.PLAYABLE_VIDEO, playable.origin)
+        assertEquals(SceneVideoInputOrigin.EXTERNAL_AUDIO, externalAudio.origin)
+    }
+
+    @Test
     fun `AVIF command has the single bounded native recipe`() {
         val input = supportedInput()
         val arguments = SceneFfmpegArguments.animatedAvif(
@@ -125,6 +148,7 @@ class SceneVideoInputTest {
             ),
             SceneFfmpegArguments.videoProbe(input, input.value, caFile),
             SceneFfmpegArguments.audioProbe(input, input.value, caFile),
+            SceneFfmpegArguments.allAudioProbe(input, input.value, caFile),
             SceneFfmpegArguments.sentenceAudio(input, input.value, range, "/cache/audio.m4a", caFile),
         )
 
@@ -136,6 +160,23 @@ class SceneVideoInputTest {
             val inputIndex = arguments.indexOf("-i").takeIf { it >= 0 } ?: arguments.lastIndex
             assertTrue(arguments.indexOf("-codec_whitelist") < inputIndex)
         }
+    }
+
+    @Test
+    fun `audio discovery probe omits the decoder whitelist and only reads stream metadata`() {
+        val input = supportedInput()
+        val arguments = SceneFfmpegArguments.audioDiscoveryProbe(
+            input = input,
+            acquiredInputValue = input.value,
+            tlsCaFile = "/files/cacert.pem",
+        ).toList()
+
+        assertFalse("-codec_whitelist" in arguments)
+        assertEquals("a", arguments[arguments.indexOf("-select_streams") + 1])
+        assertEquals(
+            "stream=index,codec_type,codec_name:stream_side_data",
+            arguments[arguments.indexOf("-show_entries") + 1],
+        )
     }
 
     @Test
@@ -179,16 +220,19 @@ class SceneVideoInputTest {
 
     private fun snapshot(
         value: String,
+        playableValue: String? = value,
         headers: List<Pair<String, String>> = emptyList(),
         ffmpegStreamArgs: List<Pair<String, String>> = emptyList(),
         seekable: Boolean = true,
+        isExternalAudio: Boolean = false,
     ) = SceneVideoInputSnapshot(
         originalVideoValue = value,
-        playableValue = value,
+        playableValue = playableValue,
         headers = headers,
         ffmpegStreamArgs = ffmpegStreamArgs,
         ffmpegVideoArgs = emptyList(),
         seekable = seekable,
+        isExternalAudio = isExternalAudio,
     )
 
     private companion object {

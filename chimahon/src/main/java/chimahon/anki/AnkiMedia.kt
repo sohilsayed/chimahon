@@ -49,6 +49,8 @@ enum class AnkiSentenceAudioFailure {
     SOURCE_UNAVAILABLE,
     TIMING_UNAVAILABLE,
     AUDIO_PROBE_FAILED,
+    AUDIO_STREAMS_NOT_FOUND,
+    AUDIO_CODEC_RESTRICTED,
     AUDIO_STREAM_INDEX_UNAVAILABLE,
     AUDIO_STREAM_NOT_AUDIO,
     AUDIO_STREAM_PROTECTED,
@@ -58,6 +60,16 @@ enum class AnkiSentenceAudioFailure {
     UNKNOWN,
 }
 
+enum class AnkiSentenceAudioInputSource {
+    ORIGINAL_VIDEO,
+    MPV_PLAYABLE_VIDEO,
+    MPV_EXTERNAL_AUDIO,
+}
+
+data class AnkiSentenceAudioDiagnostic(
+    val inputSource: AnkiSentenceAudioInputSource,
+)
+
 sealed interface AnkiSentenceAudioPreparation {
     data class Ready(
         val source: AnkiMediaSource,
@@ -65,6 +77,7 @@ sealed interface AnkiSentenceAudioPreparation {
 
     data class Unavailable(
         val failure: AnkiSentenceAudioFailure,
+        val diagnostic: AnkiSentenceAudioDiagnostic? = null,
     ) : AnkiSentenceAudioPreparation
 }
 
@@ -74,6 +87,7 @@ sealed interface AnkiMediaWarning {
     data object StillStorageFailed : AnkiMediaWarning
     data class SentenceAudioGenerationFailed(
         val failure: AnkiSentenceAudioFailure,
+        val diagnostic: AnkiSentenceAudioDiagnostic? = null,
     ) : AnkiMediaWarning
     data object SentenceAudioStorageFailed : AnkiMediaWarning
 }

@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.window.DialogProperties
 import chimahon.anki.AnkiMediaWarning
 import chimahon.anki.AnkiSentenceAudioFailure
+import chimahon.anki.AnkiSentenceAudioInputSource
 import eu.kanade.tachiyomi.ui.player.scene.PlayerSceneMiningProgress
 import eu.kanade.tachiyomi.util.system.toast
 import tachiyomi.i18n.kmk.KMR
@@ -60,6 +61,34 @@ internal fun Context.showPlayerAnkiMediaWarnings(warnings: List<AnkiMediaWarning
                     }
                     AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED -> {
                         KMR.strings.anki_sentence_audio_probe_failed
+                    }
+                    AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND -> {
+                        when (warning.diagnostic?.inputSource) {
+                            AnkiSentenceAudioInputSource.ORIGINAL_VIDEO -> {
+                                KMR.strings.anki_sentence_audio_streams_not_found_original
+                            }
+                            AnkiSentenceAudioInputSource.MPV_PLAYABLE_VIDEO -> {
+                                KMR.strings.anki_sentence_audio_streams_not_found_playable
+                            }
+                            AnkiSentenceAudioInputSource.MPV_EXTERNAL_AUDIO -> {
+                                KMR.strings.anki_sentence_audio_streams_not_found_external
+                            }
+                            null -> KMR.strings.anki_sentence_audio_streams_not_found
+                        }
+                    }
+                    AnkiSentenceAudioFailure.AUDIO_CODEC_RESTRICTED -> {
+                        when (warning.diagnostic?.inputSource) {
+                            AnkiSentenceAudioInputSource.ORIGINAL_VIDEO -> {
+                                KMR.strings.anki_sentence_audio_codec_restricted_original
+                            }
+                            AnkiSentenceAudioInputSource.MPV_PLAYABLE_VIDEO -> {
+                                KMR.strings.anki_sentence_audio_codec_restricted_playable
+                            }
+                            AnkiSentenceAudioInputSource.MPV_EXTERNAL_AUDIO -> {
+                                KMR.strings.anki_sentence_audio_codec_restricted_external
+                            }
+                            null -> KMR.strings.anki_sentence_audio_codec_restricted
+                        }
                     }
                     AnkiSentenceAudioFailure.AUDIO_STREAM_INDEX_UNAVAILABLE -> {
                         KMR.strings.anki_sentence_audio_stream_index_unavailable

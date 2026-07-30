@@ -385,6 +385,7 @@ object AnkiCardCreator {
                 }
 
                 var sentenceAudioGenerationFailure: AnkiSentenceAudioFailure? = null
+                var sentenceAudioGenerationDiagnostic: AnkiSentenceAudioDiagnostic? = null
                 var sentenceAudioStorageFailed = false
                 val sentenceAudioSource = if (hasSentenceAudioMarker) {
                     val provider = mediaRequest?.sentenceAudioProvider
@@ -401,7 +402,9 @@ object AnkiCardCreator {
                         null
                     }
                     val lazySource = (lazyPreparation as? AnkiSentenceAudioPreparation.Ready)?.source
-                    val lazyFailure = (lazyPreparation as? AnkiSentenceAudioPreparation.Unavailable)?.failure
+                    val lazyUnavailable = lazyPreparation as? AnkiSentenceAudioPreparation.Unavailable
+                    val lazyFailure = lazyUnavailable?.failure
+                    val lazyDiagnostic = lazyUnavailable?.diagnostic
                     val eagerSource = sentenceAudioBytes?.let { bytes ->
                         val filename = generateSentenceAudioFilename(bytes, sentenceAudioExtension)
                         AnkiMediaSource.Bytes(
@@ -412,6 +415,7 @@ object AnkiCardCreator {
                     }
                     if (provider != null && lazySource == null && eagerSource == null) {
                         sentenceAudioGenerationFailure = lazyFailure ?: AnkiSentenceAudioFailure.UNKNOWN
+                        sentenceAudioGenerationDiagnostic = lazyDiagnostic
                     }
                     lazySource ?: eagerSource
                 } else {
@@ -534,8 +538,12 @@ object AnkiCardCreator {
                     AnkiResult.Success(
                         noteId,
                         screenshotResult.warnings + listOfNotNull(
-                            sentenceAudioGenerationFailure
-                                ?.let(AnkiMediaWarning::SentenceAudioGenerationFailed),
+                            sentenceAudioGenerationFailure?.let { failure ->
+                                AnkiMediaWarning.SentenceAudioGenerationFailed(
+                                    failure,
+                                    sentenceAudioGenerationDiagnostic,
+                                )
+                            },
                             AnkiMediaWarning.SentenceAudioStorageFailed
                                 .takeIf { sentenceAudioStorageFailed },
                         ),

@@ -264,6 +264,14 @@
     <string name="anki_sentence_audio_source_unavailable">The selected video source could not be read for sentence audio. The card was created without it.</string>
     <string name="anki_sentence_audio_timing_unavailable">The subtitle timing was unavailable. Sentence audio was not added.</string>
     <string name="anki_sentence_audio_probe_failed">The selected audio stream could not be inspected. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_streams_not_found">FFmpeg could not find an audio stream in the source used for export. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_streams_not_found_original">FFmpeg could not find an audio stream in the original video source used for export. MPV may be playing a different source. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_streams_not_found_playable">FFmpeg could not find an audio stream in MPV's playable video source. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_streams_not_found_external">MPV selected external audio, but FFmpeg could not find an audio stream in that source. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_codec_restricted">FFmpeg found audio, but its codec is outside the safe export allow-list. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_codec_restricted_original">FFmpeg found audio in the original video source, but its codec is outside the safe export allow-list. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_codec_restricted_playable">FFmpeg found audio in MPV's playable video source, but its codec is outside the safe export allow-list. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_codec_restricted_external">MPV selected external audio, but its codec is outside the safe export allow-list. The card was created without sentence audio.</string>
     <string name="anki_sentence_audio_stream_index_unavailable">The audio track selected in the player was not found in this video. The card was created without sentence audio.</string>
     <string name="anki_sentence_audio_stream_not_audio">The track selected as audio did not resolve to an audio stream in this video. The card was created without sentence audio.</string>
     <string name="anki_sentence_audio_stream_protected">The selected audio stream is protected and cannot be exported. The card was created without sentence audio.</string>

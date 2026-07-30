@@ -2,7 +2,9 @@ package eu.kanade.tachiyomi.ui.player.scene
 
 import android.graphics.Bitmap
 import chimahon.anki.AnkiMediaSource
+import chimahon.anki.AnkiSentenceAudioDiagnostic
 import chimahon.anki.AnkiSentenceAudioFailure
+import chimahon.anki.AnkiSentenceAudioInputSource
 import chimahon.anki.AnkiSentenceAudioPreparation
 import io.mockk.every
 import io.mockk.mockk
@@ -53,7 +55,7 @@ class SceneSentenceAudioServiceTest {
     }
 
     @Test
-    fun `reports selected non-audio stream when FFprobe finds no audio`() = runBlocking {
+    fun `reports no audio in the original export input after unrestricted discovery`() = runBlocking {
         val request = request()
 
         try {
@@ -63,11 +65,17 @@ class SceneSentenceAudioServiceTest {
                         "a:0" to SceneCommandResult.Success("codec_type=video"),
                         "a" to SceneCommandResult.Success(),
                     ),
+                    unrestrictedAudioProbeResult = SceneCommandResult.Success(),
                 ),
             ).prepare(request)
 
             assertEquals(
-                AnkiSentenceAudioPreparation.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAM_NOT_AUDIO),
+                AnkiSentenceAudioPreparation.Unavailable(
+                    failure = AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND,
+                    diagnostic = AnkiSentenceAudioDiagnostic(
+                        inputSource = AnkiSentenceAudioInputSource.ORIGINAL_VIDEO,
+                    ),
+                ),
                 result,
             )
         } finally {
@@ -105,8 +113,13 @@ class SceneSentenceAudioServiceTest {
     }
 
     @Test
-    fun `reports missing selected stream when no audio stream can be resolved`() = runBlocking {
-        val request = request(audioInput(audioStreamIndex = 4))
+    fun `reports codec restriction when discovery finds audio in MPV playable input`() = runBlocking {
+        val request = request(
+            audioInput(
+                audioStreamIndex = 4,
+                origin = SceneVideoInputOrigin.PLAYABLE_VIDEO,
+            ),
+        )
 
         try {
             val result = service(
@@ -115,12 +128,24 @@ class SceneSentenceAudioServiceTest {
                         "4" to SceneCommandResult.Success(),
                         "a" to SceneCommandResult.Success(),
                     ),
+                    unrestrictedAudioProbeResult = SceneCommandResult.Success(
+                        """
+                        [STREAM]
+                        index=1
+                        codec_type=audio
+                        codec_name=unsupported_audio
+                        [/STREAM]
+                        """.trimIndent(),
+                    ),
                 ),
             ).prepare(request)
 
             assertEquals(
                 AnkiSentenceAudioPreparation.Unavailable(
-                    AnkiSentenceAudioFailure.AUDIO_STREAM_INDEX_UNAVAILABLE,
+                    failure = AnkiSentenceAudioFailure.AUDIO_CODEC_RESTRICTED,
+                    diagnostic = AnkiSentenceAudioDiagnostic(
+                        inputSource = AnkiSentenceAudioInputSource.MPV_PLAYABLE_VIDEO,
+                    ),
                 ),
                 result,
             )
@@ -130,8 +155,13 @@ class SceneSentenceAudioServiceTest {
     }
 
     @Test
-    fun `reports selected non-audio stream when no audio stream can be resolved`() = runBlocking {
-        val request = request(audioInput(audioStreamIndex = 0))
+    fun `reports no audio in MPV selected external audio input`() = runBlocking {
+        val request = request(
+            audioInput(
+                audioStreamIndex = 0,
+                origin = SceneVideoInputOrigin.EXTERNAL_AUDIO,
+            ),
+        )
 
         try {
             val result = service(
@@ -140,12 +170,16 @@ class SceneSentenceAudioServiceTest {
                         "0" to SceneCommandResult.Success("index=0\ncodec_type=video"),
                         "a" to SceneCommandResult.Success(),
                     ),
+                    unrestrictedAudioProbeResult = SceneCommandResult.Success(),
                 ),
             ).prepare(request)
 
             assertEquals(
                 AnkiSentenceAudioPreparation.Unavailable(
-                    AnkiSentenceAudioFailure.AUDIO_STREAM_NOT_AUDIO,
+                    failure = AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND,
+                    diagnostic = AnkiSentenceAudioDiagnostic(
+                        inputSource = AnkiSentenceAudioInputSource.MPV_EXTERNAL_AUDIO,
+                    ),
                 ),
                 result,
             )
@@ -310,12 +344,16 @@ class SceneSentenceAudioServiceTest {
         )
     }
 
-    private fun audioInput(audioStreamIndex: Int? = null): SceneVideoInputSpec {
+    private fun audioInput(
+        audioStreamIndex: Int? = null,
+        origin: SceneVideoInputOrigin = SceneVideoInputOrigin.ORIGINAL_VIDEO,
+    ): SceneVideoInputSpec {
         return SceneVideoInputSpec(
             value = "https://media.example/audio.m4a",
             kind = SceneVideoInputKind.REMOTE_HTTP,
             headers = emptyList(),
             audioStreamIndex = audioStreamIndex,
+            origin = origin,
         )
     }
 
@@ -323,11 +361,13 @@ class SceneSentenceAudioServiceTest {
         private val audioProbeResults: Map<String, SceneCommandResult> = mapOf(
             "a:0" to SceneCommandResult.Success("codec_type=audio\ncodec_name=aac"),
         ),
+        private val unrestrictedAudioProbeResult: SceneCommandResult? = null,
         private val ffmpegResult: SceneCommandResult = SceneCommandResult.Success(),
         private val ffmpegDelayMillis: Long = 0,
     ) : SceneCommandExecutor {
         var ffmpegCalls = 0
         val ffprobeSelectors = mutableListOf<String>()
+        val unrestrictedFfprobeSelectors = mutableListOf<String>()
         val ffmpegAudioMaps = mutableListOf<String>()
 
         override suspend fun executeFfmpeg(
@@ -355,6 +395,12 @@ class SceneSentenceAudioServiceTest {
             return try {
                 val selector = arguments[arguments.indexOf("-select_streams") + 1]
                 ffprobeSelectors += selector
+                val restrictDecoders = "-codec_whitelist" in arguments
+                if (!restrictDecoders) {
+                    unrestrictedFfprobeSelectors += selector
+                    return unrestrictedAudioProbeResult
+                        ?: error("Unexpected unrestricted stream selector: $selector")
+                }
                 when (selector) {
                     "v:0" -> SceneCommandResult.Success(
                         "pix_fmt=yuv420p10le\ncolor_transfer=smpte2084\nbits_per_raw_sample=10",
