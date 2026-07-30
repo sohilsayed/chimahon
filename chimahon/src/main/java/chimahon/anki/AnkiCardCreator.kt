@@ -384,22 +384,24 @@ object AnkiCardCreator {
                     ownedPreparedFiles += screenshotPreparation.animation
                 }
 
-                var sentenceAudioGenerationFailed = false
+                var sentenceAudioGenerationFailure: AnkiSentenceAudioFailure? = null
                 var sentenceAudioStorageFailed = false
                 val sentenceAudioSource = if (hasSentenceAudioMarker) {
                     val provider = mediaRequest?.sentenceAudioProvider
-                    val lazySource = if (provider != null) {
+                    val lazyPreparation = if (provider != null) {
                         try {
                             provider.prepare()
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             android.util.Log.w(TAG, "addToAnki: failed to prepare sentence audio", e)
-                            null
+                            AnkiSentenceAudioPreparation.Unavailable(AnkiSentenceAudioFailure.UNKNOWN)
                         }
                     } else {
                         null
                     }
+                    val lazySource = (lazyPreparation as? AnkiSentenceAudioPreparation.Ready)?.source
+                    val lazyFailure = (lazyPreparation as? AnkiSentenceAudioPreparation.Unavailable)?.failure
                     val eagerSource = sentenceAudioBytes?.let { bytes ->
                         val filename = generateSentenceAudioFilename(bytes, sentenceAudioExtension)
                         AnkiMediaSource.Bytes(
@@ -409,7 +411,7 @@ object AnkiCardCreator {
                         )
                     }
                     if (provider != null && lazySource == null && eagerSource == null) {
-                        sentenceAudioGenerationFailed = true
+                        sentenceAudioGenerationFailure = lazyFailure ?: AnkiSentenceAudioFailure.UNKNOWN
                     }
                     lazySource ?: eagerSource
                 } else {
@@ -532,8 +534,8 @@ object AnkiCardCreator {
                     AnkiResult.Success(
                         noteId,
                         screenshotResult.warnings + listOfNotNull(
-                            AnkiMediaWarning.SentenceAudioGenerationFailed
-                                .takeIf { sentenceAudioGenerationFailed },
+                            sentenceAudioGenerationFailure
+                                ?.let(AnkiMediaWarning::SentenceAudioGenerationFailed),
                             AnkiMediaWarning.SentenceAudioStorageFailed
                                 .takeIf { sentenceAudioStorageFailed },
                         ),

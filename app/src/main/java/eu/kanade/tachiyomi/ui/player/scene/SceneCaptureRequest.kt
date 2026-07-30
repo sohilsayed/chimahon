@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.player.scene
 
 import android.graphics.Bitmap
+import chimahon.anki.AnkiSentenceAudioFailure
 import `is`.xyz.mpv.MPVLib
 import java.io.Closeable
 import kotlin.math.abs
@@ -91,6 +92,7 @@ internal class OwnedBitmap private constructor(
 internal class SceneCaptureRequest(
     val videoInput: SceneVideoInputSpec?,
     val sentenceAudioInput: SceneVideoInputSpec?,
+    val sentenceAudioFailure: AnkiSentenceAudioFailure? = null,
     val resolvedTiming: SceneResolvedTiming?,
     private val stillFallback: OwnedBitmap,
 ) : Closeable {
@@ -310,18 +312,31 @@ internal class SceneCaptureRequestFactory(
             if (!sameCaptureState(beforeMpv, afterMpv) || beforeVideo != afterVideo) return null
 
             val videoInput = SceneVideoInputResolver.resolve(beforeVideo.video)
-            val sentenceAudioInput = when {
+            val sentenceAudio = when {
                 beforeVideo.sentenceAudio != null -> {
-                    SceneVideoInputResolver.resolve(beforeVideo.sentenceAudio)
+                    val input = SceneVideoInputResolver.resolve(beforeVideo.sentenceAudio)
+                    SentenceAudioInputResolution(
+                        input = input,
+                        failure = AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE.takeIf { input == null },
+                    )
                 }
                 beforeMpv.selectedAudioId != null &&
                     beforeMpv.selectedAudioFfmpegIndex == null &&
-                    beforeMpv.audioTrackCount != 1 -> null
-                else -> videoInput
+                    beforeMpv.audioTrackCount != 1 -> {
+                    SentenceAudioInputResolution(
+                        input = null,
+                        failure = AnkiSentenceAudioFailure.TRACK_MAPPING_UNAVAILABLE,
+                    )
+                }
+                else -> SentenceAudioInputResolution(
+                    input = videoInput,
+                    failure = AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE.takeIf { videoInput == null },
+                )
             }
             val request = SceneCaptureRequest(
                 videoInput = videoInput,
-                sentenceAudioInput = sentenceAudioInput,
+                sentenceAudioInput = sentenceAudio.input,
+                sentenceAudioFailure = sentenceAudio.failure,
                 resolvedTiming = resolveTiming(beforeMpv),
                 stillFallback = OwnedBitmap(fallback),
             )
@@ -349,6 +364,11 @@ internal class SceneCaptureRequestFactory(
             before.seekable == after.seekable &&
             before.selectedAudioFfmpegIndex == after.selectedAudioFfmpegIndex
     }
+
+    private data class SentenceAudioInputResolution(
+        val input: SceneVideoInputSpec?,
+        val failure: AnkiSentenceAudioFailure?,
+    )
 
     private fun nullableDoubleEquals(first: Double?, second: Double?): Boolean {
         if (first == null || second == null) return first == second

@@ -44,11 +44,34 @@ sealed interface AnkiMediaSource {
     ) : AnkiMediaSource
 }
 
+enum class AnkiSentenceAudioFailure {
+    TRACK_MAPPING_UNAVAILABLE,
+    SOURCE_UNAVAILABLE,
+    TIMING_UNAVAILABLE,
+    AUDIO_PROBE_FAILED,
+    AUDIO_STREAM_UNREADABLE,
+    EXTRACTION_FAILED,
+    EXTRACTION_TIMED_OUT,
+    UNKNOWN,
+}
+
+sealed interface AnkiSentenceAudioPreparation {
+    data class Ready(
+        val source: AnkiMediaSource,
+    ) : AnkiSentenceAudioPreparation
+
+    data class Unavailable(
+        val failure: AnkiSentenceAudioFailure,
+    ) : AnkiSentenceAudioPreparation
+}
+
 sealed interface AnkiMediaWarning {
     data object SceneGenerationFailed : AnkiMediaWarning
     data object AnimatedStorageFailed : AnkiMediaWarning
     data object StillStorageFailed : AnkiMediaWarning
-    data object SentenceAudioGenerationFailed : AnkiMediaWarning
+    data class SentenceAudioGenerationFailed(
+        val failure: AnkiSentenceAudioFailure,
+    ) : AnkiMediaWarning
     data object SentenceAudioStorageFailed : AnkiMediaWarning
 }
 
@@ -72,7 +95,7 @@ fun interface LazyAnkiScreenshotProvider {
 }
 
 fun interface LazyAnkiMediaProvider {
-    suspend fun prepare(): AnkiMediaSource?
+    suspend fun prepare(): AnkiSentenceAudioPreparation
 }
 
 data class AnkiMediaRequest(

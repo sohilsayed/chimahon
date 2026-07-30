@@ -260,6 +260,13 @@
     <string name="anki_scene_fallback_storage">AnkiDroid could not store the animated scene. Chimahon used the captured still screenshot when available.</string>
     <string name="anki_scene_still_storage_failed">The screenshot could not be stored. The card was created without it.</string>
     <string name="anki_sentence_audio_generation_failed">Sentence audio could not be exported from this video source. The card was created without it.</string>
+    <string name="anki_sentence_audio_track_mapping_unavailable">The selected audio track could not be identified safely. Sentence audio was not added to avoid choosing the wrong track.</string>
+    <string name="anki_sentence_audio_source_unavailable">The selected video source could not be read for sentence audio. The card was created without it.</string>
+    <string name="anki_sentence_audio_timing_unavailable">The subtitle timing was unavailable. Sentence audio was not added.</string>
+    <string name="anki_sentence_audio_probe_failed">The selected audio stream could not be inspected. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_stream_unreadable">No readable audio stream was found in this video. The card was created without sentence audio.</string>
+    <string name="anki_sentence_audio_extraction_failed">Sentence audio extraction failed for this video. The card was created without it.</string>
+    <string name="anki_sentence_audio_extraction_timed_out">Sentence audio extraction timed out. The card was created without it.</string>
     <string name="anki_sentence_audio_storage_failed">AnkiDroid could not store the sentence audio. The card was created without it.</string>
     <string name="pref_settings_section_media">Media</string>
     <string name="pref_settings_section_learning">Learning</string>

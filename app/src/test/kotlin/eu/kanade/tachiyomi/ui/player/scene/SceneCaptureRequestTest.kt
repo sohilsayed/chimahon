@@ -1,10 +1,12 @@
 package eu.kanade.tachiyomi.ui.player.scene
 
 import android.graphics.Bitmap
+import chimahon.anki.AnkiSentenceAudioFailure
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -96,6 +98,10 @@ class SceneCaptureRequestTest {
 
         assertNotNull(request)
         assertNull(request!!.sentenceAudioInput)
+        assertEquals(
+            AnkiSentenceAudioFailure.TRACK_MAPPING_UNAVAILABLE,
+            request.sentenceAudioFailure,
+        )
         request.close()
     }
 
