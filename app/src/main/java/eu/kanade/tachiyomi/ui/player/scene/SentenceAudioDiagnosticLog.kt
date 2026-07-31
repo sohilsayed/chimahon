@@ -57,14 +57,7 @@ internal object NoOpSentenceAudioDiagnosticLogger : SentenceAudioDiagnosticLogge
 internal fun createSentenceAudioDiagnosticLogger(
     storageManager: StorageManager = Injekt.get(),
 ): SentenceAudioDiagnosticLogger {
-    return StorageFolderSentenceAudioDiagnosticLogger(
-        directory = storageManager::getLogsDirectory,
-        onWriteFailure = { error ->
-            logcat("SentenceAudioDiagnostic", LogPriority.ERROR) {
-                "Sentence-audio diagnostic log could not be written to the selected storage folder: ${error.javaClass.simpleName}"
-            }
-        },
-    )
+    return NoOpSentenceAudioDiagnosticLogger
 }
 
 internal class StorageFolderSentenceAudioDiagnosticLogger(
