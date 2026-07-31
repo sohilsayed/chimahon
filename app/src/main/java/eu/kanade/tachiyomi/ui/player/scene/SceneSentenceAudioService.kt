@@ -302,8 +302,15 @@ internal class FrozenSceneSentenceAudioService internal constructor(
                 diagnosticUnavailable(input, AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED)
             }
             is AudioProbeResult.Success -> {
-                val failure = if (SceneMediaProbe.audioStreams(probe.output).isNotEmpty()) {
+                val streams = SceneMediaProbe.audioStreams(probe.output)
+                val failure = if (streams.isNotEmpty()) {
                     AnkiSentenceAudioFailure.AUDIO_CODEC_RESTRICTED
+                } else if (
+                    input.kind == SceneVideoInputKind.REMOTE_HTTP &&
+                    input.audioStreamIndex != null &&
+                    input.origin == SceneVideoInputOrigin.ORIGINAL_VIDEO
+                ) {
+                    return AudioInputResolution.Ready(input)
                 } else {
                     AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND
                 }
