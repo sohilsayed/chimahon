@@ -56,6 +56,12 @@ enum class AnkiSentenceAudioFailure {
     AUDIO_STREAM_PROTECTED,
     AUDIO_STREAM_UNREADABLE,
     EXTRACTION_FAILED,
+    EXTRACTION_OUTPUT_MISSING,
+    EXTRACTION_OUTPUT_READ_FAILED,
+    EXTRACTION_STREAM_MAPPING_FAILED,
+    EXTRACTION_SOURCE_READ_FAILED,
+    EXTRACTION_SEEK_FAILED,
+    EXTRACTION_OUTPUT_WRITE_FAILED,
     EXTRACTION_TIMED_OUT,
     UNKNOWN,
 }
@@ -66,8 +72,19 @@ enum class AnkiSentenceAudioInputSource {
     MPV_EXTERNAL_AUDIO,
 }
 
+/**
+ * Safe, frozen reason why the original video could not be retried through MPV's playable source.
+ * It deliberately does not expose a path, URL, header, or player property.
+ */
+enum class AnkiSentenceAudioPlayableFallback {
+    MISSING,
+    SAME_AS_ORIGINAL,
+    UNAVAILABLE,
+}
+
 data class AnkiSentenceAudioDiagnostic(
     val inputSource: AnkiSentenceAudioInputSource,
+    val playableFallback: AnkiSentenceAudioPlayableFallback? = null,
 )
 
 sealed interface AnkiSentenceAudioPreparation {

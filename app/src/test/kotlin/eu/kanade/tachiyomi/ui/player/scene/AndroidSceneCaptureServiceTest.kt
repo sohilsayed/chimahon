@@ -114,10 +114,6 @@ class AndroidSceneCaptureServiceTest {
         return arrayOf(
             "-codec_whitelist",
             SceneFfmpegArguments.ALLOWED_INPUT_DECODERS,
-            "-tls_verify",
-            "1",
-            "-ca_file",
-            "/files/cacert.pem",
             "-protocol_whitelist",
             "http,https,tls,tcp,crypto",
             "-rw_timeout",

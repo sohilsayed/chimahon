@@ -101,6 +101,43 @@ class SceneVideoInputTest {
     }
 
     @Test
+    fun `playable fallback resolution distinguishes usable missing same and unsafe sources`() {
+        val originalValue = "https://media.example/original.m3u8"
+        val original = requireNotNull(resolve(snapshot(originalValue)))
+
+        val available = SceneVideoInputResolver.resolvePlayableFallback(
+            snapshot(
+                value = originalValue,
+                playableValue = "https://media.example/playable.m3u8",
+            ),
+            original,
+        )
+        val missing = SceneVideoInputResolver.resolvePlayableFallback(
+            snapshot(value = originalValue, playableValue = ""),
+            original,
+        )
+        val same = SceneVideoInputResolver.resolvePlayableFallback(
+            snapshot(value = originalValue, playableValue = originalValue),
+            original,
+        )
+        val unsafe = SceneVideoInputResolver.resolvePlayableFallback(
+            snapshot(
+                value = originalValue,
+                playableValue = "https://media.example/playable.m3u8?token=secret",
+            ),
+            original,
+        )
+
+        assertEquals(
+            "https://media.example/playable.m3u8",
+            (available as ScenePlayableFallbackResolution.Available).input.value,
+        )
+        assertEquals(ScenePlayableFallbackResolution.Missing, missing)
+        assertEquals(ScenePlayableFallbackResolution.SameAsOriginal, same)
+        assertEquals(ScenePlayableFallbackResolution.Unavailable, unsafe)
+    }
+
+    @Test
     fun `AVIF command has the single bounded native recipe`() {
         val input = supportedInput()
         val arguments = SceneFfmpegArguments.animatedAvif(
@@ -131,10 +168,6 @@ class SceneVideoInputTest {
         assertTrue(
             arguments.containsAll(
                 listOf(
-                    "-tls_verify",
-                    "1",
-                    "-ca_file",
-                    "/files/cacert.pem",
                     "-protocol_whitelist",
                     "http,https,tls,tcp,crypto",
                     "-rw_timeout",

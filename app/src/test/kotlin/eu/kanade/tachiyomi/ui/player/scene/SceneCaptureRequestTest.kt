@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.player.scene
 
 import android.graphics.Bitmap
 import chimahon.anki.AnkiSentenceAudioFailure
+import chimahon.anki.AnkiSentenceAudioPlayableFallback
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -156,6 +157,29 @@ class SceneCaptureRequestTest {
         assertEquals(SceneVideoInputOrigin.ORIGINAL_VIDEO, originalInput.origin)
         assertEquals("https://media.example/playable.m3u8", playableInput.value)
         assertEquals(SceneVideoInputOrigin.PLAYABLE_VIDEO, playableInput.origin)
+        capturedRequest.close()
+    }
+
+    @Test
+    fun `original sentence audio input records when MPV playable source is the same`() = runTest {
+        val bitmap = mockBitmap()
+        val source = "https://media.example/original.m3u8"
+        val factory = SceneCaptureRequestFactory(
+            SceneMpvSnapshotReader(SequencePropertyReader(listOf(snapshot(source), snapshot(source)))),
+        )
+
+        val request = factory.captureSubtitle(
+            videoSnapshot = { inputSnapshot(originalVideoValue = source, playableValue = source) },
+            parsedSubtitleCandidates = emptyList(),
+            captureFallback = { bitmap },
+        )
+
+        val capturedRequest = requireNotNull(request)
+        assertNull(capturedRequest.sentenceAudioFallbackInput)
+        assertEquals(
+            AnkiSentenceAudioPlayableFallback.SAME_AS_ORIGINAL,
+            capturedRequest.sentenceAudioFallbackStatus,
+        )
         capturedRequest.close()
     }
 

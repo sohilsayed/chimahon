@@ -16,7 +16,73 @@ import kotlin.coroutines.resume
 internal sealed interface SceneCommandResult {
     data class Success(val output: String = "") : SceneCommandResult
 
+    data class FfmpegFailed(
+        val failure: SceneFfmpegFailure,
+        val nativeDiagnostics: SceneNativeFailureDiagnostics? = null,
+    ) : SceneCommandResult
+
     data object Failed : SceneCommandResult
+}
+
+/**
+ * Raw native details remain in-memory until the temporary, app-private sentence-audio journal
+ * redacts them. They must never be passed to UI warnings or regular application logs.
+ */
+internal data class SceneNativeFailureDiagnostics(
+    val returnCode: Int?,
+    val failStackTrace: String?,
+    val logs: String?,
+)
+
+internal enum class SceneFfmpegFailure {
+    STREAM_MAPPING,
+    SOURCE_READ,
+    SEEK,
+    OUTPUT_WRITE,
+    UNKNOWN,
+}
+
+/**
+ * Converts untrusted native diagnostics into a closed, user-safe category. Raw logs may include
+ * URLs or request headers, so they are never exposed to the UI; the temporary sentence-audio
+ * journal is responsible for redacting any diagnostic detail it writes.
+ */
+internal fun classifySceneFfmpegFailure(
+    failStackTrace: String?,
+    logs: String?,
+): SceneFfmpegFailure {
+    val detail = sequenceOf(failStackTrace, logs)
+        .filterNotNull()
+        .joinToString(separator = "\n")
+        .lowercase()
+
+    return when {
+        "stream map" in detail && "matches no streams" in detail -> {
+            SceneFfmpegFailure.STREAM_MAPPING
+        }
+        "could not seek" in detail || "failed to seek" in detail || "invalid seek" in detail -> {
+            SceneFfmpegFailure.SEEK
+        }
+        "could not write header for output" in detail ||
+            "error opening output" in detail ||
+            "failed to avio_open" in detail ||
+            "error writing trailer" in detail ||
+            "error muxing a packet" in detail -> {
+            SceneFfmpegFailure.OUTPUT_WRITE
+        }
+        "http error" in detail ||
+            "server returned" in detail ||
+            "failed to open segment" in detail ||
+            "error when loading first segment" in detail ||
+            "unable to open resource" in detail ||
+            "connection refused" in detail ||
+            "connection reset by peer" in detail ||
+            "network is unreachable" in detail ||
+            "connection timed out" in detail -> {
+            SceneFfmpegFailure.SOURCE_READ
+        }
+        else -> SceneFfmpegFailure.UNKNOWN
+    }
 }
 
 internal interface SceneCommandExecutor {
@@ -79,7 +145,18 @@ internal class FfmpegKitSceneCommandExecutor : SceneCommandExecutor {
                 if (ReturnCode.isSuccess(session.returnCode)) {
                     SceneCommandResult.Success()
                 } else {
-                    SceneCommandResult.Failed
+                    val diagnostics = SceneNativeFailureDiagnostics(
+                        returnCode = session.returnCode?.getValue(),
+                        failStackTrace = session.failStackTrace,
+                        logs = session.getAllLogsAsString(FAILURE_LOG_WAIT_MILLIS),
+                    )
+                    SceneCommandResult.FfmpegFailed(
+                        classifySceneFfmpegFailure(
+                            failStackTrace = diagnostics.failStackTrace,
+                            logs = diagnostics.logs,
+                        ),
+                        nativeDiagnostics = diagnostics,
+                    )
                 }
             },
             onNativeFinished = onNativeFinished,
@@ -105,7 +182,18 @@ internal class FfmpegKitSceneCommandExecutor : SceneCommandExecutor {
                 if (ReturnCode.isSuccess(session.returnCode)) {
                     SceneCommandResult.Success(session.output.orEmpty())
                 } else {
-                    SceneCommandResult.Failed
+                    val diagnostics = SceneNativeFailureDiagnostics(
+                        returnCode = session.returnCode?.getValue(),
+                        failStackTrace = session.failStackTrace,
+                        logs = session.getAllLogsAsString(FAILURE_LOG_WAIT_MILLIS),
+                    )
+                    SceneCommandResult.FfmpegFailed(
+                        classifySceneFfmpegFailure(
+                            failStackTrace = diagnostics.failStackTrace,
+                            logs = diagnostics.logs,
+                        ),
+                        nativeDiagnostics = diagnostics,
+                    )
                 }
             },
             onNativeFinished = onNativeFinished,
@@ -201,6 +289,8 @@ internal class FfmpegKitSceneCommandExecutor : SceneCommandExecutor {
     }
 
     private companion object {
+        // Temporary diagnostic window: only native failures wait for late FFmpeg/FFprobe lines.
+        const val FAILURE_LOG_WAIT_MILLIS = 1_000
         val DISCARD_LOG_CALLBACK = LogCallback {}
         val DISCARD_STATISTICS_CALLBACK = StatisticsCallback {}
     }

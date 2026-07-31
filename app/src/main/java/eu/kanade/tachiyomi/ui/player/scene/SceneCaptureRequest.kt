@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.player.scene
 
 import android.graphics.Bitmap
 import chimahon.anki.AnkiSentenceAudioFailure
+import chimahon.anki.AnkiSentenceAudioPlayableFallback
 import `is`.xyz.mpv.MPVLib
 import java.io.Closeable
 import kotlin.math.abs
@@ -95,6 +96,7 @@ internal class SceneCaptureRequest(
     val sentenceAudioFailure: AnkiSentenceAudioFailure? = null,
     val resolvedTiming: SceneResolvedTiming?,
     val sentenceAudioFallbackInput: SceneVideoInputSpec? = null,
+    val sentenceAudioFallbackStatus: AnkiSentenceAudioPlayableFallback? = null,
     private val stillFallback: OwnedBitmap,
 ) : Closeable {
     fun fallbackBitmapOrNull(): Bitmap? = stillFallback.bitmapOrNull()
@@ -334,21 +336,33 @@ internal class SceneCaptureRequestFactory(
                     failure = AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE.takeIf { videoInput == null },
                 )
             }
-            val sentenceAudioFallbackInput = sentenceAudio.input
+            val sentenceAudioFallbackResolution = sentenceAudio.input
                 ?.takeIf {
                     beforeVideo.sentenceAudio == null &&
                         it.origin == SceneVideoInputOrigin.ORIGINAL_VIDEO
                 }
                 ?.let { originalInput ->
-                    SceneVideoInputResolver.resolvePlayable(beforeVideo.video)
-                        ?.takeIf { it.value != originalInput.value }
+                    SceneVideoInputResolver.resolvePlayableFallback(beforeVideo.video, originalInput)
                 }
+            val sentenceAudioFallbackInput = (sentenceAudioFallbackResolution
+                as? ScenePlayableFallbackResolution.Available)
+                ?.input
+            val sentenceAudioFallbackStatus = when (sentenceAudioFallbackResolution) {
+                ScenePlayableFallbackResolution.Missing -> AnkiSentenceAudioPlayableFallback.MISSING
+                ScenePlayableFallbackResolution.SameAsOriginal -> {
+                    AnkiSentenceAudioPlayableFallback.SAME_AS_ORIGINAL
+                }
+                ScenePlayableFallbackResolution.Unavailable -> AnkiSentenceAudioPlayableFallback.UNAVAILABLE
+                is ScenePlayableFallbackResolution.Available,
+                null -> null
+            }
             val request = SceneCaptureRequest(
                 videoInput = videoInput,
                 sentenceAudioInput = sentenceAudio.input,
                 sentenceAudioFailure = sentenceAudio.failure,
                 resolvedTiming = resolveTiming(beforeMpv),
                 sentenceAudioFallbackInput = sentenceAudioFallbackInput,
+                sentenceAudioFallbackStatus = sentenceAudioFallbackStatus,
                 stillFallback = OwnedBitmap(fallback),
             )
             transferred = true

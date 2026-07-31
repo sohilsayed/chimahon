@@ -66,7 +66,8 @@ internal class AndroidSceneCaptureService private constructor(
                     outputCleanup.nativeFinished()
                 }
                 when (result) {
-                    SceneCommandResult.Failed -> {
+                    SceneCommandResult.Failed,
+                    is SceneCommandResult.FfmpegFailed -> {
                         return@withContext AnkiScreenshotPreparation.Failed(stillFallback = null)
                     }
                     is SceneCommandResult.Success -> Unit

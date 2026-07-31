@@ -38,6 +38,19 @@ internal data class SceneVideoInputSnapshot(
     val isExternalAudio: Boolean = false,
 )
 
+internal sealed interface ScenePlayableFallbackResolution {
+    data class Available(
+        val input: SceneVideoInputSpec,
+    ) : ScenePlayableFallbackResolution
+
+    data object Missing : ScenePlayableFallbackResolution
+
+    data object SameAsOriginal : ScenePlayableFallbackResolution
+
+    /** The player exposed a value, but it cannot safely be used for export. */
+    data object Unavailable : ScenePlayableFallbackResolution
+}
+
 internal object SceneVideoInputResolver {
     fun resolve(snapshot: SceneVideoInputSnapshot): SceneVideoInputSpec? {
         if (snapshot.originalVideoValue.isBlank() && snapshot.playableValue.isNullOrBlank()) {
@@ -85,6 +98,25 @@ internal object SceneVideoInputResolver {
     fun resolvePlayable(snapshot: SceneVideoInputSnapshot): SceneVideoInputSpec? {
         if (snapshot.isExternalAudio) return null
         return resolve(snapshot.copy(originalVideoValue = ""))
+    }
+
+    fun resolvePlayableFallback(
+        snapshot: SceneVideoInputSnapshot,
+        original: SceneVideoInputSpec,
+    ): ScenePlayableFallbackResolution {
+        if (snapshot.playableValue.isNullOrBlank()) {
+            return ScenePlayableFallbackResolution.Missing
+        }
+        val playable = resolvePlayable(snapshot) ?: return ScenePlayableFallbackResolution.Unavailable
+        return if (
+            playable.value == original.value &&
+            playable.kind == original.kind &&
+            playable.headers == original.headers
+        ) {
+            ScenePlayableFallbackResolution.SameAsOriginal
+        } else {
+            ScenePlayableFallbackResolution.Available(playable)
+        }
     }
 
     private fun validateRemoteInput(
@@ -346,10 +378,6 @@ internal object SceneFfmpegArguments {
         }
         if (input.kind == SceneVideoInputKind.REMOTE_HTTP) {
             require(!tlsCaFile.isNullOrBlank()) { "Remote scene input requires a CA bundle" }
-            add("-tls_verify")
-            add("1")
-            add("-ca_file")
-            add(tlsCaFile)
             add("-protocol_whitelist")
             add(REMOTE_PROTOCOLS)
             add("-rw_timeout")
