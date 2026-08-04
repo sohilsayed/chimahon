@@ -22,6 +22,12 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
         }
     }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -63,5 +69,6 @@ dependencies {
     implementation(libs.unifile)
 
     testImplementation(libs.bundles.test)
+    testImplementation(kotlinx.coroutines.test)
     testRuntimeOnly(libs.junit.platform.launcher)
 }

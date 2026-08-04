@@ -77,6 +77,8 @@ import eu.kanade.tachiyomi.ui.player.loader.HosterLoader
 import eu.kanade.tachiyomi.ui.player.settings.GesturePreferences
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.ui.player.settings.SubtitlePreferences
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.SentenceAudioMpvPropertyReader
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.SentenceAudioMpvSnapshotReader
 import eu.kanade.tachiyomi.ui.youtube.YouTubePreferences
 import eu.kanade.tachiyomi.ui.youtube.YouTubeResolver
 import eu.kanade.tachiyomi.ui.youtube.allowsExternalSubtitleLookup
@@ -351,13 +353,20 @@ class PlayerViewModel @JvmOverloads constructor(
 
     val cachePath: String = activity.cacheDir.path
 
-    val mediaCapture = PlayerMediaCaptureService(
+    internal val mediaCapture = PlayerMediaCaptureService(
         context = activity,
         cachePath = cachePath,
         getVideo = { currentVideo.value },
         getSource = { currentSource.value },
         getTimeSeconds = { activity.player.timePos?.toDouble() ?: pos.value.toDouble() },
         getOcrPaddingSeconds = { dictionaryPreferences.videoOcrSentenceAudioPaddingSeconds().get().toDouble() },
+        readMpvSnapshot = {
+            SentenceAudioMpvSnapshotReader(object : SentenceAudioMpvPropertyReader {
+                override fun string(name: String): String? = MPVLib.getPropertyString(name)
+                override fun int(name: String): Int? = MPVLib.getPropertyInt(name)
+                override fun boolean(name: String): Boolean? = MPVLib.getPropertyBoolean(name)
+            }).read()
+        },
     )
 
     private val _customButtons = MutableStateFlow<CustomButtonFetchState>(CustomButtonFetchState.Loading)
@@ -3090,10 +3099,10 @@ class PlayerViewModel @JvmOverloads constructor(
 
     suspend fun captureVideoFrameForOcr(): Bitmap? = mediaCapture.captureVideoFrameForOcr()
 
-    suspend fun captureSubtitleAudioForAnki(startSeconds: Double?, endSeconds: Double?): ByteArray? =
-        mediaCapture.captureSubtitleAudioForAnki(startSeconds, endSeconds)
+    internal fun createSubtitleAudioMediaRequest(startSeconds: Double?, endSeconds: Double?) =
+        mediaCapture.createSubtitleAudioMediaRequest(startSeconds, endSeconds)
 
-    suspend fun captureVideoOcrAudioForAnki(): ByteArray? = mediaCapture.captureVideoOcrAudioForAnki()
+    internal fun createVideoOcrAudioMediaRequest() = mediaCapture.createVideoOcrAudioMediaRequest()
 
     suspend fun captureAnimatedVideoForAnki(startSeconds: Double?, endSeconds: Double?): ByteArray? =
         mediaCapture.captureAnimatedVideoForAnki(startSeconds, endSeconds)

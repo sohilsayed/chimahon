@@ -12,8 +12,19 @@ import com.arthenica.ffmpegkit.ReturnCode
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.AndroidSentenceAudioInputAcquirer
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.FfmpegKitSentenceAudioCommandExecutor
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.SentenceAudioCaptureRequest
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.SentenceAudioCaptureService
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.SentenceAudioInputSnapshot
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.SentenceAudioMpvSnapshot
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.createSentenceAudioDiagnosticLogger
+import eu.kanade.tachiyomi.ui.player.sentenceaudio.resolveSeekability
 import eu.kanade.tachiyomi.util.storage.toFFmpegString
 import `is`.xyz.mpv.MPVLib
+import chimahon.anki.AnkiMediaRequest
+import chimahon.anki.AnkiSentenceAudioPreparation
+import chimahon.anki.LazyAnkiSentenceAudioProvider
 import kotlinx.coroutines.suspendCancellableCoroutine
 import logcat.LogPriority
 import org.aomedia.avif.android.AvifEncoder
@@ -29,14 +40,25 @@ import kotlin.math.min
  * Captures media from the player for Anki mining: still OCR frames, sentence audio slices,
  * and animated AVIF scenes encoded through the bundled libavif encoder.
  */
-class PlayerMediaCaptureService(
+internal class PlayerMediaCaptureService(
     private val context: Context,
     private val cachePath: String,
     private val getVideo: () -> Video?,
     private val getSource: () -> AnimeSource?,
     private val getTimeSeconds: () -> Double,
     private val getOcrPaddingSeconds: () -> Double,
+    private val readMpvSnapshot: () -> SentenceAudioMpvSnapshot,
+    private val prepareSentenceAudioOverride: (suspend (SentenceAudioCaptureRequest) -> AnkiSentenceAudioPreparation)? = null,
 ) {
+
+    private val sentenceAudioCaptureService by lazy {
+        SentenceAudioCaptureService(
+            File(cachePath),
+            AndroidSentenceAudioInputAcquirer(context),
+            FfmpegKitSentenceAudioCommandExecutor(),
+            diagnosticLogger = createSentenceAudioDiagnosticLogger(),
+        )
+    }
 
     suspend fun captureVideoFrameForOcr(): Bitmap? {
         val file = File(cachePath, "${System.currentTimeMillis()}_mpv_ocr_frame.png")
@@ -62,74 +84,39 @@ class PlayerMediaCaptureService(
         }
     }
 
-    suspend fun captureSubtitleAudioForAnki(startSeconds: Double?, endSeconds: Double?): ByteArray? {
-        val start = startSeconds ?: return null
-        val end = endSeconds ?: return null
-        if (end <= start) return null
+    fun createSubtitleAudioMediaRequest(startSeconds: Double?, endSeconds: Double?): AnkiMediaRequest =
+        createSentenceAudioMediaRequest(startSeconds, endSeconds)
 
-        val video = getVideo() ?: return null
-        val output = File(context.cacheDir, "chimahon_sentence_audio_${System.currentTimeMillis()}.m4a")
-        return runCatching {
-            withIOContext {
-                output.delete()
-
-                // For video-only streams (e.g. YouTube DASH), use the separate audio track URL
-                val audioSource = video.audioTracks.firstOrNull()?.url
-                val rawInput = audioSource
-                    ?: MPVLib.getPropertyString("path")
-                        ?.takeIf { it.isNotBlank() }
-                        ?: video.videoUrl
-                val input = when {
-                    video.videoUrl.startsWith("content://") -> Uri.parse(video.videoUrl).toFFmpegString(context)
-                    rawInput.startsWith("file://") -> Uri.parse(rawInput).path ?: rawInput
-                    else -> rawInput
-                }.replace("\"", "\\\"")
-
-                val source = getSource() as? AnimeHttpSource
-                val headers = video.headers ?: source?.headers
-                val headerOptions = if (rawInput.startsWith("http") && headers != null) {
-                    headers.joinToString("", "-headers '", "'") {
-                        "${it.first}: ${it.second.replace("'", "'\\''")}\r\n"
-                    }
-                } else {
-                    ""
-                }
-                val duration = (end - start).coerceIn(0.25, 30.0)
-                val command = listOf(
-                    headerOptions,
-                    "-ss ${start.coerceAtLeast(0.0).formatSeconds()}",
-                    "-t ${duration.formatSeconds()}",
-                    "-i \"$input\"",
-                    "-vn",
-                    "-map 0:a:0",
-                    "-c:a copy",
-                    "\"${output.absolutePath.replace("\"", "\\\"")}\"",
-                    "-y",
-                )
-                    .filter { it.isNotBlank() }
-                    .joinToString(" ")
-                val session = FFmpegSession.create(FFmpegKitConfig.parseArguments(command))
-                FFmpegKitConfig.ffmpegExecute(session)
-                if (ReturnCode.isSuccess(session.returnCode) && output.exists() && output.length() > 0L) {
-                    output.readBytes()
-                } else {
-                    session.failStackTrace?.let { logcat(LogPriority.WARN) { it } }
-                    null
-                }
-            }
-        }.onFailure {
-            logcat(LogPriority.WARN, it) { "Failed to capture subtitle sentence audio" }
-        }.getOrNull().also {
-            output.delete()
-        }
+    fun createVideoOcrAudioMediaRequest(): AnkiMediaRequest {
+        val center = getTimeSeconds()
+        val padding = getOcrPaddingSeconds()
+        return createSentenceAudioMediaRequest(center - padding, center + padding)
     }
 
-    suspend fun captureVideoOcrAudioForAnki(): ByteArray? {
-        val centerSeconds = getTimeSeconds()
-        val paddingSeconds = getOcrPaddingSeconds()
-        return captureSubtitleAudioForAnki(
-            startSeconds = centerSeconds - paddingSeconds,
-            endSeconds = centerSeconds + paddingSeconds,
+    private fun createSentenceAudioMediaRequest(startSeconds: Double?, endSeconds: Double?): AnkiMediaRequest {
+        val video = getVideo()
+        val mpv = readMpvSnapshot()
+        val source = getSource() as? AnimeHttpSource
+        val snapshot = video?.let {
+            SentenceAudioInputSnapshot(
+                originalVideoValue = it.videoUrl,
+                playableValue = mpv.playableValue,
+                headers = (it.headers ?: source?.headers)?.toList().orEmpty(),
+                ffmpegStreamArgs = it.ffmpegStreamArgs.orEmpty(),
+                ffmpegVideoArgs = it.ffmpegVideoArgs.orEmpty(),
+                seekable = resolveSeekability(mpv.seekable, it.videoUrl),
+                selectedAudioId = mpv.selectedAudioId,
+                audioTrackCount = mpv.audioTrackCount,
+                selectedAudioFfmpegIndex = mpv.selectedAudioFfmpegIndex,
+                selectedAudioIsExternal = mpv.selectedAudioIsExternal,
+                selectedExternalAudioValue = mpv.selectedExternalAudioValue,
+            )
+        }
+        val frozen = SentenceAudioCaptureRequest(snapshot, startSeconds, endSeconds)
+        return AnkiMediaRequest(
+            LazyAnkiSentenceAudioProvider {
+                prepareSentenceAudioOverride?.invoke(frozen) ?: sentenceAudioCaptureService.prepare(frozen)
+            },
         )
     }
 

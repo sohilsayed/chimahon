@@ -60,6 +60,8 @@ import chimahon.KanjiResult
 import chimahon.LookupResult
 import chimahon.MediaInfo
 import chimahon.anki.AnkiCardCreator
+import chimahon.anki.AnkiMediaRequest
+import chimahon.anki.AnkiMediaWarning
 import chimahon.anki.AnkiResult
 import chimahon.util.ImageEncoder
 import eu.kanade.tachiyomi.ui.dictionary.buildKanjiEntryJson
@@ -143,6 +145,8 @@ fun OcrLookupPopup(
     onRequestScreenshot: (suspend () -> Bitmap?)? = null,
     onRequestAnimatedScene: (suspend () -> ByteArray?)? = null,
     onRequestSentenceAudio: (suspend () -> ByteArray?)? = null,
+    mediaRequest: AnkiMediaRequest? = null,
+    onAnkiMediaWarnings: (List<AnkiMediaWarning>) -> Unit = {},
     onCropTriggered: ((Long, Int?) -> Unit)? = null,
     initialLookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
     initialEntryJsons: List<String>? = null,
@@ -548,7 +552,7 @@ fun OcrLookupPopup(
 
         if (shouldUseCropMode) {
             miningScope.launch {
-                val sentenceAudioBytes = if (sentenceAudioFieldMapped) {
+                val sentenceAudioBytes = if (sentenceAudioFieldMapped && mediaRequest == null) {
                     onRequestSentenceAudio?.invoke()
                 } else {
                     null
@@ -577,12 +581,14 @@ fun OcrLookupPopup(
                     syncOnCreate = ankiSyncOnCreate,
                     profileId = activeProfile.id,
                     titleId = titleId,
+                    mediaRequest = mediaRequest,
                 )
                 if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
                         when (ankiResult) {
                             is AnkiResult.Success -> {
                                 updateStatus(result.term.expression)
+                                onAnkiMediaWarnings(ankiResult.mediaWarnings)
                                 dismissPopup()
                                 onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
                             }
@@ -625,7 +631,7 @@ fun OcrLookupPopup(
                 } else {
                     encoding?.bytes
                 }
-                val sentenceAudioBytes = if (sentenceAudioFieldMapped) {
+                val sentenceAudioBytes = if (sentenceAudioFieldMapped && mediaRequest == null) {
                     onRequestSentenceAudio?.invoke()
                 } else {
                     null
@@ -655,11 +661,13 @@ fun OcrLookupPopup(
                     syncOnCreate = ankiSyncOnCreate,
                     profileId = activeProfile.id,
                     titleId = titleId,
+                    mediaRequest = mediaRequest,
                 )
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     when (ankiResult) {
                         is AnkiResult.Success -> {
                             updateStatus(result.term.expression)
+                            onAnkiMediaWarnings(ankiResult.mediaWarnings)
                             context.toast(MR.strings.anki_card_added)
                         }
                         is AnkiResult.CardExists -> {
@@ -1320,6 +1328,8 @@ fun OcrLookupPopup(
             screenshot = screenshot,
             onRequestScreenshot = onRequestScreenshot,
             onRequestSentenceAudio = onRequestSentenceAudio,
+            mediaRequest = mediaRequest,
+            onAnkiMediaWarnings = onAnkiMediaWarnings,
             onCropTriggered = onCropTriggered,
             usePopup = usePopup,
             onTermMatched = null,

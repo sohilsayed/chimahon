@@ -212,6 +212,9 @@ internal fun PlayerVideoOcrOverlay(
 
         val selected = selection
         if (selected != null) {
+            val mediaRequest = remember(selected, lookupNonce) {
+                viewModel.createVideoOcrAudioMediaRequest()
+            }
             key(selected.lookupString, lookupNonce) {
                 OcrLookupPopup(
                     visible = true,
@@ -233,7 +236,8 @@ internal fun PlayerVideoOcrOverlay(
                         chapterName = episode?.name.orEmpty(),
                     ),
                     onRequestAnimatedScene = { viewModel.captureVideoOcrAnimatedForAnki() },
-                    onRequestSentenceAudio = { viewModel.captureVideoOcrAudioForAnki() },
+                    mediaRequest = mediaRequest,
+                    onAnkiMediaWarnings = context::showPlayerAnkiMediaWarnings,
                     usePopup = false,
                     titleId = anime?.id?.toString(),
                     onTermMatched = { count, off ->

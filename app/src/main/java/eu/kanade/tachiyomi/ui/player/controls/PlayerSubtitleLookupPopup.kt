@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import chimahon.DictionaryRepository
 import chimahon.MediaInfo
+import chimahon.anki.AnkiMediaRequest
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPopupWebViewWarmup
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
@@ -84,6 +85,11 @@ internal fun PlayerSubtitleLookupPopup(
     BackHandler(enabled = request != null, onBack = onDismiss)
 
     val visible = request != null
+    val mediaRequest: AnkiMediaRequest? = remember(request) {
+        request?.let {
+            viewModel.createSubtitleAudioMediaRequest(it.cueStartSeconds, it.cueEndSeconds)
+        }
+    }
 
     OcrLookupPopup(
         visible = visible,
@@ -113,12 +119,8 @@ internal fun PlayerSubtitleLookupPopup(
                 endSeconds = request?.cueEndSeconds,
             )
         },
-        onRequestSentenceAudio = {
-            viewModel.captureSubtitleAudioForAnki(
-                startSeconds = request?.cueStartSeconds,
-                endSeconds = request?.cueEndSeconds,
-            )
-        },
+        mediaRequest = mediaRequest,
+        onAnkiMediaWarnings = context::showPlayerAnkiMediaWarnings,
         usePopup = false,
         onTermMatched = onTermMatched,
         modifier = modifier,
