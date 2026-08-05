@@ -36,10 +36,11 @@ class SentenceAudioInputTest {
     }
 
     @Test
-    fun `media URL signature parameters like sig are supported`() {
+    fun `media URL signature parameters are supported only for YouTube CDN`() {
         val input = resolve(snapshot("https://googlevideo.com/videoplayback?expire=123&sig=signatureValue&id=abc"))
         assertNotNull(input)
         assertEquals(SentenceAudioInputKind.REMOTE_HTTP, input?.kind)
+        assertNull(resolve(snapshot("https://media.example/video.mp4?sig=signatureValue")))
     }
 
     @Test
@@ -67,7 +68,8 @@ class SentenceAudioInputTest {
     fun `resolved inputs retain whether export uses original playable or external audio`() {
         assertEquals(SentenceAudioInputOrigin.ORIGINAL_VIDEO, requireNotNull(resolve(snapshot("/video/original.mkv", playableValue = "/video/playable.mkv"))).origin)
         assertEquals(SentenceAudioInputOrigin.PLAYABLE_VIDEO, requireNotNull(resolve(snapshot("", playableValue = "/video/playable.mkv"))).origin)
-        assertEquals(SentenceAudioInputOrigin.EXTERNAL_AUDIO, requireNotNull(resolve(snapshot("/audio/episode.m4a", selectedAudioIsExternal = true))).origin)
+        assertEquals(SentenceAudioInputOrigin.EXTERNAL_AUDIO, requireNotNull(resolve(snapshot("/video/original.mkv", selectedAudioIsExternal = true, selectedExternalAudioValue = "/audio/external.m4a"))).origin)
+        assertEquals(SentenceAudioInputOrigin.ORIGINAL_VIDEO, requireNotNull(resolve(snapshot("/video/original.mkv", selectedAudioIsExternal = true, selectedExternalAudioValue = null))).origin)
     }
 
     @Test

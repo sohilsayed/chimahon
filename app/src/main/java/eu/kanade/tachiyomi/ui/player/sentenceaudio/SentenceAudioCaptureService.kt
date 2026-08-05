@@ -81,18 +81,47 @@ internal class SentenceAudioCaptureService(
     }
 
     private suspend fun resolveInput(snapshot: SentenceAudioInputSnapshot, input: SentenceAudioInputSpec): Resolution {
-        val first = resolveOne(input)
-        if (first !is Resolution.Unavailable || input.origin != SentenceAudioInputOrigin.ORIGINAL_VIDEO || !first.failure.isPlayableFallbackRetryable()) {
-            return first
+        var current = resolveOne(input)
+        if (current is Resolution.Ready) {
+            return current
         }
+        val currentFailure = (current as? Resolution.Unavailable)?.failure ?: AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE
+
+        if (input.origin == SentenceAudioInputOrigin.EXTERNAL_AUDIO) {
+            if (input.audioStreamIndex != null) {
+                val unindexedExternal = input.copy(audioStreamIndex = null)
+                val retryExternal = resolveOne(unindexedExternal)
+                if (retryExternal is Resolution.Ready) return retryExternal
+                if (retryExternal is Resolution.Unavailable) current = retryExternal
+            }
+
+            val originalFallback = SentenceAudioInputResolver.resolveOriginalVideoSpec(snapshot)
+                ?.copy(audioStreamIndex = null)
+            if (originalFallback != null && originalFallback.value != input.value) {
+                val fallbackFailure = (current as? Resolution.Unavailable)?.failure ?: currentFailure
+                record(SentenceAudioDiagnosticStage.FALLBACK_DECISION, input, SentenceAudioDiagnosticFallback.ATTEMPTED, fallbackFailure)
+                val second = resolveOne(originalFallback)
+                if (second is Resolution.Ready) return second
+                if (second is Resolution.Unavailable) current = second
+            }
+
+            return current
+        }
+
+        if (current is Resolution.Unavailable && !current.failure.isPlayableFallbackRetryable()) {
+            return current
+        }
+
+        val activeFailure = (current as? Resolution.Unavailable)?.failure ?: currentFailure
+
         return when (val fallback = SentenceAudioInputResolver.resolvePlayableFallback(snapshot, input)) {
             is SentenceAudioPlayableFallbackResolution.Available -> {
-                record(SentenceAudioDiagnosticStage.FALLBACK_DECISION, input, SentenceAudioDiagnosticFallback.ATTEMPTED, first.failure)
+                record(SentenceAudioDiagnosticStage.FALLBACK_DECISION, input, SentenceAudioDiagnosticFallback.ATTEMPTED, activeFailure)
                 resolveOne(fallback.input)
             }
-            SentenceAudioPlayableFallbackResolution.Missing -> unavailableResolution(first.failure, input, AnkiSentenceAudioPlayableFallback.MISSING)
-            SentenceAudioPlayableFallbackResolution.SameAsOriginal -> unavailableResolution(first.failure, input, AnkiSentenceAudioPlayableFallback.SAME_AS_ORIGINAL)
-            SentenceAudioPlayableFallbackResolution.Unavailable -> unavailableResolution(first.failure, input, AnkiSentenceAudioPlayableFallback.UNAVAILABLE)
+            SentenceAudioPlayableFallbackResolution.Missing -> unavailableResolution(activeFailure, input, AnkiSentenceAudioPlayableFallback.MISSING)
+            SentenceAudioPlayableFallbackResolution.SameAsOriginal -> unavailableResolution(activeFailure, input, AnkiSentenceAudioPlayableFallback.SAME_AS_ORIGINAL)
+            SentenceAudioPlayableFallbackResolution.Unavailable -> unavailableResolution(activeFailure, input, AnkiSentenceAudioPlayableFallback.UNAVAILABLE)
         }
     }
 
@@ -143,7 +172,7 @@ internal class SentenceAudioCaptureService(
             ProbeResult.Failed -> Resolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_PROBE_FAILED, input.diagnostic())
             is ProbeResult.Success -> when {
                 SentenceAudioMediaProbe.audioStreams(discovery.output).isNotEmpty() -> Resolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_CODEC_RESTRICTED, input.diagnostic())
-                input.kind == SentenceAudioInputKind.REMOTE_HTTP && input.origin == SentenceAudioInputOrigin.ORIGINAL_VIDEO && input.audioStreamIndex != null -> Resolution.Ready(input)
+                input.kind == SentenceAudioInputKind.REMOTE_HTTP && input.audioStreamIndex != null -> Resolution.Ready(input)
                 else -> Resolution.Unavailable(AnkiSentenceAudioFailure.AUDIO_STREAMS_NOT_FOUND, input.diagnostic())
             }
         }
@@ -182,6 +211,22 @@ internal class SentenceAudioCaptureService(
     }
 
     private suspend fun extract(input: SentenceAudioInputSpec, range: ClosedFloatingPointRange<Double>): AnkiSentenceAudioPreparation {
+        val primary = executeOnce(input, range)
+        if (primary is AnkiSentenceAudioPreparation.Ready) return primary
+
+        if (primary is AnkiSentenceAudioPreparation.Unavailable &&
+            primary.failure == AnkiSentenceAudioFailure.EXTRACTION_STREAM_MAPPING_FAILED &&
+            input.audioStreamIndex != null
+        ) {
+            val fallbackInput = input.copy(audioStreamIndex = null)
+            val retry = executeOnce(fallbackInput, range)
+            if (retry is AnkiSentenceAudioPreparation.Ready) return retry
+        }
+
+        return primary
+    }
+
+    private suspend fun executeOnce(input: SentenceAudioInputSpec, range: ClosedFloatingPointRange<Double>): AnkiSentenceAudioPreparation {
         val lease = inputAcquirer.acquire(input) ?: return unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE, input, SentenceAudioDiagnosticStage.AUDIO_EXTRACTION)
         val output = File(cacheDirectory, "chimahon_sentence_audio_${System.nanoTime()}.m4a")
         val inputCleanup = NativeCleanup(lease::close)

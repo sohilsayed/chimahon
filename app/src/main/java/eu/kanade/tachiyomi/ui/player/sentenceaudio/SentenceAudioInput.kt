@@ -107,10 +107,18 @@ internal object SentenceAudioInputResolver {
         if (snapshot.seekable != true || snapshot.ffmpegStreamArgs.isNotEmpty() || snapshot.ffmpegVideoArgs.isNotEmpty()) {
             return SentenceAudioInputResolution.Unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE)
         }
-        return resolveValue(snapshot.selectedExternalAudioValue ?: snapshot.originalVideoValue, snapshot, SentenceAudioInputOrigin.EXTERNAL_AUDIO)
-            ?.let(SentenceAudioInputResolution::Available)
-            ?: SentenceAudioInputResolution.Unavailable(AnkiSentenceAudioFailure.SOURCE_UNAVAILABLE)
+        val externalValue = snapshot.selectedExternalAudioValue?.takeIf(String::isNotBlank)
+        if (externalValue != null) {
+            val externalSpec = resolveValue(externalValue, snapshot, SentenceAudioInputOrigin.EXTERNAL_AUDIO)
+            if (externalSpec != null) {
+                return SentenceAudioInputResolution.Available(externalSpec)
+            }
+        }
+        return resolveOriginalVideo(snapshot)
     }
+
+    fun resolveOriginalVideoSpec(snapshot: SentenceAudioInputSnapshot): SentenceAudioInputSpec? =
+        (resolveOriginalVideo(snapshot) as? SentenceAudioInputResolution.Available)?.input
 
     private fun resolveValue(
         value: String?,
@@ -135,7 +143,8 @@ internal object SentenceAudioInputResolver {
 
     private fun validateRemoteInput(value: String, headers: List<Pair<String, String>>): List<Pair<String, String>>? {
         val uri = runCatching { URI(value) }.getOrNull() ?: return null
-        if (!uri.userInfo.isNullOrBlank() || uri.host.isNullOrBlank() || hasRejectedValidationQuery(uri.rawQuery.orEmpty())) return null
+        val host = uri.host?.lowercase(Locale.ROOT)
+        if (!uri.userInfo.isNullOrBlank() || host.isNullOrBlank() || hasRejectedValidationQuery(uri.rawQuery.orEmpty(), host)) return null
         return headers.takeIf { it.all(::isAllowedHeader) }
     }
 
@@ -154,12 +163,16 @@ internal object SentenceAudioInputResolver {
             value.none { it == '\u0000' || it == '\r' || it == '\n' || (it.code < 0x20 && it != '\t') }
     }
 
-    private fun hasRejectedValidationQuery(query: String): Boolean = query.split('&').any { parameter ->
+    private fun hasRejectedValidationQuery(query: String, host: String): Boolean = query.split('&').any { parameter ->
         if (parameter.isBlank()) return@any false
         val name = runCatching { URLDecoder.decode(parameter.substringBefore('='), StandardCharsets.UTF_8.name()).lowercase(Locale.ROOT) }.getOrNull()
             ?: return true
-        name in rejectedValidationQueryNames || sensitiveQueryPrefixes.any(name::startsWith)
+        name in rejectedValidationQueryNames ||
+            (name in signedMediaQueryNames && !host.isYouTubeVideoCdn()) ||
+            sensitiveQueryPrefixes.any(name::startsWith)
     }
+
+    private fun String.isYouTubeVideoCdn() = this == "googlevideo.com" || endsWith(".googlevideo.com")
 
     fun sanitizeForLog(url: String): String {
         if (url.isBlank()) return url
@@ -190,6 +203,7 @@ internal object SentenceAudioInputResolver {
 
     private val allowedHttpHeaders = setOf("user-agent", "accept", "accept-encoding", "accept-language", "cache-control", "origin", "pragma", "referer")
     private val rejectedValidationQueryNames = setOf("access_token", "api_key", "auth", "authorization", "credential", "credentials", "key", "policy", "token")
+    private val signedMediaQueryNames = setOf("signature", "signed", "sig")
     private val sensitiveLogQueryNames = setOf("access_token", "api_key", "auth", "authorization", "credential", "credentials", "key", "policy", "signature", "signed", "sig", "token")
     private val sensitiveQueryPrefixes = setOf("x-amz-", "x-goog-")
     private val transientSchemes = setOf("blob", "data", "fd", "fdclose", "edl", "memory", "lavf", "ytdl")
@@ -208,7 +222,7 @@ internal object SentenceAudioFfmpegArguments {
     }.toTypedArray()
     private fun MutableList<String>.addInputOptions(input: SentenceAudioInputSpec, tlsCaFile: String?, restrict: Boolean = true) {
         if (restrict) { add("-codec_whitelist"); add(ALLOWED_INPUT_DECODERS) }
-        if (input.kind == SentenceAudioInputKind.REMOTE_HTTP) { require(!tlsCaFile.isNullOrBlank()); add("-protocol_whitelist"); add("http,https,tls,tcp,crypto"); add("-rw_timeout"); add("15000000") }
+        if (input.kind == SentenceAudioInputKind.REMOTE_HTTP) { require(!tlsCaFile.isNullOrBlank()); add("-protocol_whitelist"); add("http,https,tls,tcp,crypto,hls,applehttp,concat"); add("-rw_timeout"); add("15000000") }
         if (input.headers.isNotEmpty()) { add("-headers"); add(input.headers.joinToString("") { "${it.first}: ${it.second}\r\n" }) }
     }
     private fun Double.seconds() = String.format(Locale.ROOT, "%.6f", this).trimEnd('0').trimEnd('.')
