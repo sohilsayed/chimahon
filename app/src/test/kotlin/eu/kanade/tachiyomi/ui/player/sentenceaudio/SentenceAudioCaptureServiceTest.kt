@@ -68,9 +68,10 @@ class SentenceAudioCaptureServiceTest {
     }
 
     @Test
-    fun `retries unindexed extraction after stream mapping failure`() = runTest {
+    fun `retries unindexed extraction after stream mapping failure only when single audio stream exists`() = runTest {
         val executor = FakeExecutor(
             selected = listOf(SentenceAudioCommandResult.Success(selectedAudio)),
+            all = listOf(SentenceAudioCommandResult.Success("[STREAM]\nindex=0\ncodec_type=audio\n[/STREAM]")),
             ffmpeg = listOf(
                 SentenceAudioCommandResult.FfmpegFailed(SentenceAudioFfmpegFailure.STREAM_MAPPING),
                 SentenceAudioCommandResult.Success(),
@@ -80,7 +81,21 @@ class SentenceAudioCaptureServiceTest {
         assertType<AnkiSentenceAudioPreparation.Ready>(result)
         assertEquals(2, executor.ffmpegCalls)
         assertTrue(executor.ffmpegArguments[0].contains("0:2"))
-        assertTrue(executor.ffmpegArguments[1].contains("0:a:0"))
+        assertTrue(executor.ffmpegArguments[1].contains("0:0"))
+    }
+
+    @Test
+    fun `does not retry unindexed extraction after stream mapping failure when multiple audio streams exist`() = runTest {
+        val executor = FakeExecutor(
+            selected = listOf(SentenceAudioCommandResult.Success(selectedAudio)),
+            all = listOf(SentenceAudioCommandResult.Success("[STREAM]\nindex=1\ncodec_type=audio\n[/STREAM]\n[STREAM]\nindex=2\ncodec_type=audio\n[/STREAM]")),
+            ffmpeg = listOf(
+                SentenceAudioCommandResult.FfmpegFailed(SentenceAudioFfmpegFailure.STREAM_MAPPING),
+            ),
+        )
+        val result = service(executor).prepare(request(index = 2))
+        assertFailure(AnkiSentenceAudioFailure.EXTRACTION_STREAM_MAPPING_FAILED, result)
+        assertEquals(1, executor.ffmpegCalls)
     }
 
     @Test

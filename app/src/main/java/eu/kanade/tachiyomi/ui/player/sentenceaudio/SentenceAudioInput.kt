@@ -132,11 +132,16 @@ internal object SentenceAudioInputResolver {
             SentenceAudioInputKind.REMOTE_HTTP -> validateRemoteInput(normalized.first, snapshot.headers) ?: return null
             SentenceAudioInputKind.LOCAL_FILE, SentenceAudioInputKind.CONTENT_URI -> emptyList()
         }
+        val audioStreamIndex = if (origin == SentenceAudioInputOrigin.EXTERNAL_AUDIO || !snapshot.selectedAudioIsExternal) {
+            snapshot.selectedAudioFfmpegIndex?.takeIf { it >= 0 }
+        } else {
+            null
+        }
         return SentenceAudioInputSpec(
             value = normalized.first,
             kind = normalized.second,
             headers = headers,
-            audioStreamIndex = snapshot.selectedAudioFfmpegIndex?.takeIf { it >= 0 },
+            audioStreamIndex = audioStreamIndex,
             origin = origin,
         )
     }
@@ -144,7 +149,8 @@ internal object SentenceAudioInputResolver {
     private fun validateRemoteInput(value: String, headers: List<Pair<String, String>>): List<Pair<String, String>>? {
         val uri = runCatching { URI(value) }.getOrNull() ?: return null
         val host = uri.host?.lowercase(Locale.ROOT)
-        if (!uri.userInfo.isNullOrBlank() || host.isNullOrBlank() || hasRejectedValidationQuery(uri.rawQuery.orEmpty(), host)) return null
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)
+        if (!uri.userInfo.isNullOrBlank() || host.isNullOrBlank() || hasRejectedValidationQuery(uri.rawQuery.orEmpty(), host, scheme)) return null
         return headers.takeIf { it.all(::isAllowedHeader) }
     }
 
@@ -163,12 +169,12 @@ internal object SentenceAudioInputResolver {
             value.none { it == '\u0000' || it == '\r' || it == '\n' || (it.code < 0x20 && it != '\t') }
     }
 
-    private fun hasRejectedValidationQuery(query: String, host: String): Boolean = query.split('&').any { parameter ->
+    private fun hasRejectedValidationQuery(query: String, host: String, scheme: String?): Boolean = query.split('&').any { parameter ->
         if (parameter.isBlank()) return@any false
         val name = runCatching { URLDecoder.decode(parameter.substringBefore('='), StandardCharsets.UTF_8.name()).lowercase(Locale.ROOT) }.getOrNull()
             ?: return true
         name in rejectedValidationQueryNames ||
-            (name in signedMediaQueryNames && !host.isYouTubeVideoCdn()) ||
+            (name in signedMediaQueryNames && (scheme != "https" || !host.isYouTubeVideoCdn())) ||
             sensitiveQueryPrefixes.any(name::startsWith)
     }
 
@@ -203,8 +209,8 @@ internal object SentenceAudioInputResolver {
 
     private val allowedHttpHeaders = setOf("user-agent", "accept", "accept-encoding", "accept-language", "cache-control", "origin", "pragma", "referer")
     private val rejectedValidationQueryNames = setOf("access_token", "api_key", "auth", "authorization", "credential", "credentials", "key", "policy", "token")
-    private val signedMediaQueryNames = setOf("signature", "signed", "sig")
-    private val sensitiveLogQueryNames = setOf("access_token", "api_key", "auth", "authorization", "credential", "credentials", "key", "policy", "signature", "signed", "sig", "token")
+    private val signedMediaQueryNames = setOf("signature", "signed", "sig", "lsig")
+    private val sensitiveLogQueryNames = setOf("access_token", "api_key", "auth", "authorization", "credential", "credentials", "key", "policy", "signature", "signed", "sig", "lsig", "token")
     private val sensitiveQueryPrefixes = setOf("x-amz-", "x-goog-")
     private val transientSchemes = setOf("blob", "data", "fd", "fdclose", "edl", "memory", "lavf", "ytdl")
     private const val maxHeaderValueLength = 8_192

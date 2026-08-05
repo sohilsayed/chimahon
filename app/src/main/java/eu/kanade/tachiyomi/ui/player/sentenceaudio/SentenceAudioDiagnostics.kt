@@ -53,7 +53,7 @@ internal object SentenceAudioDiagnosticJournal {
     const val maxLogBytes = 64 * 1024
     private const val maxNativeDiagnosticChars = 32 * 1024
     private val urlPattern = Regex("""(?i)\b(?:https?|file)://[^\s"'<>]+""")
-    private val sensitiveQueryPattern = Regex("""(?i)\b(access_token|api_key|auth|authorization|credential|credentials|key|policy|signature|signed|sig|token|x-amz-[^=\s]+|x-goog-[^=\s]+)=([^&\s]+)""")
+    private val sensitiveQueryPattern = Regex("""(?i)\b(access_token|api_key|auth|authorization|credential|credentials|key|policy|signature|signed|sig|lsig|token|x-amz-[^=\s]+|x-goog-[^=\s]+)=([^&\s]+)""")
     private val sensitiveHeaderPattern = Regex("""(?im)^((?:authorization|cookie|referer|origin|user-agent|accept(?:-[a-z-]+)?|cache-control|pragma|proxy-authorization|x-[a-z0-9-]+)\s*:\s*).*$""")
     private val localPathPattern = Regex("""(?i)(?:[a-z]:\\|/(?:data|storage|sdcard|mnt|cache|files)/)[^\s"'<>]+""")
 }

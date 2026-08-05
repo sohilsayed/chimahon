@@ -90,7 +90,7 @@ internal class SentenceAudioCaptureService(
         if (input.origin == SentenceAudioInputOrigin.EXTERNAL_AUDIO) {
             if (input.audioStreamIndex != null) {
                 val unindexedExternal = input.copy(audioStreamIndex = null)
-                val retryExternal = resolveOne(unindexedExternal)
+                val retryExternal = resolveInventory(unindexedExternal)
                 if (retryExternal is Resolution.Ready) return retryExternal
                 if (retryExternal is Resolution.Unavailable) current = retryExternal
             }
@@ -218,9 +218,11 @@ internal class SentenceAudioCaptureService(
             primary.failure == AnkiSentenceAudioFailure.EXTRACTION_STREAM_MAPPING_FAILED &&
             input.audioStreamIndex != null
         ) {
-            val fallbackInput = input.copy(audioStreamIndex = null)
-            val retry = executeOnce(fallbackInput, range)
-            if (retry is AnkiSentenceAudioPreparation.Ready) return retry
+            val inventory = resolveInventory(input.copy(audioStreamIndex = null))
+            if (inventory is Resolution.Ready) {
+                val retry = executeOnce(inventory.input, range)
+                if (retry is AnkiSentenceAudioPreparation.Ready) return retry
+            }
         }
 
         return primary
