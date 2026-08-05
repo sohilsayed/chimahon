@@ -1201,6 +1201,7 @@ fun OcrLookupPopup(
                             showPitchText = showPitchText,
                             activeProfile = activeProfile,
                             existingExpressions = existingExpressions,
+                            entryJsons = entryJsons,
                             customCss = customCss,
                             wordAudioEnabled = wordAudioEnabled,
                             wordAudioAutoplayOverride = if (visible) wordAudioAutoplay else false,
