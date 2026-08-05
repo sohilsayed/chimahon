@@ -36,7 +36,12 @@ internal object SentenceAudioDiagnosticJournal {
     }
     fun render(event: SentenceAudioDiagnosticEvent): String = buildString {
         appendLine("recorded_at_utc=${System.currentTimeMillis()}"); appendLine("stage=${event.stage.name}")
-        event.input?.let { appendLine("input_source=${it.origin.name}"); appendLine("input_kind=${it.kind.name}"); appendLine("audio_stream_index=${it.audioStreamIndex ?: "none"}") }
+        event.input?.let {
+            appendLine("input_source=${it.origin.name}")
+            appendLine("input_kind=${it.kind.name}")
+            appendLine("audio_stream_index=${it.audioStreamIndex ?: "none"}")
+            appendLine("input_value_sanitized=${SentenceAudioInputResolver.sanitizeForLog(it.value)}")
+        }
         appendLine("fallback=${event.fallback.name}"); event.failure?.let { appendLine("failure=${it.name}") }; event.result?.let { appendResult(it) }; event.exceptionType?.let { appendLine("exception_type=$it") }; appendLine("---")
     }
     private fun StringBuilder.appendResult(result: SentenceAudioCommandResult) = when (result) {

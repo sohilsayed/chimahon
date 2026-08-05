@@ -26,14 +26,29 @@ class SentenceAudioInputTest {
     }
 
     @Test
-    fun `sensitive request metadata and signed URLs are rejected`() {
+    fun `sensitive request metadata and credential query parameters are rejected`() {
         listOf(
             snapshot("https://media.example/video.mp4", headers = listOf("Authorization" to "Bearer secret")),
             snapshot("https://media.example/video.mp4?access_token=secret"),
-            snapshot("https://media.example/video.mp4?signature=secret"),
-            snapshot("https://media.example/video.mp4?x-amz-signature=secret"),
+            snapshot("https://media.example/video.mp4?api_key=secret"),
             snapshot("https://user:password@media.example/video.mp4"),
         ).forEach { assertNull(resolve(it)) }
+    }
+
+    @Test
+    fun `media URL signature parameters like sig are supported`() {
+        val input = resolve(snapshot("https://googlevideo.com/videoplayback?expire=123&sig=signatureValue&id=abc"))
+        assertNotNull(input)
+        assertEquals(SentenceAudioInputKind.REMOTE_HTTP, input?.kind)
+    }
+
+    @Test
+    fun `sanitizeForLog redacts sensitive tokens and preserves path`() {
+        val url = "https://googlevideo.com/videoplayback?expire=123&sig=secretKey123&id=abc"
+        val sanitized = SentenceAudioInputResolver.sanitizeForLog(url)
+        assertTrue(sanitized.contains("expire=123"))
+        assertTrue(sanitized.contains("sig=[REDACTED]"))
+        assertFalse(sanitized.contains("secretKey123"))
     }
 
     @Test
