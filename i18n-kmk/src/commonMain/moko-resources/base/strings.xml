@@ -16,6 +16,7 @@
     <string name="action_panorama_cover">Panorama cover</string>
     <string name="action_open_folder">Open folder</string>
     <string name="action_clear_manga">Clear manga</string>
+    <string name="action_clear_ocr_cache">Clear OCR cache</string>
     <string name="action_update">Update</string>
         <!-- History section -->
     <string name="action_filter_unfinished_manga">Unfinished manga</string>

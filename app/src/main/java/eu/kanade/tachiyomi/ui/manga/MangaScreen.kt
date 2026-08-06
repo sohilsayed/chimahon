@@ -416,6 +416,7 @@ class MangaScreen(
                 }
             }.takeIf { isConfigurableSource },
             onClearManga = { screenModel.showClearMangaDialog() },
+            onClearOcrCache = screenModel::clearOcrCache,
             onOpenMangaFolder = {
                 if (successState.mergedData == null) {
                     screenModel.openMangaFolder(screenModel.source, screenModel.manga)
