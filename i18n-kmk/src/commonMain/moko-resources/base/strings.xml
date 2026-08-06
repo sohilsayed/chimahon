@@ -17,6 +17,7 @@
     <string name="action_open_folder">Open folder</string>
     <string name="action_clear_manga">Clear manga</string>
     <string name="action_clear_ocr_cache">Clear OCR cache</string>
+    <string name="confirm_clear_ocr_cache">Are you sure you want to clear the OCR cache? This will delete all cached OCR files for this entry.</string>
     <string name="action_update">Update</string>
         <!-- History section -->
     <string name="action_filter_unfinished_manga">Unfinished manga</string>

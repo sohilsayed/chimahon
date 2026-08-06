@@ -2035,6 +2035,7 @@ class MangaScreenModel(
 
         // KMK -->
         data object ClearManga : Dialog
+        data object ClearOcrCache : Dialog
         // KMK <--
 
         data class SetDictionaryProfile(val manga: Manga) : Dialog
@@ -2103,6 +2104,10 @@ class MangaScreenModel(
     // KMK -->
     fun showClearMangaDialog() {
         updateSuccessState { it.copy(dialog = Dialog.ClearManga) }
+    }
+
+    fun showClearOcrCacheDialog() {
+        updateSuccessState { it.copy(dialog = Dialog.ClearOcrCache) }
     }
     // KMK <--
 
