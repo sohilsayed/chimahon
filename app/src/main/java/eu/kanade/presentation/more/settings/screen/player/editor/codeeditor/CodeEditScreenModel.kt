@@ -7,12 +7,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.ui.player.settings.AdvancedPlayerPreferences
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.storage.service.StorageManager
@@ -34,16 +36,20 @@ class CodeEditScreenModel(
 
     private val currentFile = MutableStateFlow<UniFile?>(null)
 
+    private val advancedPreferences: AdvancedPlayerPreferences = Injekt.get()
+
     init {
         screenModelScope.launchIO {
             try {
-                val file = storageManager.getMPVConfigDirectory()?.findFile(filePath)
-                    ?: throw Exception("Unable to read file")
-
-                currentFile.update { _ -> file }
-
-                val content = file.openInputStream().use {
-                    it.readBytes().toString(Charsets.UTF_8)
+                val preference = configFor(filePath)
+                val content = if (preference != null) {
+                    currentFile.update { _ -> null }
+                    preference.get()
+                } else {
+                    val file = storageManager.getMPVConfigDirectory()?.findFile(filePath)
+                        ?: throw Exception("Unable to read file")
+                    currentFile.update { _ -> file }
+                    file.openInputStream().use { it.readBytes().toString(Charsets.UTF_8) }
                 }
                 mutableState.update { _ ->
                     CodeEditScreenState.Success(
@@ -57,6 +63,12 @@ class CodeEditScreenModel(
                 mutableState.update { _ -> CodeEditScreenState.Error(e) }
             }
         }
+    }
+
+    private fun configFor(filePath: String): Preference<String>? = when (filePath) {
+        "mpv.conf" -> advancedPreferences.mpvConf()
+        "input.conf" -> advancedPreferences.mpvInput()
+        else -> null
     }
 
     private val luaHighlight = luaHighlight(githubTheme)
@@ -106,11 +118,6 @@ class CodeEditScreenModel(
     }
 
     fun save() {
-        val file = currentFile.value ?: kotlin.run {
-            context.toast(MR.strings.editor_save_error)
-            return
-        }
-
         val content = (mutableState.value as? CodeEditScreenState.Success)
             ?.content?.annotatedString?.text ?: kotlin.run {
             context.toast(MR.strings.editor_save_error)
@@ -118,9 +125,16 @@ class CodeEditScreenModel(
         }
 
         try {
-            file.openOutputStream()
-                .also { (it as? FileOutputStream)?.channel?.truncate(0) }
-                .use { it.write(content.toByteArray()) }
+            val preference = configFor(filePath)
+            if (preference != null) {
+                preference.set(content)
+            } else {
+                val file = currentFile.value
+                    ?: throw Exception(context.stringResource(MR.strings.editor_save_error))
+                file.openOutputStream()
+                    .also { (it as? FileOutputStream)?.channel?.truncate(0) }
+                    .use { it.write(content.toByteArray()) }
+            }
             _hasModified.update { _ -> false }
             context.toast(context.stringResource(MR.strings.editor_save_success))
         } catch (e: Exception) {
