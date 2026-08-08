@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.data.ocr.OcrEngineType
 enum class ReaderOcrSource(
     val usesMokuro: Boolean,
     val usesPersistentCache: Boolean,
+    val persistentCacheVariant: String? = null,
     val recognitionEngine: OcrEngineType?,
 ) {
     AUTOMATIC(
@@ -20,6 +21,7 @@ enum class ReaderOcrSource(
     GOOGLE_LENS(
         usesMokuro = false,
         usesPersistentCache = false,
+        persistentCacheVariant = "google_lens",
         recognitionEngine = OcrEngineType.CLOUD,
     ),
     LOCAL(
@@ -28,6 +30,9 @@ enum class ReaderOcrSource(
         recognitionEngine = OcrEngineType.LOCAL,
     ),
     ;
+
+    val persistsOcrResults: Boolean
+        get() = usesPersistentCache || persistentCacheVariant != null
 
     companion object {
         fun availableSources(localOcrAvailable: Boolean, mokuroAvailable: Boolean): List<ReaderOcrSource> {

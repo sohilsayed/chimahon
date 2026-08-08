@@ -99,6 +99,11 @@ class OcrCacheManager(
         }
     }
 
+    private fun hasNormalOcrPages(cacheFile: UniFile?): Boolean {
+        if (cacheFile?.exists() != true) return false
+        return readOcrData(cacheFile)?.pages?.isNotEmpty() == true
+    }
+
     /**
      * Save OCR blocks for a single page to the chapter's OCR cache file.
      */
@@ -109,6 +114,7 @@ class OcrCacheManager(
         pageIndex: Int,
         blocks: List<OcrTextBlock>,
         language: String,
+        cacheVariant: String? = null,
     ) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val chapterLocation = findChapterLocation(manga, chapter, source)
@@ -118,15 +124,15 @@ class OcrCacheManager(
                 isDownloaded && chapterLocation != null -> {
                     when (chapterLocation) {
                         is ChapterLocation.Directory -> {
-                            saveToDirectory(chapterLocation.dir, pageIndex, blocks, language)
+                            saveToDirectory(chapterLocation.dir, pageIndex, blocks, language, cacheVariant)
                         }
                         is ChapterLocation.Cbz -> {
-                            saveToCbz(chapterLocation.file, pageIndex, blocks, language)
+                            saveToCbz(chapterLocation.file, pageIndex, blocks, language, cacheVariant)
                         }
                     }
                 }
                 else -> {
-                    saveToInternal(manga, chapter, source, pageIndex, blocks, language)
+                    saveToInternal(manga, chapter, source, pageIndex, blocks, language, cacheVariant)
                 }
             }
         }
@@ -140,6 +146,7 @@ class OcrCacheManager(
         chapter: Chapter,
         source: Source,
         pageIndex: Int,
+        cacheVariant: String? = null,
     ): List<OcrTextBlock>? = withContext(Dispatchers.IO) {
         mutex.withLock {
             val chapterLocation = findChapterLocation(manga, chapter, source)
@@ -147,8 +154,8 @@ class OcrCacheManager(
 
             val downloadBlocks = if (chapterLocation != null && isDownloaded) {
                 when (chapterLocation) {
-                    is ChapterLocation.Directory -> loadFromDirectory(chapterLocation.dir, pageIndex)
-                    is ChapterLocation.Cbz -> loadFromCbz(chapterLocation.file, pageIndex)
+                    is ChapterLocation.Directory -> loadFromDirectory(chapterLocation.dir, pageIndex, cacheVariant)
+                    is ChapterLocation.Cbz -> loadFromCbz(chapterLocation.file, pageIndex, cacheVariant)
                 }
             } else {
                 null
@@ -158,7 +165,7 @@ class OcrCacheManager(
                 return@withLock downloadBlocks
             }
 
-            loadFromInternal(manga, chapter, source, pageIndex)
+            loadFromInternal(manga, chapter, source, pageIndex, cacheVariant)
         }
     }
 
@@ -170,25 +177,22 @@ class OcrCacheManager(
         chapter: Chapter,
         source: Source,
     ): Boolean = withContext(Dispatchers.IO) {
-        val chapterLocation = findChapterLocation(manga, chapter, source)
-        val isDownloaded = isChapterDownloaded(manga, chapter, source)
+        mutex.withLock {
+            val chapterLocation = findChapterLocation(manga, chapter, source)
+            val isDownloaded = isChapterDownloaded(manga, chapter, source)
 
-        val hasDownloadCache = if (chapterLocation != null && isDownloaded) {
-            when (chapterLocation) {
-                is ChapterLocation.Directory -> {
-                    chapterLocation.dir.findFile(OCR_CACHE_FILE)?.exists() == true
+            val downloadCacheFile = if (chapterLocation != null && isDownloaded) {
+                when (chapterLocation) {
+                    is ChapterLocation.Directory -> chapterLocation.dir.findFile(OCR_CACHE_FILE)
+                    is ChapterLocation.Cbz -> findSidecarFile(chapterLocation.file)
                 }
-                is ChapterLocation.Cbz -> {
-                    findSidecarFile(chapterLocation.file)?.exists() == true
-                }
+            } else {
+                null
             }
-        } else {
-            false
+
+            hasNormalOcrPages(downloadCacheFile) ||
+                hasNormalOcrPages(UniFile.fromFile(getInternalCacheFile(manga, chapter, source)))
         }
-
-        val hasInternalCache = getInternalCacheFile(manga, chapter, source).exists()
-
-        hasDownloadCache || hasInternalCache
     }
 
     /**
@@ -309,7 +313,13 @@ class OcrCacheManager(
     /**
      * Save OCR data to a directory-based chapter.
      */
-    private fun saveToDirectory(dir: UniFile, pageIndex: Int, blocks: List<OcrTextBlock>, language: String) {
+    private fun saveToDirectory(
+        dir: UniFile,
+        pageIndex: Int,
+        blocks: List<OcrTextBlock>,
+        language: String,
+        cacheVariant: String?,
+    ) {
         val cacheFile = dir.findFile(OCR_CACHE_FILE) ?: dir.createFile(OCR_CACHE_FILE)
         if (cacheFile == null) {
             logcat(LogPriority.ERROR) { "OcrCache: Failed to create cache file in directory" }
@@ -318,21 +328,20 @@ class OcrCacheManager(
 
         val chapterData = readOcrData(cacheFile) ?: return
 
-        val updatedPages = chapterData.pages.toMutableMap()
-        updatedPages[pageIndex] = OcrPageData(
+        val pageData = OcrPageData(
             blocks = blocks.map { it.toBlockData() },
             language = language,
             version = CURRENT_VERSION,
         )
 
-        val newData = chapterData.copy(pages = updatedPages)
+        val newData = chapterData.withPage(pageIndex, pageData, cacheVariant)
         atomicWrite(cacheFile, json.encodeToString(newData))
     }
 
     /**
      * Load OCR data from a directory-based chapter.
      */
-    private fun loadFromDirectory(dir: UniFile, pageIndex: Int): List<OcrTextBlock>? {
+    private fun loadFromDirectory(dir: UniFile, pageIndex: Int, cacheVariant: String?): List<OcrTextBlock>? {
         val cacheFile = dir.findFile(OCR_CACHE_FILE) ?: return null
 
         return try {
@@ -342,7 +351,7 @@ class OcrCacheManager(
                 return null
             }
             val chapterData = json.decodeFromString<OcrChapterData>(content)
-            chapterData.pages[pageIndex]?.blocks?.map { it.toTextBlock() }
+            chapterData.page(pageIndex, cacheVariant)?.blocks?.map { it.toTextBlock() }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "OcrCache: Failed to load from directory" }
             null
@@ -367,7 +376,13 @@ class OcrCacheManager(
     /**
      * Save OCR data to a CBZ sidecar file.
      */
-    private fun saveToCbz(cbzFile: UniFile, pageIndex: Int, blocks: List<OcrTextBlock>, language: String) {
+    private fun saveToCbz(
+        cbzFile: UniFile,
+        pageIndex: Int,
+        blocks: List<OcrTextBlock>,
+        language: String,
+        cacheVariant: String?,
+    ) {
         val sidecarFile = getSidecarFile(cbzFile)
         if (sidecarFile == null) {
             logcat(LogPriority.ERROR) { "OcrCache: Failed to create sidecar file for CBZ" }
@@ -376,21 +391,20 @@ class OcrCacheManager(
 
         val chapterData = readOcrData(sidecarFile) ?: return
 
-        val updatedPages = chapterData.pages.toMutableMap()
-        updatedPages[pageIndex] = OcrPageData(
+        val pageData = OcrPageData(
             blocks = blocks.map { it.toBlockData() },
             language = language,
             version = CURRENT_VERSION,
         )
 
-        val newData = chapterData.copy(pages = updatedPages)
+        val newData = chapterData.withPage(pageIndex, pageData, cacheVariant)
         atomicWrite(sidecarFile, json.encodeToString(newData))
     }
 
     /**
      * Load OCR data from a CBZ sidecar file.
      */
-    private fun loadFromCbz(cbzFile: UniFile, pageIndex: Int): List<OcrTextBlock>? {
+    private fun loadFromCbz(cbzFile: UniFile, pageIndex: Int, cacheVariant: String?): List<OcrTextBlock>? {
         val sidecarFile = findSidecarFile(cbzFile) ?: return null
 
         return try {
@@ -400,7 +414,7 @@ class OcrCacheManager(
                 return null
             }
             val chapterData = json.decodeFromString<OcrChapterData>(content)
-            chapterData.pages[pageIndex]?.blocks?.map { it.toTextBlock() }
+            chapterData.page(pageIndex, cacheVariant)?.blocks?.map { it.toTextBlock() }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "OcrCache: Failed to load from CBZ sidecar" }
             null
@@ -442,6 +456,7 @@ class OcrCacheManager(
         pageIndex: Int,
         blocks: List<OcrTextBlock>,
         language: String,
+        cacheVariant: String?,
     ) {
         val cacheFile = getInternalCacheFile(manga, chapter, source)
 
@@ -451,14 +466,13 @@ class OcrCacheManager(
             OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
         }
 
-        val updatedPages = chapterData.pages.toMutableMap()
-        updatedPages[pageIndex] = OcrPageData(
+        val pageData = OcrPageData(
             blocks = blocks.map { it.toBlockData() },
             language = language,
             version = CURRENT_VERSION,
         )
 
-        val newData = chapterData.copy(pages = updatedPages)
+        val newData = chapterData.withPage(pageIndex, pageData, cacheVariant)
         try {
             cacheFile.writeText(json.encodeToString(newData))
         } catch (e: Exception) {
@@ -474,6 +488,7 @@ class OcrCacheManager(
         chapter: Chapter,
         source: Source,
         pageIndex: Int,
+        cacheVariant: String?,
     ): List<OcrTextBlock>? {
         val cacheFile = getInternalCacheFile(manga, chapter, source)
         if (!cacheFile.exists()) {
@@ -487,7 +502,7 @@ class OcrCacheManager(
                 return null
             }
             val chapterData = json.decodeFromString<OcrChapterData>(content)
-            chapterData.pages[pageIndex]?.blocks?.map { it.toTextBlock() }
+            chapterData.page(pageIndex, cacheVariant)?.blocks?.map { it.toTextBlock() }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "OcrCache: Failed to load from internal storage" }
             null
@@ -556,5 +571,21 @@ class OcrCacheManager(
 @Serializable
 data class OcrChapterData(
     val pages: Map<Int, OcrPageData>,
+    val variants: Map<String, Map<Int, OcrPageData>> = emptyMap(),
     val version: Int = 2,
 )
+
+private fun OcrChapterData.page(pageIndex: Int, cacheVariant: String?): OcrPageData? {
+    return if (cacheVariant == null) pages[pageIndex] else variants[cacheVariant]?.get(pageIndex)
+}
+
+private fun OcrChapterData.withPage(
+    pageIndex: Int,
+    pageData: OcrPageData,
+    cacheVariant: String?,
+): OcrChapterData {
+    if (cacheVariant == null) return copy(pages = pages + (pageIndex to pageData))
+
+    val variantPages = variants[cacheVariant].orEmpty() + (pageIndex to pageData)
+    return copy(variants = variants + (cacheVariant to variantPages))
+}
