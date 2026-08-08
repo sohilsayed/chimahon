@@ -5,10 +5,15 @@ import android.text.format.Formatter
 import chimahon.ocr.OcrBlockData
 import chimahon.ocr.OcrPageData
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -39,6 +44,8 @@ class OcrCacheManager(
     private val json: Json,
     private val downloadManager: DownloadManager = Injekt.get(),
     private val downloadProvider: DownloadProvider = Injekt.get(),
+    private val downloadCache: DownloadCache = Injekt.get(),
+    invalidationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     private val mutex = Mutex()
 
@@ -48,25 +55,156 @@ class OcrCacheManager(
         private const val TMP_SUFFIX = ".tmp"
         private const val CURRENT_VERSION = 2
         private const val INTERNAL_OCR_DIR = "ocr_cache"
+        private const val MEMO_MAX_CHAPTERS = 4
+    }
+
+    // ========== In-memory chapter memo ==========
+    //
+    // The on-disk format stores a whole chapter per file, so a naive per-page read
+    // re-resolves the chapter location (SAF IPC round trips) and re-parses every
+    // page's blocks just to return one page - O(pages^2) work across a chapter.
+    // The memo keeps that parse so every read after the first (including misses
+    // for pages with no OCR data yet) is an in-memory map lookup.
+    //
+    // Coherence model, per storage side:
+    //  - Internal storage ({filesDir}/ocr_cache) is app-private and only this
+    //    class reads or writes it, so the memoized parse of that side cannot go
+    //    stale while the entry exists.
+    //  - The download side is NOT single-writer: DownloadManager deletes chapter
+    //    directories and .ocr.json sidecars directly, Downloader creates new
+    //    chapter directories, and the user can mutate the downloads tree from
+    //    outside the app entirely. The memo therefore subscribes to
+    //    [DownloadCache.changes] and drops every entry whenever the downloads
+    //    index reports a mutation (download completed, chapter/manga deleted,
+    //    rename, cache renew). App-initiated changes invalidate immediately;
+    //    external changes are picked up when DownloadCache renews - the same
+    //    staleness bound the rest of the app accepts for download state.
+    //
+    // Callers that turn cache state into persisted decisions (the OCR queue's
+    // "already processed?" checks) must not trust the memo at all; they use
+    // [getCachedPageIndexes], which always re-reads disk. All memo access is
+    // guarded by [mutex].
+
+    private data class ChapterKey(val sourceId: Long, val mangaId: Long, val chapterId: Long)
+
+    /**
+     * Parsed view of a chapter's OCR cache across both storage locations.
+     *
+     * [downloadData]/[internalData] are null when the backing file exists but is
+     * unreadable, so the save path keeps refusing to overwrite corrupt files.
+     */
+    private class MemoizedChapter(
+        val location: ChapterLocation?,
+        val isDownloaded: Boolean,
+        val downloadData: OcrChapterData?,
+        val internalData: OcrChapterData?,
+    )
+
+    private val chapterMemo = object : LinkedHashMap<ChapterKey, MemoizedChapter>(
+        MEMO_MAX_CHAPTERS,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<ChapterKey, MemoizedChapter>,
+        ): Boolean = size > MEMO_MAX_CHAPTERS
+    }
+
+    init {
+        // Downloaded chapters can be deleted, re-downloaded, or renamed without
+        // this class being involved; any change to the downloads index makes the
+        // memoized download-side parses untrustworthy. The memo holds at most
+        // MEMO_MAX_CHAPTERS entries, so clearing it wholesale is cheap and the
+        // next read simply re-parses from disk.
+        downloadCache.changes
+            .onEach { invalidateMemo() }
+            .launchIn(invalidationScope)
+    }
+
+    /** Drop every memoized chapter so the next read re-parses from disk. */
+    private suspend fun invalidateMemo() {
+        mutex.withLock { chapterMemo.clear() }
+    }
+
+    private fun memoKey(manga: Manga, chapter: Chapter, source: Source): ChapterKey {
+        return ChapterKey(sourceId = source.id, mangaId = manga.id, chapterId = chapter.id)
+    }
+
+    private fun emptyChapterData() = OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
+
+    /**
+     * Get the memoized parse of a chapter's OCR cache, loading and memoizing it
+     * on first access. Must be called with [mutex] held.
+     */
+    private fun getOrLoadChapterLocked(manga: Manga, chapter: Chapter, source: Source): MemoizedChapter {
+        val key = memoKey(manga, chapter, source)
+        chapterMemo[key]?.let { return it }
+
+        val memoized = loadChapterLocked(manga, chapter, source)
+        chapterMemo[key] = memoized
+        return memoized
+    }
+
+    /**
+     * Resolve the chapter location and parse both cache files from disk,
+     * ignoring the memo. Must be called with [mutex] held.
+     */
+    private fun loadChapterLocked(manga: Manga, chapter: Chapter, source: Source): MemoizedChapter {
+        val location = findChapterLocation(manga, chapter, source)
+        val isDownloaded = isChapterDownloaded(manga, chapter, source)
+
+        val downloadData = if (location != null && isDownloaded) {
+            when (location) {
+                is ChapterLocation.Directory -> readChapterData(location.dir.findFile(OCR_CACHE_FILE))
+                is ChapterLocation.Cbz -> readChapterData(findSidecarFile(location.file))
+            }
+        } else {
+            emptyChapterData()
+        }
+
+        val internalFile = getInternalCacheFile(manga, chapter, source)
+        val internalData = if (internalFile.exists()) {
+            UniFile.fromFile(internalFile)?.let { readOcrData(it) }
+        } else {
+            emptyChapterData()
+        }
+
+        return MemoizedChapter(location, isDownloaded, downloadData, internalData)
+    }
+
+    /** Parse a whole cache file: absent file -> empty data, unreadable file -> null. */
+    private fun readChapterData(file: UniFile?): OcrChapterData? {
+        if (file == null) return emptyChapterData()
+        return readOcrData(file)
     }
 
     /**
      * Atomically write JSON to a file by writing to a temp file first, then renaming.
      * If interrupted mid-write, only the .tmp file is corrupted; the original is preserved.
+     *
+     * Returns true only when the data actually reached the target file. Callers
+     * must treat false as "nothing was written" - in particular, nothing may be
+     * recorded as persisted (memo or otherwise) on a false return.
      */
-    private fun atomicWrite(targetFile: UniFile, jsonString: String) {
+    private fun atomicWrite(targetFile: UniFile, jsonString: String): Boolean {
         val tmpFile = targetFile.parentFile?.createFile("${targetFile.name}$TMP_SUFFIX")
             ?: run {
                 logcat(LogPriority.ERROR) { "OcrCache: Failed to create temp file for atomic write" }
-                return
+                return false
             }
         try {
             tmpFile.openOutputStream().bufferedWriter().use {
                 it.write(jsonString)
                 it.flush()
             }
+            val targetName = targetFile.name
+            if (targetName == null) {
+                tmpFile.delete()
+                logcat(LogPriority.ERROR) { "OcrCache: target file has no name, aborting atomic write" }
+                return false
+            }
             targetFile.delete()
-            if (!tmpFile.renameTo(targetFile.name ?: return)) {
+            if (!tmpFile.renameTo(targetName)) {
                 logcat(LogPriority.WARN) { "OcrCache: rename failed, trying fallback" }
                 // Fallback: write directly (some storage backends don't support rename)
                 targetFile.openOutputStream().bufferedWriter().use {
@@ -75,6 +213,7 @@ class OcrCacheManager(
                 }
                 tmpFile.delete()
             }
+            return true
         } catch (e: Exception) {
             tmpFile.delete()
             logcat(LogPriority.ERROR, e) { "OcrCache: atomic write failed" }
@@ -101,6 +240,10 @@ class OcrCacheManager(
 
     /**
      * Save OCR blocks for a single page to the chapter's OCR cache file.
+     *
+     * The read-modify-write base comes from the chapter memo when it was built
+     * against the same target file, so per-page saves don't re-read and re-parse
+     * the whole chapter file; the memo is refreshed with the written data.
      */
     suspend fun saveOcrBlocks(
         manga: Manga,
@@ -111,29 +254,102 @@ class OcrCacheManager(
         language: String,
     ) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            val key = memoKey(manga, chapter, source)
+            val memo = chapterMemo[key]
+
+            // Always re-resolve the write target so a chapter downloaded or
+            // removed mid-session is picked up; the memo is refreshed below.
             val chapterLocation = findChapterLocation(manga, chapter, source)
             val isDownloaded = isChapterDownloaded(manga, chapter, source)
 
-            when {
-                isDownloaded && chapterLocation != null -> {
-                    when (chapterLocation) {
-                        is ChapterLocation.Directory -> {
-                            saveToDirectory(chapterLocation.dir, pageIndex, blocks, language)
-                        }
-                        is ChapterLocation.Cbz -> {
-                            saveToCbz(chapterLocation.file, pageIndex, blocks, language)
-                        }
+            val newPage = OcrPageData(
+                blocks = blocks.map { it.toBlockData() },
+                language = language,
+                version = CURRENT_VERSION,
+            )
+
+            try {
+                if (isDownloaded && chapterLocation != null) {
+                    // Reuse the memoized parse as the read-modify-write base only
+                    // when it was built against this exact target file.
+                    val knownData = if (
+                        memo != null &&
+                        memo.isDownloaded &&
+                        memo.location?.identity() == chapterLocation.identity()
+                    ) {
+                        memo.downloadData
+                    } else {
+                        null
                     }
+                    val written = when (chapterLocation) {
+                        is ChapterLocation.Directory ->
+                            saveToDirectory(chapterLocation.dir, pageIndex, newPage, knownData)
+                        is ChapterLocation.Cbz ->
+                            saveToCbz(chapterLocation.file, pageIndex, newPage, knownData)
+                    }
+                    refreshMemoAfterSave(key, chapterLocation, isDownloaded, written, wroteToDownload = true)
+                } else {
+                    val written = saveToInternal(manga, chapter, source, pageIndex, newPage, memo?.internalData)
+                    refreshMemoAfterSave(key, chapterLocation, isDownloaded, written, wroteToDownload = false)
                 }
-                else -> {
-                    saveToInternal(manga, chapter, source, pageIndex, blocks, language)
-                }
+            } catch (e: Exception) {
+                // Disk state is uncertain after a failed write; drop the memo so
+                // the next read re-parses whatever is actually on disk.
+                chapterMemo.remove(key)
+                throw e
             }
         }
     }
 
     /**
+     * Refresh the chapter memo after a save attempt. [written] is the full
+     * chapter data now on disk for the written side, or null when the save was
+     * aborted. Only an existing memo entry is updated in place; building one
+     * from scratch is left to the next read so both sides always come from a
+     * real parse.
+     */
+    private fun refreshMemoAfterSave(
+        key: ChapterKey,
+        location: ChapterLocation?,
+        isDownloaded: Boolean,
+        written: OcrChapterData?,
+        wroteToDownload: Boolean,
+    ) {
+        if (written == null) {
+            chapterMemo.remove(key)
+            return
+        }
+        val old = chapterMemo[key] ?: return
+
+        chapterMemo[key] = if (wroteToDownload) {
+            MemoizedChapter(
+                location = location,
+                isDownloaded = isDownloaded,
+                downloadData = written,
+                // The internal cache path is fixed by ids, so its parse stays valid.
+                internalData = old.internalData,
+            )
+        } else {
+            // Keep the memoized download-side parse only if it still describes the
+            // freshly resolved target; otherwise fall back to the same
+            // "not downloaded" default the load path uses.
+            val downloadStillValid = old.isDownloaded == isDownloaded &&
+                old.location?.identity() == location?.identity()
+            MemoizedChapter(
+                location = location,
+                isDownloaded = isDownloaded,
+                downloadData = if (downloadStillValid) old.downloadData else emptyChapterData(),
+                internalData = written,
+            )
+        }
+    }
+
+    /**
      * Load OCR blocks for a single page from cache.
+     *
+     * The first read of a chapter resolves its location and parses each cache
+     * file once; subsequent reads (including misses for pages that have no OCR
+     * data yet) are served from the in-memory chapter memo.
      */
     suspend fun loadOcrBlocks(
         manga: Manga,
@@ -142,23 +358,37 @@ class OcrCacheManager(
         pageIndex: Int,
     ): List<OcrTextBlock>? = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val chapterLocation = findChapterLocation(manga, chapter, source)
-            val isDownloaded = isChapterDownloaded(manga, chapter, source)
+            val memo = getOrLoadChapterLocked(manga, chapter, source)
+            val pageData = memo.downloadData?.pages?.get(pageIndex)
+                ?: memo.internalData?.pages?.get(pageIndex)
+            pageData?.blocks?.map { it.toTextBlock() }
+        }
+    }
 
-            val downloadBlocks = if (chapterLocation != null && isDownloaded) {
-                when (chapterLocation) {
-                    is ChapterLocation.Directory -> loadFromDirectory(chapterLocation.dir, pageIndex)
-                    is ChapterLocation.Cbz -> loadFromCbz(chapterLocation.file, pageIndex)
-                }
-            } else {
-                null
+    /**
+     * The set of page indexes with OCR data on disk right now, from a fresh
+     * location resolve and parse that bypasses the memo (the fresh parse
+     * re-primes it).
+     *
+     * The OCR queue uses this for its persisted decisions - skipping
+     * already-processed pages and judging a chapter complete - because those
+     * must reflect the actual files, never memoized state: the downloads tree
+     * can be deleted or replaced without this class being told. One call per
+     * chapter replaces the old per-page probes, so the queue stays O(pages)
+     * per chapter.
+     */
+    suspend fun getCachedPageIndexes(
+        manga: Manga,
+        chapter: Chapter,
+        source: Source,
+    ): Set<Int> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val fresh = loadChapterLocked(manga, chapter, source)
+            chapterMemo[memoKey(manga, chapter, source)] = fresh
+            buildSet {
+                fresh.downloadData?.pages?.keys?.let(::addAll)
+                fresh.internalData?.pages?.keys?.let(::addAll)
             }
-
-            if (downloadBlocks != null) {
-                return@withLock downloadBlocks
-            }
-
-            loadFromInternal(manga, chapter, source, pageIndex)
         }
     }
 
@@ -200,6 +430,8 @@ class OcrCacheManager(
         source: Source,
     ) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            chapterMemo.remove(memoKey(manga, chapter, source))
+
             val chapterLocation = findChapterLocation(manga, chapter, source)
             val isDownloaded = isChapterDownloaded(manga, chapter, source)
 
@@ -226,6 +458,8 @@ class OcrCacheManager(
         source: Source,
     ) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            chapterMemo.keys.removeAll { it.sourceId == source.id && it.mangaId == manga.id }
+
             val mangaDir = downloadProvider.findMangaDir(manga.ogTitle, source)
             mangaDir?.listFiles()?.forEach { chapterEntry ->
                 when {
@@ -265,6 +499,7 @@ class OcrCacheManager(
      */
     suspend fun clear() = withContext(Dispatchers.IO) {
         mutex.withLock {
+            chapterMemo.clear()
             getInternalOcrDir().deleteRecursively()
         }
     }
@@ -284,6 +519,20 @@ class OcrCacheManager(
     private sealed class ChapterLocation {
         data class Directory(val dir: UniFile) : ChapterLocation()
         data class Cbz(val file: UniFile) : ChapterLocation()
+
+        private val target: UniFile
+            get() = when (this) {
+                is Directory -> dir
+                is Cbz -> file
+            }
+
+        /**
+         * Stable identity of the backing location, used to decide whether a
+         * memoized parse still describes the same target file. Prefers the
+         * plain file path (cheap for raw files, IPC-free for SAF documents)
+         * and falls back to the URI string.
+         */
+        fun identity(): String = target.filePath ?: target.uri.toString()
     }
 
     private fun findChapterLocation(manga: Manga, chapter: Chapter, source: Source): ChapterLocation? {
@@ -307,45 +556,28 @@ class OcrCacheManager(
 
     /**
      * Save OCR data to a directory-based chapter.
+     * Returns the full chapter data now on disk, or null if the save was aborted.
      */
-    private fun saveToDirectory(dir: UniFile, pageIndex: Int, blocks: List<OcrTextBlock>, language: String) {
+    private fun saveToDirectory(
+        dir: UniFile,
+        pageIndex: Int,
+        newPage: OcrPageData,
+        knownData: OcrChapterData?,
+    ): OcrChapterData? {
         val cacheFile = dir.findFile(OCR_CACHE_FILE) ?: dir.createFile(OCR_CACHE_FILE)
         if (cacheFile == null) {
             logcat(LogPriority.ERROR) { "OcrCache: Failed to create cache file in directory" }
-            return
+            return null
         }
 
-        val chapterData = readOcrData(cacheFile) ?: return
+        val chapterData = knownData ?: readOcrData(cacheFile) ?: return null
 
         val updatedPages = chapterData.pages.toMutableMap()
-        updatedPages[pageIndex] = OcrPageData(
-            blocks = blocks.map { it.toBlockData() },
-            language = language,
-            version = CURRENT_VERSION,
-        )
+        updatedPages[pageIndex] = newPage
 
         val newData = chapterData.copy(pages = updatedPages)
-        atomicWrite(cacheFile, json.encodeToString(newData))
-    }
-
-    /**
-     * Load OCR data from a directory-based chapter.
-     */
-    private fun loadFromDirectory(dir: UniFile, pageIndex: Int): List<OcrTextBlock>? {
-        val cacheFile = dir.findFile(OCR_CACHE_FILE) ?: return null
-
-        return try {
-            val content = cacheFile.openInputStream().bufferedReader().use { it.readText() }
-            if (content.isBlank()) {
-                logcat(LogPriority.WARN) { "OcrCache: Directory cache file is empty" }
-                return null
-            }
-            val chapterData = json.decodeFromString<OcrChapterData>(content)
-            chapterData.pages[pageIndex]?.blocks?.map { it.toTextBlock() }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "OcrCache: Failed to load from directory" }
-            null
-        }
+        if (!atomicWrite(cacheFile, json.encodeToString(newData))) return null
+        return newData
     }
 
     /**
@@ -365,45 +597,28 @@ class OcrCacheManager(
 
     /**
      * Save OCR data to a CBZ sidecar file.
+     * Returns the full chapter data now on disk, or null if the save was aborted.
      */
-    private fun saveToCbz(cbzFile: UniFile, pageIndex: Int, blocks: List<OcrTextBlock>, language: String) {
+    private fun saveToCbz(
+        cbzFile: UniFile,
+        pageIndex: Int,
+        newPage: OcrPageData,
+        knownData: OcrChapterData?,
+    ): OcrChapterData? {
         val sidecarFile = getSidecarFile(cbzFile)
         if (sidecarFile == null) {
             logcat(LogPriority.ERROR) { "OcrCache: Failed to create sidecar file for CBZ" }
-            return
+            return null
         }
 
-        val chapterData = readOcrData(sidecarFile) ?: return
+        val chapterData = knownData ?: readOcrData(sidecarFile) ?: return null
 
         val updatedPages = chapterData.pages.toMutableMap()
-        updatedPages[pageIndex] = OcrPageData(
-            blocks = blocks.map { it.toBlockData() },
-            language = language,
-            version = CURRENT_VERSION,
-        )
+        updatedPages[pageIndex] = newPage
 
         val newData = chapterData.copy(pages = updatedPages)
-        atomicWrite(sidecarFile, json.encodeToString(newData))
-    }
-
-    /**
-     * Load OCR data from a CBZ sidecar file.
-     */
-    private fun loadFromCbz(cbzFile: UniFile, pageIndex: Int): List<OcrTextBlock>? {
-        val sidecarFile = findSidecarFile(cbzFile) ?: return null
-
-        return try {
-            val content = sidecarFile.openInputStream().bufferedReader().use { it.readText() }
-            if (content.isBlank()) {
-                logcat(LogPriority.WARN) { "OcrCache: CBZ sidecar file is empty" }
-                return null
-            }
-            val chapterData = json.decodeFromString<OcrChapterData>(content)
-            chapterData.pages[pageIndex]?.blocks?.map { it.toTextBlock() }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "OcrCache: Failed to load from CBZ sidecar" }
-            null
-        }
+        if (!atomicWrite(sidecarFile, json.encodeToString(newData))) return null
+        return newData
     }
 
     /**
@@ -433,62 +648,34 @@ class OcrCacheManager(
 
     /**
      * Save OCR data to internal storage (for online chapters).
+     * Returns the full chapter data now on disk, or null if the save failed.
      */
     private fun saveToInternal(
         manga: Manga,
         chapter: Chapter,
         source: Source,
         pageIndex: Int,
-        blocks: List<OcrTextBlock>,
-        language: String,
-    ) {
+        newPage: OcrPageData,
+        knownData: OcrChapterData?,
+    ): OcrChapterData? {
         val cacheFile = getInternalCacheFile(manga, chapter, source)
 
-        val chapterData = if (cacheFile.exists()) {
-            readOcrData(com.hippo.unifile.UniFile.fromFile(cacheFile) ?: return) ?: return
+        val chapterData = knownData ?: if (cacheFile.exists()) {
+            val uniFile = UniFile.fromFile(cacheFile) ?: return null
+            readOcrData(uniFile) ?: return null
         } else {
-            OcrChapterData(pages = emptyMap(), version = CURRENT_VERSION)
+            emptyChapterData()
         }
 
         val updatedPages = chapterData.pages.toMutableMap()
-        updatedPages[pageIndex] = OcrPageData(
-            blocks = blocks.map { it.toBlockData() },
-            language = language,
-            version = CURRENT_VERSION,
-        )
+        updatedPages[pageIndex] = newPage
 
         val newData = chapterData.copy(pages = updatedPages)
-        try {
+        return try {
             cacheFile.writeText(json.encodeToString(newData))
+            newData
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "OcrCache: Failed to save to internal storage" }
-        }
-    }
-
-    /**
-     * Load OCR data from internal storage (for online chapters).
-     */
-    private fun loadFromInternal(
-        manga: Manga,
-        chapter: Chapter,
-        source: Source,
-        pageIndex: Int,
-    ): List<OcrTextBlock>? {
-        val cacheFile = getInternalCacheFile(manga, chapter, source)
-        if (!cacheFile.exists()) {
-            return null
-        }
-
-        return try {
-            val content = cacheFile.readText()
-            if (content.isBlank()) {
-                logcat(LogPriority.WARN) { "OcrCache: Internal cache file is empty" }
-                return null
-            }
-            val chapterData = json.decodeFromString<OcrChapterData>(content)
-            chapterData.pages[pageIndex]?.blocks?.map { it.toTextBlock() }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "OcrCache: Failed to load from internal storage" }
             null
         }
     }

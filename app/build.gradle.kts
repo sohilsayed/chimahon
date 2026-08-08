@@ -160,6 +160,14 @@ android {
         includeInBundle = Config.includeDependencyInfo
     }
 
+    testOptions {
+        unitTests {
+            // Unit tests exercise UniFile-backed cache files, whose raw-file
+            // implementation calls trivial framework statics (TextUtils, Log).
+            isReturnDefaultValues = true
+        }
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
@@ -241,7 +249,6 @@ dependencies {
     implementation(androidx.paging.compose)
 
     implementation(libs.bundles.sqlite)
-
 
     implementation(kotlinx.reflect)
     implementation(kotlinx.immutables)

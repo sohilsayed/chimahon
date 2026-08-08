@@ -268,6 +268,8 @@ class DownloadCache(
                 }
             }
         }
+
+        notifyChanges()
     }
 
     // SY <--
@@ -536,4 +538,3 @@ private class MangaDirectory(
     val dir: UniFile?,
     var chapterDirs: MutableSet<String> = mutableSetOf(),
 )
-
