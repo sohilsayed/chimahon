@@ -199,6 +199,7 @@ fun MangaScreen(
     getMangaState: @Composable (Manga) -> State<Manga>,
     onClickSourceSettingsClicked: (() -> Unit)?,
     onClearManga: () -> Unit,
+    onClearOcrCache: (() -> Unit)? = null,
     onOpenMangaFolder: (() -> Unit)?,
     onRelatedMangasScreenClick: () -> Unit,
     onRelatedMangaClick: (Manga) -> Unit,
@@ -271,6 +272,7 @@ fun MangaScreen(
             getMangaState = getMangaState,
             onClickSourceSettingsClicked = onClickSourceSettingsClicked,
             onClearManga = onClearManga,
+            onClearOcrCache = onClearOcrCache,
             onOpenMangaFolder = onOpenMangaFolder,
             onRelatedMangasScreenClick = onRelatedMangasScreenClick,
             onRelatedMangaClick = onRelatedMangaClick,
@@ -336,6 +338,7 @@ fun MangaScreen(
             getMangaState = getMangaState,
             onClickSourceSettingsClicked = onClickSourceSettingsClicked,
             onClearManga = onClearManga,
+            onClearOcrCache = onClearOcrCache,
             onOpenMangaFolder = onOpenMangaFolder,
             onRelatedMangasScreenClick = onRelatedMangasScreenClick,
             onRelatedMangaClick = onRelatedMangaClick,
@@ -418,6 +421,7 @@ private fun MangaScreenSmallImpl(
     getMangaState: @Composable ((Manga) -> State<Manga>),
     onClickSourceSettingsClicked: (() -> Unit)?,
     onClearManga: () -> Unit,
+    onClearOcrCache: (() -> Unit)? = null,
     onOpenMangaFolder: (() -> Unit)?,
     onRelatedMangasScreenClick: () -> Unit,
     onRelatedMangaClick: (Manga) -> Unit,
@@ -505,6 +509,7 @@ private fun MangaScreenSmallImpl(
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
                 onClearManga = onClearManga,
+                onClearOcrCache = onClearOcrCache,
                 onOpenMangaFolder = onOpenMangaFolder,
                 onClickRelatedMangas = onRelatedMangasScreenClick.takeIf {
                     !expandRelatedMangas &&
@@ -888,6 +893,7 @@ private fun MangaScreenLargeImpl(
     getMangaState: @Composable ((Manga) -> State<Manga>),
     onClickSourceSettingsClicked: (() -> Unit)?,
     onClearManga: () -> Unit,
+    onClearOcrCache: (() -> Unit)? = null,
     onOpenMangaFolder: (() -> Unit)?,
     onRelatedMangasScreenClick: () -> Unit,
     onRelatedMangaClick: (Manga) -> Unit,
@@ -967,6 +973,7 @@ private fun MangaScreenLargeImpl(
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
                 onClearManga = onClearManga,
+                onClearOcrCache = onClearOcrCache,
                 onOpenMangaFolder = onOpenMangaFolder,
                 onClickRelatedMangas = onRelatedMangasScreenClick.takeIf {
                     !expandRelatedMangas &&

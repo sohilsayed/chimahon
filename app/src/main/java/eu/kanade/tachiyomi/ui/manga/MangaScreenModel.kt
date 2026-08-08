@@ -1327,6 +1327,25 @@ class MangaScreenModel(
     }
 
     /**
+     * Clear OCR cache for the current manga.
+     */
+    fun clearOcrCache() {
+        val manga = (state.value as? State.Success)?.manga ?: return
+        val chapters = (state.value as? State.Success)?.chapters?.map { it.chapter } ?: return
+        val source = source ?: return
+        screenModelScope.launchIO {
+            Injekt.get<chimahon.ocr.OcrCacheManager>().deleteOcrForManga(manga, source)
+            val chapterUpdates = chapters.filter { it.isOcrReady }.map {
+                tachiyomi.domain.chapter.model.ChapterUpdate(id = it.id, isOcrReady = false)
+            }
+            if (chapterUpdates.isNotEmpty()) {
+                Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>().updateAll(chapterUpdates)
+            }
+            snackbarHostState.showSnackbar("OCR cache cleared")
+        }
+    }
+
+    /**
      * Returns the next unread chapter or null if everything is read.
      */
     fun getNextUnreadChapter(): Chapter? {
@@ -2016,6 +2035,7 @@ class MangaScreenModel(
 
         // KMK -->
         data object ClearManga : Dialog
+        data object ClearOcrCache : Dialog
         // KMK <--
 
         data class SetDictionaryProfile(val manga: Manga) : Dialog
@@ -2084,6 +2104,10 @@ class MangaScreenModel(
     // KMK -->
     fun showClearMangaDialog() {
         updateSuccessState { it.copy(dialog = Dialog.ClearManga) }
+    }
+
+    fun showClearOcrCacheDialog() {
+        updateSuccessState { it.copy(dialog = Dialog.ClearOcrCache) }
     }
     // KMK <--
 

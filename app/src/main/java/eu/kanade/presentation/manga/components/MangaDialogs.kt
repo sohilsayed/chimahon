@@ -127,6 +127,37 @@ fun ClearMangaDialog(
         },
     )
 }
+
+@Composable
+fun ClearOcrCacheDialog(
+    onDismissRequest: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismissRequest()
+                    onConfirm()
+                },
+            ) {
+                Text(text = stringResource(MR.strings.action_ok))
+            }
+        },
+        title = {
+            Text(text = stringResource(MR.strings.are_you_sure))
+        },
+        text = {
+            Text(text = stringResource(KMR.strings.confirm_clear_ocr_cache))
+        },
+    )
+}
 // KMK <--
 
 @Composable

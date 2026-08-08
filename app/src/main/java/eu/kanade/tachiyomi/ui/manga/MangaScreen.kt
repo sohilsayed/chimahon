@@ -52,6 +52,7 @@ import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.manga.EditCoverAction
 import eu.kanade.presentation.manga.MangaScreen
 import eu.kanade.presentation.manga.components.ClearMangaDialog
+import eu.kanade.presentation.manga.components.ClearOcrCacheDialog
 import eu.kanade.presentation.manga.components.DeleteChaptersDialog
 import eu.kanade.presentation.manga.components.MangaCoverDialog
 import eu.kanade.presentation.manga.components.ScanlatorFilterDialog
@@ -416,6 +417,7 @@ class MangaScreen(
                 }
             }.takeIf { isConfigurableSource },
             onClearManga = { screenModel.showClearMangaDialog() },
+            onClearOcrCache = { screenModel.showClearOcrCacheDialog() },
             onOpenMangaFolder = {
                 if (successState.mergedData == null) {
                     screenModel.openMangaFolder(screenModel.source, screenModel.manga)
@@ -649,8 +651,17 @@ class MangaScreen(
             // KMK -->
             is MangaScreenModel.Dialog.ClearManga -> {
                 ClearMangaDialog(
-                    onDismissRequest = onDismissRequest,
+                    onDismissRequest = screenModel::dismissDialog,
                     onConfirm = screenModel::clearManga,
+                )
+            }
+            is MangaScreenModel.Dialog.ClearOcrCache -> {
+                ClearOcrCacheDialog(
+                    onDismissRequest = screenModel::dismissDialog,
+                    onConfirm = {
+                        screenModel.clearOcrCache()
+                        screenModel.dismissDialog()
+                    },
                 )
             }
             // KMK <--

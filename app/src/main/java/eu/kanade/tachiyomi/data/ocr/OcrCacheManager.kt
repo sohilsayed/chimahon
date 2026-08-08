@@ -227,6 +227,7 @@ class OcrCacheManager(
     ) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val mangaDir = downloadProvider.findMangaDir(manga.ogTitle, source)
+                ?: if (source.id == 0L) Injekt.get<tachiyomi.source.local.io.LocalSourceFileSystem>().getMangaDirectory(manga.ogTitle) else null
             mangaDir?.listFiles()?.forEach { chapterEntry ->
                 when {
                     chapterEntry.isDirectory -> {
