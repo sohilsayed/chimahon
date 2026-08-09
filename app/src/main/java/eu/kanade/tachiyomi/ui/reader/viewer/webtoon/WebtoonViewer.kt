@@ -526,6 +526,26 @@ class WebtoonViewer(
         }
     }
 
+    fun setActiveOcrTextOpacity(opacity: Float) {
+        for (index in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(index)
+            val holder = recycler.getChildViewHolder(child)
+            if (holder is WebtoonPageHolder) {
+                holder.applyActiveOcrTextOpacity(opacity)
+            }
+        }
+    }
+
+    fun setActiveOcrBgOpacity(opacity: Float) {
+        for (index in 0 until recycler.childCount) {
+            val child = recycler.getChildAt(index)
+            val holder = recycler.getChildViewHolder(child)
+            if (holder is WebtoonPageHolder) {
+                holder.applyActiveOcrBgOpacity(opacity)
+            }
+        }
+    }
+
     /**
      * Called from the containing activity when a key [event] is received. It should return true
      * if the event was handled, false otherwise.

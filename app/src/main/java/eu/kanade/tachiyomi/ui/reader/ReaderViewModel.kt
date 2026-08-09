@@ -1337,6 +1337,10 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun getOcrBoxOpacity(): Float = dictionaryPreferences.ocrBoxOpacity().get()
 
+    fun getActiveOcrTextOpacity(): Float = dictionaryPreferences.activeOcrTextOpacity().get()
+
+    fun getActiveOcrBgOpacity(): Float = dictionaryPreferences.activeOcrBgOpacity().get()
+
     fun isMokuroAvailable(): Boolean = state.value.mokuroAvailable
 
     fun setOcrSource(source: ReaderOcrSource): Boolean {

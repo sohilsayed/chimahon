@@ -525,6 +525,22 @@ abstract class PagerViewer(
             }
     }
 
+    fun setActiveOcrTextOpacity(opacity: Float) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyActiveOcrTextOpacity(opacity)
+            }
+    }
+
+    fun setActiveOcrBgOpacity(opacity: Float) {
+        pager.children
+            .filterIsInstance(PagerPageHolder::class.java)
+            .forEach { holder ->
+                holder.applyActiveOcrBgOpacity(opacity)
+            }
+    }
+
     /**
      * Called from the containing activity when a key [event] is received. It should return true
      * if the event was handled, false otherwise.

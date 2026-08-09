@@ -496,6 +496,8 @@ class PagerPageHolder(
         ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
         ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
         ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
+        activeOcrTextOpacity = viewer.activity.viewModel.getActiveOcrTextOpacity()
+        activeOcrBgOpacity = viewer.activity.viewModel.getActiveOcrBgOpacity()
         ocrScanResolution = viewer.activity.viewModel.getOcrScanResolution()
         val ocrEnabled = viewer.activity.viewModel.isOcrEnabled()
         this.ocrEnabled = ocrEnabled
@@ -515,6 +517,8 @@ class PagerPageHolder(
         ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
         ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
         ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
+        activeOcrTextOpacity = viewer.activity.viewModel.getActiveOcrTextOpacity()
+        activeOcrBgOpacity = viewer.activity.viewModel.getActiveOcrBgOpacity()
         ocrScanResolution = viewer.activity.viewModel.getOcrScanResolution()
         ocrEnabled = enabled
         if (!enabled) {
@@ -524,11 +528,9 @@ class PagerPageHolder(
             return
         }
 
-        if (ocrBlocks.isEmpty()) {
-            ocrLoadJob?.cancel()
-            ocrLoadJob = scope.launch {
-                loadOcrWithTransform()
-            }
+        ocrLoadJob?.cancel()
+        ocrLoadJob = scope.launch {
+            loadOcrWithTransform()
         }
     }
 
@@ -543,6 +545,14 @@ class PagerPageHolder(
 
     fun applyOcrBoxOpacity(opacity: Float) {
         ocrBoxOpacity = opacity
+    }
+
+    fun applyActiveOcrTextOpacity(opacity: Float) {
+        activeOcrTextOpacity = opacity
+    }
+
+    fun applyActiveOcrBgOpacity(opacity: Float) {
+        activeOcrBgOpacity = opacity
     }
 
     /**

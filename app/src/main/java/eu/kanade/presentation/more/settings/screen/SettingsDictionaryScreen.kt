@@ -614,6 +614,12 @@ object SettingsDictionaryScreen : SearchableSettings {
         val ocrBoxOpacityPref = dictionaryPreferences.ocrBoxOpacity()
         val ocrBoxOpacity by ocrBoxOpacityPref.collectAsState()
 
+        val activeOcrTextOpacityPref = dictionaryPreferences.activeOcrTextOpacity()
+        val activeOcrTextOpacity by activeOcrTextOpacityPref.collectAsState()
+
+        val activeOcrBgOpacityPref = dictionaryPreferences.activeOcrBgOpacity()
+        val activeOcrBgOpacity by activeOcrBgOpacityPref.collectAsState()
+
         val ocrButtonSizePref = dictionaryPreferences.ocrButtonSize()
         val ocrButtonSize by ocrButtonSizePref.collectAsState()
 
@@ -1132,6 +1138,22 @@ object SettingsDictionaryScreen : SearchableSettings {
                         valueRange = 0..100 step 5,
                         steps = 19,
                         onValueChanged = { ocrBoxOpacityPref.set(it / 100f) },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = (activeOcrTextOpacity * 100).toInt(),
+                        title = stringResource(MR.strings.pref_dict_active_ocr_text_opacity),
+                        subtitle = "${(activeOcrTextOpacity * 100).toInt()}%",
+                        valueRange = 0..100 step 5,
+                        steps = 19,
+                        onValueChanged = { activeOcrTextOpacityPref.set(it / 100f) },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = (activeOcrBgOpacity * 100).toInt(),
+                        title = stringResource(MR.strings.pref_dict_active_ocr_bg_opacity),
+                        subtitle = "${(activeOcrBgOpacity * 100).toInt()}%",
+                        valueRange = 0..100 step 5,
+                        steps = 19,
+                        onValueChanged = { activeOcrBgOpacityPref.set(it / 100f) },
                     ),
                     Preference.PreferenceItem.SliderPreference(
                         value = ocrButtonSize,

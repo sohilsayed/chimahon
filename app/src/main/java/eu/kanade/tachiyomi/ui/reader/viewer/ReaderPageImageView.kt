@@ -126,6 +126,18 @@ open class ReaderPageImageView @JvmOverloads constructor(
             (pageView as? SubsamplingScaleImageView)?.invalidate()
         }
 
+    var activeOcrTextOpacity: Float = 1.0f
+        set(value) {
+            field = value.coerceIn(0.0f, 1.0f)
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
+    var activeOcrBgOpacity: Float = 0.7f
+        set(value) {
+            field = value.coerceIn(0.0f, 1.0f)
+            (pageView as? SubsamplingScaleImageView)?.invalidate()
+        }
+
     internal var ocrBlocks: List<OcrTextBlock> = emptyList()
     internal var activeOcrBlock: OcrTextBlock? = null
     val hasActiveOcrBlock: Boolean get() = activeOcrBlock != null

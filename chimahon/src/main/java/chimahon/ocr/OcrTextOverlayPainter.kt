@@ -71,7 +71,9 @@ object OcrTextOverlayPainter {
             if (highlightRange?.contains(index) == true) {
                 highlightPaint?.let { canvas.drawRect(rect.left + step * index, rect.top, rect.left + step * (index + 1), rect.bottom, it) }
             }
-            canvas.drawText(char.toString(), rect.left + step * (index + 0.5f), rect.centerY() + baseline, textPaint)
+            if (textPaint.alpha > 0) {
+                canvas.drawText(char.toString(), rect.left + step * (index + 0.5f), rect.centerY() + baseline, textPaint)
+            }
         }
     }
 
@@ -110,11 +112,13 @@ object OcrTextOverlayPainter {
             if (highlightRange?.contains(index) == true) {
                 highlightPaint?.let { canvas.drawRect(rect.left, rect.top + step * index, rect.right, rect.top + step * (index + 1), it) }
             }
-            val y = verticalCenter?.invoke(rect.top, index, step, char) ?: rect.top + step * (index + 0.5f)
-            if (drawVerticalCharacter != null) {
-                drawVerticalCharacter(canvas, char, rect.centerX(), y, baseline, textPaint)
-            } else {
-                canvas.drawText(char.toString(), rect.centerX(), y + baseline, textPaint)
+            if (textPaint.alpha > 0) {
+                val y = verticalCenter?.invoke(rect.top, index, step, char) ?: rect.top + step * (index + 0.5f)
+                if (drawVerticalCharacter != null) {
+                    drawVerticalCharacter(canvas, char, rect.centerX(), y, baseline, textPaint)
+                } else {
+                    canvas.drawText(char.toString(), rect.centerX(), y + baseline, textPaint)
+                }
             }
         }
     }

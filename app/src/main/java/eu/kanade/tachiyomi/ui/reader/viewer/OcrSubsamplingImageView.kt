@@ -160,10 +160,8 @@ class OcrSubsamplingImageView(
         }
 
         if (block == host.activeOcrBlock) {
-            val activeBackgroundAlpha = maxOf(
-                (255 * host.ocrBoxOpacity).roundToInt().coerceIn(0, 255),
-                180,
-            )
+            val activeTextAlpha = (255 * host.activeOcrTextOpacity).roundToInt().coerceIn(0, 255)
+            val activeBackgroundAlpha = (255 * host.activeOcrBgOpacity).roundToInt().coerceIn(0, 255)
             drawOcrTextBox(
                 canvas = canvas,
                 block = block,
@@ -172,7 +170,7 @@ class OcrSubsamplingImageView(
                 brScreen = brScreen,
                 screenW = screenW,
                 screenH = screenH,
-                textAlpha = 255,
+                textAlpha = activeTextAlpha,
                 backgroundAlpha = activeBackgroundAlpha,
                 highlightAlpha = 100,
                 highlightMatches = true,

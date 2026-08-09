@@ -1339,18 +1339,24 @@ class ReaderActivity : BaseActivity() {
         val ocrBoxScaleX by dictionaryPreferences.ocrBoxScaleX().collectAsState()
         val ocrBoxScaleY by dictionaryPreferences.ocrBoxScaleY().collectAsState()
         val ocrBoxOpacity by dictionaryPreferences.ocrBoxOpacity().collectAsState()
+        val activeOcrTextOpacity by dictionaryPreferences.activeOcrTextOpacity().collectAsState()
+        val activeOcrBgOpacity by dictionaryPreferences.activeOcrBgOpacity().collectAsState()
 
-        LaunchedEffect(state.viewer, ocrOutlineVisible, ocrBoxScaleX, ocrBoxScaleY, ocrBoxOpacity) {
+        LaunchedEffect(state.viewer, ocrOutlineVisible, ocrBoxScaleX, ocrBoxScaleY, ocrBoxOpacity, activeOcrTextOpacity, activeOcrBgOpacity) {
             when (val viewer = state.viewer) {
                 is PagerViewer -> {
                     viewer.setOcrOutlineVisible(ocrOutlineVisible)
                     viewer.setOcrBoxScale(ocrBoxScaleX, ocrBoxScaleY)
                     viewer.setOcrBoxOpacity(ocrBoxOpacity)
+                    viewer.setActiveOcrTextOpacity(activeOcrTextOpacity)
+                    viewer.setActiveOcrBgOpacity(activeOcrBgOpacity)
                 }
                 is WebtoonViewer -> {
                     viewer.setOcrOutlineVisible(ocrOutlineVisible)
                     viewer.setOcrBoxScale(ocrBoxScaleX, ocrBoxScaleY)
                     viewer.setOcrBoxOpacity(ocrBoxOpacity)
+                    viewer.setActiveOcrTextOpacity(activeOcrTextOpacity)
+                    viewer.setActiveOcrBgOpacity(activeOcrBgOpacity)
                 }
             }
         }

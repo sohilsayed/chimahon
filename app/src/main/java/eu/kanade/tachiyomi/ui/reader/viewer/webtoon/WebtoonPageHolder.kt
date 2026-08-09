@@ -302,6 +302,8 @@ class WebtoonPageHolder(
         frame.ocrBoxScaleX = viewer.activity.viewModel.getOcrBoxScaleX()
         frame.ocrBoxScaleY = viewer.activity.viewModel.getOcrBoxScaleY()
         frame.ocrBoxOpacity = viewer.activity.viewModel.getOcrBoxOpacity()
+        frame.activeOcrTextOpacity = viewer.activity.viewModel.getActiveOcrTextOpacity()
+        frame.activeOcrBgOpacity = viewer.activity.viewModel.getActiveOcrBgOpacity()
         frame.ocrScanResolution = viewer.activity.viewModel.getOcrScanResolution()
         frame.ocrEnabled = enabled
         if (!enabled) {
@@ -333,6 +335,14 @@ class WebtoonPageHolder(
 
     fun applyOcrBoxOpacity(opacity: Float) {
         frame.ocrBoxOpacity = opacity
+    }
+
+    fun applyActiveOcrTextOpacity(opacity: Float) {
+        frame.activeOcrTextOpacity = opacity
+    }
+
+    fun applyActiveOcrBgOpacity(opacity: Float) {
+        frame.activeOcrBgOpacity = opacity
     }
 
     private suspend fun loadOcrWithTransform(targetPage: ReaderPage) {

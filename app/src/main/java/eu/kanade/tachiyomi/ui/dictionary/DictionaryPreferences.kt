@@ -27,6 +27,12 @@ class DictionaryPreferences(
 
     fun ocrBoxOpacity() = preferenceStore.getFloat("pref_ocr_box_opacity", 0.0f)
 
+    /** Opacity of text characters in the currently active/tapped OCR block (0..1). */
+    fun activeOcrTextOpacity() = preferenceStore.getFloat("pref_active_ocr_text_opacity", 1.0f)
+
+    /** Opacity of background fill box in the currently active/tapped OCR block (0..1). */
+    fun activeOcrBgOpacity() = preferenceStore.getFloat("pref_active_ocr_bg_opacity", 0.7f)
+
     /** Floating screen-lookup OCR capture button size in dp. */
     fun ocrButtonSize() = preferenceStore.getInt("pref_ocr_button_size", 56)
 
