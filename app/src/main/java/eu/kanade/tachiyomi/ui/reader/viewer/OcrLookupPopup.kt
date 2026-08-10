@@ -38,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -51,9 +50,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.text.style.TextOverflow
-import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.domain.ui.UiPreferences
-import eu.kanade.presentation.theme.colorscheme.CustomColorScheme
 import chimahon.DictionaryRepository
 import chimahon.KanjiEntry
 import chimahon.KanjiResult
@@ -71,6 +68,7 @@ import eu.kanade.tachiyomi.ui.dictionary.buildKanjiEntryJson
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryColorScheme
+import eu.kanade.tachiyomi.ui.dictionary.resolveDictionaryTheme
 import eu.kanade.tachiyomi.ui.dictionary.TabInfo
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.ui.dictionary.orderLookupResultsForDisplay
@@ -261,17 +259,38 @@ fun OcrLookupPopup(
     val customColor by dictionaryPreferences.customColor().collectAsState()
 
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
-    val seedColor = if (customColor == 0) uiPreferences.colorTheme().get() else customColor
-    val isAmoled = themeMode == "pure_black"
-    val isDark = remember(seedColor, customColor, systemIsDark, themeMode) {
-        when (themeMode) {
-            "dark", "pure_black" -> true
-            "light" -> false
-            else -> if (customColor != 0) Color(seedColor).luminance() < 0.5f else systemIsDark
-        }
+    val appAmoled by uiPreferences.themeDarkAmoled().collectAsState()
+    val appThemeMode by uiPreferences.themeMode().collectAsState()
+    val appColorTheme by uiPreferences.colorTheme().collectAsState()
+    val resolvedTheme = remember(
+        themeMode,
+        customColor,
+        eInkMode,
+        systemIsDark,
+        appThemeMode,
+        appAmoled,
+        appColorTheme,
+    ) {
+        resolveDictionaryTheme(
+            themeMode = themeMode,
+            customColor = customColor,
+            eInkMode = eInkMode,
+            forceDefaultTheme = false,
+            systemIsDark = systemIsDark,
+            appThemeMode = appThemeMode,
+            appAmoled = appAmoled,
+            appColorTheme = appColorTheme,
+        )
     }
-    val colorScheme = remember(isDark, isAmoled, seedColor) {
-        getDictionaryColorScheme(isDark, isAmoled, seedColor)
+    val isDark = resolvedTheme.isDark
+    val isAmoled = resolvedTheme.isAmoled
+    val seedColor = resolvedTheme.seedColor
+    val colorScheme = if (resolvedTheme.useAppTheme) {
+        MaterialTheme.colorScheme
+    } else {
+        remember(isDark, isAmoled, seedColor) {
+            getDictionaryColorScheme(isDark, isAmoled, seedColor)
+        }
     }
     val BgColor = remember(isDark, isAmoled, seedColor, colorScheme) {
         if (isAmoled && isDark) Color.Black else colorScheme.surface
@@ -1172,6 +1191,7 @@ fun OcrLookupPopup(
                     // Consume taps on the popup itself to prevent them from falling through to the reader
                 },
             shape = RoundedCornerShape(if (eInkMode) 0.dp else 8.dp),
+            border = if (eInkMode) BorderStroke(1.dp, if (isDark) Color.White else Color.Black) else null,
             color = BgColor,
             tonalElevation = 0.dp,
             shadowElevation = if (eInkMode) 0.dp else 6.dp,
