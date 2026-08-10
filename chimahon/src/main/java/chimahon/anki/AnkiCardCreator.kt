@@ -519,6 +519,33 @@ object AnkiCardCreator {
         return existing
     }
 
+    suspend fun findExistingCardId(
+        context: Context,
+        expression: String,
+        deckName: String = "",
+        dupScope: String = "collection",
+    ): Long? {
+        val bridge = bridgeFactory(context)
+        if (!bridge.hasPermission()) return null
+
+        val targetDeckId = if (dupScope == "deck" && deckName.isNotBlank()) {
+            try {
+                bridge.getDeckId(deckName)
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+
+        return try {
+            bridge.findNotes(expression, null, targetDeckId).firstOrNull()
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "findExistingCardId failed for expr=$expression", e)
+            null
+        }
+    }
+
     fun parseFieldMap(json: String): Map<String, String> {
         if (json.isBlank() || json == "{}") return emptyMap()
         return try {

@@ -101,6 +101,20 @@ class AnkiCardCreatorSentenceAudioTest {
     }
 
     @Test
+    fun `single card lookup returns no ID without creating a note`() = runTest {
+        val bridge = FakeBridge(listOf(emptyList()))
+        AnkiCardCreator.bridgeFactory = { bridge }
+
+        val noteId = AnkiCardCreator.findExistingCardId(
+            context = TestContext,
+            expression = "missing",
+        )
+
+        assertEquals(null, noteId)
+        assertEquals(0, bridge.addNoteCalls)
+    }
+
+    @Test
     fun `final duplicate recheck overwrites only after storing prepared media`() = runTest {
         val bridge = FakeBridge(listOf(emptyList(), listOf(44L)))
         AnkiCardCreator.bridgeFactory = { bridge }

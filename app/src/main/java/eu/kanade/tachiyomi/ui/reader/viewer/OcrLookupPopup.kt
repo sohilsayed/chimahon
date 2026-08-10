@@ -560,8 +560,24 @@ fun OcrLookupPopup(
         }
 
         if (forceOpen) {
-            val noteId = currentFrame?.existingCardIds?.get(result.term.expression) ?: return
-            chimahon.anki.AnkiDroidBridge(context).guiEditNote(noteId)
+            val expression = result.term.expression
+            val noteId = currentFrame?.existingCardIds?.get(expression)
+            if (noteId != null) {
+                chimahon.anki.AnkiDroidBridge(context).guiEditNote(noteId)
+                return
+            }
+            miningScope.launch {
+                val fallbackNoteId = AnkiCardCreator.findExistingCardId(
+                    context = context,
+                    expression = expression,
+                    deckName = ankiDeck,
+                    dupScope = ankiDupScope,
+                ) ?: return@launch
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    updateStatus(expression, fallbackNoteId)
+                    chimahon.anki.AnkiDroidBridge(context).guiEditNote(fallbackNoteId)
+                }
+            }
             return
         }
 
@@ -610,11 +626,11 @@ fun OcrLookupPopup(
                                 onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
                             }
                             is AnkiResult.CardExists -> {
-                                updateStatus(result.term.expression)
+                                updateStatus(result.term.expression, ankiResult.noteId)
                                 context.toast(MR.strings.anki_card_exists)
                             }
                             is AnkiResult.OpenCard -> {
-                                updateStatus(result.term.expression)
+                                updateStatus(result.term.expression, ankiResult.noteId)
                                 chimahon.anki.AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
                             }
                             else -> {}
@@ -688,11 +704,11 @@ fun OcrLookupPopup(
                             context.toast(MR.strings.anki_card_added)
                         }
                         is AnkiResult.CardExists -> {
-                            updateStatus(result.term.expression)
+                            updateStatus(result.term.expression, ankiResult.noteId)
                             context.toast(MR.strings.anki_card_exists)
                         }
                         is AnkiResult.OpenCard -> {
-                            updateStatus(result.term.expression)
+                            updateStatus(result.term.expression, ankiResult.noteId)
                             chimahon.anki.AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
                         }
                         is AnkiResult.PermissionDenied -> context.toast(MR.strings.pref_anki_permission_denied)
