@@ -11,7 +11,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
-import eu.kanade.tachiyomi.data.ocr.OcrManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderBottomButton
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -53,9 +52,6 @@ object SettingsReaderScreen : SearchableSettings {
         // SY -->
         val forceHorizontalSeekbar by readerPref.forceHorizontalSeekbar().collectAsState()
         // SY <--
-        // Chimahon: OCR manager
-        val ocrManager = remember { Injekt.get<OcrManager>() }
-
         return listOf(
             Preference.PreferenceItem.ListPreference(
                 preference = readerPref.defaultReadingMode(),
@@ -128,8 +124,6 @@ object SettingsReaderScreen : SearchableSettings {
             getPageDownloadingGroup(readerPreferences = readerPref),
             getForkSettingsGroup(readerPreferences = readerPref),
             // SY <--
-            // Chimahon: OCR settings
-            getOcrGroup(readerPreferences = readerPref, ocrManager = ocrManager),
         )
     }
 
@@ -637,64 +631,6 @@ object SettingsReaderScreen : SearchableSettings {
     }
 
     // Chimahon: OCR settings group
-    @Composable
-    private fun getOcrGroup(
-        readerPreferences: ReaderPreferences,
-        ocrManager: OcrManager,
-    ): Preference.PreferenceGroup {
-        val context = LocalContext.current
-        val scope = rememberCoroutineScope()
-        var ocrCacheSizeText by remember { mutableStateOf("") }
-        val ocrManagerRef = remember { ocrManager }
-
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            try {
-                ocrCacheSizeText = ocrManagerRef.getStorageSize()
-            } catch (e: Exception) {
-                ocrCacheSizeText = ""
-            }
-        }
-
-        return Preference.PreferenceGroup(
-            title = stringResource(MR.strings.pref_category_ocr),
-            preferenceItems = persistentListOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.ocrTwoFingerGestureEnabled(),
-                    title = stringResource(MR.strings.pref_ocr_two_finger_gesture),
-                    subtitle = stringResource(MR.strings.pref_ocr_two_finger_gesture_summary),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.ocrAutoOnDownload(),
-                    title = stringResource(MR.strings.pref_ocr_auto_on_download),
-                    subtitle = stringResource(MR.strings.pref_ocr_auto_on_download_summary),
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(MR.strings.pref_ocr_cache_size),
-                    subtitle = ocrCacheSizeText,
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(MR.strings.pref_ocr_clear_cache),
-                    onClick = {
-                        scope.launch {
-                            try {
-                                ocrManager.clearCache()
-                                withUIContext {
-                                    context.toast(MR.strings.cache_deleted)
-                                    ocrCacheSizeText = ""
-                                }
-                            } catch (e: Throwable) {
-                                logcat(LogPriority.ERROR, e)
-                                withUIContext {
-                                    context.toast(MR.strings.cache_delete_error)
-                                }
-                            }
-                        }
-                    },
-                ),
-            ),
-        )
-    }
-
     // SY -->
     @Composable
     private fun getForkSettingsGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
@@ -314,6 +315,14 @@ object SettingsMainScreen : Screen() {
                 subtitleRes = KMR.strings.pref_anki_settings_summary,
                 icon = CardsStar,
                 screen = SettingsAnkiScreen,
+            ),
+        ),
+        MainEntry.Item(
+            Item(
+                titleRes = MR.strings.pref_category_ocr,
+                subtitleRes = MR.strings.pref_ocr_summary,
+                icon = Icons.Outlined.DocumentScanner,
+                screen = SettingsOcrScreen,
             ),
         ),
         // Sync

@@ -250,7 +250,7 @@
     <string name="pref_dictionary_summary">Import, order, enable</string>
     <string name="pref_category_dictionaries_and_audio">Dictionaries and audio</string>
     <string name="pref_category_dictionary_popup">Popup dictionary</string>
-    <string name="pref_dictionary_popup_summary">Layout, theme, OCR</string>
+    <string name="pref_dictionary_popup_summary">Layout, theme, content</string>
     <string name="pref_category_anki">Anki</string>
     <string name="pref_anki_settings_summary">Deck, fields, export</string>
     <string name="pref_settings_section_media">Media</string>
