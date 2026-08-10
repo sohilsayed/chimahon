@@ -4,11 +4,14 @@ import android.content.Context
 import android.webkit.WebView
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import com.canopus.chimareader.data.FontManager
 import com.materialkolor.PaletteStyle
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.presentation.theme.colorscheme.CustomColorScheme
+import eu.kanade.presentation.theme.getThemeColorScheme
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -161,12 +164,73 @@ fun getDictionaryColorScheme(
     isAmoled: Boolean,
     seedColor: Int,
 ): ColorScheme {
-    val uiPreferences = Injekt.get<UiPreferences>()
     val baseScheme = CustomColorScheme(
         seed = Color(seedColor),
         style = PaletteStyle.TonalSpot,
     )
     return baseScheme.getColorScheme(isDark, isAmoled, false)
+}
+
+fun getAppThemeColorScheme(context: Context, isDark: Boolean, isAmoled: Boolean): ColorScheme {
+    return getThemeColorScheme(
+        context = context,
+        appTheme = Injekt.get<UiPreferences>().appTheme().get(),
+        isDark = isDark,
+        isAmoled = isAmoled,
+    )
+}
+
+/**
+ * Colors for the dictionary popup / entry WebView.
+ *
+ * Theme mode `"app"` follows Appearance → App theme, but is overridden by:
+ * - dictionary custom color
+ * - e-ink mode
+ * - [forceDefaultTheme]
+ */
+data class DictionaryThemeResolved(
+    val isDark: Boolean,
+    val isAmoled: Boolean,
+    val seedColor: Int,
+    val useAppTheme: Boolean,
+)
+
+fun resolveDictionaryTheme(
+    themeMode: String,
+    customColor: Int,
+    eInkMode: Boolean,
+    forceDefaultTheme: Boolean,
+    systemIsDark: Boolean,
+    appThemeMode: ThemeMode,
+    appAmoled: Boolean,
+    appColorTheme: Int,
+): DictionaryThemeResolved {
+    val useAppTheme = themeMode == "app" && !eInkMode && !forceDefaultTheme
+    val hasCustomColor = customColor != 0 && !forceDefaultTheme && !useAppTheme
+    val seedColor = if (hasCustomColor) customColor else appColorTheme
+    val appIsDark = when (appThemeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> systemIsDark
+    }
+    val isAmoled = when {
+        useAppTheme -> appAmoled
+        themeMode == "pure_black" -> true
+        else -> false
+    }
+    val isDark = when {
+        useAppTheme -> appIsDark
+        themeMode == "dark" || themeMode == "pure_black" -> true
+        themeMode == "light" -> false
+        hasCustomColor -> Color(seedColor).luminance() < 0.5f
+        else -> systemIsDark
+    }
+    return DictionaryThemeResolved(
+        isDark = isDark,
+        isAmoled = isAmoled,
+        seedColor = seedColor,
+        useAppTheme = useAppTheme,
+    )
 }
 
 internal fun stopDictionaryAudio(webView: WebView) {

@@ -702,7 +702,7 @@ data object DictionaryTab : Tab {
                         if (activeTabIndex > 0) activeTabIndex--
                     },
                     groupPitches = groupPitches,
-                    forceDefaultTheme = true,
+                    forceDefaultTheme = false,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),

@@ -8,7 +8,6 @@ import android.os.Looper
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import eu.kanade.domain.ui.UiPreferences
 import uy.kohesive.injekt.Injekt
@@ -90,23 +89,31 @@ internal object DictionaryPopupWebViewWarmup {
         val uiPreferences = Injekt.get<UiPreferences>()
         val themeMode = dictionaryPreferences.themeMode().get()
         val customColor = dictionaryPreferences.customColor().get()
-        val seedColor = if (customColor == 0) uiPreferences.colorTheme().get() else customColor
-        val isAmoled = themeMode == "pure_black"
-        val isDark = when (themeMode) {
-            "dark", "pure_black" -> true
-            "light" -> false
-            else -> if (customColor != 0) Color(seedColor).luminance() < 0.5f else context.isSystemDark()
+        val eInkMode = dictionaryPreferences.eInkMode().get()
+        val resolved = resolveDictionaryTheme(
+            themeMode = themeMode,
+            customColor = customColor,
+            eInkMode = eInkMode,
+            forceDefaultTheme = false,
+            systemIsDark = context.isSystemDark(),
+            appThemeMode = uiPreferences.themeMode().get(),
+            appAmoled = uiPreferences.themeDarkAmoled().get(),
+            appColorTheme = uiPreferences.colorTheme().get(),
+        )
+        val colorScheme = if (resolved.useAppTheme) {
+            getAppThemeColorScheme(context, resolved.isDark, resolved.isAmoled)
+        } else {
+            getDictionaryColorScheme(resolved.isDark, resolved.isAmoled, resolved.seedColor)
         }
-        val colorScheme = getDictionaryColorScheme(isDark, isAmoled, seedColor)
-        val backgroundColor = if (isAmoled && isDark) Color.Black else colorScheme.surface
+        val backgroundColor = if (resolved.isAmoled && resolved.isDark) Color.Black else colorScheme.surface
         val bootstrapHtml = getDictionaryBootstrapHtml(
             context = context,
             colorScheme = colorScheme,
-            isDark = isDark,
-            isAmoled = isAmoled,
-            seedColor = seedColor,
+            isDark = resolved.isDark,
+            isAmoled = resolved.isAmoled,
+            seedColor = resolved.seedColor,
             fontFamily = dictionaryPreferences.fontFamily().get(),
-            eInkMode = dictionaryPreferences.eInkMode().get(),
+            eInkMode = eInkMode,
             paginatedScrolling = dictionaryPreferences.paginatedScrolling().get(),
             paginatedScrollStepSize = dictionaryPreferences.paginatedScrollStepSize().get(),
             languageCode = languageCode,

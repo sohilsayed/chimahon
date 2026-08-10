@@ -643,6 +643,8 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val themeModePref = dictionaryPreferences.themeMode()
         val themeMode by themeModePref.collectAsState()
+        val customColorPref = dictionaryPreferences.customColor()
+        val customColor by customColorPref.collectAsState()
 
         // Keep multi-select set prefs aligned with the boolean flags used by the popup.
         val frequencyModesPref = dictionaryPreferences.frequencyDisplayModes()
@@ -897,6 +899,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                             ) {
                                 val chips = listOf(
                                     "system" to stringResource(MR.strings.theme_system),
+                                    "app" to "App",
                                     "light" to stringResource(MR.strings.theme_light),
                                     "dark" to stringResource(MR.strings.theme_dark),
                                     "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
@@ -913,7 +916,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     ),
                     Preference.PreferenceItem.TextPreference(
                         title = stringResource(KMR.strings.pref_custom_color),
-                        subtitle = stringResource(KMR.strings.custom_color_description),
+                        subtitle = if (customColor != 0) "Custom color active (tap to edit)" else stringResource(KMR.strings.custom_color_description),
                         onClick = {
                             navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
                         },

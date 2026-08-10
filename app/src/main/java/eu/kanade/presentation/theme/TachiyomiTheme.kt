@@ -125,7 +125,7 @@ val playerRippleConfiguration
         ),
     )
 
-private fun getThemeColorScheme(
+internal fun getThemeColorScheme(
     context: Context,
     appTheme: AppTheme,
     isDark: Boolean,
