@@ -88,6 +88,19 @@ class AnkiCardCreatorSentenceAudioTest {
     }
 
     @Test
+    fun `duplicate lookup returns the first Anki note ID for each existing expression`() = runTest {
+        val bridge = FakeBridge(listOf(listOf(41L, 42L), emptyList(), listOf(73L)))
+        AnkiCardCreator.bridgeFactory = { bridge }
+
+        val existing = AnkiCardCreator.checkExistingCardIds(
+            context = TestContext,
+            expressions = listOf("existing", "missing", "existing", "another"),
+        )
+
+        assertEquals(mapOf("existing" to 41L, "another" to 73L), existing)
+    }
+
+    @Test
     fun `final duplicate recheck overwrites only after storing prepared media`() = runTest {
         val bridge = FakeBridge(listOf(emptyList(), listOf(44L)))
         AnkiCardCreator.bridgeFactory = { bridge }
