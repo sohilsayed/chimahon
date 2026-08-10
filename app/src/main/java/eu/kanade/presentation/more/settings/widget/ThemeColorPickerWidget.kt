@@ -46,9 +46,11 @@ import com.github.skydoves.colorpicker.compose.ColorPickerController
 import com.github.skydoves.colorpicker.compose.HsvColorPicker
 import eu.kanade.domain.ui.model.AppTheme
 import kotlinx.coroutines.launch
+import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Button
 import tachiyomi.presentation.core.components.material.ButtonDefaults.buttonColors
+import androidx.compose.material3.OutlinedButton
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import kotlin.math.roundToInt
@@ -59,6 +61,7 @@ internal fun ThemeColorPickerWidget(
     initialColor: Color,
     controller: ColorPickerController,
     onItemClick: (Color, AppTheme) -> Unit,
+    onResetClick: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     var selectedColor by remember { mutableStateOf(initialColor) }
@@ -175,26 +178,43 @@ internal fun ThemeColorPickerWidget(
                         )
                     }
                 }
-                Button(
-                    onClick = {
-                        onItemClick(selectedColor, AppTheme.CUSTOM)
-                    },
-                    colors = buttonColors(
-                        containerColor = animateColorAsState(
-                            label = "animateColorAsState",
-                            targetValue = MaterialTheme.colorScheme.primary,
-                            animationSpec = tween(durationMillis = 500),
-                        ).value,
-                    ),
-                    interactionSource = interactionSource,
+                Row(
                     modifier = Modifier
                         .padding(vertical = MaterialTheme.padding.medium)
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    content = {
-                        Text(text = stringResource(KMR.strings.action_confirm_color))
-                    },
-                )
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (onResetClick != null) {
+                        OutlinedButton(
+                            onClick = onResetClick,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            content = {
+                                Text(text = stringResource(MR.strings.action_reset))
+                            },
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            onItemClick(selectedColor, AppTheme.CUSTOM)
+                        },
+                        colors = buttonColors(
+                            containerColor = animateColorAsState(
+                                label = "animateColorAsState",
+                                targetValue = MaterialTheme.colorScheme.primary,
+                                animationSpec = tween(durationMillis = 500),
+                            ).value,
+                        ),
+                        interactionSource = interactionSource,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        content = {
+                            Text(text = stringResource(KMR.strings.action_confirm_color))
+                        },
+                    )
+                }
 
                 val colorsPalette = mapOf(
                     KMR.strings.custom_theme_palette_sunset to listOf(

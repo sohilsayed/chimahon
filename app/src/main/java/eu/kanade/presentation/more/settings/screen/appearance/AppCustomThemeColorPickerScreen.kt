@@ -25,6 +25,11 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Restore
+import tachiyomi.i18n.MR
 
 class AppCustomThemeColorPickerScreen(private val isDictionary: Boolean = false) : Screen() {
 
@@ -60,6 +65,13 @@ class AppCustomThemeColorPickerScreen(private val isDictionary: Boolean = false)
                     onItemClick = { color, appTheme ->
                         customColorPref.set(color.toArgb())
                         appThemePref?.set(appTheme)
+                        if (!isDictionary) {
+                            (context as? Activity)?.let { ActivityCompat.recreate(it) }
+                        }
+                        navigator.pop()
+                    },
+                    onResetClick = {
+                        customColorPref.set(0)
                         if (!isDictionary) {
                             (context as? Activity)?.let { ActivityCompat.recreate(it) }
                         }
