@@ -84,6 +84,33 @@ import kotlin.math.abs
 private const val SUBTITLE_SWIPE_TIME_LIMIT_MILLIS = 500L
 private const val SUBTITLE_SWIPE_DOMINANCE_RATIO = 1.2f
 
+internal enum class SubtitleSwipeAction {
+    ToggleVisibility,
+    ReplayCurrent,
+    Previous,
+    Next,
+}
+
+internal fun resolveSubtitleSwipeAction(
+    totalDragX: Float,
+    totalDragY: Float,
+    minimumDistance: Float,
+): SubtitleSwipeAction? {
+    val horizontalDistance = abs(totalDragX)
+    val verticalDistance = abs(totalDragY)
+    return when {
+        horizontalDistance >= minimumDistance &&
+            horizontalDistance > verticalDistance * SUBTITLE_SWIPE_DOMINANCE_RATIO -> {
+            if (totalDragX > 0f) SubtitleSwipeAction.Next else SubtitleSwipeAction.Previous
+        }
+        verticalDistance >= minimumDistance &&
+            verticalDistance > horizontalDistance * SUBTITLE_SWIPE_DOMINANCE_RATIO -> {
+            if (totalDragY > 0f) SubtitleSwipeAction.ToggleVisibility else SubtitleSwipeAction.ReplayCurrent
+        }
+        else -> null
+    }
+}
+
 @Composable
 fun GestureHandler(
     viewModel: PlayerViewModel,
@@ -266,17 +293,14 @@ fun GestureHandler(
                             return@detectDragGestures
                         }
 
-                        val horizontalDistance = abs(totalDragX)
-                        val verticalDistance = abs(totalDragY)
-                        when {
-                            horizontalDistance >= subtitleSwipeDistance &&
-                                horizontalDistance > verticalDistance * SUBTITLE_SWIPE_DOMINANCE_RATIO -> {
-                                viewModel.seekToAdjacentSubtitle(forward = totalDragX > 0f)
+                        when (resolveSubtitleSwipeAction(totalDragX, totalDragY, subtitleSwipeDistance)) {
+                            SubtitleSwipeAction.ToggleVisibility -> {
+                                viewModel.setSubtitlesVisible(!viewModel.subtitlesVisible.value)
                             }
-                            verticalDistance >= subtitleSwipeDistance &&
-                                verticalDistance > horizontalDistance * SUBTITLE_SWIPE_DOMINANCE_RATIO -> {
-                                viewModel.setSubtitlesVisible(visible = totalDragY > 0f)
-                            }
+                            SubtitleSwipeAction.ReplayCurrent -> viewModel.replayCurrentSubtitle()
+                            SubtitleSwipeAction.Previous -> viewModel.seekToAdjacentSubtitle(forward = false)
+                            SubtitleSwipeAction.Next -> viewModel.seekToAdjacentSubtitle(forward = true)
+                            null -> Unit
                         }
                     },
                     onDragCancel = {

@@ -1419,6 +1419,19 @@ class PlayerViewModel @JvmOverloads constructor(
         _activeSubtitleCueIndex.update { target.index }
     }
 
+    fun replayCurrentSubtitle() {
+        val currentCue = activeSubtitleCueIndex.value?.let { activeCueIndex ->
+            subtitleHistory.value.firstOrNull { it.index == activeCueIndex }
+        }
+        if (currentCue == null) {
+            MPVLib.command(arrayOf("sub-seek", "0", "primary"))
+            return
+        }
+
+        seekTo(currentCue.effectiveStartSeconds().coerceAtLeast(0.0))
+        _activeSubtitleCueIndex.update { currentCue.index }
+    }
+
     fun setSubtitlesVisible(visible: Boolean) {
         MPVLib.setPropertyBoolean("sub-visibility", visible)
         _subtitlesVisible.update { visible }
