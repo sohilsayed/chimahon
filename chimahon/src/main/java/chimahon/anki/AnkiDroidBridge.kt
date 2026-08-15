@@ -306,9 +306,6 @@ class AnkiDroidBridge(private val context: Context) : AnkiCardBridge {
             val uri = Uri.parse("anki://x-callback-url/browser?search=${Uri.encode(query)}")
             val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                 setPackage("com.ichi2.anki")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_TASK_ON_HOME
             }
             context.startActivity(intent)
         } catch (e: Exception) {
