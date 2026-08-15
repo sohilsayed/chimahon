@@ -13,6 +13,10 @@ class GetAnimeHistory(
         return repository.getHistoryByAnimeId(animeId)
     }
 
+    suspend fun awaitLast(): AnimeHistoryWithRelations? {
+        return repository.getLastAnimeHistory()
+    }
+
     fun subscribe(query: String): Flow<List<AnimeHistoryWithRelations>> {
         return repository.getAnimeHistory(query)
     }

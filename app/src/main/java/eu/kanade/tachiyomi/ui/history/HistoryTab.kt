@@ -95,8 +95,7 @@ data object HistoryTab : Tab {
 
     private val snackbarHostState = SnackbarHostState()
 
-    private val resumeLastChapterReadEvent = Channel<Unit>()
-    private val resumeLastEpisodeSeenEvent = Channel<Unit>()
+    private val resumeLastMediaEvent = Channel<Unit>()
 
     override val options: TabOptions
         @Composable
@@ -111,7 +110,7 @@ data object HistoryTab : Tab {
         }
 
     override suspend fun onReselect(navigator: Navigator) {
-        resumeLastChapterReadEvent.send(Unit)
+        resumeLastMediaEvent.send(Unit)
     }
 
     @Composable
@@ -414,14 +413,22 @@ data object HistoryTab : Tab {
         }
 
         LaunchedEffect(Unit) {
-            resumeLastChapterReadEvent.receiveAsFlow().collectLatest {
-                openChapter(context, screenModel.getNextChapter())
-            }
-        }
+            resumeLastMediaEvent.receiveAsFlow().collectLatest {
+                val mangaHistory = screenModel.getLastHistory()
+                val animeHistory = animeScreenModel.getLastHistory()
+                val mangaLastReadAt = mangaHistory?.readAt?.time ?: Long.MIN_VALUE
+                val animeLastWatchedAt = animeHistory?.watchedAt?.time ?: Long.MIN_VALUE
 
-        LaunchedEffect(Unit) {
-            resumeLastEpisodeSeenEvent.receiveAsFlow().collectLatest {
-                openEpisode(context, animeScreenModel.getNextEpisode())
+                when {
+                    mangaHistory == null && animeHistory == null ->
+                        snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))
+                    animeLastWatchedAt > mangaLastReadAt -> animeHistory?.let { history ->
+                        openEpisode(context, animeScreenModel.getNextEpisode(history.animeId, history.episodeId))
+                    }
+                    else -> mangaHistory?.let { history ->
+                        openChapter(context, screenModel.getNextChapter(history.mangaId, history.chapterId))
+                    }
+                }
             }
         }
     }

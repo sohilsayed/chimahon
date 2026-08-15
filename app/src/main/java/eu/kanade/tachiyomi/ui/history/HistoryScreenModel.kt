@@ -143,6 +143,14 @@ class HistoryScreenModel(
         return withIOContext { getNextChapters.await(onlyUnread = false).firstOrNull() }
     }
 
+    suspend fun getNextChapter(mangaId: Long, chapterId: Long): Chapter? {
+        return withIOContext { getNextChapters.await(mangaId, chapterId, onlyUnread = false).firstOrNull() }
+    }
+
+    suspend fun getLastHistory(): HistoryWithRelations? {
+        return withIOContext { getHistory.awaitLast() }
+    }
+
     fun getNextChapterForManga(mangaId: Long, chapterId: Long) {
         screenModelScope.launchIO {
             sendNextChapterEvent(getNextChapters.await(mangaId, chapterId, onlyUnread = false))

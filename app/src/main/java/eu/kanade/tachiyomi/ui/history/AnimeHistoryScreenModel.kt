@@ -109,6 +109,14 @@ class AnimeHistoryScreenModel(
         return withIOContext { getNextEpisodes.await(onlyUnseen = false).firstOrNull() }
     }
 
+    suspend fun getNextEpisode(animeId: Long, episodeId: Long): Episode? {
+        return withIOContext { getNextEpisodes.await(animeId, episodeId, onlyUnseen = false).firstOrNull() }
+    }
+
+    suspend fun getLastHistory(): AnimeHistoryWithRelations? {
+        return withIOContext { getHistory.awaitLast() }
+    }
+
     fun getNextEpisodeForAnime(animeId: Long, episodeId: Long) {
         screenModelScope.launchIO {
             sendNextEpisodeEvent(getNextEpisodes.await(animeId, episodeId, onlyUnseen = false))
