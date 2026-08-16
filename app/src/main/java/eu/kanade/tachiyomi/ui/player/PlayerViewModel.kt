@@ -3136,10 +3136,13 @@ class PlayerViewModel @JvmOverloads constructor(
 
     internal fun createVideoOcrAudioMediaRequest() = mediaCapture.createVideoOcrAudioMediaRequest()
 
+    internal fun createVideoOcrAnimatedSceneRequest() = mediaCapture.createVideoOcrAnimatedSceneRequest()
+
     suspend fun captureAnimatedVideoForAnki(startSeconds: Double?, endSeconds: Double?): ByteArray? =
         mediaCapture.captureAnimatedVideoForAnki(startSeconds, endSeconds)
 
-    suspend fun captureVideoOcrAnimatedForAnki(): ByteArray? = mediaCapture.captureVideoOcrAnimatedForAnki()
+    internal suspend fun captureVideoOcrAnimatedForAnki(request: VideoOcrAnimatedSceneRequest): ByteArray? =
+        mediaCapture.captureVideoOcrAnimatedForAnki(request)
 
     /**
      * Saves the screenshot on the pictures directory and notifies the UI of the result.

@@ -68,6 +68,37 @@ class PlayerMediaCaptureServiceTest {
     }
 
     @Test
+    fun `OCR animated scene request freezes selection time before capture runs`() {
+        var time = 10.0
+        var padding = 2.0
+        var video = video("https://media.example/original.m3u8", "original")
+        var mpvPath = "https://media.example/playable.m3u8"
+        val service = PlayerMediaCaptureService(
+            context = mockk<Context>(relaxed = true),
+            cachePath = "cache",
+            getVideo = { video },
+            getSource = { null },
+            getTimeSeconds = { time },
+            getOcrPaddingSeconds = { padding },
+            readMpvSnapshot = { snapshot("https://media.example/playable.m3u8", 7, 1, 3, false, null, true) },
+            readMpvVideoPath = { mpvPath },
+        )
+
+        val request = service.createVideoOcrAnimatedSceneRequest()
+
+        time = 99.0
+        padding = 20.0
+        video = video("https://media.example/changed.m3u8", "changed")
+        mpvPath = "https://media.example/changed-playable.m3u8"
+
+        assertEquals(8.0, request.startSeconds)
+        assertEquals(12.0, request.endSeconds)
+        assertEquals("https://media.example/playable.m3u8", request.input?.source)
+        assertEquals("https://media.example/original.m3u8", request.input?.videoUrl)
+        assertEquals(listOf("Referer" to "original"), request.input?.headers)
+    }
+
+    @Test
     fun `subtitle request preserves missing timing for typed provider diagnostics`() {
         val request = service().createSubtitleAudioMediaRequest(null, 12.0)
 

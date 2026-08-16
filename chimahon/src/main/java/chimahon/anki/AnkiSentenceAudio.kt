@@ -87,6 +87,7 @@ fun interface LazyAnkiSentenceAudioProvider {
 
 data class AnkiMediaRequest(
     val sentenceAudioProvider: LazyAnkiSentenceAudioProvider? = null,
+    val preparedSentenceAudio: AnkiSentenceAudioPreparation? = null,
 )
 
 sealed interface AnkiMediaWarning {
@@ -128,11 +129,14 @@ internal class AnkiSentenceAudioCommitter(
         }
 }
 
-internal suspend fun prepareSentenceAudioForMarker(
+suspend fun prepareSentenceAudioForMarker(
     hasSentenceAudioMarker: Boolean,
     provider: LazyAnkiSentenceAudioProvider?,
+    prepared: AnkiSentenceAudioPreparation? = null,
 ): AnkiSentenceAudioPreparation? {
-    if (!hasSentenceAudioMarker || provider == null) return null
+    if (!hasSentenceAudioMarker) return null
+    if (prepared != null) return prepared
+    if (provider == null) return null
     return try {
         provider.prepare()
     } catch (e: CancellationException) {

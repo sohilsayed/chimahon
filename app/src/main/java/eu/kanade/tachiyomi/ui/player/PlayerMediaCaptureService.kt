@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.FFprobeKit
@@ -36,6 +37,19 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
+internal data class VideoOcrAnimatedSceneRequest(
+    val startSeconds: Double,
+    val endSeconds: Double,
+    val input: AnimatedSceneInputSnapshot?,
+)
+
+/** Input needed to recreate an animated scene after the dictionary popup has opened. */
+internal data class AnimatedSceneInputSnapshot(
+    val source: String,
+    val videoUrl: String,
+    val headers: List<Pair<String, String>>,
+)
+
 /**
  * Captures media from the player for Anki mining: still OCR frames, sentence audio slices,
  * and animated AVIF scenes encoded through the bundled libavif encoder.
@@ -48,6 +62,7 @@ internal class PlayerMediaCaptureService(
     private val getTimeSeconds: () -> Double,
     private val getOcrPaddingSeconds: () -> Double,
     private val readMpvSnapshot: () -> SentenceAudioMpvSnapshot,
+    private val readMpvVideoPath: () -> String? = { MPVLib.getPropertyString("path") },
     private val prepareSentenceAudioOverride: (suspend (SentenceAudioCaptureRequest) -> AnkiSentenceAudioPreparation)? = null,
 ) {
 
@@ -93,6 +108,29 @@ internal class PlayerMediaCaptureService(
         return createSentenceAudioMediaRequest(center - padding, center + padding)
     }
 
+    fun createVideoOcrAnimatedSceneRequest(): VideoOcrAnimatedSceneRequest {
+        val center = getTimeSeconds()
+        val padding = getOcrPaddingSeconds()
+        return VideoOcrAnimatedSceneRequest(
+            startSeconds = center - padding,
+            endSeconds = center + padding,
+            input = snapshotAnimatedSceneInput(),
+        )
+    }
+
+    private fun snapshotAnimatedSceneInput(): AnimatedSceneInputSnapshot? {
+        val video = getVideo() ?: return null
+        val source = readMpvVideoPath()
+            ?.takeIf { it.isNotBlank() }
+            ?: video.videoUrl
+        val animeSource = getSource() as? AnimeHttpSource
+        return AnimatedSceneInputSnapshot(
+            source = source,
+            videoUrl = video.videoUrl,
+            headers = (video.headers ?: animeSource?.headers)?.toList().orEmpty(),
+        )
+    }
+
     private fun createSentenceAudioMediaRequest(startSeconds: Double?, endSeconds: Double?): AnkiMediaRequest {
         val video = getVideo()
         val mpv = readMpvSnapshot()
@@ -125,42 +163,50 @@ internal class PlayerMediaCaptureService(
      * using the bundled libavif encoder. Returns null on failure so callers can fall back to a still.
      */
     suspend fun captureAnimatedVideoForAnki(startSeconds: Double?, endSeconds: Double?): ByteArray? {
+        return captureAnimatedVideoForAnki(
+            input = snapshotAnimatedSceneInput(),
+            startSeconds = startSeconds,
+            endSeconds = endSeconds,
+        )
+    }
+
+    private suspend fun captureAnimatedVideoForAnki(
+        input: AnimatedSceneInputSnapshot?,
+        startSeconds: Double?,
+        endSeconds: Double?,
+    ): ByteArray? {
         val start = startSeconds ?: return null
         val end = endSeconds ?: return null
         if (end <= start) return null
 
-        val video = getVideo() ?: return null
+        val inputSnapshot = input ?: return null
         val yuvFile = File(context.cacheDir, "chimahon_scene_${System.currentTimeMillis()}.yuv")
-        return runCatching {
+        return try {
             withIOContext {
                 yuvFile.delete()
-                val rawInput = MPVLib.getPropertyString("path")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: video.videoUrl
-                val input = when {
-                    video.videoUrl.startsWith("content://") -> Uri.parse(video.videoUrl).toFFmpegReadString(context)
+                val rawInput = inputSnapshot.source
+                val ffmpegInput = when {
+                    inputSnapshot.videoUrl.startsWith("content://") -> Uri.parse(inputSnapshot.videoUrl).toFFmpegReadString(context)
                     rawInput.startsWith("file://") -> Uri.parse(rawInput).path ?: rawInput
                     else -> rawInput
                 }.replace("\"", "\\\"")
 
-                val source = getSource() as? AnimeHttpSource
-                val headers = video.headers ?: source?.headers
-                val headerOptions = if (rawInput.startsWith("http") && headers != null) {
-                    headers.joinToString("", "-headers '", "'") {
+                val headerOptions = if (rawInput.startsWith("http") && inputSnapshot.headers.isNotEmpty()) {
+                    inputSnapshot.headers.joinToString("", "-headers '", "'") {
                         "${it.first}: ${it.second.replace("'", "'\\''")}\r\n"
                     }
                 } else {
                     ""
                 }
                 val duration = (end - start).coerceIn(0.25, 10.0)
-                val probe = probeVideoDimensions(input, headerOptions)
+                val probe = probeVideoDimensions(ffmpegInput, headerOptions)
                 val (outWidth, outHeight) = probe ?: return@withIOContext null
                 val frameSize = outWidth * outHeight * 3 / 2
                 val command = listOf(
                     headerOptions,
                     "-ss ${start.coerceAtLeast(0.0).formatSeconds()}",
                     "-t ${duration.formatSeconds()}",
-                    "-i \"$input\"",
+                    "-i \"$ffmpegInput\"",
                     "-an",
                     "-sn",
                     "-dn",
@@ -180,8 +226,7 @@ internal class PlayerMediaCaptureService(
                 )
                     .filter { it.isNotBlank() }
                     .joinToString(" ")
-                val session = FFmpegSession.create(FFmpegKitConfig.parseArguments(command))
-                FFmpegKitConfig.ffmpegExecute(session)
+                val session = executeFfmpegCancellable(FFmpegKitConfig.parseArguments(command))
                 if (!ReturnCode.isSuccess(session.returnCode) || !yuvFile.exists() || yuvFile.length() < frameSize) {
                     session.failStackTrace?.let { logcat(LogPriority.WARN) { it } }
                     return@withIOContext null
@@ -202,21 +247,33 @@ internal class PlayerMediaCaptureService(
                     AvifEncoder.SPEED_FASTEST,
                 )
             }
-        }.onFailure {
-            logcat(LogPriority.WARN, it) { "Failed to capture animated scene" }
-        }.getOrNull().also {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to capture animated scene" }
+            null
+        } finally {
             yuvFile.delete()
         }
     }
 
-    suspend fun captureVideoOcrAnimatedForAnki(): ByteArray? {
-        val centerSeconds = getTimeSeconds()
-        val paddingSeconds = getOcrPaddingSeconds()
+    suspend fun captureVideoOcrAnimatedForAnki(request: VideoOcrAnimatedSceneRequest): ByteArray? {
         return captureAnimatedVideoForAnki(
-            startSeconds = centerSeconds - paddingSeconds,
-            endSeconds = centerSeconds + paddingSeconds,
+            input = request.input,
+            startSeconds = request.startSeconds,
+            endSeconds = request.endSeconds,
         )
     }
+
+    private suspend fun executeFfmpegCancellable(arguments: Array<String>): FFmpegSession =
+        suspendCancellableCoroutine { continuation ->
+            val session = FFmpegKit.executeWithArgumentsAsync(arguments) { completedSession ->
+                if (continuation.isActive) {
+                    continuation.resumeWith(Result.success(completedSession))
+                }
+            }
+            continuation.invokeOnCancellation { session.cancel() }
+        }
 
     private suspend fun probeVideoDimensions(input: String, headerOptions: String): Pair<Int, Int>? =
         suspendCancellableCoroutine<FFprobeSession?> { continuation ->

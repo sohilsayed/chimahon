@@ -1,6 +1,7 @@
 package chimahon.anki
 
 import android.content.Context
+import android.util.Log
 import chimahon.Cloze
 import chimahon.DictionaryRepository
 import chimahon.HoshiDicts
@@ -20,6 +21,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicLong
 
 // =============================================================================
 // Legacy FieldType enum for UI backwards compatibility
@@ -220,10 +222,17 @@ object AnkiCardCreator {
     private const val WORD_AUDIO_MEDIA_PLACEHOLDER = "chimahon_word_audio_pending.mp3"
     private const val SENTENCE_AUDIO_MEDIA_PLACEHOLDER = "chimahon_sentence_audio_pending.m4a"
     private val duplicateGate = AnkiDuplicateGate()
+    private val addTimingOperationSequence = AtomicLong()
     @Volatile
     internal var bridgeFactory: (Context) -> AnkiCardBridge = ::AnkiDroidBridge
     @Volatile
     internal var fieldMapParser: (String) -> Map<String, String> = ::parseFieldMap
+    @Volatile
+    internal var timingClock: () -> Long = android.os.SystemClock::elapsedRealtime
+    @Volatile
+    internal var timingEventSink: (AnkiAddTimingEvent) -> Unit = { event ->
+        Log.d(TAG, formatAnkiAddTimingEvent(event))
+    }
 
     internal fun resetBridgeFactoryForTests() {
         bridgeFactory = ::AnkiDroidBridge
@@ -231,6 +240,11 @@ object AnkiCardCreator {
 
     internal fun resetFieldMapParserForTests() {
         fieldMapParser = ::parseFieldMap
+    }
+
+    internal fun resetTimingDiagnosticsForTests() {
+        timingClock = android.os.SystemClock::elapsedRealtime
+        timingEventSink = { event -> Log.d(TAG, formatAnkiAddTimingEvent(event)) }
     }
 
     private data class DictionaryMediaReference(
@@ -289,11 +303,20 @@ object AnkiCardCreator {
         profileId: String = "",
         titleId: String? = null,
         mediaRequest: AnkiMediaRequest? = null,
+        timingOperationId: String? = null,
+        timingStartedAtMillis: Long? = null,
     ): AnkiResult {
-        android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, forceOpen=$forceOpen, glossaryIndex=$glossaryIndex")
+        val timing = AnkiAddTimingTrace(
+            operationId = timingOperationId ?: "add-${addTimingOperationSequence.incrementAndGet()}",
+            nowMillis = timingClock,
+            emit = timingEventSink,
+            startedAtMillis = timingStartedAtMillis,
+        )
+        if (timingStartedAtMillis == null) timing.mark(AnkiAddTimingStage.STARTED)
 
         val bridge = bridgeFactory(context)
         if (!bridge.hasPermission()) {
+            timing.mark(AnkiAddTimingStage.COMPLETED, outcome = "permission_denied")
             return AnkiResult.PermissionDenied
         }
         return try {
@@ -313,12 +336,12 @@ object AnkiCardCreator {
             }
 
             if (effectiveDeck.isBlank() || effectiveModel.isBlank()) {
-                android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
+                timing.mark(AnkiAddTimingStage.COMPLETED, outcome = "not_configured")
                 return AnkiResult.NotConfigured
             }
 
             val fieldMap = fieldMapParser(effectiveFieldMapJson)
-            android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
+            timing.mark(AnkiAddTimingStage.CONFIGURATION_READY, fieldCount = fieldMap.size)
             val cloze = if (sentence.isNotEmpty() && offset >= 0) {
                 // Use result.matched (the exact surface form the dictionary engine consumed)
                 // so the bold window is precisely the word that was looked up, not the base form.
@@ -359,11 +382,16 @@ object AnkiCardCreator {
             }
 
             val firstDecision = duplicateGate.preflight(lockKey, ::duplicateDecision)
-            if (firstDecision is AnkiDuplicateDecision.Return) return firstDecision.result
+            timing.mark(AnkiAddTimingStage.PREFLIGHT_FINISHED, outcome = firstDecision.timingOutcome())
+            if (firstDecision is AnkiDuplicateDecision.Return) {
+                timing.mark(AnkiAddTimingStage.COMPLETED, outcome = firstDecision.timingOutcome())
+                return firstDecision.result
+            }
 
             val sentenceAudioPreparation = prepareSentenceAudioForMarker(
                 hasSentenceAudioMarker,
                 mediaRequest?.sentenceAudioProvider,
+                mediaRequest?.preparedSentenceAudio,
             ) ?: when {
                 hasSentenceAudioMarker && sentenceAudioBytes != null -> {
                     AnkiSentenceAudioPreparation.Ready(
@@ -372,6 +400,10 @@ object AnkiCardCreator {
                 }
                 else -> null
             }
+            timing.mark(
+                AnkiAddTimingStage.SENTENCE_AUDIO_PREPARED,
+                mediaBytes = (sentenceAudioPreparation as? AnkiSentenceAudioPreparation.Ready)?.source?.data?.size,
+            )
             val exportMedia = ExportMediaContext()
             val fieldsWithPlaceholders = withContext(Dispatchers.Default) {
                 buildFields(
@@ -388,7 +420,7 @@ object AnkiCardCreator {
                     styles,
                     exportMedia,
                 )
-            }
+            }.also { timing.mark(AnkiAddTimingStage.FIELDS_RENDERED, fieldCount = it.size) }
             val tagsWithPlaceholders = withContext(Dispatchers.Default) {
                 // Split configured tags before rendering markers so commas from a
                 // resolved value (for example a title) stay inside one tag.
@@ -408,17 +440,25 @@ object AnkiCardCreator {
                             styles, exportMedia,
                         )
                     }
-            }
+            }.also { timing.mark(AnkiAddTimingStage.TAGS_RENDERED, tagCount = it.size) }
+            val wordAudio = if (hasWordAudioMarker) prepareWordAudioPayload(result) else null
+            timing.mark(AnkiAddTimingStage.WORD_AUDIO_PREPARED, mediaBytes = wordAudio?.data?.size)
+            val dictionaryMedia = prepareDictionaryMedia(exportMedia)
+            timing.mark(AnkiAddTimingStage.DICTIONARY_MEDIA_PREPARED, dictionaryMediaCount = dictionaryMedia.size)
             val preparedMedia = PreparedAnkiCardMedia(
                 screenshot = screenshotBytes
                     ?.let { PreparedAnkiMediaPayload(generateScreenshotFilename(it), it) },
-                wordAudio = if (hasWordAudioMarker) prepareWordAudioPayload(result) else null,
-                dictionaryMedia = prepareDictionaryMedia(exportMedia),
+                wordAudio = wordAudio,
+                dictionaryMedia = dictionaryMedia,
                 sentenceAudio = sentenceAudioPreparation,
             )
+            timing.mark(AnkiAddTimingStage.MEDIA_PREPARED, dictionaryMediaCount = dictionaryMedia.size)
 
-            duplicateGate.commit(lockKey, ::duplicateDecision) { finalDecision ->
+            duplicateGate.commit(lockKey, {
+                duplicateDecision().also { timing.mark(AnkiAddTimingStage.FINAL_DUPLICATE_FINISHED, outcome = it.timingOutcome()) }
+            }) { finalDecision ->
                 if (finalDecision is AnkiDuplicateDecision.Return) {
+                    timing.mark(AnkiAddTimingStage.COMPLETED, outcome = finalDecision.timingOutcome())
                     return@commit finalDecision.result
                 }
                 val committedMedia = commitPreparedAnkiCardMedia(
@@ -426,6 +466,7 @@ object AnkiCardCreator {
                     storeBytes = bridge::storeMedia,
                     storeSentenceAudio = bridge::storeMedia,
                 )
+                timing.mark(AnkiAddTimingStage.MEDIA_STORED, dictionaryMediaCount = dictionaryMedia.size)
                 val fields = resolveMediaPlaceholders(
                     resolveDictionaryMediaPlaceholders(fieldsWithPlaceholders, committedMedia.dictionaryReplacementByPlaceholder),
                     committedMedia,
@@ -433,7 +474,7 @@ object AnkiCardCreator {
                 val tagList = tagsWithPlaceholders
                     .map { value -> resolveMediaPlaceholders(value, committedMedia) }
                     .mapNotNull(::normalizeAnkiTag)
-                android.util.Log.d(TAG, "addToAnki: built fields=$fields")
+                timing.mark(AnkiAddTimingStage.FIELDS_RESOLVED, fieldCount = fields.size, tagCount = tagList.size)
 
                 val noteId = when (finalDecision) {
                     is AnkiDuplicateDecision.Overwrite -> {
@@ -448,21 +489,41 @@ object AnkiCardCreator {
                     )
                     is AnkiDuplicateDecision.Return -> error("handled above")
                 }
+                timing.mark(AnkiAddTimingStage.NOTE_SAVED)
                 com.canopus.chimareader.data.AnkiStatsStorage.addCard(
                     context,
                     type,
                     profileId = profileId,
                     titleId = titleId,
                 )
-                if (syncOnCreate) bridge.triggerSync()
-                AnkiResult.Success(noteId, committedMedia.sentenceAudio.warnings)
+                timing.mark(AnkiAddTimingStage.STATS_RECORDED)
+                if (syncOnCreate) {
+                    bridge.triggerSync()
+                    timing.mark(AnkiAddTimingStage.SYNC_DISPATCHED)
+                }
+                AnkiResult.Success(noteId, committedMedia.sentenceAudio.warnings).also {
+                    timing.mark(AnkiAddTimingStage.COMPLETED, outcome = "success")
+                }
             }
         } catch (e: CancellationException) {
+            timing.mark(AnkiAddTimingStage.COMPLETED, outcome = "cancelled")
             throw e
         } catch (e: SecurityException) {
+            timing.mark(AnkiAddTimingStage.COMPLETED, outcome = "permission_denied")
             AnkiResult.PermissionDenied
         } catch (e: Exception) {
+            timing.mark(AnkiAddTimingStage.COMPLETED, outcome = "error")
             AnkiResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    private fun AnkiDuplicateDecision.timingOutcome(): String = when (this) {
+        AnkiDuplicateDecision.Insert -> "insert"
+        is AnkiDuplicateDecision.Overwrite -> "overwrite"
+        is AnkiDuplicateDecision.Return -> when (result) {
+            is AnkiResult.CardExists -> "card_exists"
+            is AnkiResult.OpenCard -> "open_card"
+            else -> "return"
         }
     }
 

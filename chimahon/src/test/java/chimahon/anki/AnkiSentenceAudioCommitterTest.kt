@@ -61,6 +61,26 @@ class AnkiSentenceAudioCommitterTest {
     }
 
     @Test
+    fun `prepared sentence audio is reused without invoking its provider`() = runTest {
+        var invoked = false
+        val prepared = AnkiSentenceAudioPreparation.Ready(
+            AnkiSentenceAudioSource.fromBytes(byteArrayOf(9), "m4a"),
+        )
+
+        val actual = prepareSentenceAudioForMarker(
+            hasSentenceAudioMarker = true,
+            provider = LazyAnkiSentenceAudioProvider {
+                invoked = true
+                error("must not be invoked")
+            },
+            prepared = prepared,
+        )
+
+        assertEquals(prepared, actual)
+        assertFalse(invoked)
+    }
+
+    @Test
     fun `provider exception becomes unavailable unknown`() = runTest {
         val preparation = prepareSentenceAudioForMarker(true, LazyAnkiSentenceAudioProvider {
             error("native failure")
